@@ -6,12 +6,12 @@ import type { Student } from '@/types'
 import Link from 'next/link'
 import { useState } from 'react'
 
-const STATUS_STYLES: Record<Student['status'], string> = {
-  collecting: 'bg-gray-100 text-gray-700',
-  applying: 'bg-blue-100 text-blue-700',
-  interview: 'bg-yellow-100 text-yellow-700',
-  admitted: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
+const STATUS_STYLES: Record<Student['status'], { bg: string; color: string }> = {
+  collecting: { bg: '#f3f4f6', color: '#374151' },
+  applying:   { bg: '#eff6ff', color: '#1d4ed8' },
+  interview:  { bg: '#fffbeb', color: '#b45309' },
+  admitted:   { bg: '#f0fdf4', color: '#15803d' },
+  rejected:   { bg: '#fef2f2', color: '#dc2626' },
 }
 
 export default function StudentsPage() {
@@ -28,61 +28,112 @@ export default function StudentsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <input
-          type="text"
-          placeholder={`${t('common.search')}…`}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <span className="text-sm text-gray-500">{filtered.length} 位學生</span>
+        <div className="relative">
+          <svg
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder={`${t('common.search')}…`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 w-56"
+            style={{ paddingLeft: '2rem' }}
+          />
+        </div>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {filtered.length} 位學生
+        </span>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div
+        className="overflow-hidden"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+        }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">
-                {t('students.name')}
-              </th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">
-                {t('students.grade')}
-              </th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">
-                {t('students.status')}
-              </th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">
-                {t('students.consultant')}
-              </th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">
-                {t('students.deadline')}
-              </th>
-              <th className="px-5 py-3"></th>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+              {[
+                t('students.name'),
+                t('students.grade'),
+                t('students.status'),
+                t('students.consultant'),
+                t('students.deadline'),
+                '',
+              ].map((h, i) => (
+                <th
+                  key={i}
+                  className="text-left px-4 py-2.5 text-xs font-semibold"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {filtered.map((s) => (
-              <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-5 py-3.5">
-                  <div className="font-medium text-gray-900">{s.name_zh}</div>
-                  <div className="text-gray-400 text-xs">{s.name_en}</div>
+              <tr
+                key={s.id}
+                className="transition-colors"
+                style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                onMouseEnter={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = 'var(--bg)')
+                }
+                onMouseLeave={(e) =>
+                  ((e.currentTarget as HTMLElement).style.background = 'transparent')
+                }
+              >
+                <td className="px-4 py-3">
+                  <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {s.name_zh}
+                  </div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {s.name_en}
+                  </div>
                 </td>
-                <td className="px-5 py-3.5 text-gray-700">
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
                   {s.current_grade} → {s.target_grade}
                 </td>
-                <td className="px-5 py-3.5">
+                <td className="px-4 py-3">
                   <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_STYLES[s.status]}`}
+                    className="text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={STATUS_STYLES[s.status]}
                   >
                     {t(`students.status_${s.status}`)}
                   </span>
                 </td>
-                <td className="px-5 py-3.5 text-gray-700">{s.consultant}</td>
-                <td className="px-5 py-3.5 text-gray-700">{s.deadline}</td>
-                <td className="px-5 py-3.5">
+                <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {s.consultant}
+                </td>
+                <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {s.deadline}
+                </td>
+                <td className="px-4 py-3">
                   <Link
                     href={`/students/${s.id}`}
-                    className="text-blue-600 hover:text-blue-800 font-medium"
+                    className="text-xs font-medium transition-colors"
+                    style={{ color: 'var(--accent)' }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLElement).style.color = 'var(--accent-hover)')
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLElement).style.color = 'var(--accent)')
+                    }
                   >
                     {t('students.view')} →
                   </Link>

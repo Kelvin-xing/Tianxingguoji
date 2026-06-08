@@ -21,11 +21,27 @@ export function TopBar() {
   const title = titleKey ? t(PAGE_TITLES[titleKey]) : ''
 
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6">
-      <h1 className="text-base font-semibold text-gray-800">{title}</h1>
+    <header
+      className="h-12 flex items-center justify-between px-5 shrink-0"
+      style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}
+    >
+      <h1 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+        {title}
+      </h1>
       <button
         onClick={toggleLang}
-        className="text-sm text-gray-500 hover:text-gray-900 border border-gray-300 rounded px-3 py-1 transition-colors"
+        className="text-xs px-2.5 py-1 rounded transition-colors"
+        style={{
+          color: 'var(--text-secondary)',
+          border: '1px solid var(--border)',
+          background: 'transparent',
+        }}
+        onMouseEnter={(e) => {
+          ;(e.currentTarget as HTMLElement).style.background = 'var(--bg)'
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLElement).style.background = 'transparent'
+        }}
       >
         {t('common.lang_toggle')}
       </button>

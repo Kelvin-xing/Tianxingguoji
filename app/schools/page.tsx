@@ -5,16 +5,16 @@ import { mockSchools } from '@/lib/mock/schools'
 import type { AdmissionRecord } from '@/types'
 import { useState } from 'react'
 
-const CONFIDENCE_STYLES: Record<AdmissionRecord['confidence'], string> = {
-  high: 'bg-green-100 text-green-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-red-100 text-red-700',
+const CONFIDENCE_STYLES: Record<AdmissionRecord['confidence'], { bg: string; color: string }> = {
+  high:   { bg: '#f0fdf4', color: '#15803d' },
+  medium: { bg: '#fffbeb', color: '#b45309' },
+  low:    { bg: '#fef2f2', color: '#dc2626' },
 }
 
-const REVIEW_STYLES: Record<AdmissionRecord['review_status'], string> = {
-  approved: 'bg-green-100 text-green-700',
-  needs_review: 'bg-amber-100 text-amber-700',
-  rejected: 'bg-red-100 text-red-700',
+const REVIEW_STYLES: Record<AdmissionRecord['review_status'], { bg: string; color: string }> = {
+  approved:     { bg: '#f0fdf4', color: '#15803d' },
+  needs_review: { bg: '#fffbeb', color: '#b45309' },
+  rejected:     { bg: '#fef2f2', color: '#dc2626' },
 }
 
 export default function SchoolsPage() {
@@ -29,20 +29,27 @@ export default function SchoolsPage() {
     if (typeFilter !== 'all' && s.admission_type !== typeFilter) return false
     if (confidenceFilter !== 'all' && s.confidence !== confidenceFilter) return false
     if (reviewFilter !== 'all' && s.review_status !== reviewFilter) return false
-    if (search && !s.school_name_zh.includes(search) && !s.school_name_en.toLowerCase().includes(search.toLowerCase())) return false
+    if (
+      search &&
+      !s.school_name_zh.includes(search) &&
+      !s.school_name_en.toLowerCase().includes(search.toLowerCase())
+    )
+      return false
     return true
   })
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 bg-white rounded-xl border border-gray-200 p-4">
+      <div
+        className="flex flex-wrap gap-3 items-center p-3 rounded-lg"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      >
         <input
           type="text"
           placeholder={`${t('common.search')}…`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-44"
         />
         <FilterSelect
           label={t('schools.admission_type')}
@@ -77,71 +84,149 @@ export default function SchoolsPage() {
             { value: 'rejected', label: t('schools.status_rejected') },
           ]}
         />
-        <span className="text-sm text-gray-500 self-center ml-auto">{filtered.length} 所</span>
+        <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>
+          {filtered.length} 所
+        </span>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div
+        className="overflow-hidden"
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+        }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">{t('schools.school_name')}</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">{t('schools.admission_type')}</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">{t('schools.confidence')}</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">{t('schools.review_status')}</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-600">{t('schools.application_dates')}</th>
-              <th className="px-5 py-3"></th>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+              {[
+                t('schools.school_name'),
+                t('schools.admission_type'),
+                t('schools.confidence'),
+                t('schools.review_status'),
+                t('schools.application_dates'),
+                '',
+              ].map((h, i) => (
+                <th
+                  key={i}
+                  className="text-left px-4 py-2.5 text-xs font-semibold"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {filtered.map((school) => (
               <>
                 <tr
                   key={school.school_key}
-                  className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => setExpanded(expanded === school.school_key ? null : school.school_key)}
+                  className="transition-colors cursor-pointer"
+                  style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                  onClick={() =>
+                    setExpanded(expanded === school.school_key ? null : school.school_key)
+                  }
+                  onMouseEnter={(e) => {
+                    if (expanded !== school.school_key)
+                      (e.currentTarget as HTMLElement).style.background = 'var(--bg)'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (expanded !== school.school_key)
+                      (e.currentTarget as HTMLElement).style.background = 'transparent'
+                  }}
                 >
-                  <td className="px-5 py-3.5">
-                    <div className="font-medium text-gray-900">{school.school_name_zh}</div>
-                    <div className="text-gray-400 text-xs">{school.district}</div>
+                  <td className="px-4 py-3">
+                    <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {school.school_name_zh}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {school.district}
+                    </div>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
-                      {t(`schools.type_${school.admission_type === 's1_admission' ? 's1' : school.admission_type}`)}
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{ background: '#f1f5f9', color: '#475569' }}
+                    >
+                      {t(
+                        `schools.type_${school.admission_type === 's1_admission' ? 's1' : school.admission_type}`,
+                      )}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${CONFIDENCE_STYLES[school.confidence]}`}>
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={CONFIDENCE_STYLES[school.confidence]}
+                    >
                       {t(`schools.confidence_${school.confidence}`)}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${REVIEW_STYLES[school.review_status]}`}>
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={REVIEW_STYLES[school.review_status]}
+                    >
                       {t(`schools.status_${school.review_status}`)}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5 text-gray-600 text-xs">{school.application_dates}</td>
-                  <td className="px-5 py-3.5 text-gray-400 text-xs">
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {school.application_dates}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
                     {expanded === school.school_key ? '▲' : '▼'}
                   </td>
                 </tr>
                 {expanded === school.school_key && (
                   <tr key={`${school.school_key}-detail`}>
-                    <td colSpan={6} className="px-5 py-4 bg-blue-50 border-b border-blue-100">
+                    <td
+                      colSpan={6}
+                      className="px-4 py-4"
+                      style={{
+                        background: 'var(--accent-subtle)',
+                        borderBottom: '1px solid var(--border)',
+                      }}
+                    >
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">{t('schools.required_materials')}</div>
-                          <div className="text-gray-800">{school.required_materials}</div>
+                          <div
+                            className="text-xs font-semibold mb-1"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            {t('schools.required_materials')}
+                          </div>
+                          <div style={{ color: 'var(--text-primary)' }}>
+                            {school.required_materials}
+                          </div>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">{t('schools.admission_url')}</div>
-                          <a href={school.final_admission_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all text-xs">
+                          <div
+                            className="text-xs font-semibold mb-1"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            {t('schools.admission_url')}
+                          </div>
+                          <a
+                            href={school.final_admission_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs break-all"
+                            style={{ color: 'var(--accent)' }}
+                          >
                             {school.final_admission_url}
                           </a>
                         </div>
                         <div>
-                          <div className="text-xs text-gray-500 mb-1">{t('schools.notes')}</div>
-                          <div className="text-gray-700">{school.notes || '—'}</div>
+                          <div
+                            className="text-xs font-semibold mb-1"
+                            style={{ color: 'var(--text-secondary)' }}
+                          >
+                            {t('schools.notes')}
+                          </div>
+                          <div style={{ color: 'var(--text-secondary)' }}>
+                            {school.notes || '—'}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -169,12 +254,10 @@ function FilterSelect({
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-gray-500">{label}:</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
+      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        {label}:
+      </span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

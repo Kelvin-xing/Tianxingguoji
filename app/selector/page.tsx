@@ -23,23 +23,31 @@ export default function SelectorPage() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Filter panel */}
-        <div className="lg:col-span-1 bg-white rounded-xl border border-gray-200 p-5 space-y-5 h-fit">
-          <h2 className="font-semibold text-gray-800">{t('selector.filters')}</h2>
+        <div
+          className="lg:col-span-1 p-4 space-y-5 h-fit rounded-lg"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        >
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {t('selector.filters')}
+          </h2>
 
           <div>
-            <label className="text-xs text-gray-500 block mb-2">{t('selector.district')}</label>
+            <label className="text-xs font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
+              {t('selector.district')}
+            </label>
             <div className="flex flex-wrap gap-1.5">
               {DISTRICTS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setDistrict(d)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                    district === d
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'text-gray-600 border-gray-300 hover:border-blue-400'
-                  }`}
+                  className="text-xs px-2 py-0.5 rounded-full border transition-colors"
+                  style={{
+                    background: district === d ? 'var(--accent)' : 'transparent',
+                    color: district === d ? '#fff' : 'var(--text-secondary)',
+                    borderColor: district === d ? 'var(--accent)' : 'var(--border)',
+                  }}
                 >
                   {d}
                 </button>
@@ -48,20 +56,26 @@ export default function SelectorPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500 block mb-2">{t('selector.admission_type')}</label>
+            <label className="text-xs font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
+              {t('selector.admission_type')}
+            </label>
             {[
               { value: 'all', label: t('selector.all') },
               { value: 'transfer', label: t('schools.type_transfer') },
               { value: 's1_admission', label: t('schools.type_s1') },
             ].map((opt) => (
-              <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700 mb-1.5 cursor-pointer">
+              <label
+                key={opt.value}
+                className="flex items-center gap-2 text-sm mb-1.5 cursor-pointer"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 <input
                   type="radio"
                   name="type"
                   value={opt.value}
                   checked={admissionType === opt.value}
                   onChange={() => setAdmissionType(opt.value)}
-                  className="accent-blue-600"
+                  style={{ accentColor: 'var(--accent)' }}
                 />
                 {opt.label}
               </label>
@@ -69,21 +83,27 @@ export default function SelectorPage() {
           </div>
 
           <div>
-            <label className="text-xs text-gray-500 block mb-2">{t('selector.confidence')}</label>
+            <label className="text-xs font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
+              {t('selector.confidence')}
+            </label>
             {[
               { value: 'all', label: t('selector.all') },
               { value: 'high', label: t('schools.confidence_high') },
               { value: 'medium', label: t('schools.confidence_medium') },
               { value: 'low', label: t('schools.confidence_low') },
             ].map((opt) => (
-              <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700 mb-1.5 cursor-pointer">
+              <label
+                key={opt.value}
+                className="flex items-center gap-2 text-sm mb-1.5 cursor-pointer"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 <input
                   type="radio"
                   name="conf"
                   value={opt.value}
                   checked={confidence === opt.value}
                   onChange={() => setConfidence(opt.value)}
-                  className="accent-blue-600"
+                  style={{ accentColor: 'var(--accent)' }}
                 />
                 {opt.label}
               </label>
@@ -94,20 +114,28 @@ export default function SelectorPage() {
         {/* Results */}
         <div className="lg:col-span-3 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {t('selector.match_count', { count: filtered.length })}
             </span>
             <button
               onClick={() => setShowReport(true)}
               disabled={filtered.length === 0}
-              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="text-sm px-4 py-1.5 rounded-md font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'var(--accent)', color: '#fff' }}
             >
-              📄 {t('selector.generate_pdf')}
+              {t('selector.generate_pdf')}
             </button>
           </div>
 
           {filtered.length === 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
+            <div
+              className="p-10 text-center text-sm rounded-lg"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+              }}
+            >
               {t('selector.no_results')}
             </div>
           )}
@@ -120,38 +148,45 @@ export default function SelectorPage() {
         </div>
       </div>
 
-      {/* PDF Modal */}
-      {showReport && (
-        <ReportModal schools={filtered} onClose={() => setShowReport(false)} />
-      )}
+      {showReport && <ReportModal schools={filtered} onClose={() => setShowReport(false)} />}
     </div>
   )
 }
 
 function SchoolCard({ school }: { school: AdmissionRecord }) {
-  const confidenceColor =
+  const confStyle =
     school.confidence === 'high'
-      ? 'text-green-600'
+      ? { color: '#15803d' }
       : school.confidence === 'medium'
-        ? 'text-yellow-600'
-        : 'text-red-500'
+        ? { color: '#b45309' }
+        : { color: '#dc2626' }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-start justify-between">
-      <div className="space-y-1">
-        <div className="font-medium text-gray-900">{school.school_name_zh}</div>
-        <div className="text-xs text-gray-400">{school.school_name_en} · {school.district}</div>
-        <div className="text-xs text-gray-500">{school.application_dates}</div>
+    <div
+      className="flex items-start justify-between p-3.5 rounded-lg"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      <div className="space-y-0.5">
+        <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
+          {school.school_name_zh}
+        </div>
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {school.school_name_en} · {school.district}
+        </div>
+        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          {school.application_dates}
+        </div>
       </div>
-      <div className="flex flex-col items-end gap-1.5">
-        <span className={`text-xs font-bold ${confidenceColor}`}>
+      <div className="flex flex-col items-end gap-1.5 ml-4 shrink-0">
+        <span className="text-xs font-bold" style={confStyle}>
           {school.confidence.toUpperCase()}
         </span>
         <a
           href={school.final_admission_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:underline"
+          className="text-xs"
+          style={{ color: 'var(--accent)' }}
         >
           招生頁面 →
         </a>
@@ -160,72 +195,77 @@ function SchoolCard({ school }: { school: AdmissionRecord }) {
   )
 }
 
-function ReportModal({
-  schools,
-  onClose,
-}: {
-  schools: AdmissionRecord[]
-  onClose: () => void
-}) {
+function ReportModal({ schools, onClose }: { schools: AdmissionRecord[]; onClose: () => void }) {
   const { t } = useTranslation()
   const today = new Date().toLocaleDateString('zh-TW')
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 print:hidden">
-          <span className="font-semibold text-gray-800">{t('selector.report_title')}</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.45)' }}>
+      <div
+        className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-lg"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+      >
+        <div
+          className="flex items-center justify-between p-4 print:hidden"
+          style={{ borderBottom: '1px solid var(--border)' }}
+        >
+          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {t('selector.report_title')}
+          </span>
           <div className="flex gap-2">
             <button
               onClick={() => window.print()}
-              className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700"
+              className="text-sm px-3 py-1.5 rounded-md font-medium"
+              style={{ background: 'var(--accent)', color: '#fff' }}
             >
               {t('common.print')} / PDF
             </button>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 text-sm px-3 py-1.5 border border-gray-300 rounded-lg"
+              className="text-sm px-3 py-1.5 rounded-md"
+              style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
             >
               {t('common.close')}
             </button>
           </div>
         </div>
         <div id="print-area" className="overflow-auto p-8 flex-1">
-          <h1 className="text-xl font-bold text-gray-900 mb-1">天星顧問 — {t('selector.report_title')}</h1>
-          <p className="text-sm text-gray-400 mb-6">
+          <h1 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+            天星顧問 — {t('selector.report_title')}
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
             {t('selector.generated_on')}：{today}
           </p>
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-2 pr-4 font-semibold">#</th>
-                <th className="text-left py-2 pr-4 font-semibold">{t('schools.school_name')}</th>
-                <th className="text-left py-2 pr-4 font-semibold">{t('schools.district')}</th>
-                <th className="text-left py-2 pr-4 font-semibold">{t('schools.admission_type')}</th>
-                <th className="text-left py-2 font-semibold">{t('schools.application_dates')}</th>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                {['#', t('schools.school_name'), t('schools.district'), t('schools.admission_type'), t('schools.application_dates')].map((h) => (
+                  <th key={h} className="text-left py-2 pr-4 font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {schools.map((s, i) => (
-                <tr key={s.school_key} className="border-b border-gray-100">
-                  <td className="py-2 pr-4 text-gray-400">{i + 1}</td>
-                  <td className="py-2 pr-4 font-medium">{s.school_name_zh}</td>
-                  <td className="py-2 pr-4 text-gray-600">{s.district}</td>
-                  <td className="py-2 pr-4 text-gray-600">
+                <tr key={s.school_key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td className="py-2 pr-4" style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                  <td className="py-2 pr-4 font-medium" style={{ color: 'var(--text-primary)' }}>{s.school_name_zh}</td>
+                  <td className="py-2 pr-4" style={{ color: 'var(--text-secondary)' }}>{s.district}</td>
+                  <td className="py-2 pr-4" style={{ color: 'var(--text-secondary)' }}>
                     {s.admission_type === 'transfer' ? '插班/轉校' : 'S1 統一派位'}
                   </td>
-                  <td className="py-2 text-gray-600">{s.application_dates}</td>
+                  <td className="py-2" style={{ color: 'var(--text-secondary)' }}>{s.application_dates}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-gray-400 mt-8">
+          <p className="text-xs mt-8" style={{ color: 'var(--text-muted)' }}>
             本報告由天星顧問 ERP 系統自動生成，數據來源：香港教育局及各校官方網站。
           </p>
         </div>
       </div>
 
-      {/* Print-only full-page styles */}
       <style>{`
         @media print {
           body > * { display: none !important; }
