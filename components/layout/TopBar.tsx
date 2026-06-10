@@ -9,6 +9,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/students': 'nav.students',
   '/schools': 'nav.schools',
   '/selector': 'nav.selector',
+  '/admin/crawler': 'nav.adminCrawler',
   '/ai': 'nav.ai',
 }
 

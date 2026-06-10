@@ -1,0 +1,65 @@
+{
+  "published_at": "2026-06-10T09:26:55Z",
+  "source_run_dir": "/Users/mingjiexing/Desktop/Tianxingguoji/automated_tracker_for_school_listing/hk-school-platform/apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged",
+  "publish_run_dir": "/Users/mingjiexing/Desktop/Tianxingguoji/automated_tracker_for_school_listing/hk-school-platform/apps/crawler/output/published/runs/full_20260610_130102_llm_p3",
+  "health": "warn",
+  "publisher": "codex",
+  "notes": "full_20260610_llm_p3 production finish with corrected tuition PDF text",
+  "copied_files": [
+    {
+      "source": "final/admission_tracker.xlsx",
+      "target": "admission_tracker.xlsx",
+      "bytes": 510817
+    },
+    {
+      "source": "final/records.json",
+      "target": "records.json",
+      "bytes": 5200327
+    },
+    {
+      "source": "final/records.xlsx",
+      "target": "records.xlsx",
+      "bytes": 872072
+    },
+    {
+      "source": "review/queue.json",
+      "target": "review_queue.json",
+      "bytes": 1556032
+    },
+    {
+      "source": "review/queue.xlsx",
+      "target": "review_queue.xlsx",
+      "bytes": 263796
+    },
+    {
+      "source": "review/ocr_fallback_queue.json",
+      "target": "ocr_fallback_queue.json",
+      "bytes": 462141
+    },
+    {
+      "source": "review/ocr_fallback_queue.xlsx",
+      "target": "ocr_fallback_queue.xlsx",
+      "bytes": 88850
+    },
+    {
+      "source": "review/ai_fallback_queue.json",
+      "target": "ai_fallback_queue.json",
+      "bytes": 3920923
+    },
+    {
+      "source": "review/ai_fallback_queue.xlsx",
+      "target": "ai_fallback_queue.xlsx",
+      "bytes": 659171
+    },
+    {
+      "source": "run_summary.json",
+      "target": "run_summary.json",
+      "bytes": 12465
+    },
+    {
+      "source": "run_summary.md",
+      "target": "run_summary.md",
+      "bytes": 7151
+    }
+  ]
+}

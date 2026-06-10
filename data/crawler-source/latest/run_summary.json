@@ -1,0 +1,238 @@
+{
+  "generated_at": "2026-06-10T09:26:10Z",
+  "run_dir": "output/partitioned/full_20260610_130102_llm_p3/merged",
+  "files": {
+    "final_records_json": true,
+    "tracker_xlsx": true,
+    "review_queue_json": true,
+    "second_pass_queue_json": false,
+    "second_pass_deep_crawl_registry_json": false,
+    "ocr_fallback_queue_json": true,
+    "applied_ocr_text_json": false,
+    "ai_fallback_queue_json": true,
+    "ai_extractions_json": false,
+    "ai_pilot_queue_json": false,
+    "ai_pilot_eval_json": false,
+    "diff_json": false
+  },
+  "records": {
+    "total": 585,
+    "review_status_counts": {
+      "auto_selected": 95,
+      "needs_review": 490
+    },
+    "confidence_counts": {
+      "high": 191,
+      "low": 153,
+      "medium": 194,
+      "missing": 47
+    },
+    "missing_counts": {
+      "final_admission_url": 56,
+      "application_form_links": 304,
+      "application_period_or_deadline": 362,
+      "submission_deadline": 452,
+      "required_materials": 362
+    },
+    "ocr_needed_pdf_count": 6,
+    "pdf_fetch_error_count": 5
+  },
+  "review_queue": {
+    "total": 490,
+    "priority_counts": {
+      "high": 471,
+      "low": 18,
+      "medium": 1
+    },
+    "top_rows": [
+      {
+        "priority": "high",
+        "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+        "missing_fields": "submission_deadline, required_materials",
+        "suggested_action": "Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "http://www.ablmcc.edu.hk/latest_new/%E4%B8%AD%E4%BA%8C%E8%87%B3%E4%B8%AD%E4%BA%94%E7%B4%9A%E6%8F%92%E7%8F%AD%E7%94%9F%E7%94%B3%E8%AB%8B%E8%A1%A8"
+      },
+      {
+        "priority": "high",
+        "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+        "missing_fields": "application_period_or_deadline, submission_deadline",
+        "suggested_action": "Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "http://www.ats.edu.hk/index.php/2018-11-26-06-17-11/2019-02-02-08-10-03"
+      },
+      {
+        "priority": "high",
+        "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+        "missing_fields": "application_period_or_deadline, submission_deadline",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "https://www.aich.edu.hk/zh-hant/application/5/"
+      },
+      {
+        "priority": "high",
+        "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.lstc.edu.hk/tc/content.php?wid=47"
+      },
+      {
+        "priority": "high",
+        "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+        "missing_fields": "application_period_or_deadline, submission_deadline",
+        "suggested_action": "Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "https://www.ais.edu.hk/admissions/applying-to-ais/"
+      },
+      {
+        "priority": "high",
+        "school_key": "AMERICAN_SCHOOL_HONG_KONG",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "https://www.ashk.edu.hk/admissions/how-to-apply"
+      },
+      {
+        "priority": "high",
+        "school_key": "ANANTARA_COLLEGE",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+      },
+      {
+        "priority": "high",
+        "school_key": "AOG_EVENING_SECONDARY_SCHOOL",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+      },
+      {
+        "priority": "high",
+        "school_key": "AOG_HEBRON_EVENING_SCHOOL",
+        "missing_fields": "application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Open PDF and confirm it contains transfer/admission instructions. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "http://www.hebron.edu.hk/upload/2024/07/b10d0a27c9b2eab0f8c3750070f08e88.pdf"
+      },
+      {
+        "priority": "high",
+        "school_key": "AOG_HEBRON_SECONDARY_SCHOOL",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "http://www.hebron.edu.hk/各級入學申請"
+      },
+      {
+        "priority": "high",
+        "school_key": "AOG_ST_HILARY_S_COLLEGE",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+      },
+      {
+        "priority": "high",
+        "school_key": "ARTS_TECHNOLOGY_EDUCATION_CENTRE",
+        "missing_fields": "application_form_links, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "http://www.atec.edu.hk/tc/latest_new/application-202627-s4-music-class"
+      },
+      {
+        "priority": "high",
+        "school_key": "AUSTRALIAN_INTERNATIONAL_SCH_HK",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "https://www.aishk.edu.hk/admissions#application-information"
+      },
+      {
+        "priority": "high",
+        "school_key": "BAPTIST_LUI_MING_CHOI_SECONDARY_SCHOOL",
+        "missing_fields": "application_form_links, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.blmcss.edu.hk/main/en/site/view?name=S2-S4+Admission"
+      },
+      {
+        "priority": "high",
+        "school_key": "BAPTIST_WING_LUNG_SECONDARY_SCHOOL",
+        "missing_fields": "application_form_links, application_period_or_deadline, submission_deadline",
+        "suggested_action": "Verify alternate host is an official school-controlled source. Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF.",
+        "final_admission_url": "https://gallery.bwlss.edu.hk/index.php/20260309"
+      },
+      {
+        "priority": "high",
+        "school_key": "BEACON_COLLEGE",
+        "missing_fields": "final_admission_url, application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": ""
+      },
+      {
+        "priority": "high",
+        "school_key": "BEACON_COLLEGE_MONG_KOK",
+        "missing_fields": "final_admission_url, application_form_links, application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Find the direct form/PDF/online application URL. Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": ""
+      },
+      {
+        "priority": "high",
+        "school_key": "BETHEL_HIGH_SCHOOL",
+        "missing_fields": "application_period_or_deadline, submission_deadline, required_materials",
+        "suggested_action": "Fill application open/period/deadline from official page or PDF. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.bethel.edu.hk/uploads/files/%E5%A4%A5%E4%BC%B4%E6%94%AF%E6%8F%B4/%E8%88%8A%E7%94%9F%E8%AD%89%E6%98%8E%E6%96%87%E4%BB%B6%E7%94%B3%E8%AB%8B%E8%A1%A8/%E8%88%8A%E7%94%9F%E8%AD%89%E6%98%8E%E6%96%87%E4%BB%B6%E7%94%B3%E8%AB%8B%E8%A1%A8.pdf"
+      },
+      {
+        "priority": "high",
+        "school_key": "BISHOP_HALL_JUBILEE_SCHOOL",
+        "missing_fields": "",
+        "suggested_action": "Confirm whether the source is S2-S5 transfer, not S1-only admission.",
+        "final_admission_url": "https://www.bhjs.edu.hk/en/site/view?name=SSDP+Admissions"
+      },
+      {
+        "priority": "high",
+        "school_key": "BUDDHIST_HUNG_SEAN_CHAU_MEMORIAL_COLLEGE",
+        "missing_fields": "submission_deadline, required_materials",
+        "suggested_action": "Confirm whether the source is S2-S5 transfer, not S1-only admission. Fill required documents/materials, or write 'not stated' if official source is silent.",
+        "final_admission_url": "https://www.bhscmc.edu.hk/latest_new/%E4%B8%AD%E4%BA%94%E7%B4%9A%E5%85%AC%E6%B0%91%E8%88%87%E7%A4%BE%E6%9C%83%E7%99%BC%E5%B1%95%E7%A7%91%E2%80%94%E2%80%94%E7%8F%A0%E6%B5%B7%E8%80%83%E5%AF%9F%E4%B9%8B%E6%97%85"
+      }
+    ]
+  },
+  "second_pass_queue": {
+    "total": 0,
+    "route_counts": {},
+    "deep_crawl_registry_total": 0
+  },
+  "ocr_fallback_queue": {
+    "total": 209,
+    "priority_counts": {
+      "high": 207,
+      "low": 1,
+      "medium": 1
+    },
+    "reason_counts": {
+      "needs_ocr_pdf": 6,
+      "pdf_fetch_error": 8,
+      "pdf_field_review": 195
+    },
+    "applied_total": 0
+  },
+  "ai_fallback_queue": {
+    "total": 529,
+    "priority_counts": {
+      "high": 455,
+      "medium": 74
+    }
+  },
+  "ai_extractions": {
+    "total": 0,
+    "status_counts": {}
+  },
+  "ai_pilot": {
+    "queue_total": 0,
+    "eval_status": "",
+    "quote_coverage": {},
+    "missing_counts": {},
+    "gold_comparison": {}
+  },
+  "diff": {},
+  "health": "warn",
+  "action_items": [
+    "Review 471 high-priority rows in review/queue.xlsx.",
+    "Fill or verify dates for 362 records.",
+    "Find application/form links for 304 records.",
+    "Fill required materials for 362 records.",
+    "Run OCR/manual review for 6 records with image-only PDFs in review/ocr_fallback_queue.xlsx.",
+    "Retry or manually verify 5 records with PDF fetch errors via review/ocr_fallback_queue.xlsx.",
+    "Read or transcribe 195 PDF field-review rows in review/ocr_fallback_queue.xlsx before deep crawling."
+  ]
+}

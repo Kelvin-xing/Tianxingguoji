@@ -4,7 +4,8 @@
     "students": "學生 CRM",
     "schools": "招生資訊",
     "selector": "選校報告",
-    "ai": "AI 助理"
+    "ai": "AI 助理",
+    "adminCrawler": "爬蟲管理"
   },
   "dashboard": {
     "title": "儀表板",
@@ -95,5 +96,8 @@
     "clear": "清除",
     "print": "列印",
     "lang_toggle": "English"
+  },
+  "admin": {
+    "crawler": "爬蟲管理"
   }
 }

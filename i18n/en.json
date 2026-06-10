@@ -4,7 +4,8 @@
     "students": "Student CRM",
     "schools": "Admissions",
     "selector": "School Selector",
-    "ai": "AI Assistant"
+    "ai": "AI Assistant",
+    "adminCrawler": "Crawler Admin"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -95,5 +96,8 @@
     "clear": "Clear",
     "print": "Print",
     "lang_toggle": "中文"
+  },
+  "admin": {
+    "crawler": "Crawler Admin"
   }
 }
