@@ -104,6 +104,26 @@ export interface CrawlerSummary {
   notes?: string
 }
 
+
+export interface StudyApplicationAssessment {
+  applicant_name: string
+  age: string
+  highest_education_institution: string
+  prior_education: string
+  major: string
+  gpa: string
+  english_level: string
+  english_test_score: string
+  work_experience: string
+  industry: string
+  awards_or_experiences: string
+  study_abroad_purpose: string
+  target_institutions: string
+  preferred_major: string
+  other_requirements: string
+  planned_enrollment_time: string
+}
+
 export interface Student {
   id: string
   name_zh: string
@@ -111,6 +131,7 @@ export interface Student {
   current_grade: string
   target_grade: string
   target_schools: string[]
+  application_assessment: StudyApplicationAssessment
   status: 'collecting' | 'applying' | 'interview' | 'admitted' | 'rejected'
   consultant: string
   deadline: string

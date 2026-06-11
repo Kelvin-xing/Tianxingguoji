@@ -71,6 +71,8 @@ export default function StudentsPage() {
                 t('students.name'),
                 t('students.grade'),
                 t('students.status'),
+                '目標院校',
+                '計劃入學',
                 t('students.consultant'),
                 t('students.deadline'),
                 '',
@@ -116,6 +118,12 @@ export default function StudentsPage() {
                   >
                     {t(`students.status_${s.status}`)}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {s.application_assessment.target_institutions || '—'}
+                </td>
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {s.application_assessment.planned_enrollment_time || '—'}
                 </td>
                 <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {s.consultant}
