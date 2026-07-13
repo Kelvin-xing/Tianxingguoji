@@ -5,7 +5,8 @@
     "schools": "招生資訊",
     "selector": "選校報告",
     "ai": "AI 助理",
-    "adminCrawler": "爬蟲管理"
+    "adminCrawler": "爬蟲管理",
+    "knowledge": "創始人知識庫"
   },
   "dashboard": {
     "title": "儀表板",

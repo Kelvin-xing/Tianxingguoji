@@ -5,7 +5,8 @@
     "schools": "Admissions",
     "selector": "School Selector",
     "ai": "AI Assistant",
-    "adminCrawler": "Crawler Admin"
+    "adminCrawler": "Crawler Admin",
+    "knowledge": "Knowledge Base"
   },
   "dashboard": {
     "title": "Dashboard",
