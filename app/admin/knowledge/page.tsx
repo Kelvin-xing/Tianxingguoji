@@ -193,26 +193,68 @@ export default function KnowledgePage() {
   const [activeSchool, setActiveSchool] = useState('school_0')
   const [schoolNames, setSchoolNames] = useState<Record<string, string>>({ school_0: '' })
   const [exportDone, setExportDone] = useState(false)
+  const [dbSaving, setDbSaving] = useState(false)
+  const [dbSavedAt, setDbSavedAt] = useState<string | null>(null)
+  const [dbError, setDbError] = useState<string | null>(null)
 
-  // Load from localStorage
+  // Load from DB first, fall back to localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        setData(parsed.data ?? DEFAULT_DATA)
-        setSchoolNames(parsed.schoolNames ?? { school_0: '' })
-        setSavedAt(parsed.savedAt ?? null)
-      }
-    } catch {}
+    async function load() {
+      try {
+        const res = await fetch('/api/knowledge')
+        if (res.ok) {
+          const remote = await res.json()
+          if (remote.updatedAt) {
+            setData((remote.data as KBData) ?? DEFAULT_DATA)
+            setSchoolNames((remote.schoolNames as Record<string, string>) ?? { school_0: '' })
+            setDbSavedAt(remote.updatedAt)
+            return
+          }
+        }
+      } catch {}
+      // fallback to localStorage
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          setData(parsed.data ?? DEFAULT_DATA)
+          setSchoolNames(parsed.schoolNames ?? { school_0: '' })
+          setSavedAt(parsed.savedAt ?? null)
+        }
+      } catch {}
+    }
+    load()
   }, [])
 
-  // Auto-save
+  // Auto-save to localStorage
   const save = useCallback(
     (nextData: KBData, nextSchoolNames: Record<string, string>) => {
       const payload = { data: nextData, schoolNames: nextSchoolNames, savedAt: new Date().toISOString() }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
       setSavedAt(payload.savedAt)
+    },
+    []
+  )
+
+  // Save to Neon DB
+  const saveToDB = useCallback(
+    async (nextData: KBData, nextSchoolNames: Record<string, string>) => {
+      setDbSaving(true)
+      setDbError(null)
+      try {
+        const res = await fetch('/api/knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: nextData, schoolNames: nextSchoolNames }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = await res.json()
+        setDbSavedAt(json.updatedAt)
+      } catch (e) {
+        setDbError('儲存失敗，請重試')
+      } finally {
+        setDbSaving(false)
+      }
     },
     []
   )
@@ -340,13 +382,40 @@ export default function KnowledgePage() {
             創始人知識庫
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            內容自動儲存到本機 ·{' '}
-            {savedAt
-              ? `最後儲存：${new Date(savedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`
+            {dbSavedAt
+              ? `已儲存到雲端 · ${new Date(dbSavedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`
+              : savedAt
+              ? `本機已儲存 · ${new Date(savedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`
               : '尚未儲存'}
+            {dbError && <span style={{ color: 'var(--error, #dc2626)', marginLeft: 6 }}>{dbError}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => saveToDB(data, schoolNames)}
+            disabled={dbSaving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{
+              background: dbSaving ? 'var(--surface)' : 'var(--accent)',
+              color: dbSaving ? 'var(--text-muted)' : '#fff',
+              border: '1px solid var(--border)',
+              opacity: dbSaving ? 0.7 : 1,
+              cursor: dbSaving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {dbSaving ? (
+              '儲存中…'
+            ) : (
+              <>
+                <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                儲存到雲端
+              </>
+            )}
+          </button>
           <a
             href={GOOGLE_DRIVE_VIDEO_FOLDER_URL}
             target="_blank"
