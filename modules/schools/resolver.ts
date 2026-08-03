@@ -23,10 +23,25 @@ export interface ResolvedSchoolView {
   readonly resolutionSha256: string;
 }
 
+type BaseMatchesOverrideField = {
+  readonly fieldName: string;
+  readonly kind: "base_matches_override";
+};
+
+type OverrideStillAppliesField = {
+  readonly fieldName: string;
+  readonly kind: "override_still_applies";
+};
+
+type ReconciliationField =
+  | BaseMatchesOverrideField
+  | SchoolResolutionConflict
+  | OverrideStillAppliesField;
+
 export type OverlayReconciliation =
   | {
       readonly action: "close_override";
-      readonly fields: readonly [{ readonly fieldName: string; readonly kind: "base_matches_override" }];
+      readonly fields: readonly BaseMatchesOverrideField[];
     }
   | {
       readonly action: "preserve_and_review";
@@ -34,7 +49,7 @@ export type OverlayReconciliation =
     }
   | {
       readonly action: "retain_override";
-      readonly fields: readonly [{ readonly fieldName: string; readonly kind: "override_still_applies" }];
+      readonly fields: readonly OverrideStillAppliesField[];
     };
 
 function deepFreeze<T>(value: T): T {
@@ -154,11 +169,10 @@ export function reconcileSchoolOverlay(
   if (revision.status !== "approved") {
     throw new SchoolContractError("SCHOOL_OVERLAY_NOT_APPROVED");
   }
-  const fields: Array<
-    | { readonly fieldName: string; readonly kind: "base_matches_override" }
-    | SchoolResolutionConflict
-    | { readonly fieldName: string; readonly kind: "override_still_applies" }
-  > = [];
+  if (revision.changes.length === 0) {
+    throw new SchoolContractError("SCHOOL_OVERLAY_FIELDS_REQUIRED");
+  }
+  const fields: ReconciliationField[] = [];
 
   for (const change of revision.changes) {
     const currentBaseValueSha256 = sha256SchoolValue(baseValue(base, change.fieldName));
@@ -178,16 +192,25 @@ export function reconcileSchoolOverlay(
   }
 
   if (fields.some((field) => field.kind === "base_changed")) {
-    return { action: "preserve_and_review", fields: fields as readonly SchoolResolutionConflict[] };
+    return {
+      action: "preserve_and_review",
+      fields: fields.filter(
+        (field): field is SchoolResolutionConflict => field.kind === "base_changed",
+      ),
+    };
   }
   if (fields.every((field) => field.kind === "base_matches_override")) {
     return {
       action: "close_override",
-      fields: fields as readonly [{ fieldName: string; kind: "base_matches_override" }],
+      fields: fields.filter(
+        (field): field is BaseMatchesOverrideField => field.kind === "base_matches_override",
+      ),
     };
   }
   return {
     action: "retain_override",
-    fields: fields as readonly [{ fieldName: string; kind: "override_still_applies" }],
+    fields: fields.filter(
+      (field): field is OverrideStillAppliesField => field.kind === "override_still_applies",
+    ),
   };
 }

@@ -242,6 +242,70 @@ test("recognizes a new base value that converges with the override without mutat
   assert.equal(revision.status, "approved");
 });
 
+test("reconciles every converged field without collapsing a multi-field overlay", () => {
+  const revision = approvedOverlay([
+    {
+      fieldName: "school_name_zh",
+      fieldClass: "identity",
+      proposedValue: "Corrected School",
+      baseValueSha256: sha256SchoolValue("Original School"),
+      evidence: {
+        sourceUrl: "https://example.test/evidence/school-name",
+        quote: "Corrected School",
+      },
+    },
+    {
+      fieldName: "district",
+      fieldClass: "general",
+      proposedValue: "Eastern",
+      baseValueSha256: sha256SchoolValue("Central"),
+      evidence: {
+        sourceUrl: "https://example.test/evidence/district",
+        quote: "Eastern",
+      },
+    },
+  ]);
+  const newerBase = baseRecord({
+    snapshotId: "snapshot-2026-08-03-c",
+    fields: {
+      ...baseRecord().fields,
+      school_name_zh: "Corrected School",
+      district: "Eastern",
+    },
+  });
+
+  assert.deepEqual(reconcileSchoolOverlay(newerBase, revision), {
+    action: "close_override",
+    fields: [
+      { fieldName: "school_name_zh", kind: "base_matches_override" },
+      { fieldName: "district", kind: "base_matches_override" },
+    ],
+  });
+});
+
+test("fails closed when an approved revision has no fields", () => {
+  const emptyRevision: SchoolOverlayRevision = {
+    organizationId,
+    schoolId,
+    baseSnapshotId: snapshotId,
+    revisionId: "overlay-empty",
+    revisionNumber: 1,
+    requestedBy: requesterId,
+    reason: "Synthetic invalid revision",
+    changes: [],
+    status: "approved",
+    createdAt: "2026-08-03T10:00:00.000Z",
+    approvedBy: reviewerId,
+    approvedRole: "founder",
+    approvedAt: "2026-08-03T10:05:00.000Z",
+  };
+
+  assert.throws(
+    () => reconcileSchoolOverlay(baseRecord(), emptyRevision),
+    /SCHOOL_OVERLAY_FIELDS_REQUIRED/,
+  );
+});
+
 test("requires reviewer separation and role-specific approval", () => {
   assert.deepEqual(
     evaluateSchoolOverlayApproval({
