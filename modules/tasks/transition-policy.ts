@@ -18,7 +18,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function nonBlank(value: string, code: "TASK_POLICY_RULE_INVALID"): string {
+function nonBlank(value: string, code: "TASK_TRANSITION_RULE_INVALID"): string {
   if (typeof value !== "string" || value.trim() === "") throw new TaskContractError(code);
   return value.trim();
 }

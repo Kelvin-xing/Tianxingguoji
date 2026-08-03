@@ -110,6 +110,13 @@ test("fails closed while OD-06 has not approved an initial state or actor matrix
   });
 });
 
+test("uses the stable transition-rule code for blank policy identity", () => {
+  assert.throws(
+    () => candidatePolicy({ policyId: "" }),
+    /TASK_TRANSITION_RULE_INVALID/,
+  );
+});
+
 test("requires a resolved OD-06 receipt and separate reviewer before policy activation", () => {
   const policy = candidatePolicy({ initialState: "accepted", rules: syntheticRules });
 
