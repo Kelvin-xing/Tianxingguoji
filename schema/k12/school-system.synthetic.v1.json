@@ -1,0 +1,16 @@
+{
+  "applicationType": "k12",
+  "layer": "school_system",
+  "moduleId": "k12-school-system-synthetic",
+  "version": "1.0.0",
+  "catalogueStatus": "synthetic_candidate",
+  "productionEnabled": false,
+  "fields": [
+    {
+      "fieldId": "fixture.school_system.preference",
+      "valueType": "text",
+      "visibility": "advisor",
+      "blockingStages": ["selection_ready"]
+    }
+  ]
+}

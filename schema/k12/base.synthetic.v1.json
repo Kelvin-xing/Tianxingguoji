@@ -1,0 +1,16 @@
+{
+  "applicationType": "k12",
+  "layer": "base",
+  "moduleId": "k12-base-synthetic",
+  "version": "1.0.0",
+  "catalogueStatus": "synthetic_candidate",
+  "productionEnabled": false,
+  "fields": [
+    {
+      "fieldId": "fixture.base.intent",
+      "valueType": "text",
+      "visibility": "advisor",
+      "blockingStages": ["background_complete"]
+    }
+  ]
+}

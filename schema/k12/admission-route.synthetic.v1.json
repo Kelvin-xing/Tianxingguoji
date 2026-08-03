@@ -1,0 +1,16 @@
+{
+  "applicationType": "k12",
+  "layer": "admission_route",
+  "moduleId": "k12-admission-route-synthetic",
+  "version": "1.0.0",
+  "catalogueStatus": "synthetic_candidate",
+  "productionEnabled": false,
+  "fields": [
+    {
+      "fieldId": "fixture.admission_route.path",
+      "valueType": "text",
+      "visibility": "advisor",
+      "blockingStages": ["selection_ready"]
+    }
+  ]
+}

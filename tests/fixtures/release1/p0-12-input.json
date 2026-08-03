@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "release1.synthetic",
+  "source": "synthetic",
+  "runId": "p0-12-synthetic-20260803",
+  "inputVersion": "release1-harness-v1",
+  "generatedAt": "2026-08-03T00:00:00.000Z",
+  "scenarios": [
+    {
+      "id": "audit.pii_log_canary",
+      "description": "Synthetic canary remains absent from redacted audit and telemetry output.",
+      "expectedState": "passed",
+      "actualState": "passed",
+      "evidence": {
+        "raw_pii_detected": false,
+        "raw_credential_detected": false
+      },
+      "artifactPaths": ["scenarios/audit-pii-log-canary.json"]
+    },
+    {
+      "id": "database.migration_checksum_mismatch",
+      "description": "A changed migration checksum stops the run for human review.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "error_code": "MIGRATION_CHECKSUM_MISMATCH",
+        "retryable": false
+      },
+      "artifactPaths": ["scenarios/database-migration-checksum-mismatch.json"]
+    },
+    {
+      "id": "document.scanner_rejection",
+      "description": "A malicious synthetic scan verdict keeps the document unavailable.",
+      "expectedState": "blocked",
+      "actualState": "blocked",
+      "evidence": {
+        "scanner_verdict": "malicious",
+        "document_state": "rejected"
+      },
+      "artifactPaths": ["scenarios/document-scanner-rejection.json"]
+    },
+    {
+      "id": "identity.provider_timeout",
+      "description": "An identity provider timeout does not silently activate a session.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "error_code": "COGNITO_TIMEOUT",
+        "retryable": true
+      },
+      "artifactPaths": ["scenarios/identity-provider-timeout.json"]
+    },
+    {
+      "id": "object.event_replay",
+      "description": "A repeated object event produces one accepted receipt and one duplicate receipt.",
+      "expectedState": "passed",
+      "actualState": "passed",
+      "evidence": {
+        "first_delivery": "accepted",
+        "replay_delivery": "duplicate"
+      },
+      "artifactPaths": ["scenarios/object-event-replay.json"]
+    },
+    {
+      "id": "restore.hash_mismatch",
+      "description": "A restored database with a mismatched schema hash cannot be promoted.",
+      "expectedState": "blocked",
+      "actualState": "blocked",
+      "evidence": {
+        "expected_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "actual_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "artifactPaths": ["scenarios/restore-hash-mismatch.json"]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "scenarios/audit-pii-log-canary.json",
+      "content": "{\"scenario\":\"audit.pii_log_canary\",\"raw_pii_detected\":false,\"raw_credential_detected\":false}\n"
+    },
+    {
+      "path": "scenarios/database-migration-checksum-mismatch.json",
+      "content": "{\"scenario\":\"database.migration_checksum_mismatch\",\"error_code\":\"MIGRATION_CHECKSUM_MISMATCH\",\"retryable\":false}\n"
+    },
+    {
+      "path": "scenarios/document-scanner-rejection.json",
+      "content": "{\"scenario\":\"document.scanner_rejection\",\"scanner_verdict\":\"malicious\",\"document_state\":\"rejected\"}\n"
+    },
+    {
+      "path": "scenarios/identity-provider-timeout.json",
+      "content": "{\"scenario\":\"identity.provider_timeout\",\"error_code\":\"COGNITO_TIMEOUT\",\"retryable\":true}\n"
+    },
+    {
+      "path": "scenarios/object-event-replay.json",
+      "content": "{\"scenario\":\"object.event_replay\",\"first_delivery\":\"accepted\",\"replay_delivery\":\"duplicate\"}\n"
+    },
+    {
+      "path": "scenarios/restore-hash-mismatch.json",
+      "content": "{\"scenario\":\"restore.hash_mismatch\",\"expected_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"actual_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}\n"
+    }
+  ]
+}
