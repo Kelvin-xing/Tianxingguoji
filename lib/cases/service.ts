@@ -12,7 +12,7 @@ export interface CreateCaseInput {
   primaryRoleBindingId?: string
 }
 
-export interface CreatedCase {
+export type CreatedCase = {
   id: string
   caseNumber: string
   studentId: string
@@ -22,7 +22,7 @@ export interface CreatedCase {
   manifestId: string
 }
 
-export interface CaseListItem {
+export type CaseListItem = {
   id: string
   caseNumber: string
   studentId: string
@@ -34,7 +34,7 @@ export interface CaseListItem {
   primaryRole: 'founder' | 'advisor'
 }
 
-export interface CaseOptions {
+export type CaseOptions = {
   students: Array<{ id: string; displayName: string }>
   primaryBindings: Array<{ id: string; role: 'founder' | 'advisor'; label: string }>
   manifests: Array<{ id: string; compositionVersion: string; label: string }>
