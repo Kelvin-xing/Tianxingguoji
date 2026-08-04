@@ -8,13 +8,16 @@ export class AuthConfigurationError extends Error {
   }
 }
 
-export interface AuthConfig {
+export interface CognitoAuthConfig {
   cognitoRegion: string
   cognitoUserPoolId: string
   cognitoAppClientId: string
   cognitoDomain: string
   cognitoRedirectUri: string
   cognitoLogoutUri: string
+}
+
+export interface AuthConfig extends CognitoAuthConfig {
   databaseUrl: string
   sessionEncryptionKey: string
 }
@@ -22,6 +25,25 @@ export interface AuthConfig {
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>
 
 export function getAuthConfig(environment: RuntimeEnvironment = process.env): AuthConfig {
+  const cognito = getCognitoAuthConfig(environment)
+  const databaseUrl = getDatabaseUrl(environment)
+  const sessionEncryptionKey = required(environment, 'SESSION_ENCRYPTION_KEY')
+
+  const decodedSessionKey = /^[0-9a-f]{64}$/i.test(sessionEncryptionKey)
+    ? Buffer.from(sessionEncryptionKey, 'hex')
+    : Buffer.from(sessionEncryptionKey, 'base64')
+  if (decodedSessionKey.length !== 32) {
+    throw new AuthConfigurationError('SESSION_ENCRYPTION_KEY')
+  }
+
+  return Object.freeze({
+    ...cognito,
+    databaseUrl,
+    sessionEncryptionKey,
+  })
+}
+
+export function getCognitoAuthConfig(environment: RuntimeEnvironment = process.env): CognitoAuthConfig {
   const cognitoRegion = required(environment, 'COGNITO_REGION')
   const cognitoUserPoolId = required(environment, 'COGNITO_USER_POOL_ID')
   const cognitoAppClientId = required(environment, 'COGNITO_APP_CLIENT_ID')
@@ -29,8 +51,6 @@ export function getAuthConfig(environment: RuntimeEnvironment = process.env): Au
   const allowLocalHttp = environment.NODE_ENV !== 'production'
   const cognitoRedirectUri = validatedUrl(environment, 'COGNITO_REDIRECT_URI', allowLocalHttp)
   const cognitoLogoutUri = validatedUrl(environment, 'COGNITO_LOGOUT_URI', allowLocalHttp)
-  const databaseUrl = getDatabaseUrl(environment)
-  const sessionEncryptionKey = required(environment, 'SESSION_ENCRYPTION_KEY')
 
   if (!/^[a-z]{2}-[a-z]+-\d$/.test(cognitoRegion)) {
     throw new AuthConfigurationError('COGNITO_REGION')
@@ -41,12 +61,6 @@ export function getAuthConfig(environment: RuntimeEnvironment = process.env): Au
   if (!/^[A-Za-z0-9]+$/.test(cognitoAppClientId)) {
     throw new AuthConfigurationError('COGNITO_APP_CLIENT_ID')
   }
-  const decodedSessionKey = /^[0-9a-f]{64}$/i.test(sessionEncryptionKey)
-    ? Buffer.from(sessionEncryptionKey, 'hex')
-    : Buffer.from(sessionEncryptionKey, 'base64')
-  if (decodedSessionKey.length !== 32) {
-    throw new AuthConfigurationError('SESSION_ENCRYPTION_KEY')
-  }
 
   return Object.freeze({
     cognitoRegion,
@@ -55,8 +69,6 @@ export function getAuthConfig(environment: RuntimeEnvironment = process.env): Au
     cognitoDomain,
     cognitoRedirectUri,
     cognitoLogoutUri,
-    databaseUrl,
-    sessionEncryptionKey,
   })
 }
 

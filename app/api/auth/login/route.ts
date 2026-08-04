@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { buildCognitoAuthorizeUrl } from '@/lib/auth/cognito'
 import { COGNITO_STATE_COOKIE_NAME, COGNITO_VERIFIER_COOKIE_NAME, cognitoFlowCookieOptions } from '@/lib/auth/cookies'
-import { getAuthConfig, AuthConfigurationError } from '@/lib/auth/config'
+import { getCognitoAuthConfig, AuthConfigurationError } from '@/lib/auth/config'
 import { createPkcePair } from '@/lib/auth/pkce'
 
 export const runtime = 'nodejs'
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    const config = getAuthConfig()
+    const config = getCognitoAuthConfig()
     const pkce = createPkcePair()
     const response = NextResponse.redirect(
       buildCognitoAuthorizeUrl(config, pkce.state, pkce.codeChallenge),
@@ -24,4 +24,3 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(new URL('/login?error=configuration', request.url))
   }
 }
-
