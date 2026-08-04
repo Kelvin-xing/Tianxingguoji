@@ -6,6 +6,7 @@ import { mockStudents } from '@/lib/mock/students'
 import type { Student, StudyApplicationAssessment } from '@/types'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Icon } from '@/components/workspace/Icon'
 
 const STATUS_STYLES: Record<Student['status'], { bg: string; color: string }> = {
   collecting: { bg: '#f3f4f6', color: '#374151' },
@@ -63,7 +64,7 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#ecfeff', color: '#0e7490' }}>{student.application_assessment.planned_enrollment_time}</span>
           </div>
         </div>
-        <span className="text-xs font-medium px-2.5 py-1 rounded-full shrink-0" style={STATUS_STYLES[student.status]}>{t(`students.status_${student.status}`)}</span>
+        <div className="flex items-center gap-2 shrink-0"><Link href={`/cases/new?student=${student.id}`} className="secondary-button"><Icon name="plus" size={14} />建立案件</Link><span className="text-xs font-medium px-2.5 py-1 rounded-full" style={STATUS_STYLES[student.status]}>{t(`students.status_${student.status}`)}</span></div>
       </div>
 
       <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>

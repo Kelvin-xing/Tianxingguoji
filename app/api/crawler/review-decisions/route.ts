@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server'
 import { listReviewDecisions, upsertReviewDecision } from '@/lib/crawler/db'
 import { hasSchoolKey } from '@/lib/crawler/server'
+import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const actor = await requireLegacyActor(request, ['founder', 'admin', 'data_reviewer'])
+  if (isResponse(actor)) return actor
   return NextResponse.json(await listReviewDecisions())
 }
 
 export async function POST(request: Request) {
+  const actor = await requireLegacyActor(request, ['founder', 'admin', 'data_reviewer'])
+  if (isResponse(actor)) return actor
   const body = await request.json()
   if (!body.school_key || !(await hasSchoolKey(body.school_key))) {
     return NextResponse.json({ error: 'Unknown school_key' }, { status: 400 })
@@ -16,5 +21,5 @@ export async function POST(request: Request) {
   if (body.status !== 'approved' && body.status !== 'needs_changes') {
     return NextResponse.json({ error: 'status must be approved or needs_changes' }, { status: 400 })
   }
-  return NextResponse.json(await upsertReviewDecision(body))
+  return NextResponse.json(await upsertReviewDecision({ ...body, reviewer: actor.normalizedEmail }))
 }

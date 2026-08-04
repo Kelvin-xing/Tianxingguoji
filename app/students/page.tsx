@@ -5,6 +5,7 @@ import { mockStudents } from '@/lib/mock/students'
 import type { Student } from '@/types'
 import Link from 'next/link'
 import { useState } from 'react'
+import { Icon } from '@/components/workspace/Icon'
 
 const STATUS_STYLES: Record<Student['status'], { bg: string; color: string }> = {
   collecting: { bg: '#f3f4f6', color: '#374151' },
@@ -27,7 +28,8 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -51,6 +53,8 @@ export default function StudentsPage() {
             style={{ paddingLeft: '2rem' }}
           />
         </div>
+        <Link href="/cases/new" className="primary-button"><Icon name="plus" size={15} />建立案件</Link>
+      </div>
         <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {filtered.length} 位學生
         </span>

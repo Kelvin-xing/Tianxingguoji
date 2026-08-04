@@ -141,6 +141,86 @@ export interface Student {
   updated_at: string
 }
 
+export type CaseStage =
+  | 'signed'
+  | 'background_collection'
+  | 'school_selection_confirmed'
+  | 'interview_preparation'
+  | 'application_submitted'
+  | 'awaiting_result'
+  | 'offer_confirmed'
+  | 'closed'
+
+export type CaseAssessmentStatus = 'draft' | 'background_complete' | 'selection_ready'
+
+export type CaseTargetState =
+  | 'candidate'
+  | 'preparing'
+  | 'submitted'
+  | 'interview'
+  | 'waitlisted'
+  | 'accepted'
+  | 'rejected'
+  | 'withdrawn'
+
+export interface CaseSchoolTarget {
+  id: string
+  school_name: string
+  admission_type: AdmissionType
+  state: CaseTargetState
+  next_action: string
+  next_action_date: string
+  evidence_status: 'complete' | 'partial' | 'missing'
+}
+
+export interface CaseTask {
+  id: string
+  title: string
+  owner: string
+  due_date: string
+  status: 'todo' | 'in_progress' | 'blocked' | 'done'
+}
+
+export interface CaseDocument {
+  id: string
+  name: string
+  status: 'uploaded' | 'scanning' | 'clean' | 'quarantined' | 'missing'
+  updated_at: string
+}
+
+export interface CaseActivity {
+  id: string
+  label: string
+  actor: string
+  created_at: string
+  tone: 'neutral' | 'success' | 'warning' | 'danger'
+}
+
+export interface CaseRecord {
+  id: string
+  case_number: string
+  student_id: string
+  student_name: string
+  student_name_en: string
+  application_type: 'k12'
+  intake_year: number
+  admission_type: AdmissionType
+  stage: CaseStage
+  stage_label: string
+  advisor: string
+  advisor_role: 'founder' | 'advisor'
+  assessment_status: CaseAssessmentStatus
+  manifest_status: 'candidate' | 'approved' | 'retired'
+  blockers: string[]
+  next_action: string
+  next_action_date: string
+  updated_at: string
+  school_targets: CaseSchoolTarget[]
+  tasks: CaseTask[]
+  documents: CaseDocument[]
+  activity: CaseActivity[]
+}
+
 export interface StatsSnapshot {
   active_students: number
   pending_deadlines: number

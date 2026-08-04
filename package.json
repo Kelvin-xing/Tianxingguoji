@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:auth": "node --test tests/unit/auth/runtime.test.ts",
     "test:identity-access-schema": "node --test tests/integration/identity-access-schema.test.ts",
     "test:migration": "node --test tests/migration/drift.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
