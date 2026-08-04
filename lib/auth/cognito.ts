@@ -31,7 +31,15 @@ interface JwtClaims {
   email_verified?: unknown
 }
 
+interface VerifiedJwtClaims extends JwtClaims {
+  sub: string
+  iss: string
+  exp: number
+  token_use: 'id' | 'access'
+}
+
 interface CognitoJwk {
+  [key: string]: unknown
   kty: 'RSA'
   n: string
   e: string
@@ -140,7 +148,8 @@ export async function verifyCognitoIdentity(
     fetchImplementation,
   )
 
-  if (idClaims.sub !== accessClaims.sub || typeof idClaims.email !== 'string') {
+  const subject = idClaims.sub
+  if (typeof subject !== 'string' || subject !== accessClaims.sub || typeof idClaims.email !== 'string') {
     throw new CognitoVerificationError('identity_claims_mismatch')
   }
 
@@ -150,7 +159,7 @@ export async function verifyCognitoIdentity(
   }
 
   return {
-    subject: idClaims.sub,
+    subject,
     normalizedEmail,
     emailVerified: idClaims.email_verified === true,
   }
@@ -161,7 +170,7 @@ async function verifyJwt(
   expected: { issuer: string; clientId: string; tokenUse: 'id' | 'access' },
   nowMs: number,
   fetchImplementation: typeof fetch,
-): Promise<Required<Pick<JwtClaims, 'sub' | 'iss' | 'exp' | 'token_use'>> & JwtClaims> {
+): Promise<VerifiedJwtClaims> {
   const parts = token.split('.')
   if (parts.length !== 3) throw new CognitoVerificationError('jwt_shape_invalid')
 
@@ -170,21 +179,7 @@ async function verifyJwt(
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || claims.token_use !== expected.tokenUse) {
     throw new CognitoVerificationError('jwt_header_or_use_invalid')
   }
-  if (
-    claims.iss !== expected.issuer ||
-    claims.aud !== undefined && expected.tokenUse === 'access' ||
-    (expected.tokenUse === 'id' && claims.aud !== expected.clientId) ||
-    (expected.tokenUse === 'access' && claims.client_id !== expected.clientId) ||
-    typeof claims.sub !== 'string' ||
-    typeof claims.exp !== 'number' ||
-    !Number.isSafeInteger(claims.exp) ||
-    claims.exp <= Math.floor(nowMs / 1_000) ||
-    (claims.iat !== undefined && (
-      typeof claims.iat !== 'number' ||
-      !Number.isSafeInteger(claims.iat) ||
-      claims.iat > Math.floor(nowMs / 1_000) + 60
-    ))
-  ) {
+  if (!isVerifiedJwtClaims(claims, expected, nowMs)) {
     throw new CognitoVerificationError('jwt_claims_invalid')
   }
 
@@ -212,7 +207,31 @@ async function verifyJwt(
   }
   if (!validSignature) throw new CognitoVerificationError('jwt_signature_invalid')
 
-  return claims as Required<Pick<JwtClaims, 'sub' | 'iss' | 'exp' | 'token_use'>> & JwtClaims
+  return claims
+}
+
+function isVerifiedJwtClaims(
+  claims: JwtClaims,
+  expected: { issuer: string; clientId: string; tokenUse: 'id' | 'access' },
+  nowMs: number,
+): claims is VerifiedJwtClaims {
+  const nowSeconds = Math.floor(nowMs / 1_000)
+  return (
+    claims.token_use === expected.tokenUse &&
+    claims.iss === expected.issuer &&
+    !(claims.aud !== undefined && expected.tokenUse === 'access') &&
+    !(expected.tokenUse === 'id' && claims.aud !== expected.clientId) &&
+    !(expected.tokenUse === 'access' && claims.client_id !== expected.clientId) &&
+    typeof claims.sub === 'string' &&
+    typeof claims.exp === 'number' &&
+    Number.isSafeInteger(claims.exp) &&
+    claims.exp > nowSeconds &&
+    (claims.iat === undefined || (
+      typeof claims.iat === 'number' &&
+      Number.isSafeInteger(claims.iat) &&
+      claims.iat <= nowSeconds + 60
+    ))
+  )
 }
 
 async function getJwks(
