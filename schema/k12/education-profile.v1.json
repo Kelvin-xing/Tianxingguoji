@@ -1,0 +1,41 @@
+{
+  "applicationType": "k12",
+  "layer": "education_stage",
+  "moduleId": "k12-education-profile",
+  "version": "1.0.0",
+  "catalogueStatus": "approved",
+  "productionEnabled": true,
+  "fields": [
+    {
+      "fieldId": "education_profile.current_stage",
+      "label": "Current education stage",
+      "valueType": "enum",
+      "enumValues": ["kindergarten", "primary", "secondary"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "education_profile.current_year_level",
+      "label": "Current year level",
+      "valueType": "text",
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "education_profile.current_curriculum",
+      "label": "Current curriculum",
+      "valueType": "enum",
+      "enumValues": ["hk_local", "ib", "cambridge", "other"],
+      "visibility": "advisor"
+    }
+  ],
+  "blockers": {
+    "background_collection": [
+      "education_profile.current_stage",
+      "education_profile.current_year_level",
+      "education_profile.current_curriculum"
+    ],
+    "school_selection_confirmed": [
+      "education_profile.current_stage",
+      "education_profile.current_year_level"
+    ]
+  }
+}

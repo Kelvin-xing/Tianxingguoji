@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "ticket": "P3-07",
+  "terminalState": "needs_human",
+  "sourcePolicy": "passed",
+  "focusedTests": { "passed": 21, "failed": 0 },
+  "externalInputsRequired": [
+    "aws_account_id",
+    "terraform_backend",
+    "vpc_cidr",
+    "health_ingress_cidrs",
+    "certificate_arn",
+    "container_image_digest",
+    "document_bucket_name",
+    "postgres_engine_version",
+    "rds_final_snapshot_identifier",
+    "log_kms_key_id",
+    "rds_master_user_secret_kms_key_id",
+    "waf_rate_limit",
+    "monthly_budget_limits_usd",
+    "budget_notification_recipients",
+    "tags"
+  ],
+  "artifactsAbsent": ["provider_lock", "binary_tfplan", "plan_json_summary", "tfvars", "state"],
+  "authorizedNextTicket": "P3-07A",
+  "productionActionAuthorized": false
+}

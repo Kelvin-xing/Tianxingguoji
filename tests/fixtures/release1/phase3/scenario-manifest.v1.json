@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "release1-phase3-golden-v1",
+  "source": "synthetic",
+  "scenarioFiles": [
+    "access-scopes.v1.json",
+    "case-target-transitions.v1.json",
+    "edge-failures.v1.json",
+    "roles.v1.json",
+    "task-transitions.v1.json"
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "release1.synthetic",
+  "source": "synthetic",
+  "runId": "p3-02-deterministic-matrix-v1",
+  "inputVersion": "release1-phase3-golden-v1",
+  "generatedAt": "2026-08-11T00:00:00.000Z",
+  "verification": "pass",
+  "releaseState": "needs_human",
+  "approvalStatus": "not_requested",
+  "releaseEligible": false,
+  "scenarios": [
+    {
+      "id": "matrix.coverage",
+      "description": "Every approved P3-01 vector has one explicit matrix disposition; remaining exact-code gaps require human resolution.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "deferred": 32,
+        "executed": 76,
+        "represented": 108,
+        "supplemental_checks": 3,
+        "total": 108,
+        "unrepresented": 0
+      },
+      "artifactPaths": [
+        "coverage/matrix.json"
+      ],
+      "verification": "pass"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "coverage/matrix.json",
+      "sha256": "3c0301c5164e9dcef96f8ae096c104c090139199ccdbc4422f2dfa6a4646f6ac",
+      "bytes": 32469
+    }
+  ],
+  "approvals": [],
+  "coverage": {
+    "fixtureVersion": "release1-phase3-golden-v1",
+    "fixtureManifestSha256": "af502b81d27c6fcadc1eef3d01d095b8fb8f59620bb25ec9544a31e98dd190e3",
+    "requiredAcceptanceCriteria": [
+      "AC-01",
+      "AC-04",
+      "AC-06",
+      "AC-07",
+      "AC-08",
+      "AC-17",
+      "AC-22",
+      "AC-24"
+    ],
+    "matrixArtifactPath": "coverage/matrix.json",
+    "matrixArtifactSha256": "3c0301c5164e9dcef96f8ae096c104c090139199ccdbc4422f2dfa6a4646f6ac",
+    "total": 108,
+    "represented": 108,
+    "executed": 76,
+    "deferred": 32,
+    "unrepresented": 0,
+    "coverageStatus": "represented_with_deferred"
+  },
+  "redaction": {
+    "mode": "synthetic-only",
+    "rawPiiDetected": false,
+    "secretDetected": false
+  },
+  "manifestSha256": "eef39c68432f77202aee0c4350b6bc6674ba9507c1b906bffc8221517960c25c"
+}

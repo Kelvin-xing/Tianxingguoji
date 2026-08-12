@@ -1,0 +1,11 @@
+{
+  "resources": [
+    { "id": "ecs-runtime", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "rds-postgres", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "document-store", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "document-scan-queue", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "cognito", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "application-logs", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] },
+    { "id": "audit-logs", "sensitive": true, "region": "ap-east-1", "public_access": false, "replication_regions": [] }
+  ]
+}

@@ -1,0 +1,1005 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "release1-phase3-golden-v1",
+  "oracleRowCount": 108,
+  "supplementalChecks": [
+    {
+      "id": "alert.scan_stuck_seconds",
+      "authority": "DEC-035",
+      "locator": "modules/operations/alert-catalogue.ts#getAlertDefinition",
+      "expected": 180,
+      "observed": 180,
+      "status": "passed"
+    },
+    {
+      "id": "alert.outbox_stuck_seconds",
+      "authority": "DEC-035",
+      "locator": "modules/operations/alert-catalogue.ts#getAlertDefinition",
+      "expected": 300,
+      "observed": 300,
+      "status": "passed"
+    },
+    {
+      "id": "alert.budget_critical_percent",
+      "authority": "DEC-035",
+      "locator": "modules/operations/alert-catalogue.ts#buildAlertOccurrence",
+      "expected": 100,
+      "observed": 100,
+      "status": "passed"
+    }
+  ],
+  "rows": [
+    {
+      "id": "authz.actor_disabled",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "USER_DISABLED",
+      "observed": "USER_DISABLED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.admin.unassigned_case",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.advisor.assigned_case",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "allowed",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.advisor.other_case",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.collaborator.bounded_scope",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "allowed",
+      "observed": "allowed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.contractor.redacted_task",
+      "disposition": "executed",
+      "locator": "modules/access/policy.ts#evaluateContractorTaskAccess",
+      "expected": "allowed",
+      "observed": "allowed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.data_reviewer.school_field",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "allowed",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.direct_api",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.direct_api_denied",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "authz.export",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "COLLABORATOR_EXPORT_DENIED",
+      "observed": "COLLABORATOR_EXPORT_DENIED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.founder.case_close",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "allowed",
+      "observed": "allowed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.grant_expired",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "GRANT_EXPIRED",
+      "observed": "GRANT_EXPIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "authz.id_guessing",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_NOT_FOUND",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "authz.search",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "No matching generic case access-control public result code exists in P0-P2."
+    },
+    {
+      "id": "case.advance.01",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "background_collection",
+      "observed": "background_collection",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.advance.02",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "school_selection_confirmed",
+      "observed": "school_selection_confirmed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.advance.03",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "interview_preparation",
+      "observed": "interview_preparation",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.advance.04",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "application_submitted",
+      "observed": "application_submitted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.advance.05",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "awaiting_result",
+      "observed": "awaiting_result",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.advance.06",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "offer_confirmed",
+      "observed": "offer_confirmed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.cancel",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "cancelled",
+      "observed": "cancelled",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.cancel_after_submission",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_CANCEL_AFTER_SUBMISSION_DENIED",
+      "observed": "CASE_CANCEL_AFTER_SUBMISSION_DENIED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.cancel_missing_reason",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_REASON_REQUIRED",
+      "observed": "CASE_REASON_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.cancel_wrong_actor",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_FOUNDER_REQUIRED",
+      "observed": "CASE_FOUNDER_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.close",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "closed",
+      "observed": "closed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.close_with_open_target",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_TARGET_OUTCOMES_REQUIRED",
+      "observed": "CASE_TARGET_OUTCOMES_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.close_with_open_task",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_OPEN_TASKS_BLOCK_CLOSE",
+      "observed": "CASE_OPEN_TASKS_BLOCK_CLOSE",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.pause",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "paused",
+      "observed": "paused",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.pause_missing_reason",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_REASON_REQUIRED",
+      "observed": "CASE_REASON_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.pause_wrong_actor",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_PRIMARY_ADVISOR_REQUIRED",
+      "observed": "CASE_PRIMARY_ADVISOR_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.resume",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "background_collection",
+      "observed": "background_collection",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.resume_missing_reason",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_REASON_REQUIRED",
+      "observed": "CASE_REASON_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.resume_wrong_actor",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_FOUNDER_REQUIRED",
+      "observed": "CASE_FOUNDER_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "case.rollback_immediate_prior",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "signed",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "The current case policy has no approved rollback command seam."
+    },
+    {
+      "id": "case.rollback_not_immediate",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_TRANSITION_NOT_ALLOWED",
+      "observed": "not_executed",
+      "owner": "P3-08",
+      "reason": "The current case policy has no approved rollback command seam."
+    },
+    {
+      "id": "case.skip_stage",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "expected": "CASE_TRANSITION_NOT_ALLOWED",
+      "observed": "CASE_TRANSITION_NOT_ALLOWED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "concurrency.stale_write",
+      "disposition": "deferred",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "VERSION_CONFLICT",
+      "observed": "TASK_STALE_VERSION",
+      "owner": "P3-08",
+      "reason": "The existing optimistic-concurrency seam returns TASK_STALE_VERSION, not the approved fixture VERSION_CONFLICT contract."
+    },
+    {
+      "id": "exception.assessment_unknown",
+      "disposition": "deferred",
+      "locator": "modules/cases/contract.ts#evaluateAssessmentFieldAnswer",
+      "expected": "unknown",
+      "observed": "allowed",
+      "owner": "P3-08",
+      "reason": "The public contract accepts unknown but returns allowed rather than the fixture state label unknown."
+    },
+    {
+      "id": "exception.mixed_target_outcomes",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "facts_preserved",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "exception.non_k12_placeholder",
+      "disposition": "executed",
+      "locator": "modules/cases/contract.ts#evaluateServiceCaseCreation",
+      "expected": "NON_K12_APPLICATION",
+      "observed": "NON_K12_APPLICATION",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "failure.bad_publication",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "PUBLICATION_NOT_APPROVED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.database_failover",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "COMMIT_OUTCOME_UNKNOWN",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.hk_outage",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "HK_REGION_UNAVAILABLE",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.mandatory_audit_unavailable",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "AUDIT_UNAVAILABLE",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.outbox_poison",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "OUTBOX_POISON_MESSAGE",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.partial_migration",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "MIGRATION_PARTIAL",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.pii_leakage",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "PII_POLICY_REJECTED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.provider_timeout",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "PROVIDER_TIMEOUT",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.reconstruction_interruption",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "RECONSTRUCTION_INTERRUPTED",
+      "observed": "not_executed",
+      "owner": "P3-03",
+      "reason": "Reconstruction contract is introduced by P3-03."
+    },
+    {
+      "id": "failure.s3_event_missed",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "S3_EVENT_MISSED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.s3_event_replay",
+      "disposition": "executed",
+      "locator": "workers/scan-document.ts#processDocumentScanEvent",
+      "expected": "duplicate",
+      "observed": "duplicate",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "failure.scanner_timeout",
+      "disposition": "deferred",
+      "locator": "workers/scan-document.ts#processDocumentScanEvent",
+      "expected": "SCANNER_TIMEOUT",
+      "observed": "DOCUMENT_SCAN_RETRYABLE",
+      "owner": "P3-09",
+      "reason": "The public worker intentionally normalizes scanner details and does not return the fixture SCANNER_TIMEOUT code."
+    },
+    {
+      "id": "failure.stale_index",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "INDEX_STALE",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.support_abuse",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "CASE_ACCESS_DENIED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.tenant_context_missing",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "TENANT_CONTEXT_REQUIRED",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "failure.tenant_context_residual",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "TENANT_CONTEXT_MISMATCH",
+      "observed": "not_executed",
+      "owner": "P3-16",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "outcome.aborted",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "outcome.accepted",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "accepted",
+      "observed": "accepted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "outcome.not_submitted",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "outcome.rejected",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "rejected",
+      "observed": "rejected",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "outcome.waitlisted",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "waitlisted",
+      "observed": "waitlisted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "outcome.withdrawn",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#outcomeCodesForTargetState",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "replay.idempotent_command",
+      "disposition": "deferred",
+      "locator": "modules/shared/idempotency.ts#evaluateIdempotency",
+      "expected": "duplicate",
+      "observed": "replay",
+      "owner": "P3-08",
+      "reason": "The public idempotency contract returns replay; it does not emit the fixture label duplicate."
+    },
+    {
+      "id": "scope.account_disabled",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "USER_DISABLED",
+      "observed": "USER_DISABLED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.case_closed",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "COLLABORATION_INACTIVE",
+      "observed": "COLLABORATION_INACTIVE",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.case_summary.view",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.communications.comment",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.education_profile.edit",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.expired",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "GRANT_EXPIRED",
+      "observed": "GRANT_EXPIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.export",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "COLLABORATOR_EXPORT_DENIED",
+      "observed": "COLLABORATOR_EXPORT_DENIED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.identity_contact.founder_approved",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.internal_notes.founder_approved",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.revoked",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "GRANT_NOT_ACTIVE",
+      "observed": "GRANT_NOT_ACTIVE",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.school_targets.case_end_bounded",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.sensitive_pending",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "GRANT_NOT_ACTIVE",
+      "observed": "GRANT_NOT_ACTIVE",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "scope.task_workspace.view",
+      "disposition": "executed",
+      "locator": "modules/access/contract.ts#evaluateScopeGrant",
+      "expected": "active",
+      "observed": "active",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "surface.empty_case_list",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "empty",
+      "observed": "not_executed",
+      "owner": "P3-14",
+      "reason": "No matching approved executable seam with the fixture result code exists in P0-P2."
+    },
+    {
+      "id": "surface.long_bounded_value",
+      "disposition": "deferred",
+      "locator": "absent",
+      "expected": "layout_stable",
+      "observed": "not_executed",
+      "owner": "P3-14",
+      "reason": "Responsive long-value behavior requires the approved browser seam."
+    },
+    {
+      "id": "surface.typed_service_error",
+      "disposition": "executed",
+      "locator": "modules/tasks/contractor-route.ts#createContractorTaskGetHandler",
+      "expected": "SERVICE_UNAVAILABLE",
+      "observed": "SERVICE_UNAVAILABLE",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.01",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy",
+      "expected": "preparing",
+      "observed": "preparing",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.02",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy",
+      "expected": "submitted",
+      "observed": "submitted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.03",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy",
+      "expected": "interview",
+      "observed": "interview",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.04",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "waitlisted",
+      "observed": "waitlisted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.05",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "accepted",
+      "observed": "accepted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.06",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "rejected",
+      "observed": "rejected",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.07",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.08",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "waitlisted",
+      "observed": "waitlisted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.09",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "accepted",
+      "observed": "accepted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.10",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "rejected",
+      "observed": "rejected",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.11",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.12",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "accepted",
+      "observed": "accepted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.13",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "rejected",
+      "observed": "rejected",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.14",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "withdrawn",
+      "observed": "withdrawn",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.missing_submission_evidence",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy",
+      "expected": "TARGET_EVIDENCE_REQUIRED",
+      "observed": "TARGET_EVIDENCE_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.skip_submission",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy",
+      "expected": "TARGET_TRANSITION_NOT_ALLOWED",
+      "observed": "TARGET_TRANSITION_NOT_ALLOWED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "target.terminal_without_outcome",
+      "disposition": "executed",
+      "locator": "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome",
+      "expected": "TARGET_OUTCOME_REQUIRED",
+      "observed": "TARGET_OUTCOME_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.01",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "accepted",
+      "observed": "accepted",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.02",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "rejected",
+      "observed": "rejected",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.03",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "completed",
+      "observed": "completed",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.04",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "reassigned",
+      "observed": "reassigned",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.05",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "reassigned",
+      "observed": "reassigned",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.06",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "cancelled",
+      "observed": "cancelled",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.07",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "cancelled",
+      "observed": "cancelled",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.08",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "approved",
+      "observed": "approved",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.contractor_owner_action",
+      "disposition": "deferred",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "TASK_CONTRACTOR_ACTOR_NOT_ALLOWED",
+      "observed": "TASK_ACTOR_NOT_ALLOWED",
+      "owner": "P3-09",
+      "reason": "The current public task policy returns its role denial before the fixture contractor-specific denial."
+    },
+    {
+      "id": "task.missing_reason",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "TASK_REASON_REQUIRED",
+      "observed": "TASK_REASON_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.self_approval",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "TASK_APPROVAL_SEPARATION_REQUIRED",
+      "observed": "TASK_APPROVAL_SEPARATION_REQUIRED",
+      "owner": null,
+      "reason": null
+    },
+    {
+      "id": "task.unapproved_transition",
+      "disposition": "executed",
+      "locator": "modules/tasks/transition-policy.ts#evaluateTaskTransition",
+      "expected": "TASK_TRANSITION_NOT_ALLOWED",
+      "observed": "TASK_TRANSITION_NOT_ALLOWED",
+      "owner": null,
+      "reason": null
+    }
+  ]
+}

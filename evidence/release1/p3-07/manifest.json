@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "release1.production-plan",
+  "region": "ap-east-1",
+  "generatedAt": "2026-08-11T17:56:20.000Z",
+  "sourceTreeSha256": "52f35823fbe8014f9750fad6e5510127452aa50db8dd50c47d1a3d6d6eb2486b",
+  "providerLockSha256": null,
+  "binaryPlanSha256": null,
+  "planJsonSummarySha256": null,
+  "p307aReceipt": null,
+  "planStatus": "not_generated",
+  "verification": "pass",
+  "releaseState": "needs_human",
+  "releaseEligible": false,
+  "approvals": {
+    "planPayload": "not_requested",
+    "planTooling": "not_requested",
+    "apply": "not_requested"
+  }
+}

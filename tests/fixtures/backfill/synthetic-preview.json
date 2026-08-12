@@ -1,0 +1,43 @@
+{
+  "sourceSnapshot": {
+    "sourceKind": "synthetic",
+    "sourceVersion": "synthetic-snapshot-cli-v1",
+    "rows": [
+      {
+        "sourceRecordReference": "source-record-002",
+        "sourceEntity": "student",
+        "fields": {
+          "external_token": "synthetic-002",
+          "intake_route": "entry"
+        }
+      },
+      {
+        "sourceRecordReference": "source-record-001",
+        "sourceEntity": "student",
+        "fields": {
+          "external_token": "synthetic-001",
+          "intake_route": "transfer"
+        }
+      }
+    ]
+  },
+  "mapping": {
+    "mappingVersion": "k12-student-mapping-v1",
+    "sourceEntity": "student",
+    "targetEntity": "student",
+    "fields": [
+      {
+        "sourceField": "external_token",
+        "targetField": "external_reference",
+        "disposition": "map"
+      },
+      {
+        "sourceField": "intake_route",
+        "targetField": "intake_route",
+        "disposition": "map"
+      }
+    ],
+    "requiredTargetFields": ["external_reference", "intake_route"]
+  },
+  "schemaVersion": "release1-k12-schema-v1"
+}

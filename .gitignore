@@ -24,6 +24,15 @@
 .DS_Store
 *.pem
 
+# Terraform runtime artifacts are never source or release evidence.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+
 # debug
 npm-debug.log*
 yarn-debug.log*

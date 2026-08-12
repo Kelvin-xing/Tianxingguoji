@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "product_telemetry_retention_v1",
+  "dataClass": "product_technical_telemetry",
+  "retentionDays": 30,
+  "residency": "aws:ap-east-1",
+  "disposition": "delete_after_retention",
+  "auditSeparated": true,
+  "authorizationSource": false,
+  "businessTruth": false,
+  "deterministicGateSource": false,
+  "extension": {
+    "mode": "explicit_only",
+    "requiredFields": ["scope", "legal_or_policy_basis", "owner", "expires_at", "review_at"]
+  }
+}

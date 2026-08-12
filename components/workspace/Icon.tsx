@@ -17,6 +17,7 @@ export type IconName =
   | 'log-in'
   | 'log-out'
   | 'mail'
+  | 'menu'
   | 'plus'
   | 'search'
   | 'settings'
@@ -44,6 +45,7 @@ const paths: Record<IconName, ReactNode> = {
   'log-in': <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M21 19V5a2 2 0 0 0-2-2h-5" /></>,
   'log-out': <><path d="M14 17l5-5-5-5M19 12H7" /><path d="M3 5v14a2 2 0 0 0 2 2h5" /></>,
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+  menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
   settings: <><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="M4.9 4.9 7 7m10 10 2.1 2.1M4 12H1m22 0h-3M4.9 19.1 7 17m10-10 2.1-2.1M12 4V1m0 22v-3" /></>,

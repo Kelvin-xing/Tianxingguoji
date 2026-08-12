@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": "release1-phase3-golden-v1",
+  "source": "synthetic",
+  "stateCoverage": ["accepted", "approved", "assigned", "cancelled", "completed", "created", "overdue", "reassigned", "rejected"],
+  "approvedTransitions": [
+    { "id": "task.01", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "advisor", "status": "active", "relation": "assignee" }, "input": { "from": "assigned", "to": "accepted", "reason": "not_required" }, "preconditions": { "policy_status": "approved", "record_version": 1 }, "expected": { "decision": "allowed", "state": "accepted" } },
+    { "id": "task.02", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "contractor", "status": "active", "relation": "assignee" }, "input": { "from": "assigned", "to": "rejected", "reason": "unable_to_accept" }, "preconditions": { "policy_status": "approved", "redacted_context": true }, "expected": { "decision": "allowed", "state": "rejected" } },
+    { "id": "task.03", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "contractor", "status": "active", "relation": "assignee" }, "input": { "from": "accepted", "to": "completed", "reason": "work_completed" }, "preconditions": { "policy_status": "approved", "redacted_context": true }, "expected": { "decision": "allowed", "state": "completed" } },
+    { "id": "task.04", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "advisor", "status": "active", "relation": "owner" }, "input": { "from": "assigned", "to": "reassigned", "reason": "capacity_change" }, "preconditions": { "policy_status": "approved", "owner_current": true }, "expected": { "decision": "allowed", "state": "reassigned" } },
+    { "id": "task.05", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "founder", "status": "active", "relation": "owner" }, "input": { "from": "accepted", "to": "reassigned", "reason": "scope_change" }, "preconditions": { "policy_status": "approved", "owner_current": true }, "expected": { "decision": "allowed", "state": "reassigned" } },
+    { "id": "task.06", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "advisor", "status": "active", "relation": "owner" }, "input": { "from": "assigned", "to": "cancelled", "reason": "task_removed" }, "preconditions": { "policy_status": "approved", "owner_current": true }, "expected": { "decision": "allowed", "state": "cancelled" } },
+    { "id": "task.07", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "founder", "status": "active", "relation": "owner" }, "input": { "from": "accepted", "to": "cancelled", "reason": "task_removed" }, "preconditions": { "policy_status": "approved", "owner_current": true }, "expected": { "decision": "allowed", "state": "cancelled" } },
+    { "id": "task.08", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "founder", "status": "active", "relation": "approver" }, "input": { "from": "completed", "to": "approved", "reason": "work_verified" }, "preconditions": { "policy_status": "approved", "different_actor": true }, "expected": { "decision": "allowed", "state": "approved" } }
+  ],
+  "nonCommandStates": ["created", "overdue"],
+  "nonCommandStateRule": "observed_only_no_unapproved_transition_semantics",
+  "illegalTransitions": [
+    { "id": "task.self_approval", "authority": ["DEC-028", "AC-04"], "actor": { "mode": "founder", "status": "active", "relation": "assignee_and_approver" }, "input": { "from": "completed", "to": "approved", "reason": "work_verified" }, "preconditions": { "different_actor": false }, "expected": { "decision": "denied", "code": "TASK_APPROVAL_SEPARATION_REQUIRED" } },
+    { "id": "task.missing_reason", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "advisor", "status": "active", "relation": "owner" }, "input": { "from": "assigned", "to": "cancelled", "reason": "" }, "preconditions": { "policy_status": "approved" }, "expected": { "decision": "denied", "code": "TASK_REASON_REQUIRED" } },
+    { "id": "task.contractor_owner_action", "authority": ["DEC-028", "AC-04"], "actor": { "mode": "contractor", "status": "active", "relation": "assignee" }, "input": { "from": "assigned", "to": "reassigned", "reason": "capacity_change" }, "preconditions": { "redacted_context": true }, "expected": { "decision": "denied", "code": "TASK_CONTRACTOR_ACTOR_NOT_ALLOWED" } },
+    { "id": "task.unapproved_transition", "authority": ["DEC-028", "AC-06"], "actor": { "mode": "advisor", "status": "active", "relation": "assignee" }, "input": { "from": "assigned", "to": "approved", "reason": "invalid_skip" }, "preconditions": { "policy_status": "approved" }, "expected": { "decision": "denied", "code": "TASK_TRANSITION_NOT_ALLOWED" } }
+  ]
+}

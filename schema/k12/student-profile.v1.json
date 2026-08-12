@@ -1,0 +1,41 @@
+{
+  "applicationType": "k12",
+  "layer": "base",
+  "moduleId": "k12-student-profile",
+  "version": "1.0.0",
+  "catalogueStatus": "approved",
+  "productionEnabled": true,
+  "fields": [
+    {
+      "fieldId": "student_profile.date_of_birth",
+      "label": "Date of birth",
+      "valueType": "date",
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "student_profile.residency_status",
+      "label": "Residency status",
+      "valueType": "enum",
+      "enumValues": ["hk_permanent_resident", "hk_non_permanent_resident", "dependent_visa", "other"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "student_profile.primary_languages",
+      "label": "Primary languages",
+      "valueType": "enum_set",
+      "enumValues": ["cantonese", "mandarin", "english", "other"],
+      "visibility": "advisor"
+    }
+  ],
+  "blockers": {
+    "background_collection": [
+      "student_profile.date_of_birth",
+      "student_profile.residency_status",
+      "student_profile.primary_languages"
+    ],
+    "school_selection_confirmed": [
+      "student_profile.date_of_birth",
+      "student_profile.residency_status"
+    ]
+  }
+}

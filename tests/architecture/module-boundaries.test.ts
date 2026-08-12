@@ -25,6 +25,9 @@ test("registers one owner for every authoritative resource", () => {
   assert.equal(owners.get("Task"), "tasks");
   assert.equal(owners.get("DocumentVersion"), "documents");
   assert.equal(owners.get("AuditEvent"), "audit_operations");
+  assert.equal(owners.get("PortalAccessGrant"), "external_portal_access");
+  assert.equal(owners.get("PlatformBillingActor"), "platform_billing");
+  assert.equal(owners.get("CustomerContract"), "platform_billing");
 });
 
 test("resolves files to the module owning their longest source root", () => {
@@ -33,6 +36,8 @@ test("resolves files to the module owning their longest source root", () => {
   assert.equal(getModuleForPath("app/api/v1/cases/route.ts")?.id, "adapters");
   assert.equal(getModuleForPath("workers/deliver-in-app.ts")?.id, "adapters");
   assert.equal(getModuleForPath("components/layout/Sidebar.tsx"), undefined);
+  assert.equal(getModuleForPath("modules/external-portal/runtime.ts")?.id, "external_portal_access");
+  assert.equal(getModuleForPath("modules/platform-billing/runtime.ts")?.id, "platform_billing");
 });
 
 test("allows internal imports and cross-module public contracts", () => {
@@ -92,6 +97,35 @@ test("rejects imports of another module's internals", () => {
   );
 });
 
+test("keeps reconstruction repository private across module seams", () => {
+  assert.doesNotThrow(() =>
+    assertModuleImportAllowed(
+      "modules/access/service.ts",
+      "modules/cases/reconstruction/contract.ts",
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertModuleImportAllowed(
+      "modules/access/service.ts",
+      "modules/cases/reconstruction/service.ts",
+    ),
+  );
+  assertBoundaryError(
+    () =>
+      assertModuleImportAllowed(
+        "modules/access/service.ts",
+        "modules/cases/reconstruction/repository.ts",
+      ),
+    "CROSS_MODULE_INTERNAL_IMPORT",
+    {
+      importer: "modules/access/service.ts",
+      importerModule: "access",
+      imported: "modules/cases/reconstruction/repository.ts",
+      importedModule: "cases",
+    },
+  );
+});
+
 test("rejects unregistered paths under the governed module roots", () => {
   assertBoundaryError(
     () => assertModuleImportAllowed("modules/cases/service.ts", "modules/future/internal.ts"),
@@ -103,6 +137,8 @@ test("rejects unregistered paths under the governed module roots", () => {
 test("allows only the owning module to write an authoritative resource", () => {
   assert.doesNotThrow(() => assertModuleWriteAllowed("crm", "Student"));
   assert.doesNotThrow(() => assertModuleWriteAllowed("cases", "ServiceCase"));
+  assert.doesNotThrow(() => assertModuleWriteAllowed("external_portal_access", "PortalSession"));
+  assert.doesNotThrow(() => assertModuleWriteAllowed("platform_billing", "MonthlyTenantMetric"));
 
   assertBoundaryError(
     () => assertModuleWriteAllowed("cases", "Student"),
@@ -118,6 +154,16 @@ test("allows only the owning module to write an authoritative resource", () => {
     () => assertModuleWriteAllowed("crm", "UnregisteredRecord"),
     "UNKNOWN_RESOURCE",
     { resource: "UnregisteredRecord" },
+  );
+  assertBoundaryError(
+    () => assertModuleWriteAllowed("platform_billing", "Subscription"),
+    "CROSS_MODULE_WRITE",
+    { writerModule: "platform_billing", resource: "Subscription", ownerModule: "access" },
+  );
+  assertBoundaryError(
+    () => assertModuleWriteAllowed("external_portal_access", "ServiceCase"),
+    "CROSS_MODULE_WRITE",
+    { writerModule: "external_portal_access", resource: "ServiceCase", ownerModule: "cases" },
   );
 });
 

@@ -9,6 +9,8 @@ export type ModuleId =
   | "documents"
   | "notifications"
   | "audit_operations"
+  | "external_portal_access"
+  | "platform_billing"
   | "adapters";
 
 export interface ModuleDefinition {
@@ -52,6 +54,7 @@ export const MODULE_REGISTRY = Object.freeze({
     sourceRoots: ["modules/shared"],
     publicEntrypoints: [
       "modules/shared/api-contract.ts",
+      "modules/shared/db.ts",
       "modules/shared/contract.ts",
       "modules/shared/decision-guards.ts",
       "modules/shared/idempotency.ts",
@@ -63,13 +66,20 @@ export const MODULE_REGISTRY = Object.freeze({
   identity: defineModule({
     id: "identity",
     sourceRoots: ["modules/identity"],
-    publicEntrypoints: ["modules/identity/contract.ts"],
+    publicEntrypoints: [
+      "modules/identity/contract.ts",
+      "modules/identity/service.ts",
+    ],
     owns: ["User", "Session", "Invite"],
   }),
   access: defineModule({
     id: "access",
     sourceRoots: ["modules/access"],
-    publicEntrypoints: ["modules/access/contract.ts"],
+    publicEntrypoints: [
+      "modules/access/contract.ts",
+      "modules/access/runtime.ts",
+      "modules/access/service.ts",
+    ],
     owns: [
       "Organization",
       "Subscription",
@@ -97,7 +107,17 @@ export const MODULE_REGISTRY = Object.freeze({
   cases: defineModule({
     id: "cases",
     sourceRoots: ["modules/cases"],
-    publicEntrypoints: ["modules/cases/contract.ts"],
+    publicEntrypoints: [
+      "modules/cases/assessment-service.ts",
+      "modules/cases/contract.ts",
+      "modules/cases/runtime.ts",
+      "modules/cases/schema-resolver.ts",
+      "modules/cases/service.ts",
+      "modules/cases/reconstruction/contract.ts",
+      "modules/cases/reconstruction/route-contract.ts",
+      "modules/cases/reconstruction/runtime.ts",
+      "modules/cases/reconstruction/service.ts",
+    ],
     owns: [
       "ServiceCase",
       "Assessment",
@@ -106,6 +126,10 @@ export const MODULE_REGISTRY = Object.freeze({
       "SchoolTarget",
       "CaseOutcome",
       "ServiceGoalOutcome",
+      "CaseReconstruction",
+      "ReconstructionVersion",
+      "ReconstructionEvent",
+      "ReconstructionGap",
     ],
   }),
   tasks: defineModule({
@@ -142,8 +166,54 @@ export const MODULE_REGISTRY = Object.freeze({
   audit_operations: defineModule({
     id: "audit_operations",
     sourceRoots: ["modules/audit", "modules/operations"],
-    publicEntrypoints: ["modules/audit/contract.ts", "modules/operations/contract.ts"],
-    owns: ["AuditEvent", "Outbox", "Alert", "Incident", "RestoreEvidence"],
+    publicEntrypoints: [
+      "modules/audit/contract.ts",
+      "modules/operations/contract.ts",
+      "modules/operations/telemetry-contract.ts",
+      "modules/operations/telemetry-policy.ts",
+      "modules/operations/telemetry-service.ts",
+    ],
+    owns: [
+      "AuditEvent",
+      "Outbox",
+      "Alert",
+      "Incident",
+      "RestoreEvidence",
+      "ProductTelemetryEvent",
+      "TelemetryRetentionManifest",
+      "TelemetryOperationsState",
+    ],
+  }),
+  external_portal_access: defineModule({
+    id: "external_portal_access",
+    sourceRoots: ["modules/external-portal"],
+    publicEntrypoints: [
+      "modules/external-portal/contract.ts",
+      "modules/external-portal/policy.ts",
+      "modules/external-portal/runtime.ts",
+    ],
+    owns: [
+      "PortalViewer",
+      "PortalAccessGrant",
+      "PortalSession",
+      "PortalSecurityEvent",
+    ],
+  }),
+  platform_billing: defineModule({
+    id: "platform_billing",
+    sourceRoots: ["modules/platform-billing"],
+    publicEntrypoints: [
+      "modules/platform-billing/contract.ts",
+      "modules/platform-billing/policy.ts",
+      "modules/platform-billing/runtime.ts",
+    ],
+    owns: [
+      "PlatformBillingActor",
+      "CustomerContract",
+      "MonthlyTenantMetric",
+      "PlatformSubscriptionProjection",
+      "PlatformAuditEvent",
+    ],
   }),
   adapters: defineModule({
     id: "adapters",

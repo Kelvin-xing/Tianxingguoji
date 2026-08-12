@@ -10,6 +10,10 @@ import {
   proposeTaskTransitionPolicy,
   type TaskTransitionPolicy,
 } from "../../../modules/tasks/transition-policy.ts";
+import {
+  RELEASE_1_TASK_INITIAL_STATE,
+  RELEASE_1_TASK_TRANSITION_RULES,
+} from "../../../modules/tasks/release1-policy.ts";
 import type { TaskTransitionRule } from "../../../modules/tasks/contract.ts";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
@@ -19,24 +23,7 @@ const reviewerId = "00000000-0000-4000-8000-000000000004";
 const assigneeId = "00000000-0000-4000-8000-000000000005";
 const approverId = "00000000-0000-4000-8000-000000000006";
 
-const syntheticRules: readonly TaskTransitionRule[] = [
-  {
-    from: "accepted",
-    to: "completed",
-    actorKind: "assignee",
-    allowedActorRoles: ["advisor", "contractor"],
-    requiresReason: true,
-    requiresDifferentActor: false,
-  },
-  {
-    from: "completed",
-    to: "approved",
-    actorKind: "approver",
-    allowedActorRoles: ["founder", "advisor"],
-    requiresReason: true,
-    requiresDifferentActor: true,
-  },
-];
+const syntheticRules: readonly TaskTransitionRule[] = RELEASE_1_TASK_TRANSITION_RULES;
 
 function candidatePolicy(overrides: Partial<Parameters<typeof proposeTaskTransitionPolicy>[0]> = {}) {
   return proposeTaskTransitionPolicy({
@@ -58,7 +45,7 @@ function approvedSyntheticPolicy(): TaskTransitionPolicy {
       version: 1,
       organizationId,
       requestedBy: requesterId,
-      initialState: "accepted",
+      initialState: RELEASE_1_TASK_INITIAL_STATE,
       rules: syntheticRules,
       createdAt: "2026-08-02T13:00:00.000Z",
     }),
@@ -95,7 +82,7 @@ function transitionInput(policy: TaskTransitionPolicy, overrides: Partial<Parame
   };
 }
 
-test("fails closed while OD-06 has not approved an initial state or actor matrix", () => {
+test("fails closed while a task policy remains a candidate without its resolved receipt", () => {
   const policy = candidatePolicy({
     rules: syntheticRules,
   });
@@ -118,7 +105,7 @@ test("uses the stable transition-rule code for blank policy identity", () => {
 });
 
 test("requires a resolved OD-06 receipt and separate reviewer before policy activation", () => {
-  const policy = candidatePolicy({ initialState: "accepted", rules: syntheticRules });
+  const policy = candidatePolicy({ initialState: RELEASE_1_TASK_INITIAL_STATE, rules: syntheticRules });
 
   assert.throws(
     () =>
@@ -149,7 +136,7 @@ test("allows a policy-defined completion only with an active assignee and reason
 
   assert.deepEqual(evaluateTaskCreation(policy), {
     allowed: true,
-    initialState: "accepted",
+    initialState: RELEASE_1_TASK_INITIAL_STATE,
   });
   assert.deepEqual(evaluateTaskTransition(transitionInput(policy)), { allowed: true });
   assert.deepEqual(

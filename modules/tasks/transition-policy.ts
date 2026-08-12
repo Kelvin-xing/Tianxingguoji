@@ -9,6 +9,7 @@ import {
   type TaskTransitionPolicy,
   type TaskTransitionRule,
 } from "./contract.ts";
+import { hasRelease1TaskPolicyContent } from "./release1-policy.ts";
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -39,7 +40,7 @@ function validateRule(rule: TaskTransitionRule): TaskTransitionRule {
     throw new TaskContractError("TASK_TRANSITION_RULE_INVALID");
   }
   if (
-    ["rejected", "reassigned", "cancelled", "approved"].includes(rule.to) &&
+    ["rejected", "reassigned", "completed", "cancelled", "approved"].includes(rule.to) &&
     !rule.requiresReason
   ) {
     throw new TaskContractError("TASK_REASON_REQUIRED");
@@ -117,6 +118,9 @@ export function approveTaskTransitionPolicy(
   }
   if (policy.rules.length === 0) throw new TaskContractError("TASK_POLICY_RULES_REQUIRED");
   assertNoDuplicateRules(policy.rules);
+  if (!hasRelease1TaskPolicyContent(policy)) {
+    throw new TaskContractError("TASK_POLICY_MATRIX_MISMATCH");
+  }
   return deepFreeze({
     ...policy,
     status: "approved",
@@ -160,6 +164,9 @@ export function evaluateTaskTransition(input: TaskTransitionInput): TaskDecision
     (candidate) => candidate.from === input.from && candidate.to === input.to,
   );
   if (!rule) return { allowed: false, code: "TASK_TRANSITION_NOT_ALLOWED" };
+  if (rule.requiresDifferentActor && input.actorId === input.assigneeId) {
+    return { allowed: false, code: "TASK_APPROVAL_SEPARATION_REQUIRED" };
+  }
   if (!rule.allowedActorRoles.includes(input.actorRole)) {
     return { allowed: false, code: "TASK_ACTOR_NOT_ALLOWED" };
   }
@@ -168,9 +175,6 @@ export function evaluateTaskTransition(input: TaskTransitionInput): TaskDecision
   }
   if (input.actorRole === "contractor" && rule.actorKind !== "assignee") {
     return { allowed: false, code: "TASK_CONTRACTOR_ACTOR_NOT_ALLOWED" };
-  }
-  if (rule.requiresDifferentActor && input.actorId === input.assigneeId) {
-    return { allowed: false, code: "TASK_APPROVAL_SEPARATION_REQUIRED" };
   }
   if (!actorMatchesRule(input, rule)) {
     return { allowed: false, code: "TASK_ACTOR_NOT_ALLOWED" };

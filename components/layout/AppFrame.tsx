@@ -10,12 +10,18 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const isPublic = pathname === '/login' || pathname.startsWith('/auth')
+  const isExternalPortal = pathname === '/portal' || pathname.startsWith('/portal/')
+  const isVisualFixture = pathname === '/cases/__fixtures/workspace' &&
+    process.env.NODE_ENV === 'development' &&
+    process.env.NEXT_PUBLIC_CASE_WORKSPACE_VISUAL_FIXTURE === 'true'
+  const bypassAuthForVisualFixture = isPublic || isExternalPortal || isVisualFixture
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>(
-    isPublic ? 'authenticated' : 'checking',
+    bypassAuthForVisualFixture ? 'authenticated' : 'checking',
   )
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false)
 
   useEffect(() => {
-    if (isPublic) {
+    if (bypassAuthForVisualFixture) {
       setAuthState('authenticated')
       return
     }
@@ -37,9 +43,13 @@ export function AppFrame({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [isPublic, router])
+  }, [bypassAuthForVisualFixture, router])
 
-  if (isPublic) {
+  useEffect(() => {
+    setMobileNavigationOpen(false)
+  }, [pathname])
+
+  if (isPublic || isExternalPortal) {
     return <main className="min-h-screen">{children}</main>
   }
 
@@ -55,9 +65,9 @@ export function AppFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar mobileOpen={mobileNavigationOpen} onClose={() => setMobileNavigationOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg)' }}>
-        <TopBar />
+        <TopBar onOpenNavigation={() => setMobileNavigationOpen(true)} />
         <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>

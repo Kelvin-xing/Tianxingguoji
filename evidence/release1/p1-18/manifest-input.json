@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "release1.synthetic",
+  "source": "synthetic",
+  "runId": "p1-18-local-20260807",
+  "inputVersion": "release1-vertical-slice-v1",
+  "generatedAt": "2026-08-07T00:00:00.000Z",
+  "scenarios": [
+    {
+      "id": "application.compatible-prior-image",
+      "description": "The required staging prior-image compatibility receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "prior_image_digest_and_compatibility_check",
+        "status": "unperformed"
+      },
+      "artifactPaths": ["scenarios/application-compatible-prior-image.json"]
+    },
+    {
+      "id": "local.evidence-integrity",
+      "description": "The local verifier recompiles the input and checks every redacted artifact checksum.",
+      "expectedState": "passed",
+      "actualState": "passed",
+      "evidence": {
+        "artifact_set": "closed",
+        "source": "synthetic"
+      },
+      "artifactPaths": ["scenarios/local-evidence-integrity.json"]
+    },
+    {
+      "id": "migration.corrective-path",
+      "description": "The required staging corrective migration receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "additive_corrective_migration_only",
+        "status": "unperformed"
+      },
+      "artifactPaths": ["scenarios/migration-corrective-path.json"]
+    },
+    {
+      "id": "restore.database-isolated",
+      "description": "The required isolated Hong Kong database restore receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "isolated_database_restore_reconciliation",
+        "status": "unperformed"
+      },
+      "artifactPaths": ["scenarios/restore-database-isolated.json"]
+    },
+    {
+      "id": "restore.document-linkage",
+      "description": "The required staging document metadata and object-version restore receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "document_linkage_and_checksum_reconciliation",
+        "status": "unperformed"
+      },
+      "artifactPaths": ["scenarios/restore-document-linkage.json"]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "scenarios/application-compatible-prior-image.json",
+      "content": "{\"environment\":\"staging\",\"required_receipt\":\"prior_image_digest_and_compatibility_check\",\"scenario\":\"application.compatible-prior-image\",\"status\":\"unperformed\"}\n"
+    },
+    {
+      "path": "scenarios/local-evidence-integrity.json",
+      "content": "{\"artifact_set\":\"closed\",\"scenario\":\"local.evidence-integrity\",\"source\":\"synthetic\",\"status\":\"passed\"}\n"
+    },
+    {
+      "path": "scenarios/migration-corrective-path.json",
+      "content": "{\"environment\":\"staging\",\"required_receipt\":\"additive_corrective_migration_only\",\"scenario\":\"migration.corrective-path\",\"status\":\"unperformed\"}\n"
+    },
+    {
+      "path": "scenarios/restore-database-isolated.json",
+      "content": "{\"environment\":\"staging\",\"required_receipt\":\"isolated_database_restore_reconciliation\",\"scenario\":\"restore.database-isolated\",\"status\":\"unperformed\"}\n"
+    },
+    {
+      "path": "scenarios/restore-document-linkage.json",
+      "content": "{\"environment\":\"staging\",\"required_receipt\":\"document_linkage_and_checksum_reconciliation\",\"scenario\":\"restore.document-linkage\",\"status\":\"unperformed\"}\n"
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "operations",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    },
+    {
+      "gate": "privacy",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    },
+    {
+      "gate": "security",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    }
+  ]
+}

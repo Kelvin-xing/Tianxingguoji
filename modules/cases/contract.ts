@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+const SAFE_FIELD_ENUM = /^[a-z][a-z0-9_]{0,63}$/;
+
 export const K12_MODULE_LAYERS = Object.freeze([
   "base",
   "education_stage",
@@ -9,9 +11,26 @@ export const K12_MODULE_LAYERS = Object.freeze([
 
 export type K12ModuleLayer = (typeof K12_MODULE_LAYERS)[number];
 
+export const K12_CATALOGUE_BLOCKER_STAGES = Object.freeze([
+  "background_collection",
+  "school_selection_confirmed",
+] as const);
+
+export type K12CatalogueBlockerStage = (typeof K12_CATALOGUE_BLOCKER_STAGES)[number];
+export type K12FieldValueType = "text" | "date" | "integer" | "enum" | "enum_set";
+export type K12ModuleCatalogueStatus = "synthetic_candidate" | "approved";
+export type K12CompositionVersion = "k12-structural-v1" | "k12-catalogue-v1";
+
+export interface K12ModuleBlockers {
+  readonly background_collection: readonly string[];
+  readonly school_selection_confirmed: readonly string[];
+}
+
 export interface K12ModuleField {
   readonly fieldId: string;
-  readonly valueType: string;
+  readonly label?: string;
+  readonly valueType: K12FieldValueType;
+  readonly enumValues?: readonly string[];
   readonly visibility: string;
   readonly blockingStages: readonly string[];
 }
@@ -21,20 +40,21 @@ export interface K12Module {
   readonly layer: K12ModuleLayer;
   readonly moduleId: string;
   readonly version: string;
-  readonly catalogueStatus: "synthetic_candidate";
-  readonly productionEnabled: false;
+  readonly catalogueStatus: K12ModuleCatalogueStatus;
+  readonly productionEnabled: boolean;
   readonly fields: readonly K12ModuleField[];
+  readonly blockers?: K12ModuleBlockers;
 }
 
 export type K12ManifestModule = K12Module;
 
 export interface K12ManifestComposition {
   readonly applicationType: "k12";
-  readonly compositionVersion: "k12-structural-v1";
+  readonly compositionVersion: K12CompositionVersion;
   readonly modules: readonly K12ManifestModule[];
   readonly fields: readonly K12ModuleField[];
   readonly contentSha256: string;
-  readonly productionEnabled: false;
+  readonly productionEnabled: boolean;
 }
 
 export type ServiceCaseStage =
@@ -133,6 +153,8 @@ export function parseK12Module(value: unknown): K12Module {
     throw new CaseContractError("INVALID_K12_MODULE", "K12 module must be an object.");
   }
 
+  const isSyntheticCandidate = value.catalogueStatus === "synthetic_candidate" && value.productionEnabled === false;
+  const isApprovedCatalogue = value.catalogueStatus === "approved" && value.productionEnabled === true;
   if (
     value.applicationType !== "k12" ||
     typeof value.layer !== "string" ||
@@ -141,14 +163,19 @@ export function parseK12Module(value: unknown): K12Module {
     value.moduleId.trim().length === 0 ||
     typeof value.version !== "string" ||
     value.version.trim().length === 0 ||
-    value.catalogueStatus !== "synthetic_candidate" ||
-    value.productionEnabled !== false ||
+    (!isSyntheticCandidate && !isApprovedCatalogue) ||
     !Array.isArray(value.fields)
   ) {
     throw new CaseContractError("INVALID_K12_MODULE", "K12 module metadata is invalid.");
   }
 
-  const fields = value.fields.map(parseK12ModuleField);
+  const parsedFields = value.fields.map((field) => parseK12ModuleField(field, isApprovedCatalogue));
+  const blockers = isApprovedCatalogue
+    ? parseK12ModuleBlockers(value.blockers, parsedFields)
+    : undefined;
+  const fields = isApprovedCatalogue
+    ? applyCatalogueBlockers(parsedFields, blockers!)
+    : parsedFields;
   const fieldIds = new Set<string>();
   for (const field of fields) {
     if (fieldIds.has(field.fieldId)) {
@@ -162,9 +189,10 @@ export function parseK12Module(value: unknown): K12Module {
     layer: value.layer,
     moduleId: value.moduleId,
     version: value.version,
-    catalogueStatus: "synthetic_candidate",
-    productionEnabled: false,
+    catalogueStatus: isApprovedCatalogue ? "approved" : "synthetic_candidate",
+    productionEnabled: isApprovedCatalogue,
     fields: Object.freeze(fields),
+    ...(blockers ? { blockers } : {}),
   });
 }
 
@@ -187,6 +215,28 @@ export function composeK12Manifest(
     );
   }
 
+  const catalogueModes = new Set(
+    sortedModules.map(({ catalogueStatus, productionEnabled }) => `${catalogueStatus}:${productionEnabled}`),
+  );
+  if (
+    sortedModules.some(
+      (module) =>
+        (module.catalogueStatus === "approved") !== module.productionEnabled,
+    )
+  ) {
+    throw new CaseContractError("INVALID_K12_MODULE", "K12 module mode is invalid.");
+  }
+  if (catalogueModes.size !== 1) {
+    throw new CaseContractError(
+      "K12_CATALOGUE_MODE_MISMATCH",
+      "Synthetic and approved K12 modules cannot be composed together.",
+    );
+  }
+  const approvedCatalogue = sortedModules[0]?.catalogueStatus === "approved";
+  if (approvedCatalogue && sortedModules.some((module) => !module.blockers)) {
+    throw new CaseContractError("INVALID_K12_MODULE", "Approved modules require blocker declarations.");
+  }
+
   const immutableModules = sortedModules.map((module) =>
     Object.freeze({
       ...module,
@@ -198,6 +248,14 @@ export function composeK12Manifest(
           }),
         ),
       ),
+      ...(module.blockers
+        ? {
+          blockers: Object.freeze({
+            background_collection: Object.freeze([...module.blockers.background_collection]),
+            school_selection_confirmed: Object.freeze([...module.blockers.school_selection_confirmed]),
+          }),
+        }
+        : {}),
     }),
   );
   const fields = immutableModules.flatMap(({ fields: moduleFields }) => moduleFields);
@@ -217,20 +275,24 @@ export function composeK12Manifest(
     moduleId: module.moduleId,
     productionEnabled: module.productionEnabled,
     version: module.version,
+    ...(module.blockers ? { blockers: module.blockers } : {}),
   }));
+  const compositionVersion: K12CompositionVersion = approvedCatalogue
+    ? "k12-catalogue-v1"
+    : "k12-structural-v1";
   const canonicalContent = canonicalize({
     applicationType: "k12",
-    compositionVersion: "k12-structural-v1",
+    compositionVersion,
     modules: modulesForHash,
   });
 
   return Object.freeze({
     applicationType: "k12",
-    compositionVersion: "k12-structural-v1",
+    compositionVersion,
     modules: Object.freeze(immutableModules),
     fields: Object.freeze(fields),
     contentSha256: createHash("sha256").update(canonicalContent).digest("hex"),
-    productionEnabled: false,
+    productionEnabled: approvedCatalogue,
   });
 }
 
@@ -288,6 +350,49 @@ export function evaluateAssessmentAnswer(
   return { allowed: true };
 }
 
+/** Applies the field contract after preserving the P0-07 semantic-state gate. */
+export function evaluateAssessmentFieldAnswer(input: {
+  readonly field: Pick<K12ModuleField, "valueType" | "enumValues">;
+  readonly semanticState: AnswerSemanticState;
+  readonly value: unknown;
+  readonly valueType: string | null;
+}): CaseDecision {
+  const semanticDecision = evaluateAssessmentAnswer({
+    semanticState: input.semanticState,
+    value: input.value,
+    valueType: input.valueType,
+    manifestValueType: input.field.valueType,
+  });
+  if (!semanticDecision.allowed || input.semanticState !== "provided") return semanticDecision;
+
+  if (!isTypedAnswerValue(input.value, input.valueType)) {
+    return { allowed: false, code: "ANSWER_VALUE_SHAPE_INVALID" };
+  }
+
+  switch (input.field.valueType) {
+    case "text":
+      return typeof input.value.value === "string" && input.value.value.trim().length > 0
+        ? { allowed: true }
+        : { allowed: false, code: "ANSWER_TEXT_INVALID" };
+    case "date":
+      return isIsoCalendarDate(input.value.value)
+        ? { allowed: true }
+        : { allowed: false, code: "ANSWER_DATE_INVALID" };
+    case "integer":
+      return typeof input.value.value === "number" && Number.isSafeInteger(input.value.value)
+        ? { allowed: true }
+        : { allowed: false, code: "ANSWER_INTEGER_INVALID" };
+    case "enum":
+      return typeof input.value.value === "string" && input.field.enumValues?.includes(input.value.value)
+        ? { allowed: true }
+        : { allowed: false, code: "ANSWER_ENUM_VALUE_NOT_ALLOWED" };
+    case "enum_set":
+      return isValidEnumSet(input.value.value, input.field.enumValues)
+        ? { allowed: true }
+        : { allowed: false, code: "ANSWER_ENUM_SET_INVALID" };
+  }
+}
+
 export function evaluateAssessmentStatus(input: AssessmentStatusInput): CaseDecision {
   if (input.manifestStatus !== "approved") {
     return { allowed: false, code: "MANIFEST_NOT_APPROVED" };
@@ -341,7 +446,7 @@ export function evaluateTargetOutcome(input: TargetOutcomeInput): CaseDecision {
   return { allowed: true };
 }
 
-function parseK12ModuleField(value: unknown): K12ModuleField {
+function parseK12ModuleField(value: unknown, approvedCatalogue: boolean): K12ModuleField {
   if (!isRecord(value)) {
     throw new CaseContractError("INVALID_K12_MODULE", "K12 field must be an object.");
   }
@@ -349,26 +454,127 @@ function parseK12ModuleField(value: unknown): K12ModuleField {
   if (
     typeof value.fieldId !== "string" ||
     value.fieldId.trim().length === 0 ||
+    (value.label !== undefined && (typeof value.label !== "string" || value.label.trim().length === 0)) ||
     typeof value.valueType !== "string" ||
-    value.valueType.trim().length === 0 ||
+    !isK12FieldValueType(value.valueType) ||
     typeof value.visibility !== "string" ||
     value.visibility.trim().length === 0 ||
-    !Array.isArray(value.blockingStages) ||
-    value.blockingStages.some((stage) => typeof stage !== "string" || stage.trim().length === 0)
+    (approvedCatalogue &&
+      (typeof value.label !== "string" || value.label.trim().length === 0 || value.visibility !== "advisor")) ||
+    (!approvedCatalogue &&
+      (!Array.isArray(value.blockingStages) ||
+        value.blockingStages.some((stage) => typeof stage !== "string" || stage.trim().length === 0))) ||
+    (approvedCatalogue && value.blockingStages !== undefined)
   ) {
     throw new CaseContractError("INVALID_K12_MODULE", "K12 field metadata is invalid.");
   }
 
+  const enumValues = parseEnumValues(value.enumValues, value.valueType);
+
   return Object.freeze({
     fieldId: value.fieldId,
+    ...(typeof value.label === "string" ? { label: value.label } : {}),
     valueType: value.valueType,
+    ...(enumValues ? { enumValues } : {}),
     visibility: value.visibility,
-    blockingStages: Object.freeze([...value.blockingStages]),
+    blockingStages: Object.freeze(approvedCatalogue ? [] : [...value.blockingStages]),
   });
+}
+
+function parseK12ModuleBlockers(
+  value: unknown,
+  fields: readonly K12ModuleField[],
+): K12ModuleBlockers {
+  if (!isRecord(value)) {
+    throw new CaseContractError("INVALID_K12_MODULE", "Approved module blockers are required.");
+  }
+  const fieldIds = new Set(fields.map(({ fieldId }) => fieldId));
+  const blockers = {} as Record<K12CatalogueBlockerStage, readonly string[]>;
+  for (const stage of K12_CATALOGUE_BLOCKER_STAGES) {
+    const fieldList = value[stage];
+    if (
+      !Array.isArray(fieldList) ||
+      fieldList.some((fieldId) => typeof fieldId !== "string" || !fieldIds.has(fieldId)) ||
+      new Set(fieldList).size !== fieldList.length
+    ) {
+      throw new CaseContractError("INVALID_K12_MODULE", `Invalid ${stage} blockers.`);
+    }
+    blockers[stage] = Object.freeze([...fieldList]);
+  }
+  return Object.freeze({
+    background_collection: blockers.background_collection,
+    school_selection_confirmed: blockers.school_selection_confirmed,
+  });
+}
+
+function applyCatalogueBlockers(
+  fields: readonly K12ModuleField[],
+  blockers: K12ModuleBlockers,
+): readonly K12ModuleField[] {
+  return fields.map((field) =>
+    Object.freeze({
+      ...field,
+      blockingStages: Object.freeze(
+        K12_CATALOGUE_BLOCKER_STAGES.filter((stage) => blockers[stage].includes(field.fieldId)),
+      ),
+    }),
+  );
+}
+
+function parseEnumValues(value: unknown, valueType: K12FieldValueType): readonly string[] | undefined {
+  const enumType = valueType === "enum" || valueType === "enum_set";
+  if (!enumType && value !== undefined) {
+    throw new CaseContractError("INVALID_K12_MODULE", "Only enum fields can declare enum values.");
+  }
+  if (!enumType) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((entry) => typeof entry !== "string" || !SAFE_FIELD_ENUM.test(entry)) ||
+    new Set(value).size !== value.length
+  ) {
+    throw new CaseContractError("INVALID_K12_MODULE", "Enum values are invalid.");
+  }
+  return Object.freeze([...value]);
 }
 
 function isK12ModuleLayer(value: string): value is K12ModuleLayer {
   return (K12_MODULE_LAYERS as readonly string[]).includes(value);
+}
+
+function isK12FieldValueType(value: string): value is K12FieldValueType {
+  return (["text", "date", "integer", "enum", "enum_set"] as const).includes(
+    value as K12FieldValueType,
+  );
+}
+
+function isTypedAnswerValue(
+  value: unknown,
+  expectedType: string | null,
+): value is { readonly type: string; readonly value: unknown } {
+  return (
+    expectedType !== null &&
+    isRecord(value) &&
+    value.type === expectedType &&
+    Object.hasOwn(value, "value")
+  );
+}
+
+function isIsoCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  if (year === undefined || month === undefined || day === undefined) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function isValidEnumSet(value: unknown, enumValues: readonly string[] | undefined): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => typeof entry === "string" && enumValues?.includes(entry)) &&
+    new Set(value).size === value.length
+  );
 }
 
 function canonicalize(value: unknown): string {

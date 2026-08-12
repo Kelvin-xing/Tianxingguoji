@@ -16,6 +16,7 @@
     "test:identity-access-schema": "node --test tests/integration/identity-access-schema.test.ts",
     "test:migration": "node --test tests/migration/drift.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
+    "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "node scripts/db/plan-migration.ts --migrations db/migrations"
   },
   "dependencies": {

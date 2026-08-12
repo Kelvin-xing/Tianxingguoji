@@ -1,0 +1,32 @@
+import { cookies } from "next/headers";
+
+import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
+import { handleApiRequest } from "@/modules/shared/api-contract";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
+import { IdentityServiceError } from "@/modules/identity/service";
+import { createApiError } from "@/modules/shared/api-contract";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request): Promise<Response> {
+  return handleApiRequest(request, async () => {
+    const secret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+    if (!secret) throw createApiError("UNAUTHENTICATED");
+    try {
+      const actor = await getIdentityRuntime().service.requireSession({
+        cookieSecret: secret,
+        sensitiveAction: false,
+      });
+      return {
+        user_id: actor.userId,
+        organization_id: actor.organizationId,
+        role: actor.role,
+      };
+    } catch (error) {
+      if (error instanceof IdentityServiceError) throw createApiError("UNAUTHENTICATED");
+      if (error instanceof IdentityRuntimeUnavailable) throw createApiError("SERVICE_UNAVAILABLE");
+      throw createApiError("SERVICE_UNAVAILABLE");
+    }
+  });
+}

@@ -48,6 +48,24 @@ export interface EvidenceManifestInput {
   readonly scenarios: readonly EvidenceScenarioInput[];
   readonly artifacts: readonly EvidenceArtifactInput[];
   readonly approvals?: readonly EvidenceApprovalInput[];
+  readonly coverage?: EvidenceCoverageInput;
+}
+
+export interface EvidenceCoverageInput {
+  readonly fixtureVersion: string;
+  readonly fixtureManifestSha256: string;
+  readonly requiredAcceptanceCriteria: readonly string[];
+  readonly matrixArtifactPath?: string;
+  readonly total: number;
+  readonly represented: number;
+  readonly executed: number;
+  readonly deferred: number;
+  readonly unrepresented: number;
+}
+
+export interface EvidenceCoverageManifest extends EvidenceCoverageInput {
+  readonly coverageStatus: "fully_executed" | "represented_with_deferred";
+  readonly matrixArtifactSha256?: string;
 }
 
 export interface EvidenceScenarioManifest extends EvidenceScenarioInput {
@@ -74,6 +92,7 @@ export interface EvidenceManifest {
   readonly scenarios: readonly EvidenceScenarioManifest[];
   readonly artifacts: readonly EvidenceArtifactManifest[];
   readonly approvals: readonly EvidenceApprovalInput[];
+  readonly coverage?: EvidenceCoverageManifest;
   readonly redaction: {
     readonly mode: "synthetic-only";
     readonly rawPiiDetected: false;
@@ -124,6 +143,9 @@ export function createEvidenceManifest(input: EvidenceManifestInput): EvidenceMa
     : "fail";
   const releaseState = calculateReleaseState(scenarios);
   const approvalStatus = calculateApprovalStatus(approvals);
+  const coverage = input.coverage === undefined
+    ? undefined
+    : normalizeCoverage(input.coverage, input.artifacts);
 
   const unsignedManifest = {
     schemaVersion: EVIDENCE_SCHEMA_VERSION,
@@ -139,6 +161,7 @@ export function createEvidenceManifest(input: EvidenceManifestInput): EvidenceMa
     scenarios,
     artifacts,
     approvals,
+    ...(coverage === undefined ? {} : { coverage }),
     redaction: {
       mode: "synthetic-only" as const,
       rawPiiDetected: false as const,
@@ -150,6 +173,124 @@ export function createEvidenceManifest(input: EvidenceManifestInput): EvidenceMa
     ...unsignedManifest,
     manifestSha256: sha256(canonicalize(unsignedManifest)),
   });
+}
+
+function normalizeCoverage(
+  input: EvidenceCoverageInput,
+  artifacts: readonly EvidenceArtifactInput[],
+): EvidenceCoverageManifest {
+  assertSafeIdentifier(input.fixtureVersion, "coverage fixtureVersion");
+  if (!SHA256_PATTERN.test(input.fixtureManifestSha256)) {
+    throw new EvidenceInputError("Coverage fixture manifest hash is not SHA-256.");
+  }
+  if (input.requiredAcceptanceCriteria.length === 0) {
+    throw new EvidenceInputError("Coverage requires at least one acceptance criterion.");
+  }
+  const requiredAcceptanceCriteria = [...new Set(input.requiredAcceptanceCriteria)].sort();
+  if (
+    requiredAcceptanceCriteria.length !== input.requiredAcceptanceCriteria.length ||
+    requiredAcceptanceCriteria.some((value) => !/^AC-\d{2}$/.test(value))
+  ) {
+    throw new EvidenceInputError("Coverage acceptance criteria must be unique AC identifiers.");
+  }
+  for (const [key, value] of Object.entries({
+    total: input.total,
+    represented: input.represented,
+    executed: input.executed,
+    deferred: input.deferred,
+    unrepresented: input.unrepresented,
+  })) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new EvidenceInputError(`Coverage ${key} must be a non-negative integer.`);
+    }
+  }
+  if (
+    input.total === 0 ||
+    input.represented !== input.executed + input.deferred ||
+    input.total !== input.represented + input.unrepresented ||
+    input.unrepresented !== 0
+  ) {
+    throw new EvidenceInputError("Coverage counts must represent every vector with zero unrepresented rows.");
+  }
+  let matrixArtifactSha256: string | undefined;
+  let matrixArtifactPath: string | undefined;
+  if (input.matrixArtifactPath !== undefined) {
+    matrixArtifactPath = normalizeArtifactPath(input.matrixArtifactPath);
+    const artifact = artifacts.find(({ path }) => normalizeArtifactPath(path) === matrixArtifactPath);
+    if (artifact === undefined) {
+      throw new EvidenceInputError("Coverage matrix artifact is not present.");
+    }
+    const counts = reconcileMatrixArtifact(artifact.content, input.fixtureVersion);
+    if (
+      counts.total !== input.total ||
+      counts.represented !== input.represented ||
+      counts.executed !== input.executed ||
+      counts.deferred !== input.deferred ||
+      counts.unrepresented !== input.unrepresented
+    ) {
+      throw new EvidenceInputError("Coverage summary does not match the matrix artifact rows.");
+    }
+    matrixArtifactSha256 = sha256(artifact.content);
+  }
+  return deepFreeze({
+    fixtureVersion: input.fixtureVersion,
+    fixtureManifestSha256: input.fixtureManifestSha256,
+    requiredAcceptanceCriteria,
+    ...(matrixArtifactPath === undefined ? {} : { matrixArtifactPath, matrixArtifactSha256 }),
+    total: input.total,
+    represented: input.represented,
+    executed: input.executed,
+    deferred: input.deferred,
+    unrepresented: input.unrepresented,
+    coverageStatus: input.deferred === 0 ? "fully_executed" : "represented_with_deferred",
+  });
+}
+
+function reconcileMatrixArtifact(content: string, fixtureVersion: string): {
+  total: number;
+  represented: number;
+  executed: number;
+  deferred: number;
+  unrepresented: number;
+} {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new EvidenceInputError("Coverage matrix artifact must be valid JSON.");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new EvidenceInputError("Coverage matrix artifact must be an object.");
+  }
+  const matrix = parsed as { schemaVersion?: unknown; fixtureVersion?: unknown; rows?: unknown };
+  if (matrix.schemaVersion !== 1 || matrix.fixtureVersion !== fixtureVersion || !Array.isArray(matrix.rows)) {
+    throw new EvidenceInputError("Coverage matrix artifact header does not match coverage.");
+  }
+  const ids = new Set<string>();
+  let executed = 0;
+  let deferred = 0;
+  let unrepresented = 0;
+  for (const row of matrix.rows) {
+    if (row === null || typeof row !== "object" || Array.isArray(row)) {
+      throw new EvidenceInputError("Coverage matrix contains an invalid row.");
+    }
+    const { id, disposition } = row as { id?: unknown; disposition?: unknown };
+    if (typeof id !== "string" || !SAFE_SCENARIO_ID.test(id) || ids.has(id)) {
+      throw new EvidenceInputError("Coverage matrix contains an unsafe or duplicate row ID.");
+    }
+    ids.add(id);
+    if (disposition === "executed") executed += 1;
+    else if (disposition === "deferred") deferred += 1;
+    else if (disposition === "unrepresented") unrepresented += 1;
+    else throw new EvidenceInputError("Coverage matrix contains an unknown disposition.");
+  }
+  return {
+    total: matrix.rows.length,
+    represented: executed + deferred,
+    executed,
+    deferred,
+    unrepresented,
+  };
 }
 
 export async function writeEvidenceBundle(

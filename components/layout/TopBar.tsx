@@ -14,12 +14,13 @@ const PAGE_TITLES: Array<{ prefix: string; title: string }> = [
   { prefix: '/tasks', title: '任務' },
   { prefix: '/documents', title: '文件' },
   { prefix: '/admin/access', title: '身份與權限' },
+  { prefix: '/admin/schools', title: '學校治理' },
   { prefix: '/admin/crawler', title: '資料審核' },
   { prefix: '/admin/knowledge', title: '知識庫' },
   { prefix: '/ai', title: 'AI 助理' },
 ]
 
-export function TopBar() {
+export function TopBar({ onOpenNavigation }: { readonly onOpenNavigation?: () => void }) {
   const { t } = useTranslation()
   const toggleLang = useLangToggle()
   const pathname = usePathname()
@@ -39,6 +40,7 @@ export function TopBar() {
   return (
     <header className="min-h-16 flex items-center justify-between gap-4 px-4 sm:px-6 shrink-0" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
       <div className="flex items-center gap-3 min-w-0">
+        <button type="button" className="icon-button md:hidden" style={{ height: '2.75rem', width: '2.75rem' }} onClick={onOpenNavigation} title="Open navigation" aria-label="Open navigation"><Icon name="menu" size={19} /></button>
         <div className="min-w-0">
           <h1 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{title}</h1>
           <div className="hidden sm:flex items-center gap-1.5 mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>

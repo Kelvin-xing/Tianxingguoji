@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "release1.synthetic",
+  "source": "synthetic",
+  "runId": "p1-18-local-20260807",
+  "inputVersion": "release1-vertical-slice-v1",
+  "generatedAt": "2026-08-07T00:00:00.000Z",
+  "verification": "pass",
+  "releaseState": "needs_human",
+  "approvalStatus": "not_requested",
+  "releaseEligible": false,
+  "scenarios": [
+    {
+      "id": "application.compatible-prior-image",
+      "description": "The required staging prior-image compatibility receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "prior_image_digest_and_compatibility_check",
+        "status": "unperformed"
+      },
+      "artifactPaths": [
+        "scenarios/application-compatible-prior-image.json"
+      ],
+      "verification": "pass"
+    },
+    {
+      "id": "local.evidence-integrity",
+      "description": "The local verifier recompiles the input and checks every redacted artifact checksum.",
+      "expectedState": "passed",
+      "actualState": "passed",
+      "evidence": {
+        "artifact_set": "closed",
+        "source": "synthetic"
+      },
+      "artifactPaths": [
+        "scenarios/local-evidence-integrity.json"
+      ],
+      "verification": "pass"
+    },
+    {
+      "id": "migration.corrective-path",
+      "description": "The required staging corrective migration receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "additive_corrective_migration_only",
+        "status": "unperformed"
+      },
+      "artifactPaths": [
+        "scenarios/migration-corrective-path.json"
+      ],
+      "verification": "pass"
+    },
+    {
+      "id": "restore.database-isolated",
+      "description": "The required isolated Hong Kong database restore receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "isolated_database_restore_reconciliation",
+        "status": "unperformed"
+      },
+      "artifactPaths": [
+        "scenarios/restore-database-isolated.json"
+      ],
+      "verification": "pass"
+    },
+    {
+      "id": "restore.document-linkage",
+      "description": "The required staging document metadata and object-version restore receipt is unperformed in the local bundle.",
+      "expectedState": "needs_human",
+      "actualState": "needs_human",
+      "evidence": {
+        "environment": "staging",
+        "required_receipt": "document_linkage_and_checksum_reconciliation",
+        "status": "unperformed"
+      },
+      "artifactPaths": [
+        "scenarios/restore-document-linkage.json"
+      ],
+      "verification": "pass"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "scenarios/application-compatible-prior-image.json",
+      "sha256": "a9e8e1a7847a71ab623279d8ecb7c704615164b4c4ed9493af340516d7bf79f8",
+      "bytes": 161
+    },
+    {
+      "path": "scenarios/local-evidence-integrity.json",
+      "sha256": "d622a33ff1f3d42d58f9c531709758bdae0787f96369ae1d3e40f9a34e0dfc38",
+      "bytes": 103
+    },
+    {
+      "path": "scenarios/migration-corrective-path.json",
+      "sha256": "e4393feadb0d6b5f5ab21b04166657e317cc857ee889e2f6dee3a4258a90481b",
+      "bytes": 144
+    },
+    {
+      "path": "scenarios/restore-database-isolated.json",
+      "sha256": "9f48adc7a2299e8bc270b78dc137fefd5286a7cea4e94293296b761b9fb75b7d",
+      "bytes": 150
+    },
+    {
+      "path": "scenarios/restore-document-linkage.json",
+      "sha256": "9758eb7672f677fdcbf99aa0bcb07501298bd126c3fbcbf878e462224c761ef5",
+      "bytes": 153
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "operations",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    },
+    {
+      "gate": "privacy",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    },
+    {
+      "gate": "security",
+      "status": "not_requested",
+      "reviewerId": null,
+      "payloadHash": null
+    }
+  ],
+  "redaction": {
+    "mode": "synthetic-only",
+    "rawPiiDetected": false,
+    "secretDetected": false
+  },
+  "manifestSha256": "1f33b55821a803e346718baf2bc4f173ef14def4583ec35df6dc89466c1456e9"
+}

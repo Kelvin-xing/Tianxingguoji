@@ -1,0 +1,50 @@
+{
+  "applicationType": "k12",
+  "layer": "admission_route",
+  "moduleId": "k12-family-context",
+  "version": "1.0.0",
+  "catalogueStatus": "approved",
+  "productionEnabled": true,
+  "fields": [
+    {
+      "fieldId": "family_context.primary_contact_language",
+      "label": "Primary contact language",
+      "valueType": "enum",
+      "enumValues": ["cantonese", "mandarin", "english", "other"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "family_context.education_priority",
+      "label": "Education priority",
+      "valueType": "enum",
+      "enumValues": ["academic", "balanced", "language_immersion", "supportive_environment", "other"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "family_context.transport_arrangement",
+      "label": "Transport arrangement",
+      "valueType": "enum",
+      "enumValues": ["family_transport", "school_bus", "public_transport", "undecided"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "family_context.fee_preference",
+      "label": "Fee preference",
+      "valueType": "enum",
+      "enumValues": ["government_aided", "private", "international", "undecided"],
+      "visibility": "advisor"
+    }
+  ],
+  "blockers": {
+    "background_collection": [
+      "family_context.primary_contact_language",
+      "family_context.education_priority"
+    ],
+    "school_selection_confirmed": [
+      "family_context.primary_contact_language",
+      "family_context.education_priority",
+      "family_context.transport_arrangement",
+      "family_context.fee_preference"
+    ]
+  }
+}

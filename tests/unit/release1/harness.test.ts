@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -261,6 +262,81 @@ test("does not turn a scenario mismatch or unsafe artifact into a pass", async (
   };
   assert.throws(
     () => createEvidenceManifest(incompleteApproval),
+    (error: unknown) => error instanceof EvidenceInputError,
+  );
+});
+
+test("validates optional synthetic coverage without treating deferred rows as release-ready", async () => {
+  const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8")) as EvidenceManifestInput;
+  const coverage = {
+    fixtureVersion: "release1-phase3-golden-v1",
+    fixtureManifestSha256: "a".repeat(64),
+    requiredAcceptanceCriteria: ["AC-01", "AC-04"],
+    total: 108,
+    represented: 108,
+    executed: 80,
+    deferred: 28,
+    unrepresented: 0,
+  } as const;
+  const manifest = createEvidenceManifest({ ...fixture, coverage });
+
+  assert.deepEqual(manifest.coverage, {
+    ...coverage,
+    coverageStatus: "represented_with_deferred",
+  });
+  assert.equal(manifest.releaseEligible, false);
+
+  assert.throws(
+    () => createEvidenceManifest({ ...fixture, coverage: { ...coverage, represented: 107 } }),
+    (error: unknown) => error instanceof EvidenceInputError,
+  );
+  assert.throws(
+    () =>
+      createEvidenceManifest({
+        ...fixture,
+        coverage: { ...coverage, represented: 108, executed: 79, deferred: 28, unrepresented: 1 },
+      }),
+    (error: unknown) => error instanceof EvidenceInputError,
+  );
+});
+
+test("reconciles coverage counts against the canonical matrix artifact", async () => {
+  const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8")) as EvidenceManifestInput;
+  const matrix = JSON.stringify({
+    schemaVersion: 1,
+    fixtureVersion: "release1-phase3-golden-v1",
+    rows: [
+      { id: "vector.executed", disposition: "executed" },
+      { id: "vector.deferred", disposition: "deferred" },
+    ],
+  });
+  const coverage = {
+    fixtureVersion: "release1-phase3-golden-v1",
+    fixtureManifestSha256: "b".repeat(64),
+    requiredAcceptanceCriteria: ["AC-01"],
+    matrixArtifactPath: "coverage/matrix.json",
+    total: 2,
+    represented: 2,
+    executed: 1,
+    deferred: 1,
+    unrepresented: 0,
+  } as const;
+  const input = {
+    ...fixture,
+    artifacts: [{ path: "coverage/matrix.json", content: matrix }],
+    scenarios: [{ ...fixture.scenarios[0], artifactPaths: ["coverage/matrix.json"] }],
+    coverage,
+  };
+  const manifest = createEvidenceManifest(input);
+  assert.equal(manifest.coverage?.matrixArtifactSha256, createHash("sha256").update(matrix).digest("hex"));
+
+  assert.throws(
+    () => createEvidenceManifest({ ...input, coverage: { ...coverage, executed: 2, deferred: 0 } }),
+    (error: unknown) => error instanceof EvidenceInputError,
+  );
+  const tampered = matrix.replace('"deferred"', '"executed"');
+  assert.throws(
+    () => createEvidenceManifest({ ...input, artifacts: [{ path: "coverage/matrix.json", content: tampered }] }),
     (error: unknown) => error instanceof EvidenceInputError,
   );
 });

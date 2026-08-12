@@ -5,6 +5,13 @@ export const SESSION_POLICY = Object.freeze({
   maximumActiveSessions: 3,
 } as const);
 
+export const INVITE_POLICY = Object.freeze({
+  activationCredentialVersion: "v1",
+  activationSecretBytes: 32,
+  expiresInMs: 24 * 60 * 60 * 1_000,
+  deliveryChannelPolicyId: "hk_dpa_reviewed_transactional",
+} as const);
+
 export type SessionSlot = 1 | 2 | 3;
 
 export type SessionSlotDecision =
@@ -13,6 +20,7 @@ export type SessionSlotDecision =
 
 export type UserStatus = "invited" | "active" | "disabled";
 export type SessionStatus = "active" | "revoked" | "expired";
+export type InviteStatus = "created" | "redeemed" | "expired" | "revoked";
 export type OrganizationStatus = "active" | "disabled";
 export type MembershipStatus = "invited" | "active" | "disabled";
 
@@ -90,5 +98,29 @@ export function evaluateSession(input: SessionEvaluationInput): SessionDecision 
     return { allowed: false, code: "SENSITIVE_REAUTH_REQUIRED" };
   }
 
+  return { allowed: true };
+}
+
+export type InviteActivationDenialCode =
+  | "INVITE_NOT_CREATED"
+  | "INVITE_EXPIRED";
+
+export type InviteActivationDecision =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly code: InviteActivationDenialCode };
+
+export interface InviteActivationInput {
+  readonly nowMs: number;
+  readonly status: InviteStatus;
+  readonly expiresAtMs: number;
+}
+
+export function evaluateInviteActivation(input: InviteActivationInput): InviteActivationDecision {
+  if (input.status !== "created") {
+    return { allowed: false, code: "INVITE_NOT_CREATED" };
+  }
+  if (input.nowMs >= input.expiresAtMs) {
+    return { allowed: false, code: "INVITE_EXPIRED" };
+  }
   return { allowed: true };
 }

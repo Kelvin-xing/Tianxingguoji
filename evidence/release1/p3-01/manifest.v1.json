@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "evidenceVersion": "p3-01-v1",
+  "fixtureVersion": "release1-phase3-golden-v1",
+  "source": "synthetic",
+  "generatedAt": "2026-08-11T00:00:00.000Z",
+  "verification": "pass",
+  "coverageStatus": "mapped_not_executed",
+  "releaseState": "blocked",
+  "releaseEligible": false,
+  "featureFlags": {
+    "customerAccess": false,
+    "futureFeatures": false,
+    "multiTenant": false,
+    "reconstruction": false,
+    "release1Activation": false
+  },
+  "approvals": [
+    { "gate": "product", "status": "not_requested" },
+    { "gate": "security", "status": "not_requested" }
+  ],
+  "excludedSemantics": ["DP-01..12", "R1X-billing", "R1X-portal"],
+  "fixtureSchema": {
+    "vectorRequiredKeys": ["actor", "authority", "expected", "id", "input", "preconditions"],
+    "actorAllowedKeys": ["mode", "relation", "status"],
+    "expectedAllowedKeys": ["code", "decision", "httpStatus", "sideEffects", "state"]
+  },
+  "fixtureArtifacts": [
+    {
+      "path": "access-scopes.v1.json",
+      "sha256": "1faede000a9c311a7f70fb388076541db67444db0d79051de437a83cde3ceec3",
+      "bytes": 6615
+    },
+    {
+      "path": "case-target-transitions.v1.json",
+      "sha256": "5adac5e997937c780b8f5948e60cb07a9142bdcf3f6f164924b06404e1290a0e",
+      "bytes": 19800
+    },
+    {
+      "path": "edge-failures.v1.json",
+      "sha256": "421b38b054089b590cc7fd6e81ddedc5502fcf01b30d16156660d9ce2f60eb5d",
+      "bytes": 11803
+    },
+    {
+      "path": "roles.v1.json",
+      "sha256": "d4987a7fb9c1ba1061776d5e0e7a2ae3c5f091c09b232312310d2ef2ffd2b5d0",
+      "bytes": 5165
+    },
+    {
+      "path": "scenario-manifest.v1.json",
+      "sha256": "af502b81d27c6fcadc1eef3d01d095b8fb8f59620bb25ec9544a31e98dd190e3",
+      "bytes": 274
+    },
+    {
+      "path": "task-transitions.v1.json",
+      "sha256": "5ea7c5e8ac1bfafcec8f02e80633ae944db6798ca12235463b137f97f5748952",
+      "bytes": 4638
+    }
+  ]
+}

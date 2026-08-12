@@ -1,0 +1,16 @@
+.git
+.gitignore
+.next
+node_modules
+coverage
+out
+*.log
+.env*
+!.env.local.example
+infra/terraform/.terraform
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/**/*.tfplan
+infra/terraform/**/*.tfvars
+evidence
+.playwright-mcp

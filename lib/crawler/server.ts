@@ -1,18 +1,9 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 import type { AdmissionRecord, ConfidenceLevel, CrawlerReviewRecord, CrawlerSummary, ReviewStatus } from '@/types'
+import { CrawlerSnapshotStore } from './snapshot'
 
 const SNAPSHOT_DIR = process.env.CRAWLER_SNAPSHOT_DIR || path.join(process.cwd(), 'data/crawler-source/latest')
-
-async function readJsonFile<T>(fileName: string, fallback: T): Promise<T> {
-  try {
-    const raw = await fs.readFile(path.join(SNAPSHOT_DIR, fileName), 'utf-8')
-    return JSON.parse(raw) as T
-  } catch (error) {
-    console.error(`Failed to read crawler snapshot ${fileName}`, error)
-    return fallback
-  }
-}
+const snapshotStore = new CrawlerSnapshotStore(SNAPSHOT_DIR)
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
@@ -108,20 +99,19 @@ export function normalizeReview(raw: Record<string, unknown>): CrawlerReviewReco
 }
 
 export async function getSchools(): Promise<AdmissionRecord[]> {
-  const rows = await readJsonFile<Record<string, unknown>[]>('records.json', [])
-  return rows.map(normalizeSchool).filter((row) => row.school_key)
+  const snapshot = await snapshotStore.load()
+  return snapshot.records.map(normalizeSchool).filter((row) => row.school_key)
 }
 
 export async function getReviewQueue(): Promise<CrawlerReviewRecord[]> {
-  const rows = await readJsonFile<Record<string, unknown>[]>('review_queue.json', [])
-  return rows.map(normalizeReview).filter((row) => row.school_key)
+  const snapshot = await snapshotStore.load()
+  return snapshot.reviewQueue.map(normalizeReview).filter((row) => row.school_key)
 }
 
 export async function getCrawlerSummary(): Promise<CrawlerSummary> {
-  const [runSummary, publishManifest] = await Promise.all([
-    readJsonFile<Record<string, any>>('run_summary.json', {}),
-    readJsonFile<Record<string, any>>('publish_manifest.json', {}),
-  ])
+  const snapshot = await snapshotStore.load()
+  const runSummary = snapshot.runSummary as Record<string, any>
+  const publishManifest = snapshot.manifest
   return {
     generated_at: asString(runSummary.generated_at),
     published_at: asString(publishManifest.published_at),

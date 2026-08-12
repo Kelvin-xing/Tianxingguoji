@@ -1,0 +1,58 @@
+{
+  "applicationType": "k12",
+  "layer": "school_system",
+  "moduleId": "k12-school-preferences",
+  "version": "1.0.0",
+  "catalogueStatus": "approved",
+  "productionEnabled": true,
+  "fields": [
+    {
+      "fieldId": "school_preferences.target_stage",
+      "label": "Target education stage",
+      "valueType": "enum",
+      "enumValues": ["kindergarten", "primary", "secondary"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "school_preferences.preferred_systems",
+      "label": "Preferred school systems",
+      "valueType": "enum_set",
+      "enumValues": ["hk_local", "hk_international"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "school_preferences.preferred_districts",
+      "label": "Preferred districts",
+      "valueType": "enum_set",
+      "enumValues": ["hong_kong_island", "kowloon", "new_territories", "any"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "school_preferences.preferred_admission_route",
+      "label": "Preferred admission route",
+      "valueType": "enum",
+      "enumValues": ["entry", "transfer"],
+      "visibility": "advisor"
+    },
+    {
+      "fieldId": "school_preferences.fee_band",
+      "label": "Fee band",
+      "valueType": "enum",
+      "enumValues": ["government_aided", "private", "international", "undecided"],
+      "visibility": "advisor"
+    }
+  ],
+  "blockers": {
+    "background_collection": [
+      "school_preferences.target_stage",
+      "school_preferences.preferred_admission_route"
+    ],
+    "school_selection_confirmed": [
+      "school_preferences.target_stage",
+      "school_preferences.preferred_systems",
+      "school_preferences.preferred_districts",
+      "school_preferences.preferred_admission_route",
+      "school_preferences.fee_band"
+    ]
+  }
+}
