@@ -1,0 +1,15 @@
+{
+  "version": "p3-16.v1",
+  "authority": ["DEC-032", "DEC-034", "DEC-044", "DEC-057"],
+  "status": "source_only_not_release_evidence",
+  "cases": [
+    { "id": "unauthorized_access", "suite": "tests/e2e/vertical-slice-negative.spec.ts", "testName": "Release 1 negative vertical slice preserves denials, conflicts, replay boundaries, and provenance" },
+    { "id": "stale_write", "suite": "tests/integration/case-reconstruction-workflow.test.ts", "testName": "correction schema fails closed when the target event is from a non-activated version" },
+    { "id": "replay", "suite": "tests/integration/case-reconstruction-workflow.test.ts", "testName": "idempotency excludes request metadata but prevents cross-operation, actor and target aliasing" },
+    { "id": "unknown_commit", "suite": "tests/integration/case-reconstruction-workflow.test.ts", "testName": "in-progress and uncertain commits are fail-closed and never blindly replayed" },
+    { "id": "scan_failure", "suite": "tests/integration/document-scan-workflow.test.ts", "testName": "a repository failure commits no scan state, work, audit, or outbox facts" },
+    { "id": "outbox_failure", "suite": "tests/integration/in-app-notification-delivery.test.ts", "testName": "bounded delivery failure reaches DLQ without reversing the producer fact" },
+    { "id": "revoke_after_claim", "suite": "tests/integration/in-app-notification-delivery.test.ts", "testName": "access revoked after claim suppresses a P1-14 effect immediately before delivery" },
+    { "id": "telemetry_sink_failure", "suite": "tests/failure-injection/telemetry-runtime.test.ts", "testName": "sink outage fails open, enters degraded state, and never replays the business event" }
+  ]
+}

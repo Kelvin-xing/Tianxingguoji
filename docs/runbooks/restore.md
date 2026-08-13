@@ -1,6 +1,12 @@
 # Release 1 Restore Runbook
 
-Status: Phase 0 template. No restore, migration, endpoint switch or production data operation is authorized by this document.
+Status: P3-18 procedure template. No restore, migration, target cleanup, endpoint switch or production data operation is authorized by this document.
+
+## P3-18 Execution Boundary
+
+This source file is not a restore receipt. Execution requires an exact approval naming the backup/PITR source, isolated Hong Kong DB and document targets, operator, commands/tools, time window, evidence destination and cleanup payload. Absence or mismatch of any field is `blocked` and must not be retried by guessing.
+
+The empty-baseline drill has two independently measured clocks: database RPO <= 5 minutes and RTO <= 4 hours; document RPO <= 24 hours and RTO <= 8 hours. A combined status is `passed` only when both targets and every integrity probe pass. AWS job success alone is insufficient.
 
 ## Objectives
 
@@ -27,6 +33,8 @@ Restore success requires all of the following:
 5. Capture the pre-drill time, source timestamp and current application deployment ID.
 
 ## Procedure
+
+Before step 1, create an out-of-repository redacted receipt with `run_id`, approved payload checksum, source recovery timestamps, target identifiers, start timestamps, owners and cancellation condition. Never store credentials, connection strings, object keys that expose PII, or raw command output in Git.
 
 ### 1. Restore the database
 
@@ -82,6 +90,19 @@ Do not enable real user flags or send invitations during a restore drill.
 4. Mark the run `passed`, `needs_human` or `blocked`.
 5. If the run is not `passed`, keep the live endpoint unchanged and escalate to Operations, Security/Privacy and the Founder.
 6. Only a separately approved cutover may switch an endpoint or feature flag. Record the exact payload and rollback target.
+
+### Required empty-baseline receipt fields
+
+- DB and document source/target opaque identifiers, all verified in `ap-east-1`;
+- separate start, recovery-point and verification-complete timestamps for DB and documents;
+- ordered migration/schema checksums and zero business-row counts;
+- per-organization count/hash summary, expected to contain no business rows for P3-18;
+- document metadata/object-version linkage counts and hashes without bytes or PII;
+- append-only audit continuity probe and representative denied/authorized query results;
+- calculated DB/document RPO and RTO, pass/fail per target, incident/remediation owner;
+- evidence manifest checksum plus Operations and Founder decisions.
+
+Cleanup of the isolated targets is a distinct destructive action. Preserve evidence first, then execute only an exact approved cleanup payload. Never point the production application at a drill target.
 
 ## Failure and Rollback Rules
 

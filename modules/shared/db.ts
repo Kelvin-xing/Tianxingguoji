@@ -34,6 +34,7 @@ export interface DatabaseQuery {
 
 export interface DatabaseQueryResult<Row> {
   readonly rows: readonly Row[];
+  readonly rowCount?: number | null;
 }
 
 export interface DatabaseClient {
