@@ -2,7 +2,7 @@
 
 ## 1. 用途与边界
 
-本目录保存与当前代码版本绑定的实现记录、领域术语、运行手册、安全模型和发布门禁。产品需求、跨版本架构决策和研究位于同级工作区的 `txgj-doc` 文档目录。
+本目录保存与当前代码版本绑定的实现记录、运行手册、安全模型和发布门禁。产品需求、领域术语、跨版本架构决策和研究位于同级工作区的 `txgj-doc` 文档目录。
 
 本文只提供路由和状态解释，不改变各文档内部的约束，也不证明实现已经可运行。
 
@@ -23,7 +23,7 @@
 
 | 目录 | 内容 | 权威边界 |
 |---|---|---|
-| `domain/` | 稳定术语和领域上下文 | 解释语言，不替代领域契约或决策台账 |
+| `architecture/` | 当前代码版本的模块地图、分层和依赖门禁 | 描述实现边界，不替代 `txgj-doc` 的跨版本架构决策 |
 | `implementation/` | 分票实现记录、局部契约、已运行检查和剩余 gate | 只对对应代码切片负责 |
 | `runbooks/` | 认证、撤销、outbox、PII、region、restore、scan、telemetry 等操作手册 | 未实际演练的步骤不能声称可用 |
 | `security/` | Release 1 threat model | 安全基线，不能被功能代码绕过 |
@@ -36,6 +36,8 @@
 [`implementation/LOCAL-02_DATABASE_MIGRATION.md`](implementation/LOCAL-02_DATABASE_MIGRATION.md)。
 身份模式开关、本地角色登录和 Cognito 回访登录边界见
 [`implementation/LOCAL-03_IDENTITY_MODE.md`](implementation/LOCAL-03_IDENTITY_MODE.md)。
+当前模块分层、公开入口和兼容债务见
+[`architecture/MODULE_MAP.md`](architecture/MODULE_MAP.md)。
 
 仓库根目录的 `evidence/` 保存测试引用的机器可读 fixture 和 manifest，不应移动到 `docs/`。
 
@@ -47,7 +49,7 @@
 | `P1-*` | 20 | 首条端到端纵向切片、认证、Case、文件、Task、通知和 rollback | 多数使用 synthetic adapter 或旧 Neon seam，不能等同生产运行时 |
 | `P2-*` | 12 | Guardian、K12 catalogue、结果、Contractor、治理、Dashboard、Crawler 和 future scope | 本地契约较完整，RDS/浏览器证据不齐 |
 | `P3-*` | 13 | 合成场景、重建、telemetry、生产源码、repositories、浏览器、安全、restore 和首案 gate | 当前 release blocker 集中区域 |
-| `R1X-*` | 10 | Portal、PlatformBilling、运行组合和 AWS source foundation | 本地 contract/slice 存在，生产集成未获准 |
+| `R1X-*` | 9 | Portal、PlatformBilling、运行组合和 AWS source foundation | 本地 contract/slice 存在，生产集成未获准；决策基线位于 `txgj-doc/decisions/` |
 
 ### 重复 ticket 编号
 
@@ -75,7 +77,7 @@
 | `P3-18_EMPTY_BASELINE_RESTORE_PLAN.md` | runbook 已升级；restore execution 未完成 |
 | `P3-19_FIRST_CASE_DECISION_PLAN.md` | unsigned `no-go` |
 | `release-evidence/phase3/first-case-go-no-go.md` | `no-go`，不授权任何真实案件 |
-| `R1X-DECISION-BASELINE-20260812.md` | 当前本地 Portal/Billing 实现基线；真实启用仍需独立 gate |
+| `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` | 当前本地 Portal/Billing 实现基线；真实启用仍需独立 gate |
 
 当前接手阶段不运行云端验证，也不把 `partial_local`、`implemented_local` 或测试 fixture 描述为 production-ready。
 
@@ -102,10 +104,10 @@
 
 ## 8. 当前接手状态
 
-- 身份术语已迁移到 `domain/IDENTITY_CONTEXT.md`。
+- 身份术语位于 `txgj-doc/product/IDENTITY_CONTEXT.md`。
 - 2026 年 6 月的历史设计已移至 `txgj-doc/archive/legacy-design/`。
 - 两个非路由 `page 2.tsx` preview/mock 副本已删除；可复用 UI 要点保存在本地执行计划中。
-- 目录整理和源码职责分析已经完成。
+- 源码已按 `domain / application / infrastructure` 分层，跨模块访问统一通过根级门面，并由架构测试扫描真实 import。
 - 当前接手范围与推进边界记录在 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.md`，本目录不保存平行副本。
 - README 根文档仍是 create-next-app 默认内容；是否重写留待后续单独确认。
 

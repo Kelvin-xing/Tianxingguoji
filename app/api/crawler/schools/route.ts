@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getSchools } from '@/lib/crawler/server'
-import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
+import { getSchools } from '@/modules/schools/crawler-server'
+import { isResponse, requireLegacyActor } from '@/modules/identity/web'
 
 export const dynamic = 'force-dynamic'
 

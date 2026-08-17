@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   buildContractorTaskWorkspaceModel,
   contractorTaskActions,
-} from "../../modules/tasks/contractor-workspace-model.ts";
+} from "../../modules/tasks/application/contractor-workspace-model.ts";
 
 const task = Object.freeze({
   task_id: "00000000-0000-4000-8000-000000000404",

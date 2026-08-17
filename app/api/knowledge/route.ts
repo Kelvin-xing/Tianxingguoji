@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getKnowledgeBase, saveKnowledgeBase } from '@/lib/knowledge/db'
-import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
+import { getKnowledgeBase, saveKnowledgeBase } from '@/modules/future/server'
+import { isResponse, requireLegacyActor } from '@/modules/identity/web'
 
 export async function GET(request: Request) {
   const actor = await requireLegacyActor(request, ['founder', 'admin', 'data_reviewer'])

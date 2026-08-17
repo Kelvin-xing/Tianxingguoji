@@ -1,13 +1,13 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { getIdentityRuntime, IdentityRuntimeUnavailable } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { getIdentityRuntime, IdentityRuntimeUnavailable } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   CaseDashboardAuthenticationError,
   createCaseDashboardGetHandler,
-} from "@/modules/operations/case-dashboard-route";
-import { getCaseDashboardRuntime } from "@/modules/operations/case-dashboard-runtime";
+} from "@/modules/operations/server";
+import { getCaseDashboardRuntime } from "@/modules/operations/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

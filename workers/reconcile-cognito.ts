@@ -4,7 +4,7 @@ import {
   type IdentityRevokeClock,
   type IdentityRevokeRepository,
   retryAvailableAtMs,
-} from "../modules/identity/revoke-workflow.ts";
+} from "../modules/identity/server.ts";
 
 export interface CognitoRevokeClient {
   revoke(input: {

@@ -50,8 +50,8 @@ approved 30-day soft-delete window is the only lifecycle duration encoded here.
 
 ## Interfaces And Evidence
 
-`modules/documents/contract.ts` owns state, object-reference, transition,
-download/activation, restore, and purge decisions. `adapters/object-store.ts`
+`modules/documents/domain/contract.ts` owns state, object-reference, transition,
+download/activation, restore, and purge decisions. `modules/documents/infrastructure/object-store.ts`
 owns the region/bucket/key boundary and delegates signing to an injected
 provider adapter; it has no AWS or network side effect in Phase 0.
 

@@ -5,28 +5,28 @@ import {
   decodePendingInviteActivation,
   getActivationCookieSigningKey,
   PENDING_INVITE_ACTIVATION_COOKIE_NAME,
-} from "@/modules/identity/activation-cookie";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+} from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   CognitoVerificationError,
   exchangeAuthorizationCode,
   verifyCognitoIdentity,
-} from "@/lib/auth/cognito";
-import { AuthConfigurationError, getCognitoAuthConfig } from "@/lib/auth/config";
-import { loadAuthMode } from "@/lib/auth/mode";
+} from "@/modules/identity/server";
+import { AuthConfigurationError, getCognitoAuthConfig } from "@/modules/identity/server";
+import { loadAuthMode } from "@/modules/identity/server";
 import {
   createSessionForIdentity,
   SessionCreationError,
-} from "@/lib/auth/session-service";
+} from "@/modules/identity/server";
 import {
   COGNITO_STATE_COOKIE_NAME,
   COGNITO_VERIFIER_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   clearAuthCookie,
   sessionCookieOptions,
-} from "@/lib/auth/cookies";
-import { equalsSecret } from "@/lib/auth/pkce";
+} from "@/modules/identity/server";
+import { equalsSecret } from "@/modules/identity/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

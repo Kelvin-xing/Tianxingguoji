@@ -7,7 +7,7 @@ import {
   assertDecisionPremise,
   assertReleaseOneFeatureAllowed,
   assertReleaseOneTransitionAllowed,
-} from "../../../modules/shared/decision-guards.ts";
+} from "../../../modules/shared/domain/decision-guards.ts";
 
 test("publishes all decision statuses as an immutable 60-decision registry", () => {
   const decisionIds = Object.keys(DECISION_STATUSES).sort();

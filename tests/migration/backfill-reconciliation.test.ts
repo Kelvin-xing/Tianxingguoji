@@ -12,7 +12,7 @@ import {
   assertExactBatchApproval,
   createImportLedgerEntry,
   evaluateBackfillResume,
-} from "../../modules/operations/import-ledger.ts";
+} from "../../modules/operations/domain/import-ledger.ts";
 
 const sourceRows = [
   {

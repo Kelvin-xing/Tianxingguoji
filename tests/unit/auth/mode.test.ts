@@ -5,9 +5,9 @@ import test from "node:test";
 import {
   AuthModeConfigurationError,
   loadAuthMode,
-} from "../../../lib/auth/mode.ts";
-import { LocalSyntheticLoginService } from "../../../modules/identity/local-synthetic-login.ts";
-import { InMemoryIdentitySessionRepository } from "../../../modules/identity/session-repository.ts";
+} from "../../../modules/identity/infrastructure/auth-mode.ts";
+import { LocalSyntheticLoginService } from "../../../modules/identity/infrastructure/local-synthetic-login.ts";
+import { InMemoryIdentitySessionRepository } from "../../../modules/identity/infrastructure/in-memory-session-repository.ts";
 
 test("selects authentication adapters explicitly and blocks local auth in production", () => {
   assert.equal(loadAuthMode(localEnvironment()), "local-synthetic");

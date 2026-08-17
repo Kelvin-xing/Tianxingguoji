@@ -14,8 +14,8 @@ import {
   createApiError,
   errorResponse,
   successResponse,
-} from "../../modules/shared/api-contract.ts";
-import { createRequestContext } from "../../modules/shared/request-context.ts";
+} from "../../modules/shared/presentation/api-contract.ts";
+import { createRequestContext } from "../../modules/shared/presentation/request-context.ts";
 
 test("creates an authoritative request context without trusting a caller request ID", () => {
   const context = createRequestContext(

@@ -1,8 +1,8 @@
-import type { OutboxMessage } from "../../modules/audit/contract.ts";
+import type { OutboxMessage } from "../../modules/audit/domain/contract.ts";
 import type {
   DeliveryReceipt,
   NotificationRecord,
-} from "../../modules/notifications/contract.ts";
+} from "../../modules/notifications/domain/contract.ts";
 import {
   MAX_IN_APP_DELIVERY_ATTEMPTS,
   type InAppDeliveryClaim,
@@ -10,7 +10,7 @@ import {
   type InAppDeliveryFailure,
   type InAppDeliveryWork,
   type InAppNotificationRepository,
-} from "../../modules/notifications/service.ts";
+} from "../../modules/notifications/application/service.ts";
 
 type DeliveryOutboxState = "pending" | "processing" | "delivered" | "dead_letter";
 

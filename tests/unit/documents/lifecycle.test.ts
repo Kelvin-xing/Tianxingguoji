@@ -12,11 +12,11 @@ import {
   evaluateDocumentVersionTransition,
   type DocumentRecord,
   type DocumentVersionRecord,
-} from "../../../modules/documents/contract.ts";
+} from "../../../modules/documents/domain/contract.ts";
 import {
   DocumentObjectStoreAdapter,
   type ObjectStoreSigner,
-} from "../../../adapters/object-store.ts";
+} from "../../../modules/documents/infrastructure/object-store.ts";
 import { planMigration } from "../../../scripts/db/plan-migration.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000101";

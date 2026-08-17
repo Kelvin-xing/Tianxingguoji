@@ -62,9 +62,9 @@ The focused test covers case pause/resume/cancel/close, P2-02 selection blockers
 
 ## Files
 
-- `modules/cases/transition-policy.ts`
-- `modules/cases/outcome-service.ts`
-- `modules/cases/outcome-runtime.ts`
+- `modules/cases/domain/transition-policy.ts`
+- `modules/cases/application/outcome-service.ts`
+- `modules/cases/infrastructure/outcome-runtime.ts`
 - `app/api/v1/cases/[caseId]/school-targets/[targetId]/transitions/route.ts`
 - `app/api/v1/cases/[caseId]/school-targets/[targetId]/outcomes/route.ts`
 - `tests/fakes/case-target-outcome.ts`

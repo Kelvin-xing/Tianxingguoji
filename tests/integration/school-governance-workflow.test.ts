@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   SchoolGovernanceError,
   SchoolGovernanceService,
   type ReconcileSchoolOverlayResult,
   type SchoolChangeReviewResult,
   type SchoolGovernanceRepository,
-} from "../../modules/schools/governance-service.ts";
+} from "../../modules/schools/application/governance-service.ts";
 import {
   evaluateSchoolOverlayApproval,
   proposeSchoolOverlay,
@@ -17,12 +17,12 @@ import {
   type SchoolBaseRecord,
   type SchoolFieldClass,
   type SchoolOverlayRevision,
-} from "../../modules/schools/contract.ts";
-import { reconcileSchoolOverlay } from "../../modules/schools/resolver.ts";
+} from "../../modules/schools/domain/contract.ts";
+import { reconcileSchoolOverlay } from "../../modules/schools/domain/resolver.ts";
 import {
   SchoolGovernanceRuntimeUnavailable,
   getSchoolGovernanceRuntime,
-} from "../../modules/schools/school-governance-runtime.ts";
+} from "../../modules/schools/infrastructure/school-governance-runtime.ts";
 
 const DATA_REVIEWER = Object.freeze({
   userId: "11111111-1111-4111-8111-111111111111",

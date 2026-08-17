@@ -1,7 +1,7 @@
 import {
   createApiError,
   handleApiRequest,
-} from "../../../../../modules/shared/api-contract.ts";
+} from "../../../../../modules/shared/public.ts";
 import { isLocalSyntheticMode } from "../../../../../lib/runtime/local-synthetic-config.ts";
 import {
   checkLocalSyntheticReadiness,

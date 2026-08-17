@@ -51,7 +51,7 @@ Every table has `record_version bigint NOT NULL`, `created_at`, and `updated_at`
 
 ## Public Contract Payload
 
-`modules/crm/contract.ts` exports immutable CRM states, stable denial codes, forbidden legal-identity field names, a pure primary-contact evaluator, a fail-closed deletion gate, and duplicate-match classification that can return only `distinct` or `review_required`, never `merge`.
+`modules/crm/domain/contract.ts` exports immutable CRM states, stable denial codes, forbidden legal-identity field names, a pure primary-contact evaluator, a fail-closed deletion gate, and duplicate-match classification that can return only `distinct` or `review_required`, never `merge`.
 
 The deletion gate inputs are actor role, approval receipt, retention clearance, legal-hold state, reference clearance, and current lifecycle state. It permits `active -> pending_delete` with a reason; `pending_delete -> purged` only with Founder approval and every external clearance; all other transitions are denied.
 
@@ -98,4 +98,4 @@ Adding the second migration also modifies the P0-05 planner assertion so it veri
 - Deferred primary-contact failures roll back the whole transaction; no repair job may silently invent a Guardian or primary relationship.
 - Purge, merge, and legal-ID expansion are never inferred from missing data or similarity.
 
-Approval authorizes creation of `db/migrations/202608021630_002_expand_crm.sql`, `modules/crm/contract.ts`, `tests/integration/crm-schema.test.ts`, the narrow P0-05 planner assertion compatibility edit, and disposable local PostgreSQL verification under the limits above. It does not authorize staging/production/database-role/RLS changes, real data, purge, merge, commit, push, cloud resource, or deployment.
+Approval authorizes creation of `db/migrations/202608021630_002_expand_crm.sql`, `modules/crm/domain/contract.ts`, `tests/integration/crm-schema.test.ts`, the narrow P0-05 planner assertion compatibility edit, and disposable local PostgreSQL verification under the limits above. It does not authorize staging/production/database-role/RLS changes, real data, purge, merge, commit, push, cloud resource, or deployment.

@@ -4,26 +4,26 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { evaluateScopeGrant, type ScopeGrantEvaluationInput } from "../../modules/access/contract.ts";
-import { evaluateContractorTaskAccess } from "../../modules/access/policy.ts";
-import { evaluateAssessmentFieldAnswer, evaluateServiceCaseCreation, evaluateTargetOutcome } from "../../modules/cases/contract.ts";
+import { evaluateScopeGrant, type ScopeGrantEvaluationInput } from "../../modules/access/domain/contract.ts";
+import { evaluateContractorTaskAccess } from "../../modules/access/domain/policy.ts";
+import { evaluateAssessmentFieldAnswer, evaluateServiceCaseCreation, evaluateTargetOutcome } from "../../modules/cases/domain/contract.ts";
 import {
   evaluateCaseTransitionPolicy,
   evaluateSchoolTargetTransitionPolicy,
   HK_K12_STANDARD_V1_TEMPLATE,
   outcomeCodesForTargetState,
   type CaseTransitionPolicyInput,
-} from "../../modules/cases/transition-policy.ts";
-import { RELEASE_1_TASK_INITIAL_STATE, RELEASE_1_TASK_TRANSITION_RULES } from "../../modules/tasks/release1-policy.ts";
-import { evaluateTaskTransition } from "../../modules/tasks/transition-policy.ts";
-import type { TaskActorRole, TaskState, TaskTransitionPolicy } from "../../modules/tasks/contract.ts";
+} from "../../modules/cases/domain/transition-policy.ts";
+import { RELEASE_1_TASK_INITIAL_STATE, RELEASE_1_TASK_TRANSITION_RULES } from "../../modules/tasks/domain/release1-policy.ts";
+import { evaluateTaskTransition } from "../../modules/tasks/domain/transition-policy.ts";
+import type { TaskActorRole, TaskState, TaskTransitionPolicy } from "../../modules/tasks/domain/contract.ts";
 import { createEvidenceManifest, type EvidenceManifestInput } from "../../scripts/evidence/create-manifest.ts";
-import { completeIdempotencyRecord, createIdempotencyRecord, evaluateIdempotency, hashRequestPayload } from "../../modules/shared/idempotency.ts";
-import { buildAlertOccurrence, getAlertDefinition, ALERT_CATALOGUE_VERSION } from "../../modules/operations/alert-catalogue.ts";
-import { createContractorTaskGetHandler } from "../../modules/tasks/contractor-route.ts";
-import { ContractorTaskWorkspaceRuntimeUnavailable } from "../../modules/tasks/contractor-workspace-runtime.ts";
-import { createOpaqueDocumentObjectKey } from "../../modules/documents/contract.ts";
-import { DocumentScanService } from "../../modules/documents/scan-service.ts";
+import { completeIdempotencyRecord, createIdempotencyRecord, evaluateIdempotency, hashRequestPayload } from "../../modules/shared/domain/idempotency.ts";
+import { buildAlertOccurrence, getAlertDefinition, ALERT_CATALOGUE_VERSION } from "../../modules/operations/domain/alert-catalogue.ts";
+import { createContractorTaskGetHandler } from "../../modules/tasks/infrastructure/contractor-route.ts";
+import { ContractorTaskWorkspaceRuntimeUnavailable } from "../../modules/tasks/infrastructure/contractor-workspace-runtime.ts";
+import { createOpaqueDocumentObjectKey } from "../../modules/documents/domain/contract.ts";
+import { DocumentScanService } from "../../modules/documents/application/scan-service.ts";
 import { processDocumentScanEvent, DocumentScanRetryableWorkerError } from "../../workers/scan-document.ts";
 import { InMemoryDocumentScanRepository } from "../fakes/document-scan.ts";
 import { SyntheticScannerFake } from "../fakes/scanner.ts";
@@ -102,7 +102,7 @@ async function executeTypedServiceError(vector: Vector): Promise<MatrixRow> {
   });
   const response = await handler(new Request("https://erp.example.test/api/v1/contractor/tasks/00000000-0000-4000-8000-000000000704"), { params: Promise.resolve({ taskId: "00000000-0000-4000-8000-000000000704" }) });
   const body = await response.json() as { error: { code: string } };
-  return executed(vector, "modules/tasks/contractor-route.ts#createContractorTaskGetHandler", body.error.code);
+  return executed(vector, "modules/tasks/infrastructure/contractor-route.ts#createContractorTaskGetHandler", body.error.code);
 }
 
 function executeCase(vector: Vector): MatrixRow {
@@ -125,7 +125,7 @@ function executeCase(vector: Vector): MatrixRow {
     hasOpenTasks: Number(vector.preconditions.open_tasks ?? 0) > 0,
   });
   const observed = decision.allowed ? (action === "pause" ? "paused" : action === "cancel" ? "cancelled" : decision.stage) : decision.code;
-  return executed(vector, "modules/cases/transition-policy.ts#evaluateCaseTransitionPolicy", observed);
+  return executed(vector, "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy", observed);
 }
 
 function executeTarget(vector: Vector): MatrixRow {
@@ -147,16 +147,16 @@ function executeTarget(vector: Vector): MatrixRow {
       targetState: vector.input.to as Parameters<typeof evaluateTargetOutcome>[0]["targetState"],
       currentOutcomeCode: (vector.input.outcome_code ?? null) as Parameters<typeof evaluateTargetOutcome>[0]["currentOutcomeCode"],
     });
-    const locator = "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/contract.ts#evaluateTargetOutcome";
+    const locator = "modules/cases/domain/transition-policy.ts#evaluateSchoolTargetTransitionPolicy+modules/cases/domain/contract.ts#evaluateTargetOutcome";
     return executed(vector, locator, outcome.allowed ? String(vector.input.to) : outcome.code);
   }
-  return executed(vector, "modules/cases/transition-policy.ts#evaluateSchoolTargetTransitionPolicy", decision.allowed ? String(vector.input.to) : decision.code);
+  return executed(vector, "modules/cases/domain/transition-policy.ts#evaluateSchoolTargetTransitionPolicy", decision.allowed ? String(vector.input.to) : decision.code);
 }
 
 function executeOutcome(vector: Vector): MatrixRow {
   const allowed = outcomeCodesForTargetState(vector.input.target_state as Parameters<typeof outcomeCodesForTargetState>[0]);
   const observed = allowed.includes(vector.input.code as never) ? String(vector.input.target_state) : "OUTCOME_CODE_INVALID";
-  return executed(vector, "modules/cases/transition-policy.ts#outcomeCodesForTargetState", observed);
+  return executed(vector, "modules/cases/domain/transition-policy.ts#outcomeCodesForTargetState", observed);
 }
 
 function executeTask(vector: Vector): MatrixRow {
@@ -176,9 +176,9 @@ function executeTask(vector: Vector): MatrixRow {
     reason: String(vector.input.reason ?? ""),
   });
   if (vector.id === "task.contractor_owner_action" && !decision.allowed) {
-    return deferred(vector, "P3-09", "The current public task policy returns its role denial before the fixture contractor-specific denial.", { locator: "modules/tasks/transition-policy.ts#evaluateTaskTransition", observed: decision.code });
+    return deferred(vector, "P3-09", "The current public task policy returns its role denial before the fixture contractor-specific denial.", { locator: "modules/tasks/domain/transition-policy.ts#evaluateTaskTransition", observed: decision.code });
   }
-  return executed(vector, "modules/tasks/transition-policy.ts#evaluateTaskTransition", decision.allowed ? String(vector.input.to) : decision.code);
+  return executed(vector, "modules/tasks/domain/transition-policy.ts#evaluateTaskTransition", decision.allowed ? String(vector.input.to) : decision.code);
 }
 
 function executeScope(vector: Vector): MatrixRow {
@@ -201,7 +201,7 @@ function executeScope(vector: Vector): MatrixRow {
     approverRole: vector.preconditions.approver_role === "founder" ? "founder" : null,
   };
   const decision = evaluateScopeGrant(base);
-  return executed(vector, "modules/access/contract.ts#evaluateScopeGrant", decision.allowed ? "active" : decision.code);
+  return executed(vector, "modules/access/domain/contract.ts#evaluateScopeGrant", decision.allowed ? "active" : decision.code);
 }
 
 async function edgeRows(vectors: Vector[]): Promise<MatrixRow[]> {
@@ -225,18 +225,18 @@ async function edgeRows(vectors: Vector[]): Promise<MatrixRow[]> {
       rows.push(await executeTypedServiceError(vector));
     } else if (vector.id === "exception.non_k12_placeholder") {
       const decision = evaluateServiceCaseCreation({ applicationType: "non_k12", organizationId: "synthetic-org", studentOrganizationId: "synthetic-org", studentStatus: "active", primaryOrganizationId: "synthetic-org", primaryRole: "advisor", primaryBindingStatus: "active", manifestStatus: "approved", initialStage: "signed" });
-      rows.push(executed(vector, "modules/cases/contract.ts#evaluateServiceCaseCreation", decision.allowed ? "allowed" : decision.code));
+      rows.push(executed(vector, "modules/cases/domain/contract.ts#evaluateServiceCaseCreation", decision.allowed ? "allowed" : decision.code));
     } else if (vector.id === "exception.assessment_unknown") {
       const decision = evaluateAssessmentFieldAnswer({ field: { valueType: "text", enumValues: null }, semanticState: "unknown", value: null, valueType: null });
-      rows.push(deferred(vector, "P3-08", "The public contract accepts unknown but returns allowed rather than the fixture state label unknown.", { locator: "modules/cases/contract.ts#evaluateAssessmentFieldAnswer", observed: decision.allowed ? "allowed" : decision.code }));
+      rows.push(deferred(vector, "P3-08", "The public contract accepts unknown but returns allowed rather than the fixture state label unknown.", { locator: "modules/cases/domain/contract.ts#evaluateAssessmentFieldAnswer", observed: decision.allowed ? "allowed" : decision.code }));
     } else if (vector.id === "concurrency.stale_write") {
       const decision = evaluateTaskTransition({ policy: approvedTaskPolicy, organizationId: "synthetic-org", taskOrganizationId: "synthetic-org", caseId: "synthetic-case", taskCaseId: "synthetic-case", from: "assigned", to: "accepted", actorId: "synthetic-actor", actorRole: "advisor", actorIsActive: true, assigneeId: "synthetic-actor", approverId: "synthetic-approver", ownerId: "synthetic-owner", redactedTaskContext: true, recordVersion: 5, expectedRecordVersion: 4, reason: "" });
-      rows.push(deferred(vector, "P3-08", "The existing optimistic-concurrency seam returns TASK_STALE_VERSION, not the approved fixture VERSION_CONFLICT contract.", { locator: "modules/tasks/transition-policy.ts#evaluateTaskTransition", observed: decision.allowed ? "allowed" : decision.code }));
+      rows.push(deferred(vector, "P3-08", "The existing optimistic-concurrency seam returns TASK_STALE_VERSION, not the approved fixture VERSION_CONFLICT contract.", { locator: "modules/tasks/domain/transition-policy.ts#evaluateTaskTransition", observed: decision.allowed ? "allowed" : decision.code }));
     } else if (vector.id === "replay.idempotent_command") {
       const requestHash = hashRequestPayload({ operation: "synthetic-replay" });
       const record = completeIdempotencyRecord(createIdempotencyRecord({ id: "00000000-0000-4000-8000-000000000710", organizationId: "00000000-0000-4000-8000-000000000711", actorUserId: "00000000-0000-4000-8000-000000000712", operation: "synthetic.replay", key: "synthetic-replay-1", requestHash, createdAt: "2026-08-11T00:00:00.000Z" }), { resultReference: "synthetic-result", responseHash: hashRequestPayload({ status: "accepted" }), updatedAt: "2026-08-11T00:00:01.000Z" });
       const decision = evaluateIdempotency({ key: "synthetic-replay-1", requestHash, existing: record });
-      rows.push(deferred(vector, "P3-08", "The public idempotency contract returns replay; it does not emit the fixture label duplicate.", { locator: "modules/shared/idempotency.ts#evaluateIdempotency", observed: decision.action }));
+      rows.push(deferred(vector, "P3-08", "The public idempotency contract returns replay; it does not emit the fixture label duplicate.", { locator: "modules/shared/domain/idempotency.ts#evaluateIdempotency", observed: decision.action }));
     } else if (vector.id === "surface.long_bounded_value") {
       rows.push(deferred(vector, "P3-14", "Responsive long-value behavior requires the approved browser seam."));
     } else if (vector.id === "failure.reconstruction_interruption") {
@@ -252,9 +252,9 @@ async function edgeRows(vectors: Vector[]): Promise<MatrixRow[]> {
 
 function supplementalChecks(): SupplementalCheck[] {
   const checks: Omit<SupplementalCheck, "status">[] = [
-    { id: "alert.scan_stuck_seconds", authority: "DEC-035", locator: "modules/operations/alert-catalogue.ts#getAlertDefinition", expected: 180, observed: getAlertDefinition("scan.stuck", ALERT_CATALOGUE_VERSION).detector.threshold },
-    { id: "alert.outbox_stuck_seconds", authority: "DEC-035", locator: "modules/operations/alert-catalogue.ts#getAlertDefinition", expected: 300, observed: getAlertDefinition("outbox.stuck", ALERT_CATALOGUE_VERSION).detector.threshold },
-    { id: "alert.budget_critical_percent", authority: "DEC-035", locator: "modules/operations/alert-catalogue.ts#buildAlertOccurrence", expected: 100, observed: buildAlertOccurrence({ alertId: "budget.rds_monthly", catalogueVersion: ALERT_CATALOGUE_VERSION, occurrenceId: "p3-02-budget", requestId: "p3-02-request", organizationId: null, detectedAt: "2026-08-11T00:00:00.000Z", observedValue: 100, state: "firing" }).threshold_value },
+    { id: "alert.scan_stuck_seconds", authority: "DEC-035", locator: "modules/operations/domain/alert-catalogue.ts#getAlertDefinition", expected: 180, observed: getAlertDefinition("scan.stuck", ALERT_CATALOGUE_VERSION).detector.threshold },
+    { id: "alert.outbox_stuck_seconds", authority: "DEC-035", locator: "modules/operations/domain/alert-catalogue.ts#getAlertDefinition", expected: 300, observed: getAlertDefinition("outbox.stuck", ALERT_CATALOGUE_VERSION).detector.threshold },
+    { id: "alert.budget_critical_percent", authority: "DEC-035", locator: "modules/operations/domain/alert-catalogue.ts#buildAlertOccurrence", expected: 100, observed: buildAlertOccurrence({ alertId: "budget.rds_monthly", catalogueVersion: ALERT_CATALOGUE_VERSION, occurrenceId: "p3-02-budget", requestId: "p3-02-request", organizationId: null, detectedAt: "2026-08-11T00:00:00.000Z", observedValue: 100, state: "firing" }).threshold_value },
   ];
   return checks.map((check) => ({
     ...check,
@@ -281,7 +281,7 @@ async function buildMatrix(): Promise<MatrixRow[]> {
     }
     if (vector.id === "authz.contractor.redacted_task") {
       const decision = evaluateContractorTaskAccess({ requestOrganizationId: "synthetic-org", actorOrganizationId: "synthetic-org", actorUserId: "synthetic-contractor", actorRole: "contractor", actorIsActive: true, taskOrganizationId: "synthetic-org", currentAssigneeUserId: "synthetic-contractor", currentAssigneeRole: "contractor", assignmentStatus: "active", redactionLevel: "task_only" });
-      return executed(vector, "modules/access/policy.ts#evaluateContractorTaskAccess", decision.allowed ? "allowed" : decision.code);
+      return executed(vector, "modules/access/domain/policy.ts#evaluateContractorTaskAccess", decision.allowed ? "allowed" : decision.code);
     }
     return deferred(vector, "P3-08", "No matching generic case access-control public result code exists in P0-P2.");
   });

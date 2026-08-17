@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { BackfillPreview } from "../../modules/operations/public.ts";
+
+export type { BackfillPreview } from "../../modules/operations/public.ts";
+
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export type BackfillSourceRow = {
@@ -49,43 +53,6 @@ type BackfillRejection =
       code: "REQUIRED_TARGET_FIELD_MISSING";
       fields: string[];
     };
-
-export type BackfillPreview = {
-  reportVersion: 1;
-  source: {
-    kind: "synthetic";
-    version: string;
-  };
-  mapping: {
-    version: string;
-    sourceEntity: string;
-    targetEntity: string;
-  };
-  schemaVersion: string;
-  execution: {
-    mode: "preview_only";
-    sourceWrites: "forbidden";
-    targetWrites: "forbidden";
-  };
-  counts: {
-    source: number;
-    accepted: number;
-    rejected: number;
-    target: number;
-  };
-  rejections: BackfillRejection[];
-  reconciliation: {
-    status: "reconciled" | "needs_human";
-    unexplainedDifference: number;
-  };
-  resumeKey: string;
-  hashes: {
-    sourceSha256: string;
-    mappingSha256: string;
-    acceptedTargetSha256: string;
-    reportSha256: string;
-  };
-};
 
 export class BackfillPreviewContractError extends Error {
   readonly code: string;

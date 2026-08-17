@@ -1,24 +1,24 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
-import type { OrganizationRole } from "../../modules/access/contract.ts";
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
-import type { TaskState, TaskTransitionPolicy } from "../../modules/tasks/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
+import type { OrganizationRole } from "../../modules/access/domain/contract.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
+import type { TaskState, TaskTransitionPolicy } from "../../modules/tasks/domain/contract.ts";
 import {
   evaluateTaskCreation,
   evaluateTaskTransition,
   approveTaskTransitionPolicy,
   proposeTaskTransitionPolicy,
-} from "../../modules/tasks/transition-policy.ts";
+} from "../../modules/tasks/domain/transition-policy.ts";
 import {
   RELEASE_1_TASK_INITIAL_STATE,
   RELEASE_1_TASK_TRANSITION_RULES,
   hasRelease1TaskPolicyContent,
-} from "../../modules/tasks/release1-policy.ts";
+} from "../../modules/tasks/domain/release1-policy.ts";
 import {
   TaskWorkflowError,
   type TaskTransitionRepository,
   type TaskTransitionRepositoryInput,
   type TaskTransitionResult,
-} from "../../modules/tasks/service.ts";
+} from "../../modules/tasks/application/service.ts";
 
 interface StoredTask {
   readonly taskId: string;

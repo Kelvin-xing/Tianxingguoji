@@ -1,11 +1,11 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 import {
   DocumentUploadError,
   type DocumentUploadIntentResult,
   type DocumentUploadRepository,
-} from "../../modules/documents/upload-service.ts";
-import type { DocumentVersionRecord } from "../../modules/documents/contract.ts";
+} from "../../modules/documents/application/upload-service.ts";
+import type { DocumentVersionRecord } from "../../modules/documents/domain/contract.ts";
 
 interface StoredDocument {
   readonly organizationId: string;

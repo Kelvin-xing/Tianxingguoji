@@ -5,15 +5,15 @@ import {
   TaskWorkflowError,
   TaskWorkflowService,
   type TransitionTaskCommand,
-} from "../../modules/tasks/service.ts";
+} from "../../modules/tasks/application/service.ts";
 import {
   RELEASE_1_TASK_INITIAL_STATE,
   RELEASE_1_TASK_TRANSITION_RULES,
-} from "../../modules/tasks/release1-policy.ts";
+} from "../../modules/tasks/domain/release1-policy.ts";
 import {
   approveTaskTransitionPolicy,
   proposeTaskTransitionPolicy,
-} from "../../modules/tasks/transition-policy.ts";
+} from "../../modules/tasks/domain/transition-policy.ts";
 import { InMemoryTaskTransitionRepository } from "../fakes/task-workflow.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";

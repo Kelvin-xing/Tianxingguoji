@@ -9,7 +9,7 @@ import {
   classifyPotentialDuplicate,
   evaluateCrmDeletionTransition,
   evaluatePrimaryContacts,
-} from "../../modules/crm/contract.ts";
+} from "../../modules/crm/domain/contract.ts";
 import { planMigration } from "../../scripts/db/plan-migration.ts";
 
 test("never treats CRM attributes as identity or automatic merge authority", () => {

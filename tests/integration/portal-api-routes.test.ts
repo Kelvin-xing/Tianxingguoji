@@ -12,8 +12,8 @@ import {
   createPortalSessionHandlers,
 } from "../../app/api/v1/portal/sessions/route.ts";
 import { createPortalWorkspaceGetHandler } from "../../app/api/v1/portal/workspace/route.ts";
-import { PortalPolicyError } from "../../modules/external-portal/contract.ts";
-import { PortalRuntimeUnavailable } from "../../modules/external-portal/runtime.ts";
+import { PortalPolicyError } from "../../modules/external-portal/domain/contract.ts";
+import { PortalRuntimeUnavailable } from "../../modules/external-portal/infrastructure/runtime.ts";
 
 const CASE_ID = "11111111-1111-4111-8111-111111111111";
 const GRANT_ID = "22222222-2222-4222-8222-222222222222";

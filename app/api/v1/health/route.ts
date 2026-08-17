@@ -1,7 +1,7 @@
 import {
   createApiError,
   handleApiRequest,
-} from "../../../../modules/shared/api-contract.ts";
+} from "../../../../modules/shared/public.ts";
 
 export function GET(request: Request): Promise<Response> {
   return handleApiRequest(request, () => ({ status: "ok" }));

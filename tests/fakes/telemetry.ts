@@ -1,6 +1,6 @@
-import type { AuditEvent } from "../../modules/audit/contract.ts";
-import type { ProductTelemetryEvent } from "../../modules/operations/telemetry-contract.ts";
-import type { AlertOccurrence } from "../../modules/operations/alert-catalogue.ts";
+import type { AuditEvent } from "../../modules/audit/domain/contract.ts";
+import type { ProductTelemetryEvent } from "../../modules/operations/domain/telemetry-contract.ts";
+import type { AlertOccurrence } from "../../modules/operations/domain/alert-catalogue.ts";
 import {
   TELEMETRY_OPERATIONS_COMPONENT,
   type MandatoryAuditTransaction,
@@ -9,7 +9,7 @@ import {
   type TelemetryHealthyTransition,
   type TelemetryOperationsState,
   type TelemetryOperationsStateAdapter,
-} from "../../modules/operations/telemetry-service.ts";
+} from "../../modules/operations/application/telemetry-service.ts";
 
 const INITIAL_TIMESTAMP = "2026-08-12T00:00:00.000Z";
 

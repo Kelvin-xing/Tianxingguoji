@@ -9,7 +9,7 @@ import {
   buildOutboxMessage,
   buildTelemetryEvent,
   AuditContractError,
-} from "../../modules/audit/contract.ts";
+} from "../../modules/audit/domain/contract.ts";
 import {
   buildDeliveryReceipt,
   buildPendingItemNotification,
@@ -17,13 +17,13 @@ import {
   MINIMAL_NOTIFICATION_CONTENT_CODE,
   MINIMAL_NOTIFICATION_TEXT,
   NotificationContractError,
-} from "../../modules/notifications/contract.ts";
+} from "../../modules/notifications/domain/contract.ts";
 import {
   completeIdempotencyRecord,
   createIdempotencyRecord,
   evaluateIdempotency,
   hashRequestPayload,
-} from "../../modules/shared/idempotency.ts";
+} from "../../modules/shared/domain/idempotency.ts";
 import { planMigration } from "../../scripts/db/plan-migration.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000201";

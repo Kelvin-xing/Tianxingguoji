@@ -9,12 +9,12 @@ import {
   type CaseDashboardProjectionRepository,
   type CaseDashboardProjectionSource,
   type DashboardAuthority,
-} from "../../modules/operations/case-dashboard-projection.ts";
-import { createCaseDashboardGetHandler } from "../../modules/operations/case-dashboard-route.ts";
+} from "../../modules/operations/domain/case-dashboard-projection.ts";
+import { createCaseDashboardGetHandler } from "../../modules/operations/infrastructure/case-dashboard-route.ts";
 import {
   CaseDashboardRuntimeUnavailable,
   getCaseDashboardRuntime,
-} from "../../modules/operations/case-dashboard-runtime.ts";
+} from "../../modules/operations/infrastructure/case-dashboard-runtime.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 const FOUNDER_ID = "22222222-2222-4222-8222-222222222222";

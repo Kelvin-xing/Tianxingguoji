@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { composeK12Manifest } from "../../modules/cases/contract.ts";
+import { composeK12Manifest } from "../../modules/cases/domain/contract.ts";
 import {
   AssessmentService,
   AssessmentServiceError,
-} from "../../modules/cases/assessment-service.ts";
+} from "../../modules/cases/application/assessment-service.ts";
 import { InMemoryAssessmentRepository } from "../fakes/assessment.ts";
 
 const ADVISOR = Object.freeze({

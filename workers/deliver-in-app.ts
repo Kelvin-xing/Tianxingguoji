@@ -1,8 +1,8 @@
 import {
   MAX_IN_APP_DELIVERY_ATTEMPTS,
   type InAppNotificationService,
-} from "../modules/notifications/service.ts";
-import { getInAppNotificationRuntime } from "../modules/notifications/runtime.ts";
+} from "../modules/notifications/server.ts";
+import { getInAppNotificationRuntime } from "../modules/notifications/server.ts";
 
 export class InAppDeliveryRetryableWorkerError extends Error {
   readonly retryable = true;

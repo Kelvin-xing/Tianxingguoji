@@ -1,17 +1,17 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   proposeSchoolOverlay,
   sha256SchoolValue,
   type JsonValue,
   type SchoolBaseRecord,
   type SchoolOverlayRevision,
-} from "../../modules/schools/contract.ts";
+} from "../../modules/schools/domain/contract.ts";
 import {
   SchoolServiceError,
   type ProvisionalSchoolResult,
   type SchoolChangeRequestResult,
   type SchoolRepository,
-} from "../../modules/schools/service.ts";
+} from "../../modules/schools/application/service.ts";
 
 interface StoredResult<Result> {
   readonly requestHash: string;

@@ -8,9 +8,9 @@ import {
   parseCaseWorkspaceTab,
   type CaseWorkspaceProjection,
 } from "@/components/cases/workspace-model";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 
 export const dynamic = "force-dynamic";
 

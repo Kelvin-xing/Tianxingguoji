@@ -1,23 +1,23 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import {
   CaseOutcomeError,
   type CaseOutcomeDraft,
   type SchoolTargetTransitionCommand,
-} from "@/modules/cases/outcome-service";
+} from "@/modules/cases/server";
 import {
   CaseOutcomeRuntimeUnavailable,
   getCaseOutcomeRuntime,
-} from "@/modules/cases/outcome-runtime";
-import type { SchoolTargetEvidence } from "@/modules/cases/transition-policy";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+} from "@/modules/cases/server";
+import type { SchoolTargetEvidence } from "@/modules/cases/public";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   ApiContractError,
   createApiError,
   handleApiRequest,
-} from "@/modules/shared/api-contract";
+} from "@/modules/shared/public";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;

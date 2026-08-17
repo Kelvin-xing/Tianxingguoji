@@ -18,11 +18,11 @@ case's immutable, four-layer K12 manifest:
 - `PATCH /api/v1/cases/:caseId/assessment` updates exactly one answer with an
   `Idempotency-Key` and an answer `expected_record_version`.
 
-`modules/cases/schema-resolver.ts` derives the shared UI/server field model
+`modules/cases/domain/schema-resolver.ts` derives the shared UI/server field model
 only from the case-pinned `K12ManifestComposition`. It preserves each field's
 module layer, version-derived identity, value type, visibility, and blocker
 stages without adding a parallel client validation catalogue.
-`modules/cases/assessment-service.ts` owns command validation, canonical
+`modules/cases/application/assessment-service.ts` owns command validation, canonical
 request hashing, redacted audit/outbox construction, and the public transaction
 port. Route Handlers are BFF adapters only. `AssessmentEditor` receives a
 serializable DTO, preserves failed drafts, and never decides whether a value or

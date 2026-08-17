@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { getGuardianRelationshipRuntime } from "@/modules/crm/runtime";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { getGuardianRelationshipRuntime } from "@/modules/crm/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 import { mapGuardianRelationshipError } from "../route";
 

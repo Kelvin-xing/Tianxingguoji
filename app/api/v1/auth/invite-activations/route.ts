@@ -6,17 +6,17 @@ import {
   getActivationCookieSigningKey,
   PENDING_INVITE_ACTIVATION_COOKIE_NAME,
   pendingInviteActivationCookieOptions,
-} from "@/modules/identity/activation-cookie";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { buildCognitoAuthorizeUrl } from "@/lib/auth/cognito";
-import { getCognitoAuthConfig } from "@/lib/auth/config";
+} from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { buildCognitoAuthorizeUrl } from "@/modules/identity/server";
+import { getCognitoAuthConfig } from "@/modules/identity/server";
 import {
   COGNITO_STATE_COOKIE_NAME,
   COGNITO_VERIFIER_COOKIE_NAME,
   cognitoFlowCookieOptions,
-} from "@/lib/auth/cookies";
-import { createPkcePair } from "@/lib/auth/pkce";
+} from "@/modules/identity/server";
+import { createPkcePair } from "@/modules/identity/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

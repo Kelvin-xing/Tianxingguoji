@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TicketModal } from '@/components/crawler/TicketModal'
-import { crawlerApi } from '@/lib/crawler/client'
+import { crawlerApi } from '@/modules/schools/client'
 import type { AdmissionRecord } from '@/types'
 
 const ALL = 'all'

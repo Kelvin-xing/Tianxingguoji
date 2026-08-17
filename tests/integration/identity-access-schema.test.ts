@@ -8,14 +8,14 @@ import {
   SESSION_POLICY,
   evaluateSession,
   selectAvailableSessionSlot,
-} from "../../modules/identity/contract.ts";
+} from "../../modules/identity/domain/contract.ts";
 import {
   COLLABORATOR_CAPABILITIES,
   COLLABORATOR_SCOPES,
   GRANT_POLICY,
   calculateDefaultGrantExpiry,
   evaluateScopeGrant,
-} from "../../modules/access/contract.ts";
+} from "../../modules/access/domain/contract.ts";
 import { planMigration } from "../../scripts/db/plan-migration.ts";
 
 test("allocates at most three active sessions without implicit eviction", () => {

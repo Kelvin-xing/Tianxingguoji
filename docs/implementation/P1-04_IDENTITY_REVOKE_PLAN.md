@@ -61,7 +61,7 @@ transaction; the in-memory adapter is only a deterministic contract adapter.
 
 ## Public Interfaces
 
-`modules/identity/revoke-workflow.ts` exposes:
+`modules/identity/application/revoke-workflow.ts` exposes:
 
 - `IdentityRevokeWorkflow.disableUser(command)`: validates identifiers and
   expected record version, validates reason/idempotency codes, creates matching

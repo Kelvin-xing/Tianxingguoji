@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { BillingContractError } from "../../modules/platform-billing/contract.ts";
-import { PlatformBillingPersistenceError } from "../../modules/platform-billing/repository.ts";
+import { BillingContractError } from "../../modules/platform-billing/domain/contract.ts";
+import { PlatformBillingPersistenceError } from "../../modules/platform-billing/application/repository-port.ts";
 import {
   getPlatformBillingRuntime,
   PlatformBillingRuntimeUnavailable,
-} from "../../modules/platform-billing/runtime.ts";
+} from "../../modules/platform-billing/infrastructure/runtime.ts";
 import { FakePlatformBillingRepository } from "../fakes/platform-billing-repository.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";

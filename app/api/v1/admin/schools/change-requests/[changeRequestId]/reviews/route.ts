@@ -1,17 +1,17 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   SchoolGovernanceError,
   type ReviewSchoolChangeCommand,
-} from "@/modules/schools/governance-service";
+} from "@/modules/schools/server";
 import {
   SchoolGovernanceRuntimeUnavailable,
   getSchoolGovernanceRuntime,
-} from "@/modules/schools/school-governance-runtime";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
+} from "@/modules/schools/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;

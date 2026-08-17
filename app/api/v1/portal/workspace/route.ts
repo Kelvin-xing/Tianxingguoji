@@ -1,6 +1,6 @@
-import { PortalPolicyError, type PortalCaseReadV1 } from "../../../../../modules/external-portal/contract.ts";
-import { mapPortalErrorToPublicResponse } from "../../../../../modules/external-portal/policy.ts";
-import { PortalRuntimeUnavailable } from "../../../../../modules/external-portal/runtime.ts";
+import { PortalPolicyError, type PortalCaseReadV1 } from "../../../../../modules/external-portal/public.ts";
+import { mapPortalErrorToPublicResponse } from "../../../../../modules/external-portal/public.ts";
+import { PortalRuntimeUnavailable } from "../../../../../modules/external-portal/server.ts";
 import { PORTAL_SESSION_COOKIE_NAME } from "../sessions/route.ts";
 
 export const runtime = "nodejs";

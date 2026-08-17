@@ -1,9 +1,9 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { Icon } from '@/components/workspace/Icon'
-import { requireActor } from '@/lib/auth/actor'
-import { getCaseDetail } from '@/lib/cases/service'
-import { ApiContractError } from '@/modules/shared/api-contract'
+import { requireActor } from '@/modules/identity/web'
+import { getCaseDetail } from '@/modules/cases/server'
+import { ApiContractError } from '@/modules/shared/public'
 import type { CaseRecord } from '@/types'
 
 const stageSequence: Array<{ key: CaseRecord['stage']; label: string }> = [

@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { buildCognitoLogoutUrl } from "@/lib/auth/cognito";
-import { getCognitoAuthConfig } from "@/lib/auth/config";
-import { loadAuthMode } from "@/lib/auth/mode";
-import { SESSION_COOKIE_NAME, clearAuthCookie } from "@/lib/auth/cookies";
-import { getIdentityRuntime } from "@/modules/identity/runtime";
+import { buildCognitoLogoutUrl } from "@/modules/identity/server";
+import { getCognitoAuthConfig } from "@/modules/identity/server";
+import { loadAuthMode } from "@/modules/identity/server";
+import { SESSION_COOKIE_NAME, clearAuthCookie } from "@/modules/identity/server";
+import { getIdentityRuntime } from "@/modules/identity/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

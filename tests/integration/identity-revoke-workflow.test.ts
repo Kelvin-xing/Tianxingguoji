@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { CognitoInviteAdapter, type CognitoAdminClient } from "../../modules/identity/cognito-adapter.ts";
+import { CognitoInviteAdapter, type CognitoAdminClient } from "../../modules/identity/infrastructure/cognito-adapter.ts";
 import {
   COGNITO_REVOKE_RETRY_BACKOFF_MS,
   IdentityRevokeError,
   IdentityRevokeWorkflow,
-} from "../../modules/identity/revoke-workflow.ts";
-import { IdentityService, IdentityServiceError, type InviteDeliveryChannel } from "../../modules/identity/service.ts";
-import { InMemoryIdentitySessionRepository } from "../../modules/identity/session-repository.ts";
+} from "../../modules/identity/application/revoke-workflow.ts";
+import { IdentityService, IdentityServiceError, type InviteDeliveryChannel } from "../../modules/identity/application/service.ts";
+import { InMemoryIdentitySessionRepository } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 import { reconcileCognitoRevokes } from "../../workers/reconcile-cognito.ts";
 import { SyntheticCognitoFake } from "../fakes/cognito.ts";
 

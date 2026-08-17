@@ -10,7 +10,7 @@ import {
   type DuplicateMergeRepository,
   type DuplicateMergeResult,
   type DuplicateMergeUndoResult,
-} from "../../modules/crm/merge-service.ts";
+} from "../../modules/crm/application/merge-service.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 const ADVISOR = Object.freeze({

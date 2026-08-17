@@ -9,12 +9,12 @@ import {
   evaluateTaskTransition,
   proposeTaskTransitionPolicy,
   type TaskTransitionPolicy,
-} from "../../../modules/tasks/transition-policy.ts";
+} from "../../../modules/tasks/domain/transition-policy.ts";
 import {
   RELEASE_1_TASK_INITIAL_STATE,
   RELEASE_1_TASK_TRANSITION_RULES,
-} from "../../../modules/tasks/release1-policy.ts";
-import type { TaskTransitionRule } from "../../../modules/tasks/contract.ts";
+} from "../../../modules/tasks/domain/release1-policy.ts";
+import type { TaskTransitionRule } from "../../../modules/tasks/domain/contract.ts";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
 const caseId = "00000000-0000-4000-8000-000000000002";

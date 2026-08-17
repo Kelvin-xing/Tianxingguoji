@@ -10,7 +10,7 @@ import {
   evaluateContractEffectivePeriod,
   parseCaseLifecycleProjectionEvent,
   resolveBillingMonthCutoff,
-} from "../../../modules/platform-billing/contract.ts";
+} from "../../../modules/platform-billing/domain/contract.ts";
 import {
   evaluateContractActivation,
   evaluateContractDraftCreation,
@@ -18,7 +18,7 @@ import {
   evaluatePlatformBillingOperation,
   projectSubscriptionStatus,
   type PlatformBillingActor,
-} from "../../../modules/platform-billing/policy.ts";
+} from "../../../modules/platform-billing/domain/policy.ts";
 
 const ids = Object.freeze({
   organization: "11111111-1111-4111-8111-111111111111",

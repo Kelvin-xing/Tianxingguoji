@@ -5,8 +5,8 @@ import {
   evaluateSchoolOverlayApproval,
   sha256SchoolValue,
   type SchoolBaseRecord,
-} from "../../modules/schools/contract.ts";
-import { SchoolService, SchoolServiceError } from "../../modules/schools/service.ts";
+} from "../../modules/schools/domain/contract.ts";
+import { SchoolService, SchoolServiceError } from "../../modules/schools/application/service.ts";
 import { InMemorySchoolRepository } from "../fakes/school-change.ts";
 
 const ADVISOR = Object.freeze({

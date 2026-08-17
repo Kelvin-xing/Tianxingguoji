@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Icon } from '@/components/workspace/Icon'
-import { previewCaseWorkspaceAdapter } from '@/lib/case-workspace/adapter'
+import { previewCaseWorkspaceAdapter } from '@/modules/cases/server'
 
 const tasks = previewCaseWorkspaceAdapter.listCases().flatMap((record) => record.tasks.map((task) => ({ ...task, caseId: record.id, caseNumber: record.case_number, studentName: record.student_name })))
 

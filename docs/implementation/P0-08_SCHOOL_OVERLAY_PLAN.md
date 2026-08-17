@@ -29,7 +29,7 @@ Out of scope: crawler publishing or snapshot synchronization, warning acceptance
 
 ## Public Contract
 
-`modules/schools/contract.ts` exposes JSON canonicalization and SHA-256 helpers, immutable base/overlay types, candidate proposal, reviewer approval/disable receipts, and role-specific approval decisions. `modules/schools/resolver.ts` exposes `resolveSchoolView` and `reconcileSchoolOverlay`; it has no database or network side effect.
+`modules/schools/domain/contract.ts` exposes JSON canonicalization and SHA-256 helpers, immutable base/overlay types, candidate proposal, reviewer approval/disable receipts, and role-specific approval decisions. `modules/schools/domain/resolver.ts` exposes `resolveSchoolView` and `reconcileSchoolOverlay`; it has no database or network side effect.
 
 The resolver selects the highest approved revision for the same organization and School, ignores candidate/rejected/disabled revisions, applies overlay values over a cloned base, and returns frozen fields, provenance, conflict data, and a deterministic hash. It does not mutate the caller's base or revision objects.
 

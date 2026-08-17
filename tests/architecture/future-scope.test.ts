@@ -7,7 +7,7 @@ import {
   FutureFeatureDisabledError,
   RELEASE_ONE_NAVIGATION_PLACEHOLDERS,
   assertFutureFeatureDisabled,
-} from "../../modules/future/feature-contracts.ts";
+} from "../../modules/future/domain/feature-contracts.ts";
 
 test("future AI, import, and multi-tenant capabilities remain disabled by contract in Release 1", () => {
   for (const contract of Object.values(FUTURE_FEATURE_CONTRACTS)) {
@@ -45,7 +45,7 @@ test("only the approved visible Release 1 placeholders are exposed to navigation
 
 test("the future contract introduces no Release 1 execution dependency or secret-backed adapter", async () => {
   const source = await readFile(
-    new URL("../../modules/future/feature-contracts.ts", import.meta.url),
+    new URL("../../modules/future/domain/feature-contracts.ts", import.meta.url),
     "utf8",
   );
 

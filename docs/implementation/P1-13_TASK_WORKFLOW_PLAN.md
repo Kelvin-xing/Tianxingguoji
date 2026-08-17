@@ -34,8 +34,8 @@ Founder cover without treating every Founder as a Primary Advisor.
 
 ## Ownership And Enforcement
 
-`modules/tasks/release1-policy.ts` owns the immutable Release 1 policy shape.
-`modules/tasks/transition-policy.ts` permits a candidate to become approved
+`modules/tasks/domain/release1-policy.ts` owns the immutable Release 1 policy shape.
+`modules/tasks/domain/transition-policy.ts` permits a candidate to become approved
 only when it carries an `OD-06: resolved` receipt and exactly that policy.
 
 `TaskWorkflowService.transitionTask` creates a new receipt ID and constructs
@@ -65,7 +65,7 @@ envelope and maps stale versions to `409 STALE_VERSION`, malformed framing to
 `400 INVALID_REQUEST`, policy failures to `503 SERVICE_UNAVAILABLE`, and
 authorization denials without internal state disclosure.
 
-`modules/tasks/runtime.ts` has no local, JSON, mock, Neon, or cloud fallback.
+`modules/tasks/infrastructure/runtime.ts` has no local, JSON, mock, Neon, or cloud fallback.
 Without a configured approved RDS transaction adapter, all task transition
 routes fail closed with `503 SERVICE_UNAVAILABLE`.
 

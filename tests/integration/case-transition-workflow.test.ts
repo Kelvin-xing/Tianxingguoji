@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 import {
   CaseTransitionError,
   CaseTransitionService,
   type TransitionServiceCaseCommand,
-} from "../../modules/cases/transition-service.ts";
+} from "../../modules/cases/application/transition-service.ts";
 import { InMemoryCaseTransitionRepository } from "../fakes/case-transition.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";

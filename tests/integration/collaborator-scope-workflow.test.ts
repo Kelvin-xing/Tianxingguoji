@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AccessScopeError, AccessScopeService } from "../../modules/access/service.ts";
+import { AccessScopeError, AccessScopeService } from "../../modules/access/application/service.ts";
 import { InMemoryCollaboratorScopeRepository } from "../fakes/collaborator-scope.ts";
 
 const PRIMARY_ADVISOR = Object.freeze({

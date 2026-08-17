@@ -11,11 +11,11 @@ import {
   sha256SchoolValue,
   type SchoolBaseRecord,
   type SchoolOverlayRevision,
-} from "../../../modules/schools/contract.ts";
+} from "../../../modules/schools/domain/contract.ts";
 import {
   reconcileSchoolOverlay,
   resolveSchoolView,
-} from "../../../modules/schools/resolver.ts";
+} from "../../../modules/schools/domain/resolver.ts";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
 const schoolId = "00000000-0000-4000-8000-000000000002";

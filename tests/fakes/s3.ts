@@ -1,4 +1,4 @@
-import { DOCUMENT_OBJECT_REGION, type DocumentObjectRegion } from "../../modules/documents/contract.ts";
+import { DOCUMENT_OBJECT_REGION, type DocumentObjectRegion } from "../../modules/documents/domain/contract.ts";
 
 export type SyntheticS3Operation =
   | "put_object"

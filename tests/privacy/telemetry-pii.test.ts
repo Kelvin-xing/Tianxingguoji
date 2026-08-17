@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildProductTelemetryEvent } from "../../modules/operations/telemetry-policy.ts";
-import { ProductTelemetryPolicyError } from "../../modules/operations/telemetry-contract.ts";
+import { buildProductTelemetryEvent } from "../../modules/operations/domain/telemetry-policy.ts";
+import { ProductTelemetryPolicyError } from "../../modules/operations/domain/telemetry-contract.ts";
 import retention from "../../schema/operations/product-telemetry-retention.v1.json" with { type: "json" };
 
 const UUID = "11111111-1111-4111-8111-111111111111";

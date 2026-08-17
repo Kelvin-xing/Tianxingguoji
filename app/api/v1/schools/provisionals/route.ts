@@ -1,14 +1,14 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import {
   SchoolServiceError,
   type CreateProvisionalSchoolCommand,
-} from "@/modules/schools/service";
-import { SchoolRuntimeUnavailable, getSchoolRuntime } from "@/modules/schools/runtime";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
+} from "@/modules/schools/server";
+import { SchoolRuntimeUnavailable, getSchoolRuntime } from "@/modules/schools/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 

@@ -8,9 +8,9 @@ management, retention scheduling, purge, S3 operations, or a production RDS adap
 
 ## Scope And Ownership
 
-- `modules/documents/version-service.ts` constructs validated, redacted commands and
+- `modules/documents/application/version-service.ts` constructs validated, redacted commands and
   effect bundles.
-- `modules/documents/version-runtime.ts` has no fallback and fails closed until one
+- `modules/documents/infrastructure/version-runtime.ts` has no fallback and fails closed until one
   HK RDS transaction adapter is composed.
 - `POST /api/v1/cases/:caseId/documents/:documentId/version-rollbacks` moves the
   active pointer only to an eligible clean version.

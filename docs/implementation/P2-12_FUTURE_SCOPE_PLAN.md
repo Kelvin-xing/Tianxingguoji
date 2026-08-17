@@ -10,7 +10,7 @@
 
 ## Scope And Invariants
 
-`modules/future/feature-contracts.ts` is an immutable Release 1 boundary for
+`modules/future/domain/feature-contracts.ts` is an immutable Release 1 boundary for
 non-K12 services, AI reports, data import, multi-tenant operation,
 subscriptions, and retention/support workflows. Every listed feature has the
 single `disabled_by_contract` state. Its only permitted surface is a visible

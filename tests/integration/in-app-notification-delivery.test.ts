@@ -6,18 +6,18 @@ import {
   buildAuditEvent,
   buildOutboxMessage,
   type OutboxMessage,
-} from "../../modules/audit/contract.ts";
+} from "../../modules/audit/domain/contract.ts";
 import {
   MINIMAL_NOTIFICATION_CONTENT_CODE,
   MINIMAL_NOTIFICATION_TEXT,
-} from "../../modules/notifications/contract.ts";
+} from "../../modules/notifications/domain/contract.ts";
 import {
   InAppNotificationService,
-} from "../../modules/notifications/service.ts";
+} from "../../modules/notifications/application/service.ts";
 import {
   getInAppNotificationRuntime,
   InAppNotificationRuntimeUnavailable,
-} from "../../modules/notifications/runtime.ts";
+} from "../../modules/notifications/infrastructure/runtime.ts";
 import { InMemoryInAppNotificationRepository } from "../fakes/in-app-notification.ts";
 import {
   deliverNextInAppNotification,

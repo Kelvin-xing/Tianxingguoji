@@ -5,16 +5,16 @@ import {
   requireSupportingTransactionRunner,
   runSupportingModuleTransaction,
   SupportingRepositoryError,
-} from "../../modules/audit/production-repository.ts";
-import { readAvailableDocumentObject } from "../../modules/documents/production-repository.ts";
-import { recordNotificationEffect } from "../../modules/notifications/production-repository.ts";
-import type { DeliveryReceipt } from "../../modules/notifications/contract.ts";
-import { rebuildCaseDashboardProjection } from "../../modules/operations/case-dashboard-projection.ts";
+} from "../../modules/audit/infrastructure/production-repository.ts";
+import { readAvailableDocumentObject } from "../../modules/documents/infrastructure/production-repository.ts";
+import { recordNotificationEffect } from "../../modules/notifications/infrastructure/production-repository.ts";
+import type { DeliveryReceipt } from "../../modules/notifications/domain/contract.ts";
+import { rebuildCaseDashboardProjection } from "../../modules/operations/domain/case-dashboard-projection.ts";
 import type {
   TenantDatabaseContext,
   TenantTransaction,
   TenantTransactionRunner,
-} from "../../modules/shared/db.ts";
+} from "../../modules/shared/infrastructure/db.ts";
 
 const context: TenantDatabaseContext = Object.freeze({
   organizationId: "10000000-0000-4000-8000-000000000001",

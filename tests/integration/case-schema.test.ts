@@ -14,7 +14,7 @@ import {
   evaluateSchoolTargetTransition,
   evaluateTargetOutcome,
   parseK12Module,
-} from "../../modules/cases/contract.ts";
+} from "../../modules/cases/domain/contract.ts";
 import { planMigration } from "../../scripts/db/plan-migration.ts";
 
 const MODULE_PATHS = [

@@ -6,7 +6,7 @@ import {
   ModuleBoundaryError,
   assertModuleImportAllowed,
   assertModuleWriteAllowed,
-} from "../../modules/shared/module-registry.ts";
+} from "../../modules/shared/architecture/module-registry.ts";
 
 test("registers the exact Portal and Billing resources without taking tenant ownership", () => {
   assert.deepEqual(MODULE_REGISTRY.external_portal_access.owns, [
@@ -38,25 +38,25 @@ test("registers the exact Portal and Billing resources without taking tenant own
   }
 });
 
-test("keeps repositories private while exposing only contract, policy, and runtime seams", () => {
+test("keeps repositories private behind public and server facades", () => {
   for (const moduleId of ["external_portal_access", "platform_billing"] as const) {
     assert.deepEqual(
       MODULE_REGISTRY[moduleId].publicEntrypoints.map((path) => path.split("/").at(-1)),
-      ["contract.ts", "policy.ts", "runtime.ts"],
+      ["public.ts", "server.ts"],
     );
   }
 
   assert.throws(
     () => assertModuleImportAllowed(
-      "modules/platform-billing/runtime.ts",
-      "modules/external-portal/repository.ts",
+      "modules/platform-billing/infrastructure/runtime.ts",
+      "modules/external-portal/application/repository-port.ts",
     ),
     (error: unknown) => error instanceof ModuleBoundaryError && error.code === "CROSS_MODULE_INTERNAL_IMPORT",
   );
   assert.throws(
     () => assertModuleImportAllowed(
-      "modules/external-portal/runtime.ts",
-      "modules/platform-billing/repository.ts",
+      "modules/external-portal/infrastructure/runtime.ts",
+      "modules/platform-billing/application/repository-port.ts",
     ),
     (error: unknown) => error instanceof ModuleBoundaryError && error.code === "CROSS_MODULE_INTERNAL_IMPORT",
   );

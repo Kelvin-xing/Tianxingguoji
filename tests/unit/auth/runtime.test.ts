@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash, createSign, generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
-import { getAuthConfig, getCognitoAuthConfig, AuthConfigurationError } from '../../../lib/auth/config.ts'
-import { buildCognitoLogoutUrl, verifyCognitoIdentity } from '../../../lib/auth/cognito.ts'
-import { createPkcePair, equalsSecret } from '../../../lib/auth/pkce.ts'
-import { decryptProviderTokens, encryptProviderTokens } from '../../../lib/auth/session-crypto.ts'
+import { getAuthConfig, getCognitoAuthConfig, AuthConfigurationError } from '../../../modules/identity/infrastructure/auth-config.ts'
+import { buildCognitoLogoutUrl, verifyCognitoIdentity } from '../../../modules/identity/infrastructure/cognito-client.ts'
+import { createPkcePair, equalsSecret } from '../../../modules/identity/infrastructure/pkce.ts'
+import { decryptProviderTokens, encryptProviderTokens } from '../../../modules/identity/infrastructure/session-crypto.ts'
 
 function environment(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
   return {

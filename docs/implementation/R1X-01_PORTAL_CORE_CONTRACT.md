@@ -6,7 +6,7 @@
 | Date | 2026-08-13 (Asia/Hong_Kong) |
 | Repository | `erp-frontend/` |
 | Status | `passed` for the pure-logic slice only |
-| Binding decisions | `R1X-DECISION-BASELINE-20260812.md` DP-01 through DP-05 |
+| Binding decisions | `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` DP-01 through DP-05 |
 
 ## Outcome And Scope
 
@@ -26,7 +26,7 @@ It does not implement a database, migrations, RLS, transactions, repositories, r
 
 ## Enforcement Ownership
 
-`modules/external-portal/contract.ts` owns constants, typed inputs, validation, errors, and public response shapes. `modules/external-portal/policy.ts` owns pure authorization, effective-state, allowlist projection, session-bound, and public-error decisions.
+`modules/external-portal/domain/contract.ts` owns constants, typed inputs, validation, errors, and public response shapes. `modules/external-portal/domain/policy.ts` owns pure authorization, effective-state, allowlist projection, session-bound, and public-error decisions.
 
 A future tenant-scoped Portal repository remains responsible for fetching actor, case, viewer, organization, grant, and session facts in one transaction and atomically allocating session slots. This pure-logic slice does not claim concurrency, RLS, secret storage, audit, idempotency, or transaction guarantees.
 

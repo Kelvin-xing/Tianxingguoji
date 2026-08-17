@@ -1,14 +1,14 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "../../../../../../lib/auth/cookies.ts";
-import { getIdentityRuntime } from "../../../../../../modules/identity/runtime.ts";
+import { SESSION_COOKIE_NAME } from "../../../../../../modules/identity/server.ts";
+import { getIdentityRuntime } from "../../../../../../modules/identity/server.ts";
 import {
   createContractorTaskGetHandler,
   type ContractorTaskGetContext,
-} from "../../../../../../modules/tasks/contractor-route.ts";
+} from "../../../../../../modules/tasks/server.ts";
 import {
   getContractorTaskWorkspaceRuntime,
-} from "../../../../../../modules/tasks/contractor-workspace-runtime.ts";
+} from "../../../../../../modules/tasks/server.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -20,7 +20,7 @@ The migration creates `tianxing_app` with no superuser, DDL, role-administration
 ## Ownership And Contract
 
 - `infra/terraform/modules/rds/**` owns the RDS subnet group, database security group, parameter group, instance, and IAM policy permitting the ECS application role to connect as exactly `tianxing_app`.
-- `modules/shared/db.ts` owns the server-side connection and tenant transaction contract. It accepts an `ap-east-1.rds.amazonaws.com` host, port 5432, database `tianxing`, TLS validation, and the fixed application role. It does not accept a password or a client-provided database URL.
+- `modules/shared/infrastructure/db.ts` owns the server-side connection and tenant transaction contract. It accepts an `ap-east-1.rds.amazonaws.com` host, port 5432, database `tianxing`, TLS validation, and the fixed application role. It does not accept a password or a client-provided database URL.
 - `202608030030_008_expand_application_database_role.sql` is migration-role work only. The runtime application role cannot execute it or create tables.
 
 The `TenantTransactionRunner` performs `BEGIN`, parameterized `set_config` for organization and actor UUIDs, the owning operation, then `COMMIT`. A failure rolls back and releases the client. A missing organization setting causes RLS policies to match no rows; it never selects a default organization.

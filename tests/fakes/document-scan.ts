@@ -1,4 +1,4 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   DocumentScanError,
   type DocumentScanClaim,
@@ -8,7 +8,7 @@ import {
   type DocumentScanRepository,
   type DocumentScanVerdictResult,
   type DocumentScanWork,
-} from "../../modules/documents/scan-service.ts";
+} from "../../modules/documents/application/scan-service.ts";
 
 interface StoredVersion {
   readonly organizationId: string;

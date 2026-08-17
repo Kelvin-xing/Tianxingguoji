@@ -1,16 +1,16 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   successResponse,
-} from "@/modules/shared/api-contract";
-import { createRequestContext } from "@/modules/shared/request-context";
+} from "@/modules/shared/public";
+import { createRequestContext } from "@/modules/shared/public";
 import {
   CaseReconstructionRuntimeUnavailable,
   getCaseReconstructionRuntime,
-} from "@/modules/cases/reconstruction/runtime";
+} from "@/modules/cases/server";
 import {
   isCaseReconstructionEnabled,
   methodNotAllowedResponse,
@@ -18,7 +18,7 @@ import {
   reconstructionErrorResponse,
   reconstructionResultData,
   ReconstructionFeatureDisabledError,
-} from "@/modules/cases/reconstruction/route-contract";
+} from "@/modules/cases/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

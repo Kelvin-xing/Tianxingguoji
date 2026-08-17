@@ -4,12 +4,12 @@ import {
   type CollaboratorScope,
   type ScopeGrantDecision,
   type ScopeGrantStatus,
-} from "../../modules/access/contract.ts";
+} from "../../modules/access/domain/contract.ts";
 import type {
   AccessScopeRepository,
   GrantCollaboratorScopeResult,
-} from "../../modules/access/service.ts";
-import { AccessScopeError } from "../../modules/access/service.ts";
+} from "../../modules/access/application/service.ts";
+import { AccessScopeError } from "../../modules/access/application/service.ts";
 
 interface StoredCollaborator {
   readonly id: string;

@@ -7,7 +7,7 @@ import { Icon, type IconName } from '@/components/workspace/Icon'
 import {
   RELEASE_ONE_NAVIGATION_PLACEHOLDERS,
   type ReleaseOneNavigationPlaceholder,
-} from '@/modules/future/feature-contracts'
+} from '@/modules/future/public'
 
 const navItems: Array<{ href: string; label: string; icon: IconName; exact?: boolean }> = [
   { href: '/today', label: '今日工作', icon: 'layout-dashboard', exact: true },

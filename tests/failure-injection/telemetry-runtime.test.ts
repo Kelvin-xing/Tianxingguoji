@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildAuditEvent } from "../../modules/audit/contract.ts";
+import { buildAuditEvent } from "../../modules/audit/domain/contract.ts";
 import {
   MandatoryAuditUnavailableError,
   ProductTelemetryService,
-} from "../../modules/operations/telemetry-service.ts";
+} from "../../modules/operations/application/telemetry-service.ts";
 import {
   TELEMETRY_POLICY_VERSION,
   TELEMETRY_SCHEMA_VERSION,
-} from "../../modules/operations/telemetry-contract.ts";
-import type { TelemetryOperationsStateAdapter } from "../../modules/operations/telemetry-service.ts";
+} from "../../modules/operations/domain/telemetry-contract.ts";
+import type { TelemetryOperationsStateAdapter } from "../../modules/operations/application/telemetry-service.ts";
 import {
   FakeMandatoryAuditTransaction,
   FakeTelemetryOperationsState,

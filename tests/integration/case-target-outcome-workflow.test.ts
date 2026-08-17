@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 import {
   CaseOutcomeError,
   CaseOutcomeService,
   type SchoolTargetTransitionCommand,
-} from "../../modules/cases/outcome-service.ts";
+} from "../../modules/cases/application/outcome-service.ts";
 import {
   evaluateCaseTransitionPolicy,
   evaluateSchoolTargetTransitionPolicy,
   HK_K12_STANDARD_V1_TEMPLATE,
-} from "../../modules/cases/transition-policy.ts";
+} from "../../modules/cases/domain/transition-policy.ts";
 import { InMemoryCaseTargetOutcomeRepository } from "../fakes/case-target-outcome.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";

@@ -1,6 +1,6 @@
 import type { PortalGrantRouteDependencies } from "../route.ts";
 import { RequestInvalid, authenticateInternalPortalRequest, mapInternalError, portalJson, readIdempotencyKey, readObject, requireTrustedMutationOrigin } from "../route.ts";
-import { PortalRuntimeUnavailable } from "../../../../../../../modules/external-portal/runtime.ts";
+import { PortalRuntimeUnavailable } from "../../../../../../../modules/external-portal/server.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

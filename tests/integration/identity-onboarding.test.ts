@@ -6,17 +6,17 @@ import {
   CognitoInviteAdapter,
   type CognitoAdminClient,
   type CognitoAdminCreateUserRequest,
-} from "../../modules/identity/cognito-adapter.ts";
+} from "../../modules/identity/infrastructure/cognito-adapter.ts";
 import {
   decodePendingInviteActivation,
   encodePendingInviteActivation,
-} from "../../modules/identity/activation-cookie.ts";
+} from "../../modules/identity/infrastructure/activation-cookie.ts";
 import {
   IdentityService,
   IdentityServiceError,
   type InviteDeliveryChannel,
-} from "../../modules/identity/service.ts";
-import { InMemoryIdentitySessionRepository } from "../../modules/identity/session-repository.ts";
+} from "../../modules/identity/application/service.ts";
+import { InMemoryIdentitySessionRepository } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 
 const FOUNDER = Object.freeze({
   userId: "11111111-1111-4111-8111-111111111111",

@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import pg from "pg";
 
-import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage } from "../../modules/audit/contract.ts";
-import { createPostgreSqlAdapter } from "../../modules/cases/postgresql.ts";
-import { createProductionCaseCreationRepository } from "../../modules/cases/production-repository.ts";
-import { createTenantTransactionRunner, type DatabasePool } from "../../modules/shared/db.ts";
+import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage } from "../../modules/audit/domain/contract.ts";
+import { createPostgreSqlAdapter } from "../../modules/cases/infrastructure/postgresql.ts";
+import { createProductionCaseCreationRepository } from "../../modules/cases/infrastructure/production-repository.ts";
+import { createTenantTransactionRunner, type DatabasePool } from "../../modules/shared/infrastructure/db.ts";
 
 const adminUrl = process.env.P3_ISOLATED_POSTGRES_ADMIN_URL;
 const applicationUrl = process.env.P3_ISOLATED_POSTGRES_APP_URL;

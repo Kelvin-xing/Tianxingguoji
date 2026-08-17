@@ -52,7 +52,7 @@ governance; `P1-09` owns resolved views and targets.
 | Exact idempotency replay returns the original receipt; changed reuse is denied | Repository-scoped idempotency record in the same transaction |
 | Fact, candidate overlay/request, audit, outbox, and idempotency result commit together | `SchoolRepository` transaction port receives one `MutationEffectBundle`; synthetic adapter stages and swaps all state |
 | Audit/outbox omit identity, reason, proposed value, evidence URL, and quote | `buildAuditEvent`/`buildOutboxMessage` allowlists only aggregate IDs, state, version, request ID, and effect type |
-| Production has no local/JSON/Neon fallback | `modules/schools/runtime.ts` throws until an approved HK RDS composition installs the sole adapter |
+| Production has no local/JSON/Neon fallback | `modules/schools/infrastructure/runtime.ts` throws until an approved HK RDS composition installs the sole adapter |
 
 `SCHOOL_IDENTITY_FIELDS` retain P0-08 field-class treatment, including the
 Founder-only approval rule after P1-08. A name or URL is never used as a

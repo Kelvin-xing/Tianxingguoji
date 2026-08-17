@@ -1,5 +1,5 @@
 import { Icon } from '@/components/workspace/Icon'
-import { loadAuthMode, type AuthMode } from '@/lib/auth/mode'
+import { loadAuthMode, type AuthMode } from '@/modules/identity/server'
 
 export const dynamic = 'force-dynamic'
 

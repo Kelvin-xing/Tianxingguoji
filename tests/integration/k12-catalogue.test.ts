@@ -8,8 +8,8 @@ import {
   composeK12Manifest,
   evaluateAssessmentFieldAnswer,
   parseK12Module,
-} from "../../modules/cases/contract.ts";
-import { resolveAssessmentSchema } from "../../modules/cases/schema-resolver.ts";
+} from "../../modules/cases/domain/contract.ts";
+import { resolveAssessmentSchema } from "../../modules/cases/domain/schema-resolver.ts";
 
 const CATALOGUE_FILES = [
   "student-profile.v1.json",

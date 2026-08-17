@@ -12,7 +12,7 @@ import {
   assertModuleImportAllowed,
   assertModuleWriteAllowed,
   getModuleForPath,
-} from "../../modules/shared/module-registry.ts";
+} from "../../modules/shared/architecture/module-registry.ts";
 
 test("registers one owner for every authoritative resource", () => {
   const owners = new Map<string, string>();
@@ -36,51 +36,51 @@ test("registers one owner for every authoritative resource", () => {
 });
 
 test("resolves files to the module owning their longest source root", () => {
-  assert.equal(getModuleForPath("modules/cases/service.ts")?.id, "cases");
+  assert.equal(getModuleForPath("modules/cases/application/service.ts")?.id, "cases");
   assert.equal(getModuleForPath("@/modules/audit/query.ts")?.id, "audit_operations");
   assert.equal(getModuleForPath("app/api/v1/cases/route.ts")?.id, "adapters");
   assert.equal(getModuleForPath("workers/deliver-in-app.ts")?.id, "adapters");
-  assert.equal(getModuleForPath("components/layout/Sidebar.tsx"), undefined);
-  assert.equal(getModuleForPath("modules/external-portal/runtime.ts")?.id, "external_portal_access");
-  assert.equal(getModuleForPath("modules/platform-billing/runtime.ts")?.id, "platform_billing");
+  assert.equal(getModuleForPath("components/layout/Sidebar.tsx")?.id, "adapters");
+  assert.equal(getModuleForPath("modules/external-portal/infrastructure/runtime.ts")?.id, "external_portal_access");
+  assert.equal(getModuleForPath("modules/platform-billing/infrastructure/runtime.ts")?.id, "platform_billing");
 });
 
 test("allows internal imports and cross-module public contracts", () => {
   assert.doesNotThrow(() =>
-    assertModuleImportAllowed("modules/cases/service.ts", "modules/cases/repository.ts"),
+    assertModuleImportAllowed("modules/cases/application/service.ts", "modules/cases/repository.ts"),
   );
   assert.doesNotThrow(() =>
-    assertModuleImportAllowed("modules/cases/service.ts", "@/modules/crm/contract"),
+    assertModuleImportAllowed("modules/cases/application/service.ts", "@/modules/crm/public"),
   );
   assert.doesNotThrow(() =>
     assertModuleImportAllowed(
-      "modules/cases/service.ts",
-      "modules/shared/decision-guards.ts",
+      "modules/cases/application/service.ts",
+      "modules/shared/public.ts",
     ),
   );
   assert.doesNotThrow(() =>
-    assertModuleImportAllowed("app/api/v1/cases/route.ts", "modules/cases/contract.ts"),
+    assertModuleImportAllowed("app/api/v1/cases/route.ts", "modules/cases/public.ts"),
   );
   assert.doesNotThrow(() =>
     assertModuleImportAllowed(
       "app/api/v1/health/route.ts",
-      "modules/shared/api-contract.ts",
+      "modules/shared/public.ts",
     ),
   );
   assert.doesNotThrow(() =>
     assertModuleImportAllowed(
       "app/api/v1/health/route.ts",
-      "modules/shared/request-context.ts",
+      "modules/shared/public.ts",
     ),
   );
 });
 
 test("rejects imports of another module's internals", () => {
   assertBoundaryError(
-    () => assertModuleImportAllowed("modules/cases/service.ts", "modules/crm/repository.ts"),
+    () => assertModuleImportAllowed("modules/cases/application/service.ts", "modules/crm/repository.ts"),
     "CROSS_MODULE_INTERNAL_IMPORT",
     {
-      importer: "modules/cases/service.ts",
+      importer: "modules/cases/application/service.ts",
       importerModule: "cases",
       imported: "modules/crm/repository.ts",
       importedModule: "crm",
@@ -89,12 +89,12 @@ test("rejects imports of another module's internals", () => {
   assertBoundaryError(
     () =>
       assertModuleImportAllowed(
-        "modules/cases/service.ts",
+        "modules/cases/application/service.ts",
         "modules/cases/../crm/repository.ts",
       ),
     "CROSS_MODULE_INTERNAL_IMPORT",
     {
-      importer: "modules/cases/service.ts",
+      importer: "modules/cases/application/service.ts",
       importerModule: "cases",
       imported: "modules/crm/repository.ts",
       importedModule: "crm",
@@ -105,27 +105,27 @@ test("rejects imports of another module's internals", () => {
 test("keeps reconstruction repository private across module seams", () => {
   assert.doesNotThrow(() =>
     assertModuleImportAllowed(
-      "modules/access/service.ts",
-      "modules/cases/reconstruction/contract.ts",
+      "modules/access/application/service.ts",
+      "modules/cases/public.ts",
     ),
   );
   assert.doesNotThrow(() =>
     assertModuleImportAllowed(
-      "modules/access/service.ts",
-      "modules/cases/reconstruction/service.ts",
+      "modules/access/application/service.ts",
+      "modules/cases/server.ts",
     ),
   );
   assertBoundaryError(
     () =>
       assertModuleImportAllowed(
-        "modules/access/service.ts",
-        "modules/cases/reconstruction/repository.ts",
+        "modules/access/application/service.ts",
+        "modules/cases/infrastructure/reconstruction/postgresql-repository.ts",
       ),
     "CROSS_MODULE_INTERNAL_IMPORT",
     {
-      importer: "modules/access/service.ts",
+      importer: "modules/access/application/service.ts",
       importerModule: "access",
-      imported: "modules/cases/reconstruction/repository.ts",
+      imported: "modules/cases/infrastructure/reconstruction/postgresql-repository.ts",
       importedModule: "cases",
     },
   );
@@ -133,7 +133,7 @@ test("keeps reconstruction repository private across module seams", () => {
 
 test("rejects unregistered paths under the governed module roots", () => {
   assertBoundaryError(
-    () => assertModuleImportAllowed("modules/cases/service.ts", "modules/unregistered/internal.ts"),
+    () => assertModuleImportAllowed("modules/cases/application/service.ts", "modules/unregistered/internal.ts"),
     "UNREGISTERED_MODULE_PATH",
     { path: "modules/unregistered/internal.ts" },
   );
@@ -178,6 +178,78 @@ test("keeps all real cross-module imports on declared public entrypoints", () =>
   assert.deepEqual(violations, [], `Module import violations:\n${violations.join("\n")}`);
 });
 
+test("keeps domain and application dependencies pointing inward", () => {
+  const violations: string[] = [];
+
+  for (const sourceFile of walkSourceFiles(resolve(REPOSITORY_ROOT, "modules"))) {
+    const importer = toRepositoryPath(sourceFile);
+    const importerLayer = moduleLayer(importer);
+    if (!importerLayer || importerLayer.layer === "infrastructure") continue;
+
+    const source = readFileSync(sourceFile, "utf8");
+    for (const specifier of staticModuleSpecifiers(sourceFile, source)) {
+      const importedFile = resolveRepositoryImport(sourceFile, specifier);
+      if (!importedFile) continue;
+      const imported = toRepositoryPath(importedFile);
+      const importedLayer = moduleLayer(imported);
+      if (!importedLayer || importedLayer.moduleName !== importerLayer.moduleName) continue;
+
+      if (
+        importerLayer.layer === "domain" && importedLayer.layer !== "domain" ||
+        importerLayer.layer === "application" && importedLayer.layer === "infrastructure"
+      ) {
+        violations.push(`${importer} -> ${imported}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], `Layer dependency violations:\n${violations.join("\n")}`);
+});
+
+test("exposes each business module through explicit entrypoints", () => {
+  const missing: string[] = [];
+  const invalid: string[] = [];
+
+  for (const moduleName of BUSINESS_MODULES) {
+    for (const entrypointName of ["public.ts", "server.ts"] as const) {
+      const entrypoint = resolve(REPOSITORY_ROOT, "modules", moduleName, entrypointName);
+      if (!existsSync(entrypoint)) {
+        missing.push(toRepositoryPath(entrypoint));
+        continue;
+      }
+      const source = readFileSync(entrypoint, "utf8");
+      if (entrypointName === "public.ts" && source.includes('import "server-only";')) {
+        invalid.push(`${toRepositoryPath(entrypoint)} must remain runtime-neutral`);
+      }
+      if (entrypointName === "server.ts" && !source.includes('import "server-only";')) {
+        invalid.push(`${toRepositoryPath(entrypoint)} must be server-only`);
+      }
+    }
+  }
+
+  assert.deepEqual(missing, [], `Missing module entrypoints:\n${missing.join("\n")}`);
+  assert.deepEqual(invalid, [], `Invalid module entrypoints:\n${invalid.join("\n")}`);
+});
+
+test("keeps legacy lib limited to technical framework utilities", () => {
+  const actual = walkSourceFiles(resolve(REPOSITORY_ROOT, "lib"))
+    .map(toRepositoryPath)
+    .sort();
+
+  assert.deepEqual(actual, LEGACY_LIB_ALLOWLIST);
+  assert.deepEqual(walkSourceFiles(resolve(REPOSITORY_ROOT, "adapters")), []);
+});
+
+test("keeps the frozen knowledge feature free of runtime schema mutation", () => {
+  const source = readFileSync(
+    resolve(REPOSITORY_ROOT, "modules/future/infrastructure/knowledge-db.ts"),
+    "utf8",
+  );
+
+  assert.equal(/\bcreate\s+table\b/i.test(source), false);
+  assert.match(source, /FUTURE_KNOWLEDGE_FEATURE_FROZEN/);
+});
+
 test("keeps SQL writes inside the module that owns each table", () => {
   const violations: string[] = [];
 
@@ -204,13 +276,13 @@ test("marks repositories, database adapters, and runtime wiring as server-only",
       const name = filePath.split(sep).at(-1) ?? "";
       return name === "runtime.ts" ||
         name.endsWith("-runtime.ts") ||
-        name === "repository.ts" ||
         name.endsWith("-repository.ts") ||
         name === "postgresql.ts" ||
+        name === "db.ts" ||
+        name === "knowledge-db.ts" ||
         name === "student-persistence.ts" ||
-        filePath.endsWith(`${sep}modules${sep}shared${sep}db.ts`) ||
-        filePath.endsWith(`${sep}modules${sep}identity${sep}activation-cookie.ts`) ||
-        filePath.endsWith(`${sep}modules${sep}identity${sep}cognito-adapter.ts`);
+        name === "activation-cookie.ts" ||
+        name === "cognito-adapter.ts";
     }),
     ...walkSourceFiles(resolve(REPOSITORY_ROOT, "lib/runtime")),
   ];
@@ -273,7 +345,29 @@ function assertBoundaryError(
 }
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const GOVERNED_ROOTS = ["modules", "app/api/v1", "workers"] as const;
+const GOVERNED_ROOTS = ["modules", "app", "components", "workers"] as const;
+const BUSINESS_MODULES = [
+  "access",
+  "audit",
+  "cases",
+  "crm",
+  "documents",
+  "external-portal",
+  "future",
+  "identity",
+  "notifications",
+  "operations",
+  "platform-billing",
+  "schools",
+  "shared",
+  "tasks",
+] as const;
+const LEGACY_LIB_ALLOWLIST = [
+  "lib/api/client.ts",
+  "lib/i18n-provider.tsx",
+  "lib/runtime/local-synthetic-config.ts",
+  "lib/runtime/local-synthetic-readiness.ts",
+];
 const SOURCE_EXTENSION = /\.(?:ts|tsx)$/;
 const TEMPLATE_LITERAL = /`((?:\\[\s\S]|[^`])*)`/g;
 const SQL_WRITE = /\b(?:insert\s+into|update|delete\s+from)\s+([a-z][a-z0-9_]*)/gi;
@@ -349,6 +443,18 @@ function resolveRepositoryImport(importer: string, specifier: string): string | 
 
 function toRepositoryPath(filePath: string): string {
   return relative(REPOSITORY_ROOT, filePath).split(sep).join("/");
+}
+
+function moduleLayer(filePath: string): {
+  moduleName: string;
+  layer: "domain" | "application" | "infrastructure";
+} | undefined {
+  const match = filePath.match(/^modules\/([^/]+)\/(domain|application|infrastructure)\//);
+  if (!match) return undefined;
+  return {
+    moduleName: match[1],
+    layer: match[2] as "domain" | "application" | "infrastructure",
+  };
 }
 
 function sqlWriteTargets(source: string): string[] {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DOCUMENT_OBJECT_REGION } from "../../../modules/documents/contract.ts";
+import { DOCUMENT_OBJECT_REGION } from "../../../modules/documents/domain/contract.ts";
 import {
   DOCUMENT_EXPORT_MAX_TTL_MS,
   DOCUMENT_POLICY_VERSION,
@@ -13,11 +13,11 @@ import {
   type DocumentPolicyActor,
   type DocumentPolicyRepository,
   type DocumentRetentionContext,
-} from "../../../modules/documents/policy.ts";
+} from "../../../modules/documents/domain/policy.ts";
 import {
   DocumentPolicyRuntimeUnavailable,
   getDocumentPolicyRuntime as getFailClosedPolicyRuntime,
-} from "../../../modules/documents/policy-runtime.ts";
+} from "../../../modules/documents/infrastructure/policy-runtime.ts";
 
 const ids = Object.freeze({
   organization: "11111111-1111-4111-8111-111111111111",

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Icon } from '@/components/workspace/Icon'
-import { previewCaseWorkspaceAdapter } from '@/lib/case-workspace/adapter'
+import { previewCaseWorkspaceAdapter } from '@/modules/cases/server'
 
 const mockCases = previewCaseWorkspaceAdapter.listCases()
 const urgentCases = mockCases.filter((item) => item.blockers.length > 0)

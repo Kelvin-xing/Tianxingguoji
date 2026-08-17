@@ -22,10 +22,10 @@ The entity path is `Organization User (Contractor) -> current TaskAssignment -> 
 
 | Invariant | Enforcement owner |
 | --- | --- |
-| Actor must be the active Contractor in the request organization | Identity establishes the actor; `modules/access/policy.ts` performs the pure decision; the repository re-reads membership in the same transaction |
+| Actor must be the active Contractor in the request organization | Identity establishes the actor; `modules/access/domain/policy.ts` performs the pure decision; the repository re-reads membership in the same transaction |
 | Actor must be the current assignee of this exact Task | Task repository transaction locks/re-reads Task and current assignment before projection |
 | Assignment must carry `task_only` redaction | Access policy and Task repository transaction; any broader/missing redaction denies |
-| DTO exposes only task ID, title, task brief, due time, state, and record version | `modules/tasks/contractor-workspace.ts` constructs an exact allowlisted projection; repository input has no full-case payload |
+| DTO exposes only task ID, title, task brief, due time, state, and record version | `modules/tasks/application/contractor-workspace.ts` constructs an exact allowlisted projection; repository input has no full-case payload |
 | Identity contact, Student/Guardian/family fields, internal notes, case summary/ID, and raw case knowledge never appear | Server DTO type and exact-key tests; Route Handler serializes only that DTO; page receives only that DTO |
 | Revoked/reassigned assignment denies on the next request | Repository performs assignment authorization and projection in one transaction at request time; no cached authorization |
 | Production without approved HK RDS adapter denies | Dedicated contractor workspace runtime has no JSON, mock, Neon, or legacy fallback |

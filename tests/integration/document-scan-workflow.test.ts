@@ -6,12 +6,12 @@ import {
   createOpaqueDocumentObjectKey,
   type DocumentRecord,
   type DocumentVersionRecord,
-} from "../../modules/documents/contract.ts";
+} from "../../modules/documents/domain/contract.ts";
 import {
   DocumentScanRuntimeUnavailable,
   getDocumentScanRuntime,
-} from "../../modules/documents/scan-runtime.ts";
-import { DocumentScanService } from "../../modules/documents/scan-service.ts";
+} from "../../modules/documents/infrastructure/scan-runtime.ts";
+import { DocumentScanService } from "../../modules/documents/application/scan-service.ts";
 import {
   DocumentScanDeadLetterWorkerError,
   DocumentScanRetryableWorkerError,

@@ -5,8 +5,8 @@ import {
   ProductTelemetryPolicyError,
   TELEMETRY_POLICY_VERSION,
   TELEMETRY_SCHEMA_VERSION,
-} from "../../../modules/operations/telemetry-contract.ts";
-import { buildProductTelemetryEvent } from "../../../modules/operations/telemetry-policy.ts";
+} from "../../../modules/operations/domain/telemetry-contract.ts";
+import { buildProductTelemetryEvent } from "../../../modules/operations/domain/telemetry-policy.ts";
 
 const UUID = "11111111-1111-4111-8111-111111111111";
 

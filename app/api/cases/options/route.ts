@@ -1,6 +1,6 @@
-import { handleApiRequest, createApiError, type JsonValue } from '@/modules/shared/api-contract'
-import { requireActor, requireRole } from '@/lib/auth/actor'
-import { listCaseOptions } from '@/lib/cases/service'
+import { handleApiRequest, createApiError, type JsonValue } from '@/modules/shared/public'
+import { requireActor, requireRole } from '@/modules/identity/web'
+import { listCaseOptions } from '@/modules/cases/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -15,4 +15,3 @@ export async function GET(request: Request): Promise<Response> {
     }
   })
 }
-

@@ -1,9 +1,9 @@
-import { PortalPolicyError } from "../../../../../modules/external-portal/contract.ts";
-import { mapPortalErrorToPublicResponse } from "../../../../../modules/external-portal/policy.ts";
+import { PortalPolicyError } from "../../../../../modules/external-portal/public.ts";
+import { mapPortalErrorToPublicResponse } from "../../../../../modules/external-portal/public.ts";
 import {
   PortalRepositoryError,
   PortalRuntimeUnavailable,
-} from "../../../../../modules/external-portal/runtime.ts";
+} from "../../../../../modules/external-portal/server.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

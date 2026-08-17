@@ -1,10 +1,10 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   PortalRepositoryError,
   type PortalAccessGrant,
   type PortalRepository,
   type PortalSessionRecord,
-} from "../../modules/external-portal/repository.ts";
+} from "../../modules/external-portal/application/repository-port.ts";
 
 interface SeedViewer {
   readonly id: string;

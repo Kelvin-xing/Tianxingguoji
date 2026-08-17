@@ -1,6 +1,6 @@
-import { handleApiRequest, createApiError, type JsonValue } from '@/modules/shared/api-contract'
-import { requireActor, requireRole } from '@/lib/auth/actor'
-import { createCase, CaseCommandError, listCases, type CreateCaseInput } from '@/lib/cases/service'
+import { handleApiRequest, createApiError, type JsonValue } from '@/modules/shared/public'
+import { requireActor, requireRole } from '@/modules/identity/web'
+import { createCase, CaseCommandError, listCases, type CreateCaseInput } from '@/modules/cases/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -66,4 +66,3 @@ function parseCreateCaseInput(value: unknown): CreateCaseInput {
     primaryRoleBindingId: body.primary_role_binding_id as string | undefined,
   }
 }
-

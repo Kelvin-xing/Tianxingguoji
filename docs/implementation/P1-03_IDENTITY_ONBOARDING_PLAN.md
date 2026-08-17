@@ -115,7 +115,7 @@ repository adapters. It proves:
 
 The real RDS repository composition is intentionally not claimed as complete:
 P1-02 provides the TLS/IAM/RLS contract but not a production PG client/IAM
-token provider. `modules/identity/runtime.ts` therefore has no Neon/local
+token provider. `modules/identity/infrastructure/runtime.ts` therefore has no Neon/local
 fallback and causes the HTTP adapters to fail closed until an exact, separately
 approved HK runtime payload is composed. This is also why no live Cognito TOTP,
 RDS policy, browser, PII-log scan, Terraform, lint, or build evidence is

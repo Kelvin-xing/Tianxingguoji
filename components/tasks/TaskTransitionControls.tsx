@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import type { TaskState } from "@/modules/tasks/contract";
+import type { TaskState } from "@/modules/tasks/public";
 
 const ACTIONS_BY_STATE: Readonly<Record<TaskState, readonly TaskState[]>> = {
   created: [],

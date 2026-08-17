@@ -5,15 +5,15 @@ import {
   createOpaqueDocumentObjectKey,
   type DocumentRecord,
   type DocumentVersionRecord,
-} from "../../modules/documents/contract.ts";
+} from "../../modules/documents/domain/contract.ts";
 import {
   DocumentVersionRuntimeUnavailable,
   getDocumentVersionRuntime,
-} from "../../modules/documents/version-runtime.ts";
+} from "../../modules/documents/infrastructure/version-runtime.ts";
 import {
   DocumentVersionError,
   DocumentVersionService,
-} from "../../modules/documents/version-service.ts";
+} from "../../modules/documents/application/version-service.ts";
 import { InMemoryDocumentVersionRepository } from "../fakes/document-version.ts";
 
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";

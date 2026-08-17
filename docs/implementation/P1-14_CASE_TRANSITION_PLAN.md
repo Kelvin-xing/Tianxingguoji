@@ -30,7 +30,7 @@ denies. Collaborators cannot transition or roll back a Case.
 
 ## Ownership And Enforcement
 
-`modules/cases/transition-service.ts` owns the narrow command policy and
+`modules/cases/application/transition-service.ts` owns the narrow command policy and
 constructs the immutable transition-fact ID, redacted audit event, redacted
 outbox message, idempotency request hash, and versioned response. A raw
 rollback reason is retained only in the authoritative transition fact and the
@@ -51,7 +51,7 @@ the immutable transition fact, applying the controlled Case stage/version
 update, writing audit/outbox effects, and finalizing the idempotency result.
 A failed transaction commits no partial state or effects.
 
-`modules/cases/transition-runtime.ts` deliberately provides no JSON, mock,
+`modules/cases/infrastructure/transition-runtime.ts` deliberately provides no JSON, mock,
 Neon, or cloud fallback. Production fails closed with `503 SERVICE_UNAVAILABLE`
 until the approved RDS transaction adapter is composed.
 

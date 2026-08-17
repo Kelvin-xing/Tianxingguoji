@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getCrawlerConfig, saveCrawlerConfig } from '@/lib/crawler/db'
-import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
+import { getCrawlerConfig, saveCrawlerConfig } from '@/modules/schools/crawler-server'
+import { isResponse, requireLegacyActor } from '@/modules/identity/web'
 
 export const dynamic = 'force-dynamic'
 

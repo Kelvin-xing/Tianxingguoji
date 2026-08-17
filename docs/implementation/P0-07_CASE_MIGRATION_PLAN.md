@@ -39,7 +39,7 @@ Out of scope: production K12 field catalogues, real school or crawler data, Scho
 Approval authorizes creating or modifying only these files:
 
 1. Create `db/migrations/202608021830_003_expand_cases.sql`.
-2. Create `modules/cases/contract.ts`.
+2. Create `modules/cases/domain/contract.ts`.
 3. Create `schema/k12/base.synthetic.v1.json`.
 4. Create `schema/k12/education-stage.synthetic.v1.json`.
 5. Create `schema/k12/school-system.synthetic.v1.json`.
@@ -78,7 +78,7 @@ The additive migration creates seven tables in `public`:
 
 ## Public Contract Payload
 
-`modules/cases/contract.ts` exports:
+`modules/cases/domain/contract.ts` exports:
 
 - approved structural application, case stage, assessment status, target state, outcome code, answer semantic-state, and K12 module-layer constants;
 - typed JSON-module parsing and `composeK12Manifest`, requiring exactly four layers, K12-only modules, unique field IDs, deterministic canonical content, and a SHA-256 receipt;

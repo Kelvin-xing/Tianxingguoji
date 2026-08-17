@@ -1,15 +1,15 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   evaluateDocumentRestore,
   evaluateDocumentVersionActivation,
   type DocumentRecord,
   type DocumentVersionRecord,
-} from "../../modules/documents/contract.ts";
+} from "../../modules/documents/domain/contract.ts";
 import {
   DocumentVersionError,
   type DocumentVersionMutationResult,
   type DocumentVersionRepository,
-} from "../../modules/documents/version-service.ts";
+} from "../../modules/documents/application/version-service.ts";
 
 interface StoredDocument {
   readonly caseId: string;

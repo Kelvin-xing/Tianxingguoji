@@ -1,11 +1,11 @@
-import { SESSION_COOKIE_NAME } from "../../../../../../lib/auth/cookies.ts";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "../../../../../../modules/identity/runtime.ts";
-import { IdentityServiceError } from "../../../../../../modules/identity/service.ts";
-import { PortalPolicyError } from "../../../../../../modules/external-portal/contract.ts";
+import { SESSION_COOKIE_NAME } from "../../../../../../modules/identity/server.ts";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "../../../../../../modules/identity/server.ts";
+import { IdentityServiceError } from "../../../../../../modules/identity/server.ts";
+import { PortalPolicyError } from "../../../../../../modules/external-portal/public.ts";
 import {
   PortalRepositoryError,
   PortalRuntimeUnavailable,
-} from "../../../../../../modules/external-portal/runtime.ts";
+} from "../../../../../../modules/external-portal/server.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

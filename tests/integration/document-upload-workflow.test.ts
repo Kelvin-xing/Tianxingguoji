@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createOpaqueDocumentObjectKey } from "../../modules/documents/contract.ts";
+import { createOpaqueDocumentObjectKey } from "../../modules/documents/domain/contract.ts";
 import {
   DocumentUploadError,
   DocumentUploadService,
-} from "../../modules/documents/upload-service.ts";
+} from "../../modules/documents/application/upload-service.ts";
 import {
   DocumentUploadRuntimeUnavailable,
   getDocumentUploadRuntime,
-} from "../../modules/documents/runtime.ts";
+} from "../../modules/documents/infrastructure/runtime.ts";
 import { InMemoryDocumentUploadRepository } from "../fakes/document-upload.ts";
 
 const ACTOR = Object.freeze({

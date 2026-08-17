@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 type InvitableRole = "founder" | "admin" | "advisor" | "data_reviewer" | "contractor";

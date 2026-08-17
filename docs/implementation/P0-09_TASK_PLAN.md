@@ -30,7 +30,7 @@ Out of scope: choosing `created` versus `assigned` versus `accepted` as the real
 
 ## Public Contract
 
-`modules/tasks/contract.ts` owns task states, actor/rule/policy types, approval receipt shape, denial codes, and the public decision result. `modules/tasks/transition-policy.ts` owns candidate policy creation, `OD-06` approval, task creation evaluation, and transition evaluation.
+`modules/tasks/domain/contract.ts` owns task states, actor/rule/policy types, approval receipt shape, denial codes, and the public decision result. `modules/tasks/domain/transition-policy.ts` owns candidate policy creation, `OD-06` approval, task creation evaluation, and transition evaluation.
 
 The policy evaluator checks approval receipt, organization/case identity, actor activity, optimistic version, exact rule, role and actor relationship, contractor redaction, approval separation, and reason requirements. The synthetic approved policy in tests is a harness fixture only; it is not a Release 1 default.
 

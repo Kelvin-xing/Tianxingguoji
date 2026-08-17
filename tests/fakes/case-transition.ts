@@ -1,12 +1,12 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
-import type { OrganizationRole } from "../../modules/access/contract.ts";
-import type { ServiceCaseStage } from "../../modules/cases/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
+import type { OrganizationRole } from "../../modules/access/domain/contract.ts";
+import type { ServiceCaseStage } from "../../modules/cases/domain/contract.ts";
 import {
   CaseTransitionError,
   type CaseTransitionRepository,
   type CaseTransitionRepositoryInput,
   type CaseTransitionResult,
-} from "../../modules/cases/transition-service.ts";
+} from "../../modules/cases/application/transition-service.ts";
 
 interface StoredCase {
   readonly caseId: string;

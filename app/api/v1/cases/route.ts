@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { CaseCreationError } from "@/modules/cases/service";
-import { CaseRuntimeUnavailable, getCaseRuntime } from "@/modules/cases/runtime";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { CaseCreationError } from "@/modules/cases/server";
+import { CaseRuntimeUnavailable, getCaseRuntime } from "@/modules/cases/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;

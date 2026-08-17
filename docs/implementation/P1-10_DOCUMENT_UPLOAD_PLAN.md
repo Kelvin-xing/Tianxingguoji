@@ -38,7 +38,7 @@ The relevant model is an existing `(organization, case, document)` tuple plus
 a new `DocumentVersion`. The route binds the caller-supplied document ID to a
 case route parameter, but it does not decide that relationship itself.
 
-`modules/documents/upload-service.ts` owns command validation, generated
+`modules/documents/application/upload-service.ts` owns command validation, generated
 version identity, opaque `documents/{document UUID}/versions/{version UUID}`
 key construction, redacted effects, and public result validation.
 `DocumentUploadRepository` owns the production transaction. It must revalidate
@@ -72,7 +72,7 @@ or issue a download capability.
 | Expired capabilities are denied. | Service rejects an expired repository replay; the approved provider signer must enforce the same expiration at S3. |
 | One idempotency key with the same request is one version/effect bundle; changed reuse is rejected. | Repository transactional idempotency scope is `(organization, actor, documents.upload_intent.create, key)`. |
 | Audit/outbox disclose neither checksum, size, MIME type, object key, bucket, URL, nor document bytes. | Service emits only stable action/status/version references plus a redacted state hash; P0-11 allowlists enforce the effect payloads. |
-| No configured HK RDS/S3 adapter means no document write or signed capability. | `modules/documents/runtime.ts` always throws `DocumentUploadRuntimeUnavailable`; no local, public, or legacy fallback exists. |
+| No configured HK RDS/S3 adapter means no document write or signed capability. | `modules/documents/infrastructure/runtime.ts` always throws `DocumentUploadRuntimeUnavailable`; no local, public, or legacy fallback exists. |
 | Storage is private, regional, encrypted, versioned, and scan-event-only. | Non-applied Terraform module enables Block Public Access, BucketOwnerEnforced ownership, TLS deny, versioning, SSE-KMS with Bucket Key, a single-region CMK, SQS and DLQ encryption, S3 Put events under `documents/`, and app-role `PutObject`/abort only. It declares no replication, MRAP, CloudFront, or transfer acceleration resource. |
 
 `maxSizeBytes` remains a composition-time policy input because no approved

@@ -9,7 +9,7 @@ import {
   buildAlertOccurrence,
   getAlertDefinition,
   isAlertStateTransitionAllowed,
-} from "../../../modules/operations/alert-catalogue.ts";
+} from "../../../modules/operations/domain/alert-catalogue.ts";
 
 const REQUIRED_ALERTS = Object.freeze([
   "auth.failure_burst",

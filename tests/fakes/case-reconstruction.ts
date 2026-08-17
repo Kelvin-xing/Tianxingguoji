@@ -12,11 +12,11 @@ import {
   type ReconstructionIdempotencyScope,
   type ReconstructionResult,
   type ReconstructionVersion,
-} from "../../modules/cases/reconstruction/contract.ts";
+} from "../../modules/cases/domain/reconstruction/contract.ts";
 import type {
   CaseReconstructionRepository,
   ReconstructionWriteContext,
-} from "../../modules/cases/reconstruction/repository.ts";
+} from "../../modules/cases/application/reconstruction/repository-port.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_ORGANIZATION_ID = "10000000-0000-4000-8000-000000000002";

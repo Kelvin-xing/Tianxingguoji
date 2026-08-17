@@ -2,11 +2,11 @@ import {
   DocumentScanError,
   type DocumentScanEvent,
   type DocumentScanService,
-} from "../modules/documents/scan-service.ts";
+} from "../modules/documents/server.ts";
 import {
   getDocumentScanRuntime,
   type DocumentScanner,
-} from "../modules/documents/scan-runtime.ts";
+} from "../modules/documents/server.ts";
 
 export class DocumentScanRetryableWorkerError extends Error {
   readonly retryable = true;

@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { handleApiRequest } from "@/modules/shared/api-contract";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { createApiError } from "@/modules/shared/api-contract";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { handleApiRequest } from "@/modules/shared/public";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { createApiError } from "@/modules/shared/public";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

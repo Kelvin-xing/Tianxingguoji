@@ -2,21 +2,21 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { TaskTransitionControls } from "@/components/tasks/TaskTransitionControls";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
 import {
   ContractorTaskWorkspaceError,
   type ContractorTaskWorkspaceResult,
-} from "@/modules/tasks/contractor-workspace";
+} from "@/modules/tasks/server";
 import {
   ContractorTaskWorkspaceRuntimeUnavailable,
   getContractorTaskWorkspaceRuntime,
-} from "@/modules/tasks/contractor-workspace-runtime";
+} from "@/modules/tasks/server";
 import {
   CONTRACTOR_TASK_ALLOWED_TRANSITIONS,
   buildContractorTaskWorkspaceModel,
-} from "@/modules/tasks/contractor-workspace-model";
+} from "@/modules/tasks/server";
 
 export const dynamic = "force-dynamic";
 

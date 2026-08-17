@@ -3,9 +3,9 @@ import type {
   AssessmentSnapshot,
   StoredAssessmentAnswer,
   UpdateAssessmentAnswerResult,
-} from "../../modules/cases/assessment-service.ts";
-import { AssessmentServiceError } from "../../modules/cases/assessment-service.ts";
-import type { AssessmentStatus, K12ManifestComposition } from "../../modules/cases/contract.ts";
+} from "../../modules/cases/application/assessment-service.ts";
+import { AssessmentServiceError } from "../../modules/cases/application/assessment-service.ts";
+import type { AssessmentStatus, K12ManifestComposition } from "../../modules/cases/domain/contract.ts";
 
 interface StoredIdempotencyResult {
   readonly requestHash: string;

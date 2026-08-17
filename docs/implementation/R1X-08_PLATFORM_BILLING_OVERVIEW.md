@@ -1,7 +1,7 @@
 # R1X-08 PlatformBilling Aggregate Overview
 
 Status: local contract implementation complete; production integration pending  
-Decision authority: `R1X-DECISION-BASELINE-20260812.md` (DP-06 through DP-12)  
+Decision authority: `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` (DP-06 through DP-12)
 Release boundary: source, focused tests, and local UI only; no production adapter, migration, deployment, or tenant activation
 
 ## Problem and scope

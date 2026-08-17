@@ -8,18 +8,18 @@ import {
   parseCaseLifecycleProjectionEvent,
   type BillingCaseStage,
   type CaseLifecycleProjectionEvent,
-} from "../../modules/platform-billing/contract.ts";
+} from "../../modules/platform-billing/domain/contract.ts";
 import {
   evaluateContractActivation,
   evaluateContractDraftCreation,
   type PlatformBillingActor,
-} from "../../modules/platform-billing/policy.ts";
+} from "../../modules/platform-billing/domain/policy.ts";
 import {
   PlatformBillingPersistenceError,
   type PlatformBillingRepository,
   type PlatformContractRecord,
   type PlatformMetricSnapshot,
-} from "../../modules/platform-billing/repository.ts";
+} from "../../modules/platform-billing/application/repository-port.ts";
 
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 

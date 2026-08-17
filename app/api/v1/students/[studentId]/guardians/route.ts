@@ -1,11 +1,14 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/lib/auth/cookies";
-import { GuardianRelationshipError } from "@/modules/crm/guardian-relationship-service";
-import { GuardianRelationshipRuntimeUnavailable, getGuardianRelationshipRuntime } from "@/modules/crm/runtime";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/runtime";
-import { IdentityServiceError } from "@/modules/identity/service";
-import { createApiError, handleApiRequest } from "@/modules/shared/api-contract";
+import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
+import {
+  GuardianRelationshipError,
+  GuardianRelationshipRuntimeUnavailable,
+  getGuardianRelationshipRuntime,
+} from "@/modules/crm/server";
+import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
+import { IdentityServiceError } from "@/modules/identity/server";
+import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;

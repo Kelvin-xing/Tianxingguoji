@@ -1,10 +1,10 @@
-import type { OrganizationRole } from "../../modules/access/contract.ts";
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { OrganizationRole } from "../../modules/access/domain/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   disableSchoolOverlay,
   type SchoolBaseRecord,
   type SchoolOverlayRevision,
-} from "../../modules/schools/contract.ts";
+} from "../../modules/schools/domain/contract.ts";
 import {
   persistResolvedSchoolPin,
   resolveSchoolTargetView,
@@ -13,12 +13,12 @@ import {
   type ResolvedSchoolTargetView,
   type ResolvedSchoolViewRepository,
   type SchoolResolutionSource,
-} from "../../modules/schools/resolved-view.ts";
+} from "../../modules/schools/application/resolved-view.ts";
 import {
   SchoolTargetError,
   type SchoolTargetRepository,
   type SchoolTargetResult,
-} from "../../modules/cases/school-target-service.ts";
+} from "../../modules/cases/application/school-target-service.ts";
 
 interface StoredCase {
   readonly organizationId: string;

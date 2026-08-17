@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslation } from 'react-i18next'
-import { mockStudents } from '@/lib/mock/students'
+import { mockStudents } from '@/modules/crm/client'
 import type { Student } from '@/types'
 import Link from 'next/link'
 import { useState } from 'react'

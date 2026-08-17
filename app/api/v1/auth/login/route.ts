@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { buildCognitoAuthorizeUrl } from "@/lib/auth/cognito";
-import { getCognitoAuthConfig } from "@/lib/auth/config";
-import { loadAuthMode } from "@/lib/auth/mode";
+import { buildCognitoAuthorizeUrl } from "@/modules/identity/server";
+import { getCognitoAuthConfig } from "@/modules/identity/server";
+import { loadAuthMode } from "@/modules/identity/server";
 import {
   COGNITO_STATE_COOKIE_NAME,
   COGNITO_VERIFIER_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   cognitoFlowCookieOptions,
   sessionCookieOptions,
-} from "@/lib/auth/cookies";
-import { createPkcePair } from "@/lib/auth/pkce";
-import { getIdentityRuntime } from "@/modules/identity/runtime";
+} from "@/modules/identity/server";
+import { createPkcePair } from "@/modules/identity/server";
+import { getIdentityRuntime } from "@/modules/identity/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

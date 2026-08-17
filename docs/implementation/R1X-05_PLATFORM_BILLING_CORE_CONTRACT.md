@@ -6,7 +6,7 @@
 | Run ID | `R1X-05-PLATFORM-BILLING-CORE-20260813` |
 | Date | 2026-08-13 (Asia/Hong_Kong) |
 | Status | `implemented_local_contract`; runtime and production use remain unavailable |
-| Authority | `R1X-DECISION-BASELINE-20260812`, DP-06 through DP-12, `DEC-060`, `DEC-064`, `DEC-066` |
+| Authority | `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md`, DP-06 through DP-12, `DEC-060`, `DEC-064`, `DEC-066` |
 | Git repository | `erp-frontend/` |
 
 ## 1. Outcome And Scope
@@ -146,8 +146,8 @@ authorized by this artifact.
 
 ## 5. Verification Evidence
 
-Focused seam: public exports from `modules/platform-billing/contract.ts` and
-`modules/platform-billing/policy.ts`.
+Focused seam: public exports from `modules/platform-billing/domain/contract.ts` and
+`modules/platform-billing/domain/policy.ts`.
 
 Command:
 

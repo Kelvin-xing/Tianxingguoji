@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage } from "../../modules/audit/contract.ts";
+import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage } from "../../modules/audit/domain/contract.ts";
 import {
   createProductionCaseCreationRepository,
-} from "../../modules/cases/production-repository.ts";
+} from "../../modules/cases/infrastructure/production-repository.ts";
 import {
   ProductionRepositoryError,
   type PostgreSqlAdapter,
   type PostgreSqlQueryResult,
   type PostgreSqlTransaction,
-} from "../../modules/cases/postgresql.ts";
+} from "../../modules/cases/infrastructure/postgresql.ts";
 
 const ids = {
   organization: "00000000-0000-4000-8000-000000000001",

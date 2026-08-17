@@ -107,9 +107,9 @@ not be run.
 
 ## Files And Remaining Gates
 
-- `modules/documents/policy.ts` owns the versioned pure policy, typed denial
+- `modules/documents/domain/policy.ts` owns the versioned pure policy, typed denial
   contract, Founder command validation, and transaction repository port.
-- `modules/documents/policy-runtime.ts` is intentionally unavailable until HK
+- `modules/documents/infrastructure/policy-runtime.ts` is intentionally unavailable until HK
   RDS composition is approved.
 - `tests/unit/documents/policy.test.ts` supplies synthetic deterministic proof;
   it does not provide RDS, signing, watermark, worker, route, UI, or cloud

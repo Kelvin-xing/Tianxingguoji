@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { listReviewDecisions, upsertReviewDecision } from '@/lib/crawler/db'
-import { hasSchoolKey } from '@/lib/crawler/server'
-import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
+import { hasSchoolKey, listReviewDecisions, upsertReviewDecision } from '@/modules/schools/crawler-server'
+import { isResponse, requireLegacyActor } from '@/modules/identity/web'
 
 export const dynamic = 'force-dynamic'
 

@@ -5,8 +5,8 @@ import test from "node:test";
 import {
   ReconstructionError,
   type ReconstructionEventInput,
-} from "../../modules/cases/reconstruction/contract.ts";
-import { CaseReconstructionService } from "../../modules/cases/reconstruction/service.ts";
+} from "../../modules/cases/domain/reconstruction/contract.ts";
+import { CaseReconstructionService } from "../../modules/cases/application/reconstruction/service.ts";
 import { FakeCaseReconstructionRepository } from "../fakes/case-reconstruction.ts";
 
 const NOW = "2026-08-12T00:30:00.000Z";

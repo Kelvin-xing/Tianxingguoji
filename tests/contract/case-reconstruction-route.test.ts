@@ -5,7 +5,7 @@ import {
   isCaseReconstructionEnabled,
   methodNotAllowedResponse,
   parseCreateDraftRequest,
-} from "../../modules/cases/reconstruction/route-contract.ts";
+} from "../../modules/cases/application/reconstruction/route-contract.ts";
 
 test("feature flag is server-only and disabled unless explicitly true", () => {
   assert.equal(isCaseReconstructionEnabled({}), false);

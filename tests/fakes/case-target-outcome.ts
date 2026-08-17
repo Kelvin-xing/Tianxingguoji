@@ -1,19 +1,19 @@
-import type { OrganizationRole } from "../../modules/access/contract.ts";
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
-import type { CaseOutcomeCode, SchoolTargetState } from "../../modules/cases/contract.ts";
+import type { OrganizationRole } from "../../modules/access/domain/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
+import type { CaseOutcomeCode, SchoolTargetState } from "../../modules/cases/domain/contract.ts";
 import {
   CaseOutcomeError,
   type CaseOutcomeRepository,
   type CaseOutcomeRevisionResult,
   type SchoolTargetTransitionResult,
-} from "../../modules/cases/outcome-service.ts";
+} from "../../modules/cases/application/outcome-service.ts";
 import {
   HK_K12_STANDARD_V1_TEMPLATE,
   evaluateSchoolTargetTransitionPolicy,
   isTerminalSchoolTargetState,
   outcomeCodesForTargetState,
-} from "../../modules/cases/transition-policy.ts";
+} from "../../modules/cases/domain/transition-policy.ts";
 
 interface StoredCase {
   readonly organizationId: string;

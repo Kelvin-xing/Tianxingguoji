@@ -5,7 +5,7 @@ import {
   GuardianRelationshipError,
   GuardianRelationshipService,
   type GuardianRelationshipResult,
-} from "../../modules/crm/guardian-relationship-service.ts";
+} from "../../modules/crm/application/guardian-relationship-service.ts";
 
 const ADVISOR = Object.freeze({
   userId: "11111111-1111-4111-8111-111111111111",

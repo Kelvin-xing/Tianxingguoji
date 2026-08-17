@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { IdentitySessionActor } from "../../modules/identity/session-repository.ts";
+import type { IdentitySessionActor } from "../../modules/identity/infrastructure/in-memory-session-repository.ts";
 import {
   evaluateContractorTaskAccess,
   type ContractorTaskAssignmentContext,
-} from "../../modules/access/policy.ts";
+} from "../../modules/access/domain/policy.ts";
 import {
   ContractorTaskWorkspaceError,
   ContractorTaskWorkspaceService,
   type ContractorTaskWorkspaceRepository,
   type ContractorTaskWorkspaceRepositoryInput,
   type ContractorTaskWorkspaceResult,
-} from "../../modules/tasks/contractor-workspace.ts";
-import { getContractorTaskWorkspaceRuntime } from "../../modules/tasks/contractor-workspace-runtime.ts";
-import { createContractorTaskGetHandler } from "../../modules/tasks/contractor-route.ts";
+} from "../../modules/tasks/application/contractor-workspace.ts";
+import { getContractorTaskWorkspaceRuntime } from "../../modules/tasks/infrastructure/contractor-workspace-runtime.ts";
+import { createContractorTaskGetHandler } from "../../modules/tasks/infrastructure/contractor-route.ts";
 
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000401";
 const CONTRACTOR_ID = "00000000-0000-4000-8000-000000000402";

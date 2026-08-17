@@ -47,7 +47,7 @@ ServiceCase fact, its producer audit event, or its original outbox effect.
 | Lost access prevents visible delivery | Completion transaction rechecks current recipient access immediately before insert; it writes `suppressed` plus a `compensated` receipt instead of an unread notice |
 | Duplicate/replay returns the existing receipt | Claim and completion ports return the existing receipt rather than inserting a second notification |
 | Delivery failure never changes the producer fact | Failure port transitions only worker/outbox delivery state; attempts one and two requeue, attempt three creates a suppressed `failed` receipt and moves the effect to `dead_letter` |
-| No local production fallback exists | `modules/notifications/runtime.ts` throws until the approved HK RDS worker composition is configured |
+| No local production fallback exists | `modules/notifications/infrastructure/runtime.ts` throws until the approved HK RDS worker composition is configured |
 
 The Notification module owns `Notification` and `DeliveryReceipt`; AuditOperations
 continues to own `Outbox`. The worker reads an opaque delivery work item from

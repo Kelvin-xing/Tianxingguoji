@@ -18,7 +18,7 @@ Status: `partial_local`
 5. An absent production transaction runner throws `SUPPORTING_ADAPTER_UNAVAILABLE` with status `503`; there is no mock or memory fallback.
 6. Projection rebuilds remain deterministic pure-domain transformations (`rebuildCaseDashboardProjection`); persistence must use the same owned transaction primitive. Runtime wiring remains off in P3-09.
 
-Enforcement owners are typed module repository APIs plus PostgreSQL grants/RLS for table ownership, `modules/audit/production-repository.ts` for atomic effects, Documents for availability, and Notifications for effect replay.
+Enforcement owners are typed module repository APIs plus PostgreSQL grants/RLS for table ownership, `modules/audit/infrastructure/production-repository.ts` for atomic effects, Documents for availability, and Notifications for effect replay.
 
 ## Risks and evidence
 

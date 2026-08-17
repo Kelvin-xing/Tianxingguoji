@@ -2,7 +2,7 @@
 
 import { use } from 'react'
 import { useTranslation } from 'react-i18next'
-import { mockStudents } from '@/lib/mock/students'
+import { mockStudents } from '@/modules/crm/client'
 import type { Student, StudyApplicationAssessment } from '@/types'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'

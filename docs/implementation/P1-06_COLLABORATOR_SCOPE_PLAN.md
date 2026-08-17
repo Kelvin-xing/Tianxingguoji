@@ -26,7 +26,7 @@ The public commands are:
 
 Both routes require a current opaque session plus TOTP re-authentication. They
 are thin BFF adapters over `AccessScopeService`; no route owns role, case, or
-grant authorization. `modules/access/runtime.ts` remains fail closed until an
+grant authorization. `modules/access/infrastructure/runtime.ts` remains fail closed until an
 approved HK RDS composition installs the production transaction adapter.
 
 Out of scope: Founder sensitive-grant approval, collaborator removal, case
@@ -49,14 +49,14 @@ transition.
 | --- | --- |
 | Only the current Primary Advisor can issue or revoke a scope | RDS repository locks and verifies the case primary binding in the command transaction; synthetic adapter proves the port behavior |
 | Target is an active Advisor in the same organization, never a Contractor | RDS repository resolves membership/Advisor binding in the command transaction; P0-05 composite FKs constrain persisted collaborator rows |
-| One command contains one predefined scope and `view`, `comment`, or `edit` capability | route parser plus `AccessScopeService` and `modules/access/policy.ts`; P0-05 checks persist the catalogue |
+| One command contains one predefined scope and `view`, `comment`, or `edit` capability | route parser plus `AccessScopeService` and `modules/access/domain/policy.ts`; P0-05 checks persist the catalogue |
 | Start is now, expiry is positive and no later than seven days | `resolveGrantExpiry`; P0-05 duration check; repository rejects inactive/closed cases so a new grant cannot outlive an active case |
 | Sensitive scopes require a non-empty reason and begin pending Founder approval | `AccessScopeService`; P0-05 sensitive initial-state and approval constraints |
 | Collaborator export is always denied | existing `evaluateScopeGrant` short-circuits `export`; no export capability exists in P0-05 schema |
 | Revocation and expiry deny at the next request | request-time `evaluateScopeGrant`; revocation transaction changes grant status before commit returns |
 | Writes preserve optimistic concurrency | revocation requires `expectedRecordVersion`; repository maps version mismatch to `COLLABORATOR_SCOPE_STALE_VERSION`, then route returns `409 STALE_VERSION` |
 | Same idempotency key replays only its original result | repository-scoped idempotency ledger in the same transaction; changed request hash is rejected before facts/effects are written |
-| Grant/revoke plus audit/outbox are atomic and redacted | repository transaction port receives `MutationEffectBundle`; `modules/audit/contract.ts` allowlists safe event data only |
+| Grant/revoke plus audit/outbox are atomic and redacted | repository transaction port receives `MutationEffectBundle`; `modules/audit/domain/contract.ts` allowlists safe event data only |
 
 The production adapter must read the current case primary, active case state,
 target Advisor binding, collaborator tuple, idempotency row, and revoke version

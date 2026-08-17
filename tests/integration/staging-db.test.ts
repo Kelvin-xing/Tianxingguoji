@@ -10,7 +10,7 @@ import {
   loadApplicationDatabaseConfig,
   type DatabaseClient,
   type DatabaseQuery,
-} from "../../modules/shared/db.ts";
+} from "../../modules/shared/infrastructure/db.ts";
 
 const PROJECT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 

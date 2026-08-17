@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createTicket, listTickets, updateTicket } from '@/lib/crawler/db'
-import { hasSchoolKey } from '@/lib/crawler/server'
-import { isResponse, requireLegacyActor } from '@/lib/auth/legacy-route'
+import { createTicket, hasSchoolKey, listTickets, updateTicket } from '@/modules/schools/crawler-server'
+import { isResponse, requireLegacyActor } from '@/modules/identity/web'
 
 export const dynamic = 'force-dynamic'
 

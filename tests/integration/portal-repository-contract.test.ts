@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
 import {
   PortalRepositoryError,
   type PortalAccessGrant,
   type PortalRepository,
-} from "../../modules/external-portal/repository.ts";
+} from "../../modules/external-portal/application/repository-port.ts";
 import {
   PortalRuntimeUnavailable,
   getPortalRuntime,
-} from "../../modules/external-portal/runtime.ts";
+} from "../../modules/external-portal/infrastructure/runtime.ts";
 import { InMemoryPortalRepository } from "../fakes/portal-repository.ts";
 
 const ids = Object.freeze({

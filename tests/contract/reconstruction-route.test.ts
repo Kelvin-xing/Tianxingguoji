@@ -5,7 +5,7 @@ import {
   RECONSTRUCTION_ACTIONS,
   buildReconstructionCommand,
   isReconstructionEnabled,
-} from "../../modules/cases/reconstruction/route-contract.ts";
+} from "../../modules/cases/application/reconstruction/route-contract.ts";
 
 test("reconstruction routes are disabled by default and only enabled explicitly", () => {
   assert.equal(isReconstructionEnabled(undefined), false);

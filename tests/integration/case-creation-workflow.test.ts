@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CaseCreationError, CaseService } from "../../modules/cases/service.ts";
+import { CaseCreationError, CaseService } from "../../modules/cases/application/service.ts";
 import { InMemoryCaseCreationRepository } from "../fakes/case-creation.ts";
 
 const ADVISOR = Object.freeze({

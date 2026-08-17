@@ -1,7 +1,7 @@
 import type {
   PlatformBillingActor,
   PlatformBillingRole,
-} from "@/modules/platform-billing/policy";
+} from "@/modules/platform-billing/public";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

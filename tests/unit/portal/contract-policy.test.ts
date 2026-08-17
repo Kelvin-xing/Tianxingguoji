@@ -14,14 +14,14 @@ import {
   type PortalEffectiveAccessInput,
   type PortalGrantActorFacts,
   type PortalWorkspaceSource,
-} from "../../../modules/external-portal/contract.ts";
+} from "../../../modules/external-portal/domain/contract.ts";
 import {
   buildPortalCaseReadV1,
   evaluatePortalEffectiveAccess,
   evaluatePortalGrantAuthorization,
   evaluatePortalSessionCreation,
   mapPortalErrorToPublicResponse,
-} from "../../../modules/external-portal/policy.ts";
+} from "../../../modules/external-portal/domain/policy.ts";
 
 const ids = Object.freeze({
   organization: "11111111-1111-4111-8111-111111111111",

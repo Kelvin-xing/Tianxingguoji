@@ -9,7 +9,7 @@ import {
   CrawlerSnapshotStore,
   SnapshotManifestError,
   type SnapshotManifest,
-} from "../../../lib/crawler/snapshot.ts";
+} from "../../../modules/schools/infrastructure/crawler/snapshot.ts";
 
 const NOW = new Date("2026-08-10T04:00:00Z");
 

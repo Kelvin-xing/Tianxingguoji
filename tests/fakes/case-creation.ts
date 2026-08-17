@@ -1,10 +1,10 @@
-import type { MutationEffectBundle } from "../../modules/audit/contract.ts";
-import type { PreparedStudent } from "../../modules/crm/service.ts";
+import type { MutationEffectBundle } from "../../modules/audit/domain/contract.ts";
+import type { PreparedStudent } from "../../modules/crm/application/service.ts";
 import {
   CaseCreationError,
   type CaseCreationRepository,
   type CaseCreationResult,
-} from "../../modules/cases/service.ts";
+} from "../../modules/cases/application/service.ts";
 
 interface StoredCreateResult {
   readonly requestHash: string;

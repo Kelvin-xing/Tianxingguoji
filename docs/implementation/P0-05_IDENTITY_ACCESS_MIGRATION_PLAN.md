@@ -58,9 +58,9 @@ All authoritative mutable rows receive `record_version bigint NOT NULL`, `create
 
 ## Public Contract Payload
 
-`modules/identity/contract.ts` exports immutable policy constants, User/Session states, stable denial codes, active-slot allocation, and a pure session evaluator. It denies non-active Users, revoked/expired sessions, stale `session_version`, idle/absolute expiry, inactive organization/membership, slot exhaustion, and stale/missing TOTP re-authentication.
+`modules/identity/domain/contract.ts` exports immutable policy constants, User/Session states, stable denial codes, active-slot allocation, and a pure session evaluator. It denies non-active Users, revoked/expired sessions, stale `session_version`, idle/absolute expiry, inactive organization/membership, slot exhaustion, and stale/missing TOTP re-authentication.
 
-`modules/access/contract.ts` exports the approved scope/capability catalogues, sensitive-scope classification, seven-day expiry calculation, stable denial codes, and a pure grant evaluator. It denies non-active Users/Organizations/Memberships/advisor roles/collaborations/grants, organization/case mismatch, expiry, unapproved sensitive access, and every collaborator export request.
+`modules/access/domain/contract.ts` exports the approved scope/capability catalogues, sensitive-scope classification, seven-day expiry calculation, stable denial codes, and a pure grant evaluator. It denies non-active Users/Organizations/Memberships/advisor roles/collaborations/grants, organization/case mismatch, expiry, unapproved sensitive access, and every collaborator export request.
 
 ## Deterministic Evidence
 

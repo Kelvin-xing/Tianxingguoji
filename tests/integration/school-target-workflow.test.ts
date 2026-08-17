@@ -7,16 +7,16 @@ import {
   sha256SchoolValue,
   type SchoolBaseRecord,
   type SchoolOverlayRevision,
-} from "../../modules/schools/contract.ts";
+} from "../../modules/schools/domain/contract.ts";
 import {
   resolveSchoolTargetView,
   ResolvedSchoolViewService,
   SchoolResolutionError,
-} from "../../modules/schools/resolved-view.ts";
+} from "../../modules/schools/application/resolved-view.ts";
 import {
   SchoolTargetError,
   SchoolTargetService,
-} from "../../modules/cases/school-target-service.ts";
+} from "../../modules/cases/application/school-target-service.ts";
 import { InMemorySchoolTargetRepository } from "../fakes/school-target.ts";
 
 const ADVISOR = Object.freeze({

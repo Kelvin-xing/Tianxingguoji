@@ -5,9 +5,9 @@ import {
   PortalBillingCompositionUnavailable,
   composePortalBillingProductionRuntime,
   loadPortalBillingProductionConfig,
-} from "../../lib/runtime/portal-billing-production.ts";
-import { createPortalRuntime } from "../../modules/external-portal/runtime.ts";
-import { createPlatformBillingRuntime } from "../../modules/platform-billing/runtime.ts";
+} from "../../modules/platform-billing/infrastructure/portal-billing-production.ts";
+import { createPortalRuntime } from "../../modules/external-portal/infrastructure/runtime.ts";
+import { createPlatformBillingRuntime } from "../../modules/platform-billing/infrastructure/runtime.ts";
 
 const HK_HOST = "tianxing.cluster-abc123.ap-east-1.rds.amazonaws.com";
 const UUID = "11111111-1111-4111-8111-111111111111";

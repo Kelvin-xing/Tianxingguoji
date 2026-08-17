@@ -131,7 +131,7 @@ Recorded on 2026-08-10 against local synthetic inputs only:
 - Scoped TypeScript: `pnpm exec tsc --noEmit --target ES2022 --module NodeNext
   --moduleResolution NodeNext --allowImportingTsExtensions --types node
   --skipLibCheck scripts/backfill/preview.ts
-  modules/operations/import-ledger.ts
+  modules/operations/domain/import-ledger.ts
   tests/migration/backfill-reconciliation.test.ts` emitted no diagnostics but did
   not exit within the 90-second bounded verification budget. It was terminated
   with Ctrl-C (exit 130) and is not claimed as passed.

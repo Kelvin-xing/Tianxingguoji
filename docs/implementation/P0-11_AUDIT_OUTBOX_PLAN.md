@@ -57,15 +57,15 @@ retention system.
 
 ## Public Contract Payload
 
-`modules/shared/idempotency.ts` exports canonical JSON hashing, scoped key
+`modules/shared/domain/idempotency.ts` exports canonical JSON hashing, scoped key
 validation, record creation/completion/failure, and replay/conflict decisions.
 
-`modules/audit/contract.ts` exports redacted `AuditEvent` and `OutboxMessage`
+`modules/audit/domain/contract.ts` exports redacted `AuditEvent` and `OutboxMessage`
 builders, the context-matching atomic mutation bundle, redacted snapshot
 hashing, and an allowlisted telemetry shape. The module does not send events
 or inspect a database.
 
-`modules/notifications/contract.ts` exports the fixed in-app pending-item
+`modules/notifications/domain/contract.ts` exports the fixed in-app pending-item
 notice, delivery receipt construction, and effect replay/conflict evaluation.
 No external channel is representable by the Release 1 contract.
 
