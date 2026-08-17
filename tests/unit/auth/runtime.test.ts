@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash, createSign, generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 import { getAuthConfig, getCognitoAuthConfig, AuthConfigurationError } from '../../../lib/auth/config.ts'
-import { verifyCognitoIdentity } from '../../../lib/auth/cognito.ts'
+import { buildCognitoLogoutUrl, verifyCognitoIdentity } from '../../../lib/auth/cognito.ts'
 import { createPkcePair, equalsSecret } from '../../../lib/auth/pkce.ts'
 import { decryptProviderTokens, encryptProviderTokens } from '../../../lib/auth/session-crypto.ts'
 
@@ -46,6 +46,10 @@ test('Cognito login bootstrap does not require session persistence variables', (
   assert.equal(config.cognitoUserPoolId, 'ap-east-1_example')
   assert.equal(config.cognitoAppClientId, 'exampleclientid')
   assert.equal(config.cognitoDomain, 'https://example.auth.ap-east-1.amazoncognito.com')
+  assert.equal(
+    buildCognitoLogoutUrl(config),
+    'https://example.auth.ap-east-1.amazoncognito.com/logout?client_id=exampleclientid&logout_uri=https%3A%2F%2Ferp.example.com%2Flogin',
+  )
 })
 
 test('PKCE pair uses S256 and compares state as a secret', () => {

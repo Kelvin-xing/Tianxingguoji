@@ -88,6 +88,17 @@ export function buildCognitoAuthorizeUrl(
   return url.toString()
 }
 
+export function buildCognitoLogoutUrl(
+  config: Pick<AuthConfig, 'cognitoDomain' | 'cognitoAppClientId' | 'cognitoLogoutUri'>,
+): string {
+  const url = new URL('/logout', config.cognitoDomain)
+  url.search = new URLSearchParams({
+    client_id: config.cognitoAppClientId,
+    logout_uri: config.cognitoLogoutUri,
+  }).toString()
+  return url.toString()
+}
+
 export async function exchangeAuthorizationCode(
   config: Pick<AuthConfig, 'cognitoDomain' | 'cognitoAppClientId' | 'cognitoRedirectUri'>,
   code: string,

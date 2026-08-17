@@ -12,7 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:auth": "node --test tests/unit/auth/runtime.test.ts",
+    "test:auth": "node --conditions=react-server --test tests/unit/auth/runtime.test.ts tests/unit/auth/mode.test.ts",
     "test:identity-access-schema": "node --test tests/integration/identity-access-schema.test.ts",
     "test:migration": "node --test tests/migration/drift.test.ts",
     "test:local-migration": "node --test tests/migration/local-runner.test.ts tests/migration/drift.test.ts",

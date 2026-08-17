@@ -164,6 +164,62 @@ export class InMemoryIdentitySessionRepository implements IdentitySessionReposit
   private readonly revokeWorkByIdempotency = new Map<string, string>();
   private readonly effectsByRevokeWorkId = new Map<string, MutationEffectBundle>();
 
+  async createLocalSyntheticSession(input: {
+    readonly userId: string;
+    readonly organizationId: string;
+    readonly role: OrganizationRole;
+    readonly sessionId: string;
+    readonly secretHash: string;
+    readonly nowMs: number;
+  }): Promise<IdentitySessionActor> {
+    const existingUser = this.usersById.get(input.userId);
+    if (existingUser && (
+      existingUser.organizationId !== input.organizationId || existingUser.role !== input.role
+    )) {
+      throw new IdentityRepositoryError("INVITE_IDENTITY_MISMATCH");
+    }
+
+    const user: StoredIdentityUser = existingUser ?? {
+      organizationId: input.organizationId,
+      role: input.role,
+      providerSubject: `local_${input.userId}`,
+      status: "active",
+      recordVersion: 1,
+      sessionVersion: 1,
+    };
+    user.status = "active";
+    this.usersById.set(input.userId, user);
+
+    // A local role login replaces its previous browser session to keep repeated
+    // development sign-ins deterministic and below the production slot limit.
+    for (const session of this.sessionsBySecretHash.values()) {
+      if (session.actor.userId === input.userId && session.status === "active") {
+        this.sessionsBySecretHash.set(session.secretHash, { ...session, status: "revoked" });
+      }
+    }
+
+    const actor = Object.freeze({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      role: input.role,
+      sessionId: input.sessionId,
+      capturedSessionVersion: user.sessionVersion,
+      reauthenticatedAtMs: input.nowMs,
+    });
+    const absoluteExpiresAtMs = input.nowMs + SESSION_POLICY.absoluteTimeoutMs;
+    this.sessionsBySecretHash.set(input.secretHash, {
+      actor,
+      secretHash: input.secretHash,
+      sessionSlot: 1,
+      status: "active",
+      currentSessionVersion: user.sessionVersion,
+      lastSeenAtMs: input.nowMs,
+      idleExpiresAtMs: Math.min(input.nowMs + SESSION_POLICY.idleTimeoutMs, absoluteExpiresAtMs),
+      absoluteExpiresAtMs,
+    });
+    return actor;
+  }
+
   async createInvite(input: InvitePersistenceInput): Promise<void> {
     const idempotencyScope = `${input.organizationId}:${input.idempotencyKey}`;
     if (this.inviteByIdempotency.has(idempotencyScope)) {

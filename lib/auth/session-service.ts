@@ -207,7 +207,11 @@ export async function revokeSessionBySecret(secret: string, reason = 'sign_out')
   })
 }
 
-export async function findActorBySecret(secret: string, nowMs = Date.now()): Promise<SessionActor> {
+export async function findActorBySecret(
+  secret: string,
+  nowMs = Date.now(),
+  sensitiveAction = false,
+): Promise<SessionActor> {
   return withAuthTransaction(async (client) => {
     const result = await client.query<SessionRow>(
       `SELECT
@@ -257,7 +261,7 @@ export async function findActorBySecret(secret: string, nowMs = Date.now()): Pro
 
     const decision = evaluateSession({
       nowMs,
-      sensitiveAction: false,
+      sensitiveAction,
       userStatus: row.user_status,
       currentSessionVersion: toSafeInteger(row.current_session_version),
       sessionStatus: row.session_status,

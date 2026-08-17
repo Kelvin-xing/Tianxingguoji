@@ -34,6 +34,9 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const runtime = getIdentityRuntime();
+    if (runtime.authMode !== "cognito") {
+      return activationFailure(request, "configuration");
+    }
     const activation = await runtime.service.claimInviteActivation({ activationCredential });
     const config = getCognitoAuthConfig();
     const pkce = createPkcePair();

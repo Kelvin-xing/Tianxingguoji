@@ -9,7 +9,7 @@ import { TopBar } from '@/components/layout/TopBar'
 export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const isPublic = pathname === '/login' || pathname.startsWith('/auth')
+  const isPublic = pathname === '/login' || pathname.startsWith('/login/') || pathname.startsWith('/auth')
   const isExternalPortal = pathname === '/portal' || pathname.startsWith('/portal/')
   const isVisualFixture = pathname === '/cases/__fixtures/workspace' &&
     process.env.NODE_ENV === 'development' &&

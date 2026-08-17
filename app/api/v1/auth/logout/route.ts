@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { buildCognitoLogoutUrl } from "@/lib/auth/cognito";
+import { getCognitoAuthConfig } from "@/lib/auth/config";
+import { loadAuthMode } from "@/lib/auth/mode";
 import { SESSION_COOKIE_NAME, clearAuthCookie } from "@/lib/auth/cookies";
 import { getIdentityRuntime } from "@/modules/identity/runtime";
 
@@ -27,7 +30,15 @@ async function signOut(request: Request): Promise<Response> {
       // Clear the browser credential even when the HK runtime is unavailable.
     }
   }
-  const response = NextResponse.redirect(new URL("/login", request.url), 303);
+  let destination = new URL("/login", request.url).toString();
+  try {
+    if (loadAuthMode() === "cognito") {
+      destination = buildCognitoLogoutUrl(getCognitoAuthConfig());
+    }
+  } catch {
+    // The local application session is still revoked when provider logout is unavailable.
+  }
+  const response = NextResponse.redirect(destination, 303);
   clearAuthCookie(response, SESSION_COOKIE_NAME);
   return response;
 }
