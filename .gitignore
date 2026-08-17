@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+/AGENT.md
 /PROJECT_PLAN.local.md
 
 # Terraform runtime artifacts are never source or release evidence.
