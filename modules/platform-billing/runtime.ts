@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { PlatformBillingRepository } from "./repository.ts";
 
 export interface PlatformBillingRuntime {

@@ -1,3 +1,5 @@
+import "server-only";
+
 import type {
   AdvancingCaseCountSnapshot,
   BillingContractCurrency,
@@ -87,4 +89,3 @@ export interface PlatformBillingRepository {
     readonly expectedRevision: number;
   }): Promise<PlatformMetricSnapshot>;
 }
-

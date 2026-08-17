@@ -15,6 +15,7 @@
     "test:auth": "node --test tests/unit/auth/runtime.test.ts",
     "test:identity-access-schema": "node --test tests/integration/identity-access-schema.test.ts",
     "test:migration": "node --test tests/migration/drift.test.ts",
+    "test:architecture": "node --test tests/architecture/module-boundaries.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
     "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "node scripts/db/plan-migration.ts --migrations db/migrations"
@@ -27,7 +28,8 @@
     "react-dom": "19.2.4",
     "react-i18next": "^17.0.8",
     "zustand": "^5.0.14",
-    "@neondatabase/serverless": "^1.0.2"
+    "@neondatabase/serverless": "^1.0.2",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

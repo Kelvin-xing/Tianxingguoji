@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { CaseTransitionService } from "./transition-service.ts";
 
 export interface CaseTransitionRuntime {

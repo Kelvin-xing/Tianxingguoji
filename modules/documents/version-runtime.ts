@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { DocumentVersionService } from "./version-service.ts";
 
 export interface DocumentVersionRuntime {

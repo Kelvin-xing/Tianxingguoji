@@ -1,7 +1,10 @@
+import "server-only";
+
 import { createHash } from "node:crypto";
 
 import type { OrganizationRole } from "../access/contract.ts";
 import type { MutationEffectBundle } from "../audit/contract.ts";
+import type { IdentitySessionActor } from "./actor.ts";
 import {
   evaluateInviteActivation,
   evaluateSession,
@@ -20,6 +23,8 @@ import {
   type DisableUserResult,
   type IdentityRevokeRepository,
 } from "./revoke-workflow.ts";
+
+export type { IdentitySessionActor } from "./actor.ts";
 
 export interface InvitePersistenceInput {
   readonly inviteId: string;
@@ -46,15 +51,6 @@ export interface ClaimedInviteActivation {
   readonly targetUserId: string;
   readonly providerSubject: string;
   readonly expiresAtMs: number;
-}
-
-export interface IdentitySessionActor {
-  readonly userId: string;
-  readonly organizationId: string;
-  readonly role: OrganizationRole;
-  readonly sessionId: string;
-  readonly capturedSessionVersion: number;
-  readonly reauthenticatedAtMs: number | null;
 }
 
 export interface StoredIdentitySession {

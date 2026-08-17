@@ -7,7 +7,7 @@ import {
   hashRedactedSnapshot,
   type MutationEffectBundle,
 } from "../audit/contract.ts";
-import type { IdentitySessionActor } from "../identity/session-repository.ts";
+import type { IdentitySessionActor } from "../identity/actor.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../shared/idempotency.ts";
 import type { ServiceCaseStage } from "./contract.ts";
 

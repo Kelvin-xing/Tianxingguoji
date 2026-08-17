@@ -11,6 +11,7 @@ export type ModuleId =
   | "audit_operations"
   | "external_portal_access"
   | "platform_billing"
+  | "future"
   | "adapters";
 
 export interface ModuleDefinition {
@@ -55,7 +56,6 @@ export const MODULE_REGISTRY = Object.freeze({
     publicEntrypoints: [
       "modules/shared/api-contract.ts",
       "modules/shared/db.ts",
-      "modules/shared/contract.ts",
       "modules/shared/decision-guards.ts",
       "modules/shared/idempotency.ts",
       "modules/shared/module-registry.ts",
@@ -67,7 +67,11 @@ export const MODULE_REGISTRY = Object.freeze({
     id: "identity",
     sourceRoots: ["modules/identity"],
     publicEntrypoints: [
+      "modules/identity/activation-cookie.ts",
+      "modules/identity/actor.ts",
       "modules/identity/contract.ts",
+      "modules/identity/revoke-workflow.ts",
+      "modules/identity/runtime.ts",
       "modules/identity/service.ts",
     ],
     owns: ["User", "Session", "Invite"],
@@ -94,7 +98,13 @@ export const MODULE_REGISTRY = Object.freeze({
   crm: defineModule({
     id: "crm",
     sourceRoots: ["modules/crm"],
-    publicEntrypoints: ["modules/crm/contract.ts"],
+    publicEntrypoints: [
+      "modules/crm/contract.ts",
+      "modules/crm/guardian-relationship-service.ts",
+      "modules/crm/runtime.ts",
+      "modules/crm/service.ts",
+      "modules/crm/student-persistence.ts",
+    ],
     owns: [
       "ReferralSource",
       "Student",
@@ -110,9 +120,16 @@ export const MODULE_REGISTRY = Object.freeze({
     publicEntrypoints: [
       "modules/cases/assessment-service.ts",
       "modules/cases/contract.ts",
+      "modules/cases/outcome-runtime.ts",
+      "modules/cases/outcome-service.ts",
       "modules/cases/runtime.ts",
       "modules/cases/schema-resolver.ts",
+      "modules/cases/school-target-runtime.ts",
+      "modules/cases/school-target-service.ts",
       "modules/cases/service.ts",
+      "modules/cases/transition-policy.ts",
+      "modules/cases/transition-runtime.ts",
+      "modules/cases/transition-service.ts",
       "modules/cases/reconstruction/contract.ts",
       "modules/cases/reconstruction/route-contract.ts",
       "modules/cases/reconstruction/runtime.ts",
@@ -135,13 +152,27 @@ export const MODULE_REGISTRY = Object.freeze({
   tasks: defineModule({
     id: "tasks",
     sourceRoots: ["modules/tasks"],
-    publicEntrypoints: ["modules/tasks/contract.ts"],
+    publicEntrypoints: [
+      "modules/tasks/contract.ts",
+      "modules/tasks/contractor-route.ts",
+      "modules/tasks/contractor-workspace-runtime.ts",
+      "modules/tasks/runtime.ts",
+      "modules/tasks/service.ts",
+    ],
     owns: ["Task", "TaskAssignment"],
   }),
   schools: defineModule({
     id: "schools",
     sourceRoots: ["modules/schools"],
-    publicEntrypoints: ["modules/schools/contract.ts"],
+    publicEntrypoints: [
+      "modules/schools/contract.ts",
+      "modules/schools/governance-service.ts",
+      "modules/schools/resolved-view-runtime.ts",
+      "modules/schools/resolved-view.ts",
+      "modules/schools/runtime.ts",
+      "modules/schools/school-governance-runtime.ts",
+      "modules/schools/service.ts",
+    ],
     owns: [
       "School",
       "ProvisionalSchool",
@@ -154,13 +185,25 @@ export const MODULE_REGISTRY = Object.freeze({
   documents: defineModule({
     id: "documents",
     sourceRoots: ["modules/documents"],
-    publicEntrypoints: ["modules/documents/contract.ts"],
+    publicEntrypoints: [
+      "modules/documents/contract.ts",
+      "modules/documents/runtime.ts",
+      "modules/documents/scan-runtime.ts",
+      "modules/documents/scan-service.ts",
+      "modules/documents/upload-service.ts",
+      "modules/documents/version-runtime.ts",
+      "modules/documents/version-service.ts",
+    ],
     owns: ["Document", "DocumentVersion", "ScanResult"],
   }),
   notifications: defineModule({
     id: "notifications",
     sourceRoots: ["modules/notifications"],
-    publicEntrypoints: ["modules/notifications/contract.ts"],
+    publicEntrypoints: [
+      "modules/notifications/contract.ts",
+      "modules/notifications/runtime.ts",
+      "modules/notifications/service.ts",
+    ],
     owns: ["Notification", "DeliveryReceipt"],
   }),
   audit_operations: defineModule({
@@ -168,7 +211,9 @@ export const MODULE_REGISTRY = Object.freeze({
     sourceRoots: ["modules/audit", "modules/operations"],
     publicEntrypoints: [
       "modules/audit/contract.ts",
-      "modules/operations/contract.ts",
+      "modules/audit/production-repository.ts",
+      "modules/operations/case-dashboard-route.ts",
+      "modules/operations/case-dashboard-runtime.ts",
       "modules/operations/telemetry-contract.ts",
       "modules/operations/telemetry-policy.ts",
       "modules/operations/telemetry-service.ts",
@@ -214,6 +259,12 @@ export const MODULE_REGISTRY = Object.freeze({
       "PlatformSubscriptionProjection",
       "PlatformAuditEvent",
     ],
+  }),
+  future: defineModule({
+    id: "future",
+    sourceRoots: ["modules/future"],
+    publicEntrypoints: ["modules/future/feature-contracts.ts"],
+    owns: [],
   }),
   adapters: defineModule({
     id: "adapters",

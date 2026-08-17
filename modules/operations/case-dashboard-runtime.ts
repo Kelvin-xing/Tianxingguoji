@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { CaseDashboardProjectionService } from "./case-dashboard-projection.ts";
 
 export interface CaseDashboardRuntime {

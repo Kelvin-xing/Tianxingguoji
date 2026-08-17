@@ -1,4 +1,7 @@
+import "server-only";
+
 import type { PortalRepository } from "./repository.ts";
+export { PortalRepositoryError } from "./repository.ts";
 
 export interface PortalRuntime {
   readonly repository: PortalRepository;

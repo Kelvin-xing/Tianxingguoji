@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { DocumentPolicyService } from "./policy.ts";
 
 export interface DocumentPolicyRuntime {

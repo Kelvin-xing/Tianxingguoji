@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { TaskWorkflowService } from "./service.ts";
 
 export interface TaskWorkflowRuntime {

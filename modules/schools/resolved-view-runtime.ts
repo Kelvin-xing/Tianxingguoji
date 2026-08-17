@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { ResolvedSchoolViewService } from "./resolved-view.ts";
 
 export interface ResolvedSchoolViewRuntime {

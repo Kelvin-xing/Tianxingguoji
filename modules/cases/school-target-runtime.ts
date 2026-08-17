@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { SchoolTargetService } from "./school-target-service.ts";
 
 export interface SchoolTargetRuntime {

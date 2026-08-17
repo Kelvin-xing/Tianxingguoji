@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import {
   MODULE_REGISTRY,
   ModuleBoundaryError,
+  type ModuleId,
   assertModuleImportAllowed,
   assertModuleWriteAllowed,
   getModuleForPath,
@@ -128,9 +133,96 @@ test("keeps reconstruction repository private across module seams", () => {
 
 test("rejects unregistered paths under the governed module roots", () => {
   assertBoundaryError(
-    () => assertModuleImportAllowed("modules/cases/service.ts", "modules/future/internal.ts"),
+    () => assertModuleImportAllowed("modules/cases/service.ts", "modules/unregistered/internal.ts"),
     "UNREGISTERED_MODULE_PATH",
-    { path: "modules/future/internal.ts" },
+    { path: "modules/unregistered/internal.ts" },
+  );
+});
+
+test("registers every governed source file and every declared public entrypoint", () => {
+  const unregistered = governedSourceFiles()
+    .map(toRepositoryPath)
+    .filter((filePath) => getModuleForPath(filePath) === undefined);
+  const missingEntrypoints = Object.values(MODULE_REGISTRY)
+    .flatMap((definition) => definition.publicEntrypoints)
+    .filter((entrypoint) => !existsSync(resolve(REPOSITORY_ROOT, entrypoint)));
+
+  assert.deepEqual(unregistered, [], `Unregistered governed files:\n${unregistered.join("\n")}`);
+  assert.deepEqual(
+    missingEntrypoints,
+    [],
+    `Missing public entrypoints:\n${missingEntrypoints.join("\n")}`,
+  );
+});
+
+test("keeps all real cross-module imports on declared public entrypoints", () => {
+  const violations: string[] = [];
+
+  for (const sourceFile of governedSourceFiles()) {
+    const importer = toRepositoryPath(sourceFile);
+    const source = readFileSync(sourceFile, "utf8");
+    for (const specifier of staticModuleSpecifiers(sourceFile, source)) {
+      const importedFile = resolveRepositoryImport(sourceFile, specifier);
+      if (!importedFile) continue;
+
+      const imported = toRepositoryPath(importedFile);
+      try {
+        assertModuleImportAllowed(importer, imported);
+      } catch (error) {
+        if (!(error instanceof ModuleBoundaryError)) throw error;
+        violations.push(`${importer} -> ${imported} (${error.code})`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], `Module import violations:\n${violations.join("\n")}`);
+});
+
+test("keeps SQL writes inside the module that owns each table", () => {
+  const violations: string[] = [];
+
+  for (const sourceFile of governedSourceFiles().filter((file) => file.includes(`${sep}modules${sep}`))) {
+    const filePath = toRepositoryPath(sourceFile);
+    const module = getModuleForPath(filePath);
+    if (!module) continue;
+
+    const source = readFileSync(sourceFile, "utf8");
+    for (const table of sqlWriteTargets(source)) {
+      const owner = tableOwner(table);
+      if (owner !== undefined && owner !== "shared" && owner !== module.id) {
+        violations.push(`${filePath} writes ${table} owned by ${owner}`);
+      }
+    }
+  }
+
+  assert.deepEqual(violations, [], `Cross-module SQL writes:\n${violations.join("\n")}`);
+});
+
+test("marks repositories, database adapters, and runtime wiring as server-only", () => {
+  const requiredServerOnlyFiles = [
+    ...walkSourceFiles(resolve(REPOSITORY_ROOT, "modules")).filter((filePath) => {
+      const name = filePath.split(sep).at(-1) ?? "";
+      return name === "runtime.ts" ||
+        name.endsWith("-runtime.ts") ||
+        name === "repository.ts" ||
+        name.endsWith("-repository.ts") ||
+        name === "postgresql.ts" ||
+        name === "student-persistence.ts" ||
+        filePath.endsWith(`${sep}modules${sep}shared${sep}db.ts`) ||
+        filePath.endsWith(`${sep}modules${sep}identity${sep}activation-cookie.ts`) ||
+        filePath.endsWith(`${sep}modules${sep}identity${sep}cognito-adapter.ts`);
+    }),
+    ...walkSourceFiles(resolve(REPOSITORY_ROOT, "lib/runtime")),
+  ];
+  const missingMarker = requiredServerOnlyFiles
+    .filter((filePath) => !readFileSync(filePath, "utf8").includes('import "server-only";'))
+    .map(toRepositoryPath)
+    .sort();
+
+  assert.deepEqual(
+    missingMarker,
+    [],
+    `Server-only modules missing marker:\n${missingMarker.join("\n")}`,
   );
 });
 
@@ -178,4 +270,109 @@ function assertBoundaryError(
     assert.deepEqual(error.details, details);
     return true;
   });
+}
+
+const REPOSITORY_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+const GOVERNED_ROOTS = ["modules", "app/api/v1", "workers"] as const;
+const SOURCE_EXTENSION = /\.(?:ts|tsx)$/;
+const TEMPLATE_LITERAL = /`((?:\\[\s\S]|[^`])*)`/g;
+const SQL_WRITE = /\b(?:insert\s+into|update|delete\s+from)\s+([a-z][a-z0-9_]*)/gi;
+
+function governedSourceFiles(): string[] {
+  return GOVERNED_ROOTS
+    .flatMap((root) => walkSourceFiles(resolve(REPOSITORY_ROOT, root)))
+    .sort();
+}
+
+function walkSourceFiles(directory: string): string[] {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = resolve(directory, entry.name);
+    if (entry.isDirectory()) return walkSourceFiles(entryPath);
+    return entry.isFile() && SOURCE_EXTENSION.test(entry.name) ? [entryPath] : [];
+  });
+}
+
+function staticModuleSpecifiers(filePath: string, source: string): string[] {
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const specifiers: string[] = [];
+
+  function visit(node: ts.Node): void {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return specifiers;
+}
+
+function resolveRepositoryImport(importer: string, specifier: string): string | undefined {
+  let unresolved: string;
+  if (specifier.startsWith("@/")) {
+    unresolved = resolve(REPOSITORY_ROOT, specifier.slice(2));
+  } else if (specifier.startsWith(".")) {
+    unresolved = resolve(dirname(importer), specifier);
+  } else {
+    return undefined;
+  }
+
+  if (extname(unresolved) !== "") return existsSync(unresolved) ? unresolved : undefined;
+  for (const candidate of [
+    `${unresolved}.ts`,
+    `${unresolved}.tsx`,
+    resolve(unresolved, "index.ts"),
+    resolve(unresolved, "index.tsx"),
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function toRepositoryPath(filePath: string): string {
+  return relative(REPOSITORY_ROOT, filePath).split(sep).join("/");
+}
+
+function sqlWriteTargets(source: string): string[] {
+  const tables: string[] = [];
+  TEMPLATE_LITERAL.lastIndex = 0;
+  for (const literal of source.matchAll(TEMPLATE_LITERAL)) {
+    SQL_WRITE.lastIndex = 0;
+    tables.push(...[...literal[1].matchAll(SQL_WRITE)].map((match) => match[1].toLowerCase()));
+  }
+  return tables;
+}
+
+function tableOwner(table: string): ModuleId | "shared" | undefined {
+  if (table.startsWith("shared_")) return "shared";
+  if (table.startsWith("identity_")) return "identity";
+  if (table.startsWith("access_")) return "access";
+  if (table.startsWith("crm_")) return "crm";
+  if (table.startsWith("cases_")) return "cases";
+  if (table.startsWith("tasks_")) return "tasks";
+  if (table.startsWith("schools_")) return "schools";
+  if (table.startsWith("documents_")) return "documents";
+  if (table.startsWith("notifications_")) return "notifications";
+  if (table.startsWith("audit_") || table.startsWith("operations_")) return "audit_operations";
+  if (table.startsWith("portal_")) return "external_portal_access";
+  if (table.startsWith("platform_")) return "platform_billing";
+  return undefined;
 }

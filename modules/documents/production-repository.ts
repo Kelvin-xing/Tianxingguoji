@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { TenantDatabaseContext, TenantTransactionRunner } from "../shared/db.ts";
 import {
   runSupportingModuleTransaction,

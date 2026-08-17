@@ -6,7 +6,7 @@ import {
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../audit/contract.ts";
-import type { IdentitySessionActor } from "../identity/session-repository.ts";
+import type { IdentitySessionActor } from "../identity/actor.ts";
 import {
   resolveSchoolTargetView,
   persistResolvedSchoolPin,

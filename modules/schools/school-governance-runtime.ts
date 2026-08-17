@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { SchoolGovernanceService } from "./governance-service.ts";
 
 export interface SchoolGovernanceRuntime {

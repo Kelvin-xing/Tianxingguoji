@@ -1,3 +1,5 @@
+import "server-only";
+
 export interface PostgreSqlQueryResult<Row extends Record<string, unknown> = Record<string, unknown>> {
   readonly rows: readonly Row[];
   readonly rowCount: number;

@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { PortalRuntime } from "../../modules/external-portal/runtime.ts";
 import type { PlatformBillingRuntime } from "../../modules/platform-billing/runtime.ts";
 import type { PlatformBillingActor } from "../../modules/platform-billing/policy.ts";

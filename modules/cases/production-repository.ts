@@ -1,9 +1,11 @@
-import type { MutationEffectBundle } from "../audit/contract.ts";
+import "server-only";
+
+import { appendAtomicMutationEffects } from "../audit/production-repository.ts";
+import { insertActiveStudent } from "../crm/student-persistence.ts";
 import type { CaseCreationRepository, CaseCreationResult } from "./service.ts";
 import {
   requirePostgreSqlAdapter,
   type PostgreSqlAdapter,
-  type PostgreSqlTransaction,
 } from "./postgresql.ts";
 
 export class PostgreSqlCaseCreationRepository implements CaseCreationRepository {
@@ -82,13 +84,10 @@ export class PostgreSqlCaseCreationRepository implements CaseCreationRepository 
       );
       if (manifest.rowCount !== 1) throw new Error("CASE_CREATION_MANIFEST_NOT_APPROVED");
 
-      await tx.query(
-        `INSERT INTO crm_students
-          (id, organization_id, display_name, date_of_birth, contact_email, contact_phone, status)
-         VALUES ($1,$2,$3,$4,$5,$6,'active')`,
-        [input.student.studentId, input.organizationId, input.student.displayName,
-          input.student.dateOfBirth, input.student.contactEmail, input.student.contactPhone],
-      );
+      await insertActiveStudent(tx, {
+        organizationId: input.organizationId,
+        student: input.student,
+      });
       const binding = advisor.rows[0];
       await tx.query(
         `INSERT INTO cases_service_cases
@@ -106,7 +105,7 @@ export class PostgreSqlCaseCreationRepository implements CaseCreationRepository 
          VALUES ($1,$2,$3,$4,'draft')`,
         [input.assessmentId, input.organizationId, input.serviceCaseId, input.schemaManifestId],
       );
-      await persistEffects(tx, input.effects);
+      await appendAtomicMutationEffects(tx, input.effects);
 
       const result: CaseCreationResult = Object.freeze({
         studentId: input.student.studentId,
@@ -135,28 +134,4 @@ export function createProductionCaseCreationRepository(
   adapter?: PostgreSqlAdapter | null,
 ): CaseCreationRepository {
   return new PostgreSqlCaseCreationRepository(requirePostgreSqlAdapter(adapter));
-}
-
-async function persistEffects(tx: PostgreSqlTransaction, effects: MutationEffectBundle): Promise<void> {
-  await tx.query(
-    `INSERT INTO audit_events
-      (id, organization_id, actor_user_id, actor_kind, event_type, event_version, action,
-       resource_type, resource_id, outcome, request_id, occurred_at, metadata)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
-    [effects.audit.id, effects.audit.organizationId, effects.audit.actorUserId,
-      effects.audit.actorKind, effects.audit.eventType, effects.audit.eventVersion,
-      effects.audit.action, effects.audit.resourceType, effects.audit.resourceId,
-      effects.audit.outcome, effects.audit.requestId, effects.audit.occurredAt,
-      JSON.stringify(effects.audit.metadata)],
-  );
-  await tx.query(
-    `INSERT INTO audit_outbox
-      (id, audit_event_id, organization_id, aggregate_type, aggregate_id, event_type,
-       event_version, idempotency_key, request_id, payload, status, available_at, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'pending',$11,$12)`,
-    [effects.outbox.id, effects.outbox.auditEventId, effects.outbox.organizationId,
-      effects.outbox.aggregateType, effects.outbox.aggregateId, effects.outbox.eventType,
-      effects.outbox.eventVersion, effects.outbox.idempotencyKey, effects.outbox.requestId,
-      JSON.stringify(effects.outbox.payload), effects.outbox.availableAt, effects.outbox.createdAt],
-  );
 }

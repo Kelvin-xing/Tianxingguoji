@@ -1,3 +1,5 @@
+import "server-only";
+
 import { INVITE_POLICY } from "./contract.ts";
 
 export interface CognitoAdminCreateUserRequest {

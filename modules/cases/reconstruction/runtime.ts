@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { CaseReconstructionService } from "./service.ts";
 
 export interface CaseReconstructionRuntime {

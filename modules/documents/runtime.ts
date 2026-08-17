@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { DocumentUploadService } from "./upload-service.ts";
 
 export interface DocumentUploadRuntime {

@@ -1,4 +1,4 @@
-import type { IdentitySessionActor } from "../identity/session-repository.ts";
+import type { IdentitySessionActor } from "../identity/actor.ts";
 import { IdentityRuntimeUnavailable } from "../identity/runtime.ts";
 import { IdentityServiceError } from "../identity/service.ts";
 import { createApiError, handleApiRequest } from "../shared/api-contract.ts";

@@ -1,3 +1,5 @@
+import "server-only";
+
 export const APPLICATION_DATABASE_ROLE = "tianxing_app" as const;
 
 const RDS_HONG_KONG_HOSTNAME = /^[a-z0-9][a-z0-9.-]*\.ap-east-1\.rds\.amazonaws\.com$/;

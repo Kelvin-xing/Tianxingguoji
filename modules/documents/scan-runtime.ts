@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { DocumentScanService } from "./scan-service.ts";
 
 export interface DocumentScanner {

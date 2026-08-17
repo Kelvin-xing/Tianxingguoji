@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { CaseOutcomeService } from "./outcome-service.ts";
 
 export interface CaseOutcomeRuntime {

@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { AuditEvent, MutationEffectBundle, OutboxMessage } from "./contract.ts";
 import type { TenantDatabaseContext, TenantTransaction, TenantTransactionRunner } from "../shared/db.ts";
 
@@ -32,6 +34,13 @@ export interface OwnedSupportingTransaction {
   appendEffects(effects: MutationEffectBundle): Promise<void>;
 }
 
+export interface AtomicMutationTransaction {
+  query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number }>;
+}
+
 const TABLE_REFERENCE = /\b(?:from|join|into|update|delete\s+from)\s+([a-z][a-z0-9_]*)/gi;
 const SHARED_TABLES = new Set(["shared_idempotency_records"]);
 
@@ -50,6 +59,33 @@ export async function runSupportingModuleTransaction<Result>(input: {
 }): Promise<Result> {
   return input.runner.run(input.context, async (transaction) =>
     input.operation(createOwnedTransaction(input.module, input.context, transaction)));
+}
+
+export async function appendAtomicMutationEffects(
+  transaction: AtomicMutationTransaction,
+  effects: MutationEffectBundle,
+): Promise<void> {
+  await transaction.query(
+    `INSERT INTO audit_events
+      (id, organization_id, actor_user_id, actor_kind, event_type, event_version, action,
+       resource_type, resource_id, outcome, request_id, occurred_at, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+    [effects.audit.id, effects.audit.organizationId, effects.audit.actorUserId,
+      effects.audit.actorKind, effects.audit.eventType, effects.audit.eventVersion,
+      effects.audit.action, effects.audit.resourceType, effects.audit.resourceId,
+      effects.audit.outcome, effects.audit.requestId, effects.audit.occurredAt,
+      JSON.stringify(effects.audit.metadata)],
+  );
+  await transaction.query(
+    `INSERT INTO audit_outbox
+      (id, audit_event_id, organization_id, aggregate_type, aggregate_id, event_type,
+       event_version, idempotency_key, request_id, payload, status, available_at, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'pending',$11,$12)`,
+    [effects.outbox.id, effects.outbox.auditEventId, effects.outbox.organizationId,
+      effects.outbox.aggregateType, effects.outbox.aggregateId, effects.outbox.eventType,
+      effects.outbox.eventVersion, effects.outbox.idempotencyKey, effects.outbox.requestId,
+      JSON.stringify(effects.outbox.payload), effects.outbox.availableAt, effects.outbox.createdAt],
+  );
 }
 
 function createOwnedTransaction(

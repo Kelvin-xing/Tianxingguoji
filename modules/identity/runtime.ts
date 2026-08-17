@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { CognitoManagedLoginVerifier } from "./cognito-adapter.ts";
 import type { IdentityService } from "./service.ts";
 

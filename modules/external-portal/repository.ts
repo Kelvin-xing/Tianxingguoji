@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { MutationEffectBundle } from "../audit/contract.ts";
 import type {
   PortalCapabilitySetVersion,

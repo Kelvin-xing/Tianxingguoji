@@ -1,3 +1,5 @@
+import "server-only";
+
 import { AccessScopeService } from "./service.ts";
 
 export interface AccessScopeRuntime {

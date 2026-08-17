@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { DeliveryReceipt } from "./contract.ts";
 import type { TenantDatabaseContext, TenantTransactionRunner } from "../shared/db.ts";
 import { runSupportingModuleTransaction, SupportingRepositoryError } from "../audit/production-repository.ts";

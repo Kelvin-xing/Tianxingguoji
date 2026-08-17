@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { AssessmentService } from "./assessment-service.ts";
 import type { CaseService } from "./service.ts";
 

@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { ContractorTaskWorkspaceService } from "./contractor-workspace.ts";
 
 export interface ContractorTaskWorkspaceRuntime {
