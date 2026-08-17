@@ -1,6 +1,6 @@
 # Release 1 Schema Migrations
 
-This directory is the ordered, immutable SQL source for Release 1 PostgreSQL schema changes. `P0-04` selects `node-pg-migrate@9.0.0` as the runner and keeps checksum and schema-drift enforcement in the local planner. This selection does not authorize a database connection or migration execution.
+This directory is the ordered, immutable SQL source for Release 1 PostgreSQL schema changes. `P0-04` selects `node-pg-migrate@9.0.0` as the runner and keeps checksum and schema-drift enforcement in the local planner. Local execution is separately constrained by `scripts/db/run-local-migrations.ts`; this does not authorize staging or production execution.
 
 ## Selection Scorecard
 
@@ -47,6 +47,17 @@ It returns versioned JSON and exits with `0` for `pass` or `warn`, `2` for a det
 
 ## Execution Boundary
 
-Only a separately approved migration process may provide `MIGRATION_DATABASE_URL`. The migration role owns DDL; the application role remains unprivileged and must not create or alter core schema at runtime. Before any future connection, the caller must apply the policy in `db/migrate.config.ts`, preserve the planner output, identify the exact database target, and obtain migration-owner approval.
+The local workflow uses a dedicated ignored environment file and an immutable checksum manifest:
+
+```bash
+cp .env.migration.local.example .env.migration.local
+pnpm db:plan:local
+pnpm db:migrate:local:dry-run
+pnpm db:migrate:local
+```
+
+The local runner rejects production mode, remote hosts, any database other than `tianxing`, and any user other than `tianxing_migration`. It rechecks the connected identity, ordered ledger, empty-schema bootstrap condition, and every SHA-256 entry in `manifest.json`. Dry-run does not apply business SQL, while apply uses the configured advisory lock and single transaction.
+
+The migration role owns DDL; the application role remains unprivileged and must not create or alter core schema at runtime. Staging or production still requires a separately approved process, an exact target, migration-owner approval, and preserved planner output.
 
 Rollback for an unadopted candidate is dependency removal plus deletion of these unreferenced local files. After a migration is used, rollback is an approved corrective migration or compatible application rollback, never an edit to migration history.

@@ -29,6 +29,14 @@
 | `security/` | Release 1 threat model | 安全基线，不能被功能代码绕过 |
 | `release-evidence/` | 人工 gate 和签署模板 | 未签署或缺字段时 fail closed |
 
+本地 Release 1 运行底座的启动、检查和停止步骤见
+[`runbooks/local-synthetic.md`](runbooks/local-synthetic.md)，对应实现记录为
+[`implementation/LOCAL-01_SYNTHETIC_FOUNDATION.md`](implementation/LOCAL-01_SYNTHETIC_FOUNDATION.md)。
+本地空库迁移执行与权限证据见
+[`implementation/LOCAL-02_DATABASE_MIGRATION.md`](implementation/LOCAL-02_DATABASE_MIGRATION.md)。
+身份模式开关、本地角色登录和 Cognito 回访登录边界见
+[`implementation/LOCAL-03_IDENTITY_MODE.md`](implementation/LOCAL-03_IDENTITY_MODE.md)。
+
 仓库根目录的 `evidence/` 保存测试引用的机器可读 fixture 和 manifest，不应移动到 `docs/`。
 
 ## 4. Implementation 文档族
@@ -99,6 +107,8 @@
 - 两个非路由 `page 2.tsx` preview/mock 副本已删除；可复用 UI 要点保存在本地执行计划中。
 - 目录整理和源码职责分析已经完成。
 - 当前接手范围与推进边界记录在 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.md`，本目录不保存平行副本。
-- README 根文档仍是 create-next-app 默认内容，等待本地运行底座完成后重写。
+- README 根文档仍是 create-next-app 默认内容；是否重写留待后续单独确认。
 
-接手阶段 0 一次只推进一个经确认的步骤；当前不授权业务代码、运行时、工具链或外部环境变更。
+项目已进入阶段 1：本地依赖底座、空库 schema 和进程内合成身份已验证，下一步是把
+合成组织、用户、membership、role binding 和 session 持久化到本地 PostgreSQL。
+云端、真实数据、提交、推送和部署仍需独立授权。
