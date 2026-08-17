@@ -8,6 +8,7 @@ export const MIGRATION_CONFIG = Object.freeze({
   }),
   packageManager: "pnpm@10.34.4",
   migrationsDirectory: "db/migrations",
+  migrationsGlob: "db/migrations/*.sql",
   schema: "public",
   migrationsSchema: "migration",
   migrationsTable: "schema_migrations",
@@ -35,7 +36,8 @@ export function createMigrationRunnerOptions(migrationDatabaseUrl: string): Runn
       statement_timeout: MIGRATION_CONFIG.statementTimeoutMs,
       lock_timeout: MIGRATION_CONFIG.lockTimeoutMs,
     },
-    dir: MIGRATION_CONFIG.migrationsDirectory,
+    dir: MIGRATION_CONFIG.migrationsGlob,
+    useGlob: true,
     schema: MIGRATION_CONFIG.schema,
     migrationsSchema: MIGRATION_CONFIG.migrationsSchema,
     migrationsTable: MIGRATION_CONFIG.migrationsTable,
@@ -47,5 +49,12 @@ export function createMigrationRunnerOptions(migrationDatabaseUrl: string): Runn
     advisoryLockMode: MIGRATION_CONFIG.advisoryLockMode,
     dryRun: MIGRATION_CONFIG.dryRunByDefault,
     migrationLoaderStrategies: [{ extensions: [".sql"], loader: "sql" as const }],
+  };
+}
+
+export function createMigrationApplyOptions(migrationDatabaseUrl: string): RunnerOption {
+  return {
+    ...createMigrationRunnerOptions(migrationDatabaseUrl),
+    dryRun: false,
   };
 }

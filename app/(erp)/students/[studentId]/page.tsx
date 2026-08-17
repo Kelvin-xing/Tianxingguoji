@@ -37,11 +37,11 @@ const ASSESSMENT_FIELDS: Array<{ key: keyof StudyApplicationAssessment; label: s
   { key: 'planned_enrollment_time', label: '計劃入學時間' },
 ]
 
-export default function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function StudentProfilePage({ params }: { params: Promise<{ studentId: string }> }) {
+  const { studentId } = use(params)
   const { t } = useTranslation()
 
-  const student = mockStudents.find((s) => s.id === id)
+  const student = mockStudents.find((s) => s.id === studentId)
   if (!student) notFound()
 
   const currentStatusIdx = STATUS_FLOW.indexOf(student.status as Student['status'])

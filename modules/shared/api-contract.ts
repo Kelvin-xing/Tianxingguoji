@@ -171,6 +171,9 @@ function sanitizeErrorDetails(
   code: ApiErrorCode,
   details: Readonly<Record<string, JsonValue>>,
 ): Readonly<Record<string, JsonValue>> {
+  if (code === "SERVICE_UNAVAILABLE") {
+    return sanitizeDependencyReadiness(details.dependencies);
+  }
   if (code !== "STALE_VERSION") {
     return Object.freeze({});
   }
@@ -192,6 +195,30 @@ function sanitizeErrorDetails(
   }
 
   return Object.freeze(safeDetails);
+}
+
+function sanitizeDependencyReadiness(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return Object.freeze({});
+  }
+  const dependencyRecord = value as { readonly [key: string]: JsonValue };
+
+  const allowedDependencies = [
+    "postgresql",
+    "localstack_s3",
+    "localstack_sqs",
+    "clamav",
+  ] as const;
+  const dependencies: Record<string, JsonValue> = {};
+  for (const name of allowedDependencies) {
+    const state = dependencyRecord[name];
+    if (state !== "ready" && state !== "unavailable") {
+      return Object.freeze({});
+    }
+    dependencies[name] = state;
+  }
+
+  return Object.freeze({ dependencies: Object.freeze(dependencies) });
 }
 
 function jsonResponse(

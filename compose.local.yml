@@ -1,0 +1,58 @@
+name: tianxing-local
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.24
+    environment:
+      POSTGRES_DB: tianxing
+      POSTGRES_USER: tianxing_migration
+      POSTGRES_PASSWORD: tianxing-local-migration-only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - tianxing_postgres_data:/var/lib/postgresql/data
+      - ./infra/local/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tianxing_migration -d tianxing"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:4.14.0
+    environment:
+      SERVICES: s3,sqs
+      AWS_DEFAULT_REGION: ap-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      LOCALSTACK_S3_BUCKET: tianxing-local-documents
+      LOCALSTACK_SQS_QUEUE: tianxing-local-document-scan
+      LOCALSTACK_SQS_DLQ: tianxing-local-document-scan-dlq
+    ports:
+      - "127.0.0.1:4566:4566"
+    volumes:
+      - ./infra/local/localstack/init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          awslocal s3api head-bucket --bucket "$${LOCALSTACK_S3_BUCKET}" >/dev/null 2>&1 &&
+          awslocal sqs get-queue-url --queue-name "$${LOCALSTACK_SQS_QUEUE}" >/dev/null 2>&1 &&
+          awslocal sqs get-queue-url --queue-name "$${LOCALSTACK_SQS_DLQ}" >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.4.5-debian13-slim
+    environment:
+      CLAMD_STARTUP_TIMEOUT: "300"
+    ports:
+      - "127.0.0.1:3310:3310"
+    restart: unless-stopped
+
+volumes:
+  tianxing_postgres_data:

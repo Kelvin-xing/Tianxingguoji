@@ -1,0 +1,20 @@
+{
+  "manifest_version": 1,
+  "migrations": [
+    { "name": "202608021330_001_expand_identity_access.sql", "sha256": "fd3ebd439502eb570882a4daca910dd6dd124810d4a3764c511b05b5db5a5457" },
+    { "name": "202608021630_002_expand_crm.sql", "sha256": "e1e8310a194d95848e063a42b1391076875e58a3dfac30fe024c621b54373b50" },
+    { "name": "202608021830_003_expand_cases.sql", "sha256": "9bc3064eb8bbc82613b11a7627754b074eb5a13c905d4fdc1e5319039f9774b6" },
+    { "name": "202608022030_004_expand_school_overlay.sql", "sha256": "8fe2ba80bddcb3fd264f4f79af4ff34ffc091fe53606676550402d49a482008b" },
+    { "name": "202608022230_005_expand_tasks.sql", "sha256": "2a617638b88be65c3c875e4689fa9ee87819d9deb7e11cb2d3147aff19daa4ac" },
+    { "name": "202608022430_006_expand_documents.sql", "sha256": "5bf8cf047bc9ac10fcad6813a0bfb42431c469c03570e86e237897beb5d09758" },
+    { "name": "202608022530_007_expand_audit_outbox.sql", "sha256": "893f3853ec04ed27b15a79b1bfe8b62162bce2e33afd7549627c865913d705e8" },
+    { "name": "202608030030_008_expand_application_database_role.sql", "sha256": "7897a575374753aa94a7e946116fbb043758d91ee9e296cb9993ce1f7ead580d" },
+    { "name": "202608030040_009_expand_identity_invite_delivery_receipts.sql", "sha256": "210978592fca47ca68f64268dd352e526ce073bfa1bc37a6b380c614a53d2f10" },
+    { "name": "202608030050_010_expand_identity_cognito_revoke_receipts.sql", "sha256": "21a5c53928632370f5a3ac28dfba668b2f174445ea351387595918d26f89c2ea" },
+    { "name": "202608120030_015_expand_case_reconstruction.sql", "sha256": "2cdce03a2397b00416644b590976be57082f7e9da5d7c62733a37e368f4acfa5" },
+    { "name": "202608130010_011_expand_external_portal_access.sql", "sha256": "79ce9dc99de2e947e68970f9cf4a2a0d4917bfd21f5868c052b25050f5251a1a" },
+    { "name": "202608130020_012_expand_platform_billing.sql", "sha256": "a8c81b0674d5083b558d11aab8f528f486593ce7e125d2e937d61fc5a9727fb2" },
+    { "name": "202608130030_013_expand_case_billing_projection.sql", "sha256": "3eaeb84dfe9a8436e1c98c4cecf49359abf2cd06ebd95ebc765a5e204b41fe76" },
+    { "name": "202608130040_016_expand_application_predicates.sql", "sha256": "8b2bb281ecbb067f775c5e657af4b16ec6ef1cb4e9eb481025b2b149cf0d4209" }
+  ]
+}

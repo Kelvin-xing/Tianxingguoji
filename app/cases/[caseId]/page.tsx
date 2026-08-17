@@ -17,11 +17,11 @@ const stageSequence: Array<{ key: CaseRecord['stage']; label: string }> = [
   { key: 'closed', label: '已結案' },
 ]
 
-export default async function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+export default async function CaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
+  const { caseId } = await params
   let record: CaseRecord | undefined
   try {
-    record = await getCaseDetail(await requireActor(), id)
+    record = await getCaseDetail(await requireActor(), caseId)
   } catch (error) {
     if (error instanceof ApiContractError && error.code === 'UNAUTHENTICATED') redirect('/login')
     throw error

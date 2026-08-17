@@ -140,6 +140,39 @@ test("maps service unavailability to an explicitly retryable 503", async () => {
   assert.equal(body.error.retryable, true);
 });
 
+test("service unavailability exposes only allowlisted local dependency states", async () => {
+  const context = createRequestContext(new Request("https://erp.example.test"), {
+    createRequestId: () => "req-local-readiness",
+  });
+  const response = errorResponse(
+    context,
+    createApiError("SERVICE_UNAVAILABLE", {
+      details: {
+        dependencies: {
+          postgresql: "ready",
+          localstack_s3: "ready",
+          localstack_sqs: "unavailable",
+          clamav: "unavailable",
+          raw_error: "DATABASE_URL=secret",
+        },
+        endpoint: "127.0.0.1",
+      },
+    }),
+  );
+  const body = await response.json();
+
+  assert.deepEqual(body.error.details, {
+    dependencies: {
+      postgresql: "ready",
+      localstack_s3: "ready",
+      localstack_sqs: "unavailable",
+      clamav: "unavailable",
+    },
+  });
+  assert.equal(JSON.stringify(body).includes("secret"), false);
+  assert.equal(JSON.stringify(body).includes("127.0.0.1"), false);
+});
+
 test("never exposes an unknown exception message or stack", async () => {
   const context = createRequestContext(new Request("https://erp.example.test"), {
     createRequestId: () => "req-internal",
