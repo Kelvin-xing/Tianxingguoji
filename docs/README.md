@@ -12,9 +12,10 @@
 
 1. `txgj-doc/PRD_IMPLEMENTATION_DECISIONS.md` 中对应决策。
 2. `txgj-doc/PRD_PHASE_IMPLEMENTATION_PLAN.md` 中对应 ticket、依赖和验收项。
-3. 本目录中对应的 implementation record。
-4. 相关领域契约、迁移和测试。
-5. `evidence/` 和 `docs/release-evidence/` 中的实际证据与签署状态。
+3. 当前接手范围先读取 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.zh-CN.md`；英文原文位于同仓库的 `TAKEOVER_PHASE0_SCOPE_BASELINE.md`。
+4. 本目录中对应的 implementation record。
+5. 相关领域契约、迁移和测试。
+6. `evidence/` 和 `docs/release-evidence/` 中的实际证据与签署状态。
 
 文件名或计划存在不代表 ticket 已经完成。必须读取文档中的 `Status`、`Local status`、未验证项和禁止声明。
 
@@ -68,7 +69,7 @@
 | `release-evidence/phase3/first-case-go-no-go.md` | `no-go`，不授权任何真实案件 |
 | `R1X-DECISION-BASELINE-20260812.md` | 当前本地 Portal/Billing 实现基线；真实启用仍需独立 gate |
 
-本地整理阶段不运行云端验证，也不把 `partial_local`、`implemented_local` 或测试 fixture 描述为 production-ready。
+当前接手阶段不运行云端验证，也不把 `partial_local`、`implemented_local` 或测试 fixture 描述为 production-ready。
 
 ## 6. 状态解释
 
@@ -91,11 +92,13 @@
 - 移动文档前必须检查测试、脚本和其他文档中的硬编码路径。
 - 完成一个 ticket 时更新对应文档，不创建同编号的平行版本。
 
-## 8. 当前整理状态
+## 8. 当前接手状态
 
 - 身份术语已迁移到 `domain/IDENTITY_CONTEXT.md`。
 - 2026 年 6 月的历史设计已移至 `txgj-doc/archive/legacy-design/`。
 - 两个非路由 `page 2.tsx` preview/mock 副本已删除；可复用 UI 要点保存在本地执行计划中。
+- 目录整理和源码职责分析已经完成。
+- 当前接手范围与推进边界记录在 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.md`，本目录不保存平行副本。
 - README 根文档仍是 create-next-app 默认内容，等待本地运行底座完成后重写。
 
-下一阶段的源码职责整理只做依赖和边界分析；未经用户确认，不移动 `modules/`、`lib/`、`adapters/` 或 `workers/`。
+接手阶段 0 一次只推进一个经确认的步骤；当前不授权业务代码、运行时、工具链或外部环境变更。
