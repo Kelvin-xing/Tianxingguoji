@@ -26,6 +26,7 @@
 /AGENT.md
 /PROJECT_PLAN.local.md
 /.kition/
+/.idea/
 
 # Terraform runtime artifacts are never source or release evidence.
 **/.terraform/
