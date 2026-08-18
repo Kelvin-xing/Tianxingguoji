@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  loadRuntimeEnvironment,
+  RuntimeEnvironmentConfigurationError,
+} from "./runtime-environment.ts";
+
 const LOCAL_MODE = "local-synthetic" as const;
 const HK_REGION = "ap-east-1" as const;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -40,17 +45,27 @@ export class LocalSyntheticConfigurationError extends Error {
 }
 
 export function isLocalSyntheticMode(environment: Environment = process.env): boolean {
-  return environment.APP_RUNTIME_MODE?.trim() === LOCAL_MODE;
+  try {
+    return loadRuntimeEnvironment(environment).appRuntimeMode === LOCAL_MODE;
+  } catch (error) {
+    if (error instanceof RuntimeEnvironmentConfigurationError) return false;
+    throw error;
+  }
 }
 
 export function loadLocalSyntheticConfig(
   environment: Environment = process.env,
 ): LocalSyntheticConfig {
-  if (!isLocalSyntheticMode(environment)) {
-    throw new LocalSyntheticConfigurationError("APP_RUNTIME_MODE");
-  }
-  if (environment.NODE_ENV?.trim() === "production") {
-    throw new LocalSyntheticConfigurationError("NODE_ENV");
+  try {
+    const runtime = loadRuntimeEnvironment(environment);
+    if (runtime.appRuntimeMode !== LOCAL_MODE) {
+      throw new LocalSyntheticConfigurationError("APP_RUNTIME_MODE");
+    }
+  } catch (error) {
+    if (error instanceof RuntimeEnvironmentConfigurationError) {
+      throw new LocalSyntheticConfigurationError(error.variable);
+    }
+    throw error;
   }
 
   const databaseUrl = localUrl(

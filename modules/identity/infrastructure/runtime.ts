@@ -11,6 +11,9 @@ import type { CognitoManagedLoginVerifier } from "../application/cognito-port.ts
 import {
   LocalSyntheticLoginService,
 } from "./local-synthetic-login.ts";
+import {
+  DatabaseTestLoginService,
+} from "../application/database-test-login.ts";
 import { IdentityServiceError, type IdentityService } from "../application/service.ts";
 import { IdentityRepositoryError } from "../application/session-port.ts";
 import { hashOpaqueSecret } from "../application/opaque-secret.ts";
@@ -18,6 +21,10 @@ import { loadLocalSyntheticConfig } from "../../../lib/runtime/local-synthetic-c
 import {
   getPostgresqlLocalSyntheticSessionRepository,
 } from "./postgresql-local-synthetic-repository.ts";
+import { loadTestDatabaseConfiguration } from "../../../lib/runtime/test-database-config.ts";
+import {
+  getPostgresqlDatabaseTestSessionRepository,
+} from "./postgresql-database-test-repository.ts";
 
 export type IdentityRuntimeService = Pick<
   IdentityService,
@@ -33,6 +40,7 @@ export interface IdentityRuntime {
   readonly service: IdentityRuntimeService;
   readonly managedLoginVerifier: CognitoManagedLoginVerifier | null;
   readonly localLogin: LocalSyntheticLoginService | null;
+  readonly databaseTestLogin: DatabaseTestLoginService | null;
   readonly legacySessionReader: Readonly<{
     findByCookieSecret(cookieSecret: string): Promise<SessionActor>;
   }>;
@@ -47,11 +55,14 @@ export class IdentityRuntimeUnavailable extends Error {
 
 export function getIdentityRuntime(): IdentityRuntime {
   const mode = loadAuthMode();
-  return mode === "local-synthetic" ? getLocalSyntheticRuntime() : getCognitoRuntime();
+  if (mode === "local-synthetic") return getLocalSyntheticRuntime();
+  if (mode === "database-test") return getDatabaseTestRuntime();
+  return getCognitoRuntime();
 }
 
 const globalForIdentity = globalThis as typeof globalThis & {
   __txLocalSyntheticIdentityRuntime?: IdentityRuntime;
+  __txDatabaseTestIdentityRuntime?: IdentityRuntime;
 };
 
 function getLocalSyntheticRuntime(): IdentityRuntime {
@@ -94,6 +105,7 @@ function getLocalSyntheticRuntime(): IdentityRuntime {
       service,
       managedLoginVerifier: null,
       localLogin: new LocalSyntheticLoginService(repository),
+      databaseTestLogin: null,
       legacySessionReader: Object.freeze({
         async findByCookieSecret(cookieSecret: string) {
           try {
@@ -113,6 +125,76 @@ function getLocalSyntheticRuntime(): IdentityRuntime {
     });
   }
   return globalForIdentity.__txLocalSyntheticIdentityRuntime;
+}
+
+function getDatabaseTestRuntime(): IdentityRuntime {
+  if (!globalForIdentity.__txDatabaseTestIdentityRuntime) {
+    const config = loadTestDatabaseConfiguration();
+    const repository = getPostgresqlDatabaseTestSessionRepository({
+      connectionString: config.identity.connectionString,
+      loginUser: config.identity.loginUser,
+      connectionTimeoutMs: config.connectionTimeoutMs,
+      statementTimeoutMs: config.statementTimeoutMs,
+      poolMax: config.poolMax,
+      ssl: config.ssl,
+    });
+    const unavailable = async (): Promise<never> => {
+      throw new IdentityRuntimeUnavailable();
+    };
+    const service: IdentityRuntimeService = {
+      createFounderInvite: unavailable,
+      claimInviteActivation: unavailable,
+      completeManagedLogin: unavailable,
+      async requireSession(input) {
+        try {
+          return await repository.findActorBySessionSecretHash({
+            secretHash: hashOpaqueSecret(input.cookieSecret),
+            nowMs: Date.now(),
+            sensitiveAction: input.sensitiveAction,
+          });
+        } catch (error) {
+          if (error instanceof IdentityRepositoryError) {
+            throw new IdentityServiceError("SESSION_NOT_FOUND");
+          }
+          throw error;
+        }
+      },
+      async revokeSession(input) {
+        await repository.revokeSessionBySecretHash({
+          secretHash: hashOpaqueSecret(input.cookieSecret),
+          reason: input.reason,
+        });
+      },
+    };
+    globalForIdentity.__txDatabaseTestIdentityRuntime = Object.freeze({
+      authMode: "database-test",
+      service,
+      managedLoginVerifier: null,
+      localLogin: null,
+      databaseTestLogin: new DatabaseTestLoginService(repository),
+      legacySessionReader: Object.freeze({
+        async findByCookieSecret(cookieSecret: string) {
+          const actor = await repository.findLegacyActorBySessionSecretHash({
+            secretHash: hashOpaqueSecret(cookieSecret),
+            nowMs: Date.now(),
+            sensitiveAction: false,
+          });
+          return {
+            userId: actor.userId,
+            normalizedEmail: actor.normalizedEmail,
+            organizationId: actor.organizationId,
+            membershipId: actor.membershipId,
+            roleBindingId: actor.roleBindingId,
+            role: actor.role,
+            sessionId: actor.sessionId,
+            capturedSessionVersion: actor.capturedSessionVersion,
+            reauthenticatedAt: actor.reauthenticatedAtMs,
+          };
+        },
+      }),
+    });
+  }
+  return globalForIdentity.__txDatabaseTestIdentityRuntime;
 }
 
 function getCognitoRuntime(): IdentityRuntime {
@@ -154,6 +236,7 @@ function getCognitoRuntime(): IdentityRuntime {
     service,
     managedLoginVerifier: null,
     localLogin: null,
+    databaseTestLogin: null,
     legacySessionReader: Object.freeze({
       findByCookieSecret: findActorBySecret,
     }),

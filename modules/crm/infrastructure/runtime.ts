@@ -2,8 +2,8 @@ import "server-only";
 
 import type { GuardianRelationshipService } from "../application/guardian-relationship-service.ts";
 import { StudentReadService } from "../application/read-service.ts";
-import { isLocalSyntheticMode } from "../../../lib/runtime/local-synthetic-config.ts";
-import { getLocalApplicationTenantRunner } from "../../shared/server.ts";
+import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
+import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts";
 
 export interface GuardianRelationshipRuntime {
@@ -30,17 +30,22 @@ export interface StudentReadRuntime {
 }
 
 const globalForCrmRead = globalThis as typeof globalThis & {
-  __txLocalStudentReadRuntime?: StudentReadRuntime;
+  __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
 };
 
 export function getStudentReadRuntime(): StudentReadRuntime {
-  if (!isLocalSyntheticMode()) throw new GuardianRelationshipRuntimeUnavailable();
-  if (!globalForCrmRead.__txLocalStudentReadRuntime) {
-    globalForCrmRead.__txLocalStudentReadRuntime = Object.freeze({
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new GuardianRelationshipRuntimeUnavailable();
+  const runtimes = globalForCrmRead.__txStudentReadRuntimes ?? new Map<string, StudentReadRuntime>();
+  globalForCrmRead.__txStudentReadRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    runtime = Object.freeze({
       service: new StudentReadService(
-        new PostgresqlStudentReadRepository(getLocalApplicationTenantRunner()),
+        new PostgresqlStudentReadRepository(getApplicationTenantRunner()),
       ),
     });
+    runtimes.set(mode, runtime);
   }
-  return globalForCrmRead.__txLocalStudentReadRuntime;
+  return runtime;
 }

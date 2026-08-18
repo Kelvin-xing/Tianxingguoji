@@ -138,7 +138,9 @@ test("reports each unavailable dependency without throwing raw probe errors", as
 
 function validEnvironment(): Record<string, string | undefined> {
   return {
+    APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
+    AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",
     LOCAL_SYNTHETIC_DATABASE_URL:
       "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
