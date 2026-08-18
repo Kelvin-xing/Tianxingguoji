@@ -41,6 +41,7 @@ export interface CaseWorkspaceDetail extends CaseWorkspaceListItem {
   readonly assessmentStatus: "draft" | "background_complete" | "selection_ready";
   readonly manifestId: string;
   readonly primaryBindingLabel: string;
+  readonly primaryUserId: string;
   readonly recordVersion: number;
 }
 

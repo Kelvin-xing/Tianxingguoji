@@ -21,6 +21,7 @@ interface CaseRow extends Record<string, unknown> {
   stage: CaseWorkspaceListItem["stage"];
   updated_at: Date | string;
   primary_role: "founder" | "advisor";
+  primary_user_id?: string;
   assessment_id?: string;
   assessment_status?: CaseWorkspaceDetail["assessmentStatus"];
   manifest_id?: string;
@@ -58,7 +59,8 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         `SELECT service_case.id, service_case.case_number, service_case.student_id,
                 student.display_name AS student_name, service_case.intake_year,
                 service_case.admission_type, service_case.stage, service_case.updated_at,
-                service_case.primary_role, service_case.primary_role_binding_id,
+                service_case.primary_role, service_case.primary_user_id,
+                service_case.primary_role_binding_id,
                 service_case.record_version, assessment.id AS assessment_id,
                 assessment.status AS assessment_status, assessment.manifest_id
            FROM cases_service_cases AS service_case
@@ -73,13 +75,15 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
       );
       const row = result.rows[0];
       if (!row || !row.assessment_id || !row.assessment_status || !row.manifest_id ||
-          !row.primary_role_binding_id || row.record_version === undefined) return null;
+          !row.primary_role_binding_id || !row.primary_user_id ||
+          row.record_version === undefined) return null;
       return Object.freeze({
         ...toListItem(row),
         assessmentId: row.assessment_id,
         assessmentStatus: row.assessment_status,
         manifestId: row.manifest_id,
         primaryBindingLabel: `${row.primary_role === "advisor" ? "Advisor" : "Founder"} · ${row.primary_role_binding_id.slice(-8)}`,
+        primaryUserId: row.primary_user_id,
         recordVersion: Number(row.record_version),
       }) satisfies CaseWorkspaceDetail;
     });

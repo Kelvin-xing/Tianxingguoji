@@ -3,10 +3,10 @@
 | Control | Value |
 | --- | --- |
 | Ticket | `P1-14` Advisor performs one guarded Case transition and Founder rollback |
-| Date | 2026-08-07 (Asia/Hong_Kong) |
-| Local status | `implemented_with_synthetic_adapter` |
+| Date | 2026-08-18 (Asia/Hong_Kong) |
+| Local status | `accepted_local` |
 | Decision inputs | Resolved `OD-04`; `DEC-010`, `DEC-027`, `DEC-041`, `DEC-044` |
-| External state | No migration execution, RDS write, Cognito call, worker schedule, deployment, commit, or push action performed |
+| External state | Local migrations `024` through `026` applied to loopback PostgreSQL only; user accepted the slice and authorized its code commit/push; no RDS, Cognito, worker, or deployment action performed |
 
 ## Release 1 Slice
 
@@ -51,9 +51,25 @@ the immutable transition fact, applying the controlled Case stage/version
 update, writing audit/outbox effects, and finalizing the idempotency result.
 A failed transaction commits no partial state or effects.
 
-`modules/cases/infrastructure/transition-runtime.ts` deliberately provides no JSON, mock,
-Neon, or cloud fallback. Production fails closed with `503 SERVICE_UNAVAILABLE`
-until the approved RDS transaction adapter is composed.
+`modules/cases/infrastructure/transition-runtime.ts` composes
+`PostgresqlCaseTransitionRepository` only in explicit `local-synthetic` mode.
+There is no JSON, mock, Neon, or cloud fallback. Non-local modes continue to
+fail closed with `503 SERVICE_UNAVAILABLE` until a separately approved RDS
+composition exists.
+
+Migration `024` adds the append-only
+`cases_service_case_transition_facts` table and the tenant-bound
+`cases_apply_service_case_transition` function. The application role cannot
+update `cases_service_cases` directly; the function is the only granted stage
+write boundary and rechecks actor, current Primary binding, version, stage,
+approved manifest, assessment status, and blocker evidence.
+
+Migration `025` bounds transition time and reason length, then takes final
+shared locks while rechecking the active actor authority and assessment
+evidence immediately before the Case update. Migration `026` preserves that
+guard while giving its assessment and manifest PL/pgSQL variables unambiguous
+names; this corrective migration was appended after the already-applied `025`
+rather than rewriting migration history.
 
 ## Error Contract
 
@@ -69,8 +85,8 @@ until the approved RDS transaction adapter is composed.
 
 ## Deterministic Evidence
 
-`node --test tests/integration/case-transition-workflow.test.ts` passes `5/5`
-tests covering:
+The focused workflow and PostgreSQL repository suites pass `8/8` tests
+covering:
 
 1. Primary Advisor `signed -> background_collection` success only after complete manifest and assessment evidence, with transition fact, audit, outbox, and idempotency result.
 2. Incomplete evidence denial with no Case/effect mutation.
@@ -78,19 +94,27 @@ tests covering:
 4. Case visibility, incorrect Primary Advisor, stale version, and unsupported target denial.
 5. Exact idempotency replay plus an injected pre-commit failure that leaves no partial fact, audit, outbox, or idempotency state.
 
-`./node_modules/.bin/tsc --noEmit --pretty false` passed with no diagnostics.
-`node --test tests/architecture/module-boundaries.test.ts` passed `6/6`.
-`pnpm lint` and `pnpm build` were not run because `erp-frontend/AGENTS.md`
-forbids them without separate explicit authorization.
+The migration boundary and local runner suites pass `11/11`; architecture tests
+pass `15/15`. Migration `024` moved the local ledger from 22 to 23 and public
+tables from 61 to 62. The hardening and corrective dry-runs then selected only
+`025` and only `026`; their applies moved the ledger to 25 without changing the
+62-table count. Browser verification completed two Advisor advances and two
+Founder rollbacks with reasons before a final Advisor advance. The final
+synthetic Case is `background_collection` at record version 6 with five
+transition facts, five audit events, five pending outbox rows, and five
+completed idempotency records. Refresh preserved version 6, and a direct
+`tianxing_app` table update was denied.
 
-## Remaining Runtime And Schema Gates
+The repository-wide strict TypeScript check still reports existing unrelated
+baseline diagnostics; the Phase 2C focused suites and runtime compilation did
+not expose a Phase 2C failure. `pnpm lint`, `pnpm build`, and the full test suite
+were not run under the current execution limits.
 
-P0-07 currently makes `cases_service_cases.stage` immutable after creation and
-does not provide a Case-transition fact table. This implementation does not
-weaken or alter that contract. Before a real Case can transition, data/security
-owners must approve an additive migration and RDS transaction implementation
-that provide controlled stage mutation, an append-only transition fact, the
-required locking/authorization/evidence reads, idempotency retention, audit and
-outbox writes, RLS negative cases, and timeout/retry behavior. No local source
-or test authorizes that migration, an RDS write, an external Identity action,
-or deployment.
+## Remaining Production Gate
+
+Only the local synthetic database has migrations `024` through `026`. Before a
+real Case can transition, data/security owners must separately approve the
+production migration and RDS runtime composition, including production RLS
+negative cases, timeouts, retries, recovery, monitoring, and deployment
+evidence. This accepted local slice does not authorize an RDS write, external
+Identity action, worker schedule, or deployment.

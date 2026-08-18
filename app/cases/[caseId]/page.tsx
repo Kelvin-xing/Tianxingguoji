@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
 import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/AssessmentEditor'
+import { CaseStageControls } from '@/components/cases/CaseStageControls'
 import { Icon } from '@/components/workspace/Icon'
 import {
   AssessmentServiceError,
@@ -30,8 +31,9 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   const { caseId } = await params
   let record
   let assessment
+  let actor
   try {
-    const actor = await requireIdentityActor()
+    actor = await requireIdentityActor()
     const runtime = getCaseWorkspaceRuntime()
     record = await runtime.service.findCase(actor, caseId)
     if (record) assessment = await runtime.assessmentService.getCaseAssessment({ actor, caseId })
@@ -50,6 +52,16 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">CaseWorkflow · ServiceCase</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />Student 360</Link></section>
 
       <section className="workspace-section"><div className="mb-5"><h3 className="section-title">案件階段</h3><p className="section-detail">Assessment 完成後仍由獨立的案件階段命令推進，不會由頁面自動跳階段。</p></div><div className="overflow-x-auto"><div className="stage-track">{stages.map((stage, index) => { const done = index < stageIndex; const active = index === stageIndex; return <div className="stage-node" key={stage.key}><div className={`stage-dot ${done ? 'done' : ''} ${active ? 'active' : ''}`}>{done ? <Icon name="check" size={13} /> : index + 1}</div><span className={active ? 'active-label' : ''}>{stage.label}</span>{index < stages.length - 1 && <div className={`stage-line ${done ? 'done' : ''}`} />}</div> })}</div></div></section>
+
+      <CaseStageControls
+        key={`${record.id}-${record.stage}-${record.recordVersion}`}
+        endpoint={`/api/v1/cases/${caseId}/transitions`}
+        initialStage={record.stage}
+        initialRecordVersion={record.recordVersion}
+        assessmentStatus={assessment.status}
+        canAdvance={actor.userId === record.primaryUserId && (actor.role === 'advisor' || actor.role === 'founder')}
+        canRollback={actor.role === 'founder'}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="workspace-section"><div className="mb-4"><h3 className="section-title">案件身份</h3><p className="section-detail">這些欄位屬於 ServiceCase，不複製 Student 身份資料。</p></div><div className="grid grid-cols-2 gap-4"><Info label="Case number" value={record.caseNumber} /><Info label="Student" value={record.studentName} /><Info label="Intake year" value={String(record.intakeYear)} /><Info label="Admission type" value={admissionLabel(record.admissionType)} /><Info label="Primary" value={record.primaryBindingLabel} /><Info label="Record version" value={String(record.recordVersion)} /></div></section>

@@ -19,6 +19,7 @@ export type IconName =
   | 'mail'
   | 'menu'
   | 'plus'
+  | 'rotate-ccw'
   | 'search'
   | 'settings'
   | 'shield'
@@ -47,6 +48,7 @@ const paths: Record<IconName, ReactNode> = {
   mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
+  'rotate-ccw': <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></>,
   settings: <><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="M4.9 4.9 7 7m10 10 2.1 2.1M4 12H1m22 0h-3M4.9 19.1 7 17m10-10 2.1-2.1M12 4V1m0 22v-3" /></>,
   shield: <><path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /><path d="m8.5 12 2.2 2.2 4.8-4.8" /></>,

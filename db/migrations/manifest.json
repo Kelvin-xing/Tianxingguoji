@@ -22,6 +22,9 @@
     { "name": "202608180040_020_grant_audit_validation_to_application.sql", "sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155" },
     { "name": "202608180050_021_enable_assessment_background_completion.sql", "sha256": "2625f5a744ca1dc8840c5aba404f0e29d6a1974bf6bfdfdfe81b80bc1ad521e2" },
     { "name": "202608180060_022_expose_bound_assessment_manifest.sql", "sha256": "f5a82516d72044c7c41114326fee7eb1215ffa9d4631e308aa28bf111b219116" },
-    { "name": "202608180070_023_harden_assessment_answer_validation.sql", "sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e" }
+    { "name": "202608180070_023_harden_assessment_answer_validation.sql", "sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e" },
+    { "name": "202608180080_024_enable_case_stage_transition.sql", "sha256": "b8baaa8680a8dc3f3796483d1ffe2f1cf214ae184e007b77f133214a9c801baa" },
+    { "name": "202608180090_025_harden_case_stage_transition.sql", "sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5" },
+    { "name": "202608180100_026_fix_case_stage_transition_evidence_binding.sql", "sha256": "2818679cc8b82dd3b3df8e6a39578c1eeda7ab522a3983e7d764969d93313556" }
   ]
 }
