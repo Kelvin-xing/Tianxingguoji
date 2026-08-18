@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { composeK12Manifest } from "../../modules/cases/domain/contract.ts";
+import { composeK12Manifest, type K12Module } from "../../modules/cases/domain/contract.ts";
 import {
   AssessmentService,
   AssessmentServiceError,
@@ -20,6 +20,12 @@ const COLLABORATOR = Object.freeze({
   ...ADVISOR,
   userId: "44444444-4444-4444-8444-444444444444",
   sessionId: "55555555-5555-4555-8555-555555555555",
+});
+const CONTRACTOR = Object.freeze({
+  ...ADVISOR,
+  role: "contractor" as const,
+  userId: "99999999-9999-4999-8999-999999999999",
+  sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 });
 const CASE_ID = "66666666-6666-4666-8666-666666666666";
 const ASSESSMENT_ID = "77777777-7777-4777-8777-777777777777";
@@ -84,9 +90,9 @@ test("resolves one serializable four-layer schema for the assessment read model"
       {
         fieldId: "fixture.base.intent",
         layer: "base",
-        valueType: "text",
+        valueType: "text" as const,
         visibility: "case",
-        blockingStages: ["background_complete"],
+        blockingStages: ["background_collection"],
       },
       {
         fieldId: "fixture.stage.year",
@@ -100,7 +106,7 @@ test("resolves one serializable four-layer schema for the assessment read model"
         layer: "school_system",
         valueType: "text",
         visibility: "case",
-        blockingStages: ["selection_ready"],
+        blockingStages: ["school_selection_confirmed"],
       },
       {
         fieldId: "fixture.route.entry",
@@ -113,6 +119,7 @@ test("resolves one serializable four-layer schema for the assessment read model"
   });
   assert.deepEqual(view.answers, []);
   assert.equal(view.assessmentId, ASSESSMENT_ID);
+  assert.equal(view.recordVersion, 1);
 });
 
 test("updates one typed answer atomically and exposes the same answer through the read model", async () => {
@@ -253,11 +260,82 @@ test("idempotency replay has no second effect and a transaction failure leaves n
   assert.deepEqual(failed.repository.snapshot(), { answers: 0, audits: 0, outbox: 0 });
 });
 
+test("completes background collection only after every background blocker has an explicit answer", async () => {
+  const { repository, service } = createWorkflow();
+  await assert.rejects(
+    service.completeBackgroundCollection({
+      actor: ADVISOR,
+      caseId: CASE_ID,
+      command: {
+        expectedRecordVersion: 1,
+        requestId: "assessment.complete",
+        idempotencyKey: "assessment-complete-001",
+      },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof AssessmentServiceError);
+      assert.equal(error.code, "ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE");
+      assert.deepEqual(error.missingFieldIds, ["fixture.base.intent"]);
+      return true;
+    },
+  );
+  assert.deepEqual(repository.snapshot(), { answers: 0, audits: 0, outbox: 0 });
+
+  await service.updateAssessmentAnswer({
+    actor: ADVISOR,
+    caseId: CASE_ID,
+    command: command({
+      semanticState: "unknown",
+      value: null,
+      valueType: null,
+    }),
+  });
+  const completionCommand = {
+    expectedRecordVersion: 1,
+    requestId: "assessment.complete",
+    idempotencyKey: "assessment-complete-002",
+  };
+  const completed = await service.completeBackgroundCollection({
+    actor: ADVISOR,
+    caseId: CASE_ID,
+    command: completionCommand,
+  });
+  const replay = await service.completeBackgroundCollection({
+    actor: ADVISOR,
+    caseId: CASE_ID,
+    command: completionCommand,
+  });
+
+  assert.deepEqual(completed, {
+    assessmentId: ASSESSMENT_ID,
+    status: "background_complete",
+    recordVersion: 2,
+  });
+  assert.deepEqual(replay, completed);
+  assert.deepEqual(repository.snapshot(), { answers: 1, audits: 2, outbox: 2 });
+  assert.equal(
+    (await service.getCaseAssessment({ actor: ADVISOR, caseId: CASE_ID })).status,
+    "background_complete",
+  );
+});
+
+test("rejects assessment reads and writes for roles outside the internal assessment boundary", async () => {
+  const { service } = createWorkflow();
+  await assert.rejects(
+    service.getCaseAssessment({ actor: CONTRACTOR, caseId: CASE_ID }),
+    hasCode("ASSESSMENT_READ_FORBIDDEN"),
+  );
+  await assert.rejects(
+    service.updateAssessmentAnswer({ actor: CONTRACTOR, caseId: CASE_ID, command: command() }),
+    hasCode("ASSESSMENT_WRITE_FORBIDDEN"),
+  );
+});
+
 function fixtureManifest() {
   return composeK12Manifest([
-    module("base", "base", "fixture.base.intent", ["background_complete"]),
+    module("base", "base", "fixture.base.intent", ["background_collection"]),
     module("education_stage", "stage", "fixture.stage.year", []),
-    module("school_system", "system", "fixture.system.preference", ["selection_ready"]),
+    module("school_system", "system", "fixture.system.preference", ["school_selection_confirmed"]),
     module("admission_route", "route", "fixture.route.entry", []),
   ]);
 }
@@ -267,7 +345,7 @@ function module(
   moduleId: string,
   fieldId: string,
   blockingStages: readonly string[],
-) {
+): K12Module {
   return {
     applicationType: "k12" as const,
     layer,

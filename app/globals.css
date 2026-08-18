@@ -126,6 +126,8 @@ select:focus {
 
 .primary-button:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .primary-button:active { transform: translateY(1px); }
+.primary-button:disabled { cursor: not-allowed; opacity: 0.55; transform: none; }
+.primary-button:disabled:hover { background: var(--accent); border-color: var(--accent); }
 
 .secondary-button {
   background: var(--surface);
@@ -142,6 +144,20 @@ select:focus {
 .secondary-button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .secondary-button:disabled:hover { background: var(--surface); border-color: var(--border); color: var(--text-secondary); }
+
+.assessment-control {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.65rem;
+  width: 100%;
+}
+.assessment-control:focus-within { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent); }
+.assessment-control:disabled { background: var(--bg); color: var(--text-muted); cursor: not-allowed; }
+.assessment-control input[type="checkbox"] { accent-color: var(--accent); height: 0.9rem; width: 0.9rem; }
 
 .icon-button { background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text-secondary); height: 2.25rem; width: 2.25rem; }
 .icon-button:hover { background: var(--bg); border-color: var(--border); color: var(--text-primary); }

@@ -16,6 +16,7 @@ export * from "./infrastructure/postgresql.ts";
 export * from "./infrastructure/preview-workspace-adapter.ts";
 export * from "./infrastructure/production-repository.ts";
 export * from "./infrastructure/postgresql-workspace-repository.ts";
+export * from "./infrastructure/postgresql-assessment-repository.ts";
 export * from "./infrastructure/runtime.ts";
 export * from "./infrastructure/school-target-runtime.ts";
 export * from "./infrastructure/transition-runtime.ts";

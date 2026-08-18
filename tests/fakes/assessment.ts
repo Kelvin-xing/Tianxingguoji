@@ -1,4 +1,5 @@
 import type {
+  AssessmentCompletionResult,
   AssessmentRepository,
   AssessmentSnapshot,
   StoredAssessmentAnswer,
@@ -10,6 +11,11 @@ import type { AssessmentStatus, K12ManifestComposition } from "../../modules/cas
 interface StoredIdempotencyResult {
   readonly requestHash: string;
   readonly result: UpdateAssessmentAnswerResult;
+}
+
+interface StoredCompletionResult {
+  readonly requestHash: string;
+  readonly result: AssessmentCompletionResult;
 }
 
 /** Deterministic transaction-port fake. It is never a runtime persistence fallback. */
@@ -24,8 +30,11 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
   private readonly educationProfileEditorKeys = new Set<string>();
   private readonly answersByField = new Map<string, StoredAssessmentAnswer>();
   private readonly resultsByIdempotency = new Map<string, StoredIdempotencyResult>();
+  private readonly completionResultsByIdempotency = new Map<string, StoredCompletionResult>();
   private readonly auditIds = new Set<string>();
   private readonly outboxIds = new Set<string>();
+  private status: AssessmentStatus = "draft";
+  private recordVersion = 1;
   private failNextCommit = false;
 
   constructor(input: {
@@ -84,7 +93,9 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
     return Object.freeze({
       assessmentId: this.assessmentId,
       manifestId: this.manifestId,
-      status: "draft" as AssessmentStatus,
+      recordVersion: this.recordVersion,
+      status: this.status,
+      manifestStatus: "approved",
       manifest: this.manifest,
       answers: Object.freeze([...this.answersByField.values()]),
     });
@@ -154,6 +165,60 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
     for (const outboxId of nextOutbox) this.outboxIds.add(outboxId);
     this.resultsByIdempotency.clear();
     for (const [key, value] of nextResults) this.resultsByIdempotency.set(key, value);
+    return result;
+  }
+
+  async completeBackgroundCollection(
+    input: Parameters<AssessmentRepository["completeBackgroundCollection"]>[0],
+  ): Promise<AssessmentCompletionResult> {
+    this.assertCase(input);
+    this.assertWritable(input);
+    if (input.assessmentId !== this.assessmentId || input.manifestId !== this.manifestId) {
+      throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
+    }
+
+    const idempotencyScope = `${input.organizationId}:${input.actorUserId}:cases.assessment.background_complete:${input.idempotencyKey}`;
+    const replay = this.completionResultsByIdempotency.get(idempotencyScope);
+    if (replay) {
+      if (replay.requestHash !== input.requestHash) {
+        throw new AssessmentServiceError("ASSESSMENT_STATUS_IDEMPOTENCY_KEY_REUSED");
+      }
+      return replay.result;
+    }
+    if (this.status !== "draft") {
+      throw new AssessmentServiceError("ASSESSMENT_STATUS_INVALID");
+    }
+    if (this.recordVersion !== input.expectedRecordVersion) {
+      throw new AssessmentServiceError("ASSESSMENT_STATUS_STALE_VERSION", {
+        currentRecordVersion: this.recordVersion,
+      });
+    }
+    const missingFieldIds = input.requiredBlockingFieldIds.filter(
+      (fieldId) => !this.answersByField.has(fieldId),
+    );
+    if (missingFieldIds.length > 0) {
+      throw new AssessmentServiceError("ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE", {
+        missingFieldIds,
+      });
+    }
+
+    const result = Object.freeze({
+      assessmentId: this.assessmentId,
+      status: "background_complete" as const,
+      recordVersion: this.recordVersion + 1,
+    });
+    if (this.failNextCommit) {
+      this.failNextCommit = false;
+      throw new Error("synthetic transaction failure");
+    }
+    this.status = result.status;
+    this.recordVersion = result.recordVersion;
+    this.auditIds.add(input.effects.audit.id);
+    this.outboxIds.add(input.effects.outbox.id);
+    this.completionResultsByIdempotency.set(idempotencyScope, {
+      requestHash: input.requestHash,
+      result,
+    });
     return result;
   }
 

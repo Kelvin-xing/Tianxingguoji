@@ -19,6 +19,9 @@
     { "name": "202608180010_017_expand_local_synthetic_sessions.sql", "sha256": "8edb0e2a67ebe9ada581203fc043e223fa821a8aed90f56b4402324d39d7d963" },
     { "name": "202608180020_018_harden_identity_session_validation.sql", "sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf" },
     { "name": "202608180030_019_expose_approved_case_manifests.sql", "sha256": "08977d92560a031970b087191c34ce776dc32578720d2e4b56282edb091b1870" },
-    { "name": "202608180040_020_grant_audit_validation_to_application.sql", "sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155" }
+    { "name": "202608180040_020_grant_audit_validation_to_application.sql", "sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155" },
+    { "name": "202608180050_021_enable_assessment_background_completion.sql", "sha256": "2625f5a744ca1dc8840c5aba404f0e29d6a1974bf6bfdfdfe81b80bc1ad521e2" },
+    { "name": "202608180060_022_expose_bound_assessment_manifest.sql", "sha256": "f5a82516d72044c7c41114326fee7eb1215ffa9d4631e308aa28bf111b219116" },
+    { "name": "202608180070_023_harden_assessment_answer_validation.sql", "sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e" }
   ]
 }

@@ -10,6 +10,7 @@ type AssessmentValueType = "text" | "date" | "integer" | "enum" | "enum_set";
 export interface AssessmentEditorView {
   readonly assessment_id: string;
   readonly manifest_id: string;
+  readonly record_version: number;
   readonly status: "draft" | "background_complete" | "selection_ready";
   readonly schema: {
     readonly manifest_id: string;
@@ -61,8 +62,15 @@ export function AssessmentEditor({
   const [view, setView] = useState(initialView);
   const [drafts, setDrafts] = useState(() => createDrafts(initialView));
   const [savingFieldId, setSavingFieldId] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
+  const answeredFieldIds = new Set(view.answers.map((answer) => answer.field_id));
+  const blockingFieldIds = view.schema.fields
+    .filter((field) => field.blocking_stages.includes("background_collection"))
+    .map((field) => field.field_id);
+  const completedBlockers = blockingFieldIds.filter((fieldId) => answeredFieldIds.has(fieldId)).length;
+  const canComplete = view.status === "draft" && completedBlockers === blockingFieldIds.length;
 
   async function save(field: AssessmentEditorView["schema"]["fields"][number]) {
     const draft = drafts[field.field_id];
@@ -144,16 +152,67 @@ export function AssessmentEditor({
     }
   }
 
+  async function completeBackgroundCollection() {
+    if (!canComplete) return;
+    setNotice(null);
+    setCompleting(true);
+    try {
+      const response = await fetch(`${endpoint}/background-completion`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": globalThis.crypto.randomUUID(),
+        },
+        body: JSON.stringify({ expected_record_version: view.record_version }),
+      });
+      const payload = (await response.json()) as {
+        data?: {
+          readonly status?: AssessmentEditorView["status"];
+          readonly record_version?: number;
+        };
+        error?: { readonly code?: string };
+      };
+      if (!response.ok || payload.data?.status !== "background_complete" ||
+          typeof payload.data.record_version !== "number") {
+        if (payload.error?.code === "STALE_VERSION" || payload.error?.code === "VALIDATION_FAILED") {
+          const latestView = await fetchCurrentView(endpoint);
+          setView(latestView);
+          setDrafts((current) => mergeDrafts(current, latestView));
+          setNotice(payload.error.code === "STALE_VERSION"
+            ? "評估狀態已更新，已重新載入目前版本。"
+            : "仍有背景資料尚未儲存，已重新計算進度。");
+          return;
+        }
+        throw new Error(payload.error?.code ?? "COMPLETION_FAILED");
+      }
+      setView((current) => ({
+        ...current,
+        status: "background_complete",
+        record_version: payload.data!.record_version!,
+      }));
+      setNotice("背景資料收集已完成。");
+    } catch {
+      setNotice("目前無法完成背景資料收集，已儲存的答案不受影響。");
+    } finally {
+      setCompleting(false);
+    }
+  }
+
   return (
     <section className="workspace-section" aria-labelledby="assessment-editor-title">
-      <div className="flex items-start justify-between gap-4 mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
         <div>
-          <h3 id="assessment-editor-title" tabIndex={-1} className="section-title">Assessment</h3>
-          <p className="section-detail">{view.schema.composition_version} · {view.status}</p>
+          <h3 id="assessment-editor-title" tabIndex={-1} className="section-title">學生評估</h3>
+          <p className="section-detail">15 項資料 · {assessmentStatusLabel(view.status)} · 評估版本 {view.record_version}</p>
         </div>
-        <span className="status-pill status-success">{view.answers.length} answered</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="status-pill">已儲存 {view.answers.length} / {view.schema.fields.length}</span>
+          <span className={`status-pill ${canComplete || view.status !== "draft" ? "status-success" : "status-warning"}`}>
+            背景必填 {completedBlockers} / {blockingFieldIds.length}
+          </span>
+        </div>
       </div>
-      {notice && <div className="inline-callout mb-4" role="status"><Icon name="info" size={15} /><span>{notice}</span></div>}
+      {notice && <div className="inline-callout mb-4" role="status"><Icon name="activity" size={15} /><span>{notice}</span></div>}
       <div className="space-y-4">
         {view.schema.fields.map((field) => {
           const draft = drafts[field.field_id];
@@ -162,8 +221,11 @@ export function AssessmentEditor({
             <div key={field.field_id} className="border-b pb-4 last:border-b-0 last:pb-0" style={{ borderColor: "var(--border-subtle)" }}>
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{field.label ?? field.field_id}</div>
-                  <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>{field.layer} · {field.value_type} · {field.visibility}</div>
+                  <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{fieldLabel(field)}</div>
+                  <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    {layerLabel(field.layer)}
+                    {field.blocking_stages.includes("background_collection") ? " · 背景收集必填" : " · 後續選校資料"}
+                  </div>
                 </div>
                 <span className="inline-status" style={{ color: "var(--text-muted)" }}>v{draft.recordVersion}</span>
               </div>
@@ -178,6 +240,7 @@ export function AssessmentEditor({
                 />
                 <select
                   aria-label={`${field.field_id} semantic state`}
+                  className="assessment-control"
                   value={draft.semanticState}
                   onChange={(event) => setDrafts((current) => ({
                     ...current,
@@ -187,10 +250,10 @@ export function AssessmentEditor({
                     },
                   }))}
                 >
-                  <option value="provided">provided</option>
-                  <option value="unknown">unknown</option>
-                  <option value="not_applicable">not applicable</option>
-                  <option value="declined_to_provide">declined to provide</option>
+                  <option value="provided">已提供</option>
+                  <option value="unknown">暫時未知</option>
+                  <option value="not_applicable">不適用</option>
+                  <option value="declined_to_provide">拒絕提供</option>
                 </select>
                 <button
                   type="button"
@@ -199,7 +262,7 @@ export function AssessmentEditor({
                   onClick={() => void save(field)}
                 >
                   <Icon name={savingFieldId === field.field_id ? "clock" : "check"} size={15} />
-                  Save
+                  {savingFieldId === field.field_id ? "儲存中" : "儲存"}
                 </button>
               </div>
               {conflict?.fieldId === field.field_id && (
@@ -243,6 +306,25 @@ export function AssessmentEditor({
           );
         })}
       </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-5 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+        <div>
+          <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>背景資料收集</div>
+          <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            {view.status === "draft"
+              ? `尚需儲存 ${blockingFieldIds.length - completedBlockers} 個背景必填項目`
+              : `目前狀態：${assessmentStatusLabel(view.status)}`}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={!canComplete || completing}
+          onClick={() => void completeBackgroundCollection()}
+        >
+          <Icon name={completing ? "clock" : "check-circle"} size={15} />
+          {completing ? "處理中" : view.status === "draft" ? "完成背景收集" : "背景收集已完成"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -273,6 +355,23 @@ function createDrafts(view: AssessmentEditorView): Record<string, DraftAnswer> {
   );
 }
 
+function mergeDrafts(
+  current: Record<string, DraftAnswer>,
+  latestView: AssessmentEditorView,
+): Record<string, DraftAnswer> {
+  const latest = createDrafts(latestView);
+  return Object.fromEntries(
+    latestView.schema.fields.map((field) => {
+      const local = current[field.field_id];
+      const server = latest[field.field_id]!;
+      return [
+        field.field_id,
+        local ? { ...local, recordVersion: server.recordVersion } : server,
+      ];
+    }),
+  );
+}
+
 function toDraft(answer: AssessmentEditorView["answers"][number]): DraftAnswer {
   return {
     semanticState: answer.semantic_state,
@@ -282,8 +381,10 @@ function toDraft(answer: AssessmentEditorView["answers"][number]): DraftAnswer {
 }
 
 function describeDraft(draft: DraftAnswer): string {
-  if (draft.semanticState !== "provided") return draft.semanticState;
-  return Array.isArray(draft.value) ? draft.value.join(", ") || "(empty)" : draft.value || "(empty)";
+  if (draft.semanticState !== "provided") return semanticStateLabel(draft.semanticState);
+  return typeof draft.value === "string"
+    ? enumValueLabel(draft.value) || "未填寫"
+    : draft.value.map(enumValueLabel).join("、") || "未填寫";
 }
 
 function AssessmentValueControl({
@@ -298,27 +399,40 @@ function AssessmentValueControl({
   const disabled = draft.semanticState !== "provided";
   if (field.value_type === "enum") {
     return (
-      <select aria-label={`${field.field_id} value`} disabled={disabled} value={asText(draft.value)} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Select</option>
-        {(field.enum_values ?? []).map((value) => <option key={value} value={value}>{value}</option>)}
+      <select className="assessment-control" aria-label={`${field.field_id} value`} disabled={disabled} value={asText(draft.value)} onChange={(event) => onChange(event.target.value)}>
+        <option value="">請選擇</option>
+        {(field.enum_values ?? []).map((value) => <option key={value} value={value}>{enumValueLabel(value)}</option>)}
       </select>
     );
   }
   if (field.value_type === "enum_set") {
-    const selected = Array.isArray(draft.value) ? draft.value : [];
+    const selected = typeof draft.value === "string" ? [] : draft.value;
     return (
-      <select aria-label={`${field.field_id} values`} disabled={disabled} multiple value={selected} onChange={(event) => onChange([...event.currentTarget.selectedOptions].map(({ value }) => value))}>
-        {(field.enum_values ?? []).map((value) => <option key={value} value={value}>{value}</option>)}
-      </select>
+      <fieldset aria-label={`${field.field_id} values`} disabled={disabled} className="assessment-control grid grid-cols-2 gap-x-3 gap-y-2">
+        {(field.enum_values ?? []).map((value) => (
+          <label key={value} className="flex min-w-0 items-center gap-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+            <input
+              type="checkbox"
+              checked={selected.includes(value)}
+              onChange={(event) => onChange(event.target.checked
+                ? [...selected, value]
+                : selected.filter((entry) => entry !== value))}
+            />
+            <span>{enumValueLabel(value)}</span>
+          </label>
+        ))}
+      </fieldset>
     );
   }
   return (
     <input
+      className="assessment-control"
       type={field.value_type === "date" ? "date" : field.value_type === "integer" ? "number" : "text"}
       step={field.value_type === "integer" ? "1" : undefined}
       aria-label={`${field.field_id} value`}
       disabled={disabled}
       value={asText(draft.value)}
+      placeholder={field.value_type === "text" ? "請輸入" : undefined}
       onChange={(event) => onChange(event.target.value)}
     />
   );
@@ -349,5 +463,91 @@ function toDraftValue(value: unknown): DraftAnswer["value"] {
 }
 
 function asText(value: DraftAnswer["value"]): string {
-  return Array.isArray(value) ? "" : value;
+  return typeof value === "string" ? value : "";
+}
+
+const FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  "student_profile.date_of_birth": "出生日期",
+  "student_profile.residency_status": "居留身份",
+  "student_profile.primary_languages": "主要語言",
+  "education_profile.current_stage": "目前教育階段",
+  "education_profile.current_year_level": "目前年級",
+  "education_profile.current_curriculum": "目前課程體系",
+  "school_preferences.target_stage": "目標教育階段",
+  "school_preferences.preferred_systems": "偏好學校體系",
+  "school_preferences.preferred_districts": "偏好地區",
+  "school_preferences.preferred_admission_route": "偏好入學途徑",
+  "school_preferences.fee_band": "學費類型偏好",
+  "family_context.primary_contact_language": "主要聯絡語言",
+  "family_context.education_priority": "教育重點",
+  "family_context.transport_arrangement": "交通安排",
+  "family_context.fee_preference": "家庭學費偏好",
+});
+
+const ENUM_VALUE_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  hk_permanent_resident: "香港永久居民",
+  hk_non_permanent_resident: "香港非永久居民",
+  dependent_visa: "受養人簽證",
+  other: "其他",
+  cantonese: "粵語",
+  mandarin: "普通話",
+  english: "英語",
+  kindergarten: "幼稚園",
+  primary: "小學",
+  secondary: "中學",
+  hk_local: "香港本地課程",
+  ib: "IB 課程",
+  cambridge: "Cambridge 課程",
+  hk_international: "香港國際學校",
+  hong_kong_island: "香港島",
+  kowloon: "九龍",
+  new_territories: "新界",
+  any: "不限地區",
+  entry: "入學",
+  transfer: "插班",
+  government_aided: "官立或資助",
+  private: "私立",
+  international: "國際學校",
+  undecided: "未決定",
+  academic: "學術表現",
+  balanced: "均衡發展",
+  language_immersion: "語言沉浸",
+  supportive_environment: "支持性環境",
+  family_transport: "家庭接送",
+  school_bus: "校車",
+  public_transport: "公共交通",
+});
+
+function fieldLabel(field: AssessmentEditorView["schema"]["fields"][number]): string {
+  return FIELD_LABELS[field.field_id] ?? field.label ?? field.field_id;
+}
+
+function enumValueLabel(value: string): string {
+  return ENUM_VALUE_LABELS[value] ?? value;
+}
+
+function layerLabel(layer: AssessmentEditorView["schema"]["fields"][number]["layer"]): string {
+  switch (layer) {
+    case "base": return "學生基本資料";
+    case "education_stage": return "教育背景";
+    case "school_system": return "學校偏好";
+    case "admission_route": return "家庭情況";
+  }
+}
+
+function semanticStateLabel(state: SemanticState): string {
+  switch (state) {
+    case "provided": return "已提供";
+    case "unknown": return "暫時未知";
+    case "not_applicable": return "不適用";
+    case "declined_to_provide": return "拒絕提供";
+  }
+}
+
+function assessmentStatusLabel(status: AssessmentEditorView["status"]): string {
+  switch (status) {
+    case "draft": return "草稿";
+    case "background_complete": return "背景資料已完成";
+    case "selection_ready": return "可進入選校";
+  }
 }

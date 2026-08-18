@@ -1,21 +1,18 @@
-import { cookies } from "next/headers";
-
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import {
-  AssessmentServiceError,
+  getCaseWorkspaceRuntime,
   type UpdateAssessmentAnswerCommand,
 } from "@/modules/cases/server";
-import { CaseRuntimeUnavailable, getCaseRuntime } from "@/modules/cases/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
+import { requireIdentityActor } from "@/modules/identity/web";
 import {
-  ApiContractError,
   createApiError,
   handleApiRequest,
 } from "@/modules/shared/public";
+import {
+  assertAssessmentCaseId,
+  mapAssessmentError,
+  requireAssessmentIdempotencyKey,
+} from "./route-support";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SEMANTIC_STATES = new Set([
   "provided",
   "unknown",
@@ -34,12 +31,13 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   return handleApiRequest(request, async () => {
     try {
       const { caseId } = await context.params;
-      assertCaseId(caseId);
-      const actor = await requireActor();
-      const view = await getCaseRuntime().assessmentService.getCaseAssessment({ actor, caseId });
+      assertAssessmentCaseId(caseId);
+      const actor = await requireIdentityActor();
+      const view = await getCaseWorkspaceRuntime().assessmentService.getCaseAssessment({ actor, caseId });
       return {
         assessment_id: view.assessmentId,
         manifest_id: view.manifestId,
+        record_version: view.recordVersion,
         status: view.status,
         schema: {
           manifest_id: view.schema.manifestId,
@@ -74,10 +72,10 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   return handleApiRequest(request, async (requestContext) => {
     try {
       const { caseId } = await context.params;
-      assertCaseId(caseId);
+      assertAssessmentCaseId(caseId);
       const command = await parseUpdateCommand(request, requestContext.requestId);
-      const actor = await requireActor();
-      const result = await getCaseRuntime().assessmentService.updateAssessmentAnswer({
+      const actor = await requireIdentityActor();
+      const result = await getCaseWorkspaceRuntime().assessmentService.updateAssessmentAnswer({
         actor,
         caseId,
         command,
@@ -96,21 +94,11 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
   });
 }
 
-async function requireActor() {
-  const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-  const identity = getIdentityRuntime();
-  return identity.service.requireSession({ cookieSecret, sensitiveAction: false });
-}
-
 async function parseUpdateCommand(
   request: Request,
   requestId: string,
 ): Promise<UpdateAssessmentAnswerCommand> {
-  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-  if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
-    throw createApiError("INVALID_REQUEST");
-  }
+  const idempotencyKey = requireAssessmentIdempotencyKey(request);
 
   let body: unknown;
   try {
@@ -144,41 +132,6 @@ async function parseUpdateCommand(
     requestId,
     idempotencyKey,
   };
-}
-
-function assertCaseId(caseId: string): void {
-  if (!UUID.test(caseId)) throw createApiError("INVALID_REQUEST");
-}
-
-function mapAssessmentError(error: unknown): ApiContractError {
-  if (error instanceof ApiContractError) return error;
-  if (error instanceof IdentityRuntimeUnavailable || error instanceof CaseRuntimeUnavailable) {
-    return createApiError("SERVICE_UNAVAILABLE");
-  }
-  if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
-  if (!(error instanceof AssessmentServiceError)) return createApiError("SERVICE_UNAVAILABLE");
-
-  switch (error.code) {
-    case "ASSESSMENT_ANSWER_INVALID":
-      return createApiError("VALIDATION_FAILED");
-    case "ASSESSMENT_ANSWER_STALE_VERSION":
-      return createApiError("STALE_VERSION", {
-        details: {
-          current_version: error.currentRecordVersion ?? 0,
-          ...(error.diffToken ? { diff_token: error.diffToken } : {}),
-        },
-      });
-    case "ASSESSMENT_ANSWER_IDEMPOTENCY_KEY_REUSED":
-    case "ASSESSMENT_ANSWER_IDEMPOTENCY_IN_PROGRESS":
-      return createApiError("CONFLICT");
-    case "ASSESSMENT_CASE_NOT_FOUND":
-      return createApiError("NOT_FOUND");
-    case "ASSESSMENT_READ_FORBIDDEN":
-    case "ASSESSMENT_WRITE_FORBIDDEN":
-      return createApiError("FORBIDDEN");
-    case "ASSESSMENT_SCHEMA_INVALID":
-      return createApiError("SERVICE_UNAVAILABLE");
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

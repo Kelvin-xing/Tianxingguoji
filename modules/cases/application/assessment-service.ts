@@ -14,6 +14,7 @@ import {
 } from "../../shared/public.ts";
 import {
   evaluateAssessmentFieldAnswer,
+  evaluateAssessmentStatus,
   type AnswerSemanticState,
   type AssessmentStatus,
   type K12ManifestComposition,
@@ -27,6 +28,7 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const SEMANTIC_STATES = new Set<AnswerSemanticState>([
   "provided",
   "unknown",
@@ -50,7 +52,9 @@ export interface StoredAssessmentAnswer {
 export interface AssessmentSnapshot {
   readonly assessmentId: string;
   readonly manifestId: string;
+  readonly recordVersion: number;
   readonly status: AssessmentStatus;
+  readonly manifestStatus: "candidate" | "approved" | "retired";
   readonly manifest: K12ManifestComposition;
   readonly answers: readonly StoredAssessmentAnswer[];
 }
@@ -58,6 +62,7 @@ export interface AssessmentSnapshot {
 export interface AssessmentView {
   readonly assessmentId: string;
   readonly manifestId: string;
+  readonly recordVersion: number;
   readonly status: AssessmentStatus;
   readonly schema: AssessmentSchemaView;
   readonly answers: readonly AssessmentAnswerView[];
@@ -85,6 +90,18 @@ export interface UpdateAssessmentAnswerResult extends AssessmentAnswerView {
   readonly assessmentId: string;
 }
 
+export interface CompleteAssessmentBackgroundCommand {
+  readonly expectedRecordVersion: number;
+  readonly requestId: string;
+  readonly idempotencyKey: string;
+}
+
+export interface AssessmentCompletionResult {
+  readonly assessmentId: string;
+  readonly status: "background_complete";
+  readonly recordVersion: number;
+}
+
 export interface AssessmentRepository {
   /**
    * The production adapter authorizes this read against the current case and
@@ -93,6 +110,7 @@ export interface AssessmentRepository {
   readCaseAssessment(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
+    readonly actorRole: IdentitySessionActor["role"];
     readonly caseId: string;
   }): Promise<AssessmentSnapshot>;
   /**
@@ -103,6 +121,7 @@ export interface AssessmentRepository {
   updateAssessmentAnswer(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
+    readonly actorRole: IdentitySessionActor["role"];
     readonly caseId: string;
     readonly assessmentId: string;
     readonly manifestId: string;
@@ -118,6 +137,21 @@ export interface AssessmentRepository {
     readonly updatedAtMs: number;
     readonly effects: MutationEffectBundle;
   }): Promise<UpdateAssessmentAnswerResult>;
+  completeBackgroundCollection(input: {
+    readonly organizationId: string;
+    readonly actorUserId: string;
+    readonly actorRole: IdentitySessionActor["role"];
+    readonly caseId: string;
+    readonly assessmentId: string;
+    readonly manifestId: string;
+    readonly expectedRecordVersion: number;
+    readonly requiredBlockingFieldIds: readonly string[];
+    readonly requestId: string;
+    readonly idempotencyKey: string;
+    readonly requestHash: string;
+    readonly completedAtMs: number;
+    readonly effects: MutationEffectBundle;
+  }): Promise<AssessmentCompletionResult>;
 }
 
 export type AssessmentServiceErrorCode =
@@ -128,22 +162,33 @@ export type AssessmentServiceErrorCode =
   | "ASSESSMENT_CASE_NOT_FOUND"
   | "ASSESSMENT_READ_FORBIDDEN"
   | "ASSESSMENT_WRITE_FORBIDDEN"
-  | "ASSESSMENT_SCHEMA_INVALID";
+  | "ASSESSMENT_SCHEMA_INVALID"
+  | "ASSESSMENT_STATUS_INVALID"
+  | "ASSESSMENT_STATUS_STALE_VERSION"
+  | "ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE"
+  | "ASSESSMENT_STATUS_IDEMPOTENCY_KEY_REUSED"
+  | "ASSESSMENT_STATUS_IDEMPOTENCY_IN_PROGRESS";
 
 export class AssessmentServiceError extends Error {
   readonly code: AssessmentServiceErrorCode;
   readonly currentRecordVersion: number | null;
   readonly diffToken: string | null;
+  readonly missingFieldIds: readonly string[];
 
   constructor(
     code: AssessmentServiceErrorCode,
-    options: { readonly currentRecordVersion?: number; readonly diffToken?: string } = {},
+    options: {
+      readonly currentRecordVersion?: number;
+      readonly diffToken?: string;
+      readonly missingFieldIds?: readonly string[];
+    } = {},
   ) {
     super(`Assessment command rejected ${code}.`);
     this.name = "AssessmentServiceError";
     this.code = code;
     this.currentRecordVersion = options.currentRecordVersion ?? null;
     this.diffToken = options.diffToken ?? null;
+    this.missingFieldIds = Object.freeze([...(options.missingFieldIds ?? [])]);
   }
 }
 
@@ -170,9 +215,11 @@ export class AssessmentService {
     readonly caseId: string;
   }): Promise<AssessmentView> {
     assertActorAndCase(input.actor, input.caseId);
+    assertAssessmentRole(input.actor, "read");
     const snapshot = await this.repository.readCaseAssessment({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
+      actorRole: input.actor.role,
       caseId: input.caseId,
     });
     return projectAssessment(snapshot);
@@ -184,11 +231,13 @@ export class AssessmentService {
     readonly command: UpdateAssessmentAnswerCommand;
   }): Promise<UpdateAssessmentAnswerResult> {
     assertActorAndCase(input.actor, input.caseId);
+    assertAssessmentRole(input.actor, "write");
     assertCommand(input.command);
 
     const snapshot = await this.repository.readCaseAssessment({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
+      actorRole: input.actor.role,
       caseId: input.caseId,
     });
     let schema: AssessmentSchemaView;
@@ -270,6 +319,7 @@ export class AssessmentService {
     return this.repository.updateAssessmentAnswer({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
+      actorRole: input.actor.role,
       caseId: input.caseId,
       assessmentId: snapshot.assessmentId,
       manifestId: snapshot.manifestId,
@@ -290,6 +340,122 @@ export class AssessmentService {
         valueType: input.command.valueType,
       }),
       updatedAtMs,
+      effects: buildAtomicMutationEffects({ audit, outbox }),
+    });
+  }
+
+  async completeBackgroundCollection(input: {
+    readonly actor: IdentitySessionActor;
+    readonly caseId: string;
+    readonly command: CompleteAssessmentBackgroundCommand;
+  }): Promise<AssessmentCompletionResult> {
+    assertActorAndCase(input.actor, input.caseId);
+    assertAssessmentRole(input.actor, "write");
+    assertCompletionCommand(input.command);
+
+    const snapshot = await this.repository.readCaseAssessment({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorRole: input.actor.role,
+      caseId: input.caseId,
+    });
+    const schema = projectAssessment(snapshot).schema;
+    const requiredBlockingFieldIds = schema.fields
+      .filter((field) => field.blockingStages.includes("background_collection"))
+      .map((field) => field.fieldId);
+    const satisfiedBlockingFieldIds = snapshot.answers.map((answer) => answer.fieldId);
+    const decision = evaluateAssessmentStatus({
+      manifestStatus: snapshot.manifestStatus,
+      targetStatus: "background_complete",
+      requiredBlockingFieldIds,
+      satisfiedBlockingFieldIds,
+    });
+    if (!decision.allowed) {
+      const satisfied = new Set(satisfiedBlockingFieldIds);
+      throw new AssessmentServiceError(
+        decision.code === "ASSESSMENT_BLOCKERS_INCOMPLETE"
+          ? "ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE"
+          : "ASSESSMENT_STATUS_INVALID",
+        { missingFieldIds: requiredBlockingFieldIds.filter((fieldId) => !satisfied.has(fieldId)) },
+      );
+    }
+
+    const completedAtMs = this.clock.nowMs();
+    if (!Number.isSafeInteger(completedAtMs) || completedAtMs <= 0) {
+      throw new AssessmentServiceError("ASSESSMENT_STATUS_INVALID");
+    }
+    const auditId = this.createId();
+    const outboxId = this.createId();
+    for (const id of [auditId, outboxId]) assertUuid(id);
+    const occurredAt = new Date(completedAtMs).toISOString();
+    const nextRecordVersion = input.command.expectedRecordVersion + 1;
+    const eventType = "cases.assessment_background_completed";
+    const audit = buildAuditEvent({
+      id: auditId,
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorKind: "user",
+      eventType,
+      eventVersion: 1,
+      action: "transition",
+      resourceType: "Assessment",
+      resourceId: snapshot.assessmentId,
+      outcome: "succeeded",
+      requestId: input.command.requestId,
+      occurredAt,
+      beforeHashSha256: hashRequestPayload({
+        record_version: input.command.expectedRecordVersion,
+        status: snapshot.status,
+      }),
+      afterHashSha256: hashRequestPayload({
+        record_version: nextRecordVersion,
+        status: "background_complete",
+      }),
+      metadata: {
+        effect_type: "assessment_background_completed",
+        previous_version: input.command.expectedRecordVersion,
+        next_version: nextRecordVersion,
+        status: "background_complete",
+      },
+    });
+    const outbox = buildOutboxMessage({
+      id: outboxId,
+      auditEventId: auditId,
+      organizationId: input.actor.organizationId,
+      aggregateType: "Assessment",
+      aggregateId: snapshot.assessmentId,
+      eventType,
+      eventVersion: 1,
+      idempotencyKey: `assessment-background-${outboxId}`,
+      requestId: input.command.requestId,
+      payload: {
+        aggregate_id: snapshot.assessmentId,
+        effect_type: "assessment_background_completed",
+        record_version: nextRecordVersion,
+        request_id: input.command.requestId,
+        status: "background_complete",
+      },
+      availableAt: occurredAt,
+      createdAt: occurredAt,
+    });
+
+    return this.repository.completeBackgroundCollection({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorRole: input.actor.role,
+      caseId: input.caseId,
+      assessmentId: snapshot.assessmentId,
+      manifestId: snapshot.manifestId,
+      expectedRecordVersion: input.command.expectedRecordVersion,
+      requiredBlockingFieldIds,
+      requestId: input.command.requestId,
+      idempotencyKey: input.command.idempotencyKey,
+      requestHash: hashRequestPayload({
+        case_id: input.caseId,
+        expected_record_version: input.command.expectedRecordVersion,
+        target_status: "background_complete",
+      }),
+      completedAtMs,
       effects: buildAtomicMutationEffects({ audit, outbox }),
     });
   }
@@ -329,6 +495,7 @@ function projectAssessment(snapshot: AssessmentSnapshot): AssessmentView {
   return Object.freeze({
     assessmentId: snapshot.assessmentId,
     manifestId: snapshot.manifestId,
+    recordVersion: snapshot.recordVersion,
     status: snapshot.status,
     schema,
     answers: Object.freeze(answers),
@@ -347,7 +514,7 @@ function assertCommand(command: UpdateAssessmentAnswerCommand): void {
     !SEMANTIC_STATES.has(command.semanticState) ||
     !Number.isSafeInteger(command.expectedRecordVersion) ||
     command.expectedRecordVersion < 0 ||
-    !SAFE_CODE.test(command.requestId) ||
+    !REQUEST_ID.test(command.requestId) ||
     (command.valueType !== null && !SAFE_CODE.test(command.valueType))
   ) {
     throw new AssessmentServiceError("ASSESSMENT_ANSWER_INVALID");
@@ -356,6 +523,32 @@ function assertCommand(command: UpdateAssessmentAnswerCommand): void {
     validateIdempotencyKey(command.idempotencyKey);
   } catch {
     throw new AssessmentServiceError("ASSESSMENT_ANSWER_INVALID");
+  }
+}
+
+function assertCompletionCommand(command: CompleteAssessmentBackgroundCommand): void {
+  if (
+    !Number.isSafeInteger(command.expectedRecordVersion) ||
+    command.expectedRecordVersion < 1 ||
+    !REQUEST_ID.test(command.requestId)
+  ) {
+    throw new AssessmentServiceError("ASSESSMENT_STATUS_INVALID");
+  }
+  try {
+    validateIdempotencyKey(command.idempotencyKey);
+  } catch {
+    throw new AssessmentServiceError("ASSESSMENT_STATUS_INVALID");
+  }
+}
+
+function assertAssessmentRole(
+  actor: IdentitySessionActor,
+  capability: "read" | "write",
+): void {
+  if (actor.role !== "founder" && actor.role !== "admin" && actor.role !== "advisor") {
+    throw new AssessmentServiceError(
+      capability === "read" ? "ASSESSMENT_READ_FORBIDDEN" : "ASSESSMENT_WRITE_FORBIDDEN",
+    );
   }
 }
 
@@ -381,14 +574,11 @@ function normalizeAnswerValue(
 }
 
 function isTypedValue(value: JsonValue): value is { readonly type: string; readonly value: JsonValue } {
-  return (
-    value !== null &&
-    !Array.isArray(value) &&
-    typeof value === "object" &&
-    typeof value.type === "string" &&
-    Object.hasOwn(value, "value") &&
-    isJsonValue(value.value)
-  );
+  if (value === null || Array.isArray(value) || typeof value !== "object") return false;
+  const record = value as Readonly<Record<string, JsonValue>>;
+  return typeof record.type === "string" &&
+    Object.hasOwn(record, "value") &&
+    isJsonValue(record.value);
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

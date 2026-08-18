@@ -111,7 +111,9 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
           [input.actorRole === "advisor", input.actorUserId],
         );
       const manifests = await transaction.query<{ id: string; composition_version: string }>(
-          "SELECT id, composition_version FROM cases_list_approved_manifests()",
+          `SELECT id, composition_version
+             FROM cases_list_approved_manifests()
+            ORDER BY composition_version DESC, id`,
         );
       return Object.freeze({
         students: Object.freeze(students.rows.map((row) => Object.freeze({

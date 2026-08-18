@@ -1,12 +1,13 @@
 import "server-only";
 
-import type { AssessmentService } from "../application/assessment-service.ts";
+import { AssessmentService } from "../application/assessment-service.ts";
 import type { CaseService } from "../application/service.ts";
 import { CaseWorkspaceService } from "../application/workspace-service.ts";
 import { isLocalSyntheticMode } from "../../../lib/runtime/local-synthetic-config.ts";
 import { getLocalApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlCaseWorkspaceRepository } from "./postgresql-workspace-repository.ts";
+import { PostgresqlAssessmentRepository } from "./postgresql-assessment-repository.ts";
 
 export interface CaseRuntime {
   readonly service: CaseService;
@@ -30,6 +31,7 @@ export function getCaseRuntime(): CaseRuntime {
 
 export interface CaseWorkspaceRuntime {
   readonly service: CaseWorkspaceService;
+  readonly assessmentService: AssessmentService;
 }
 
 const globalForCaseWorkspace = globalThis as typeof globalThis & {
@@ -42,6 +44,9 @@ export function getCaseWorkspaceRuntime(): CaseWorkspaceRuntime {
     const adapter = createPostgreSqlAdapter(getLocalApplicationTenantRunner());
     globalForCaseWorkspace.__txLocalCaseWorkspaceRuntime = Object.freeze({
       service: new CaseWorkspaceService(new PostgresqlCaseWorkspaceRepository(adapter)),
+      assessmentService: new AssessmentService({
+        repository: new PostgresqlAssessmentRepository(adapter),
+      }),
     });
   }
   return globalForCaseWorkspace.__txLocalCaseWorkspaceRuntime;

@@ -1,10 +1,14 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 import { Client } from "pg";
 
+import {
+  composeK12Manifest,
+  parseK12Module,
+  type K12Module,
+} from "../../modules/cases/public.ts";
 import {
   LOCAL_SYNTHETIC_ORGANIZATION,
   getLocalSyntheticPrincipal,
@@ -13,7 +17,8 @@ import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-conf
 import { readLocalMigrationTarget } from "./run-local-migrations.ts";
 
 const LOCAL_APPLICATION_PASSWORD = "tianxing-local-app-only";
-const MANIFEST_ID = "30000000-0000-4000-8000-000000000001";
+const MANIFEST_ID = "30000000-0000-4000-8000-000000000002";
+const MANIFEST_COMPOSITION_VERSION = "local-release1-v2";
 const MODULE_FILES = Object.freeze([
   "schema/k12/student-profile.v1.json",
   "schema/k12/education-profile.v1.json",
@@ -50,21 +55,6 @@ const STUDENTS = Object.freeze([
 ]);
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
-
-interface SchemaModule {
-  applicationType: "k12";
-  layer: "base" | "education_stage" | "school_system" | "admission_route";
-  moduleId: string;
-  version: string;
-  catalogueStatus: "approved";
-  productionEnabled: true;
-  fields: readonly Readonly<{
-    fieldId: string;
-    valueType: string;
-    visibility: string;
-    blockingStages?: readonly string[];
-  }>[];
-}
 
 export interface LocalRelease1SeedTarget {
   readonly ownerConnectionString: string;
@@ -132,15 +122,10 @@ export async function seedLocalRelease1(
   }
 }
 
-async function loadSchemaModules(): Promise<readonly SchemaModule[]> {
+async function loadSchemaModules(): Promise<readonly K12Module[]> {
   const modules = await Promise.all(MODULE_FILES.map(async (path) => {
-    const parsed = JSON.parse(await readFile(path, "utf8")) as SchemaModule;
-    if (
-      parsed.applicationType !== "k12" ||
-      parsed.catalogueStatus !== "approved" ||
-      parsed.productionEnabled !== true ||
-      !Array.isArray(parsed.fields)
-    ) {
+    const parsed = parseK12Module(JSON.parse(await readFile(path, "utf8")));
+    if (parsed.catalogueStatus !== "approved" || parsed.productionEnabled !== true) {
       throw new LocalRelease1SeedSafetyError(`Schema module is not approved: ${path}`);
     }
     return parsed;
@@ -200,9 +185,9 @@ async function seedStudentsAndGuardians(client: Client): Promise<void> {
   }
 }
 
-async function seedManifest(client: Client, modules: readonly SchemaModule[]): Promise<void> {
+async function seedManifest(client: Client, modules: readonly K12Module[]): Promise<void> {
   const byLayer = new Map(modules.map((module) => [module.layer, module]));
-  const hash = createHash("sha256").update(JSON.stringify(modules)).digest("hex");
+  const hash = composeK12Manifest(modules).contentSha256;
   const founder = getLocalSyntheticPrincipal("founder");
   const existing = await client.query<{ status: string }>(
     "SELECT status FROM cases_schema_manifests WHERE id = $1",
@@ -220,12 +205,12 @@ async function seedManifest(client: Client, modules: readonly SchemaModule[]): P
        education_stage_module_id, education_stage_module_version, school_system_module_id,
        school_system_module_version, admission_route_module_id, admission_route_module_version,
        content_sha256, status)
-     VALUES ($1,'k12','local-release1-v1',$2,$3,$4,$5,$6,$7,$8,$9,$10,'candidate')`,
+     VALUES ($1,'k12',$11,$2,$3,$4,$5,$6,$7,$8,$9,$10,'candidate')`,
     [MANIFEST_ID, byLayer.get("base")!.moduleId, byLayer.get("base")!.version,
       byLayer.get("education_stage")!.moduleId, byLayer.get("education_stage")!.version,
       byLayer.get("school_system")!.moduleId, byLayer.get("school_system")!.version,
       byLayer.get("admission_route")!.moduleId, byLayer.get("admission_route")!.version,
-      hash],
+      hash, MANIFEST_COMPOSITION_VERSION],
   );
   for (const module of modules) {
     for (const field of module.fields) {
@@ -236,7 +221,8 @@ async function seedManifest(client: Client, modules: readonly SchemaModule[]): P
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
          ON CONFLICT (manifest_id, module_layer, module_id, module_version, field_id) DO NOTHING`,
         [MANIFEST_ID, module.layer, module.moduleId, module.version, field.fieldId,
-          field.valueType, field.visibility, JSON.stringify(field.blockingStages ?? [])],
+          field.valueType, field.visibility,
+          JSON.stringify(field.blockingStages.map(toStoredBlockerStage))],
       );
     }
   }
@@ -249,7 +235,7 @@ async function seedManifest(client: Client, modules: readonly SchemaModule[]): P
   );
 }
 
-async function verifySeed(client: Client, modules: readonly SchemaModule[]) {
+async function verifySeed(client: Client, modules: readonly K12Module[]) {
   const expectedFields = modules.reduce((total, module) => total + module.fields.length, 0);
   const result = await client.query<{
     students: number;
@@ -298,8 +284,8 @@ async function verifyRuntimeBoundary(connectionString: string): Promise<void> {
             FROM crm_students
            WHERE id = ANY($1::uuid[])
              AND status = 'active') AS students,
-         (SELECT count(*)::int FROM cases_list_approved_manifests()) AS manifests`,
-      [STUDENTS.map(({ id }) => id)],
+         (SELECT count(*)::int FROM cases_list_approved_manifests() WHERE id = $2) AS manifests`,
+      [STUDENTS.map(({ id }) => id), MANIFEST_ID],
     );
     await runtime.query("ROLLBACK");
     if (visible.rows[0]?.students !== STUDENTS.length || visible.rows[0]?.manifests !== 1) {
@@ -308,6 +294,12 @@ async function verifyRuntimeBoundary(connectionString: string): Promise<void> {
   } finally {
     await runtime.end();
   }
+}
+
+function toStoredBlockerStage(stage: string): string {
+  if (stage === "background_collection") return "background_complete";
+  if (stage === "school_selection_confirmed") return "selection_ready";
+  throw new LocalRelease1SeedSafetyError(`Unsupported K12 blocker stage: ${stage}`);
 }
 
 async function runCli(environment: RuntimeEnvironment): Promise<void> {
