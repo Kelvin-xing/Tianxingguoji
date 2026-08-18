@@ -100,6 +100,24 @@ test("plans a reproducible bootstrap from an empty schema", async () => {
   });
 });
 
+test("accepts every committed SQL migration name under the ordered naming contract", async () => {
+  const plan = await planMigration({
+    migrationDirectory: "db/migrations",
+    snapshot: {
+      target: "empty",
+      applied: [],
+      expectedSchemaSha256: null,
+      actualSchemaSha256: null,
+    },
+  });
+
+  assert.equal(plan.status, "pass");
+  assert.deepEqual(
+    plan.findings.filter(({ code }) => code === "INVALID_MIGRATION_NAME"),
+    [],
+  );
+});
+
 test("warns when a prior schema is one migration behind", async () => {
   const migrationDirectory = await mkdtemp(join(tmpdir(), "migration-plan-n-minus-one-"));
   const firstMigration = "202608020001_001_expand_shared.sql";
