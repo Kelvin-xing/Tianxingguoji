@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -17,10 +18,77 @@ test("Next.js production config selects standalone output and rejects missing bu
   assert.match(config, /deploymentId/);
   assert.match(config, /GIT_SHA/);
   assert.match(config, /NEXT_DEPLOYMENT_ID/);
+  assert.match(config, /VERCEL_GIT_COMMIT_SHA/);
+  assert.match(config, /VERCEL_DEPLOYMENT_ID/);
   assert.match(config, /isProduction && !value/);
   assert.match(config, /GIT_SHA_PATTERN\s*=\s*\/\^\[0-9a-f\]\{7,64\}\$\//);
   assert.match(config, /DEPLOYMENT_ID_PATTERN/);
 });
+
+test("Next.js production config accepts Vercel build identities", () => {
+  const result = loadNextConfig({
+    VERCEL_GIT_COMMIT_SHA: "2d8b461",
+    VERCEL_DEPLOYMENT_ID: "dpl_test-123",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    buildId: "2d8b461",
+    deploymentId: "dpl_test-123",
+  });
+});
+
+test("explicit build identities override Vercel values", () => {
+  const result = loadNextConfig({
+    GIT_SHA: "abcdef0123456789",
+    NEXT_DEPLOYMENT_ID: "aws-production-42",
+    VERCEL_GIT_COMMIT_SHA: "2d8b461",
+    VERCEL_DEPLOYMENT_ID: "dpl_test-123",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    buildId: "abcdef0123456789",
+    deploymentId: "aws-production-42",
+  });
+});
+
+test("Next.js production config still fails closed without any build identity", () => {
+  const result = loadNextConfig({});
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /GIT_SHA is required for a production multi-instance build/);
+});
+
+function loadNextConfig(
+  values: Readonly<Record<string, string>>,
+): Readonly<{ status: number | null; stdout: string; stderr: string }> {
+  const configUrl = new URL("next.config.ts", `file://${ROOT}`).href;
+  const script = [
+    `const { default: config } = await import(${JSON.stringify(configUrl)});`,
+    "const buildId = await config.generateBuildId();",
+    "process.stdout.write(JSON.stringify({ buildId, deploymentId: config.deploymentId }));",
+  ].join("\n");
+  const environment = { ...process.env, NODE_ENV: "production", ...values };
+  for (const name of [
+    "GIT_SHA",
+    "NEXT_DEPLOYMENT_ID",
+    "VERCEL_GIT_COMMIT_SHA",
+    "VERCEL_DEPLOYMENT_ID",
+  ]) {
+    if (!(name in values)) delete environment[name];
+  }
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: environment,
+  });
+  return Object.freeze({
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+}
 
 test("Dockerfile is a fail-closed standalone build contract", async () => {
   const [dockerfile, dockerignore] = await Promise.all([
