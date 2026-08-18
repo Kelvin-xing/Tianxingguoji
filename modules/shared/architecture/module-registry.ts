@@ -75,6 +75,7 @@ export const MODULE_REGISTRY = Object.freeze({
     publicEntrypoints: [
       "modules/access/public.ts",
       "modules/access/server.ts",
+      "modules/access/client.ts",
     ],
     owns: [
       "Organization",
