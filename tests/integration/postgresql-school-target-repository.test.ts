@@ -66,6 +66,10 @@ test("creates target, resolved pin and effects through one Cases transaction", a
   assert.equal(schools.appendCalls, 1);
   const statements = database.statements.map(compact);
   assert.match(statements[0], /FROM cases_service_cases/);
+  assert.match(statements[0], /access_organization_is_active\(role_binding\.organization_id\)/);
+  assert.match(statements[0], /identity_user_is_active\(role_binding\.user_id\)/);
+  assert.doesNotMatch(statements[0], /JOIN access_organizations|JOIN identity_users/);
+  assert.doesNotMatch(statements[0], /FOR (?:NO KEY )?UPDATE/);
   assert.match(statements[1], /INSERT INTO shared_idempotency_records/);
   assert.match(statements[3], /FROM cases_school_targets/);
   assert.match(statements[4], /cases_create_candidate_school_target/);

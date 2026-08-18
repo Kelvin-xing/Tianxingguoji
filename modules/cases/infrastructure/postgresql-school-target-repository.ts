@@ -80,7 +80,7 @@ export class PostgresqlSchoolTargetRepository implements SchoolTargetRepository 
     input: Parameters<SchoolTargetRepository["readSchoolTargetWorkspace"]>[0],
   ): Promise<SchoolTargetWorkspaceSnapshot> {
     return this.database.transaction(input, async (transaction) => {
-      const serviceCase = await readAuthorizedCase(transaction, input, false);
+      const serviceCase = await readAuthorizedCase(transaction, input);
       const items = await readTargetItems(transaction, input.caseId);
       let current: readonly ResolvedSchoolTargetView[];
       try {
@@ -121,7 +121,7 @@ export class PostgresqlSchoolTargetRepository implements SchoolTargetRepository 
     return this.database.transaction(
       { organizationId: input.organizationId, actorUserId: input.actorUserId },
       async (transaction) => {
-        const serviceCase = await readAuthorizedCase(transaction, input, true);
+        const serviceCase = await readAuthorizedCase(transaction, input);
         const idempotency = await claimIdempotency(transaction, input);
         if (!idempotency.claimed) {
           return readCompletedTarget(transaction, input.caseId, idempotency.resultReference);
@@ -202,7 +202,6 @@ async function readAuthorizedCase(
     readonly actorUserId: string;
     readonly actorRole: "founder" | "advisor";
   },
-  lock: boolean,
 ): Promise<AuthorizedCaseRow> {
   const result = await transaction.query<AuthorizedCaseRow>(
     `SELECT service_case.id, service_case.stage, service_case.intake_year,
@@ -216,15 +215,11 @@ async function readAuthorizedCase(
          ON membership.id = role_binding.membership_id
         AND membership.organization_id = role_binding.organization_id
         AND membership.user_id = role_binding.user_id
-       JOIN access_organizations AS organization
-         ON organization.id = role_binding.organization_id
-       JOIN identity_users AS identity_user
-         ON identity_user.id = role_binding.user_id
       WHERE service_case.id = $1
         AND role_binding.status = 'active'
         AND membership.status = 'active'
-        AND organization.status = 'active'
-        AND identity_user.status = 'active'
+        AND access_organization_is_active(role_binding.organization_id)
+        AND identity_user_is_active(role_binding.user_id)
         AND (
           $3::text = 'founder'
           OR (
@@ -234,10 +229,7 @@ async function readAuthorizedCase(
             AND service_case.primary_role_binding_id = role_binding.id
           )
         )
-      LIMIT 1
-      ${lock
-        ? "FOR UPDATE OF service_case FOR SHARE OF role_binding, membership, organization, identity_user"
-        : ""}`,
+      LIMIT 1`,
     [input.caseId, input.actorUserId, input.actorRole],
   );
   const row = result.rows[0];
