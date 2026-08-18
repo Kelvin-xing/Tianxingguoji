@@ -58,7 +58,9 @@ test("seed verification compares both school and snapshot-record source keys", a
 
 function environment(): Record<string, string> {
   return {
+    APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
+    AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",
     MIGRATION_DATABASE_URL: ownerUrl,
     LOCAL_SYNTHETIC_DATABASE_URL:

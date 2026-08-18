@@ -23,6 +23,7 @@
     "test:local-identity-postgresql": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local --test tests/unit/runtime/local-identity-seed.test.ts tests/integration/local-synthetic-identity-postgresql.test.ts",
     "test:architecture": "node --test tests/architecture/module-boundaries.test.ts",
     "test:local-foundation": "node --conditions=react-server --test tests/unit/runtime/local-synthetic.test.ts tests/contract/local-readiness-route.test.ts tests/infra/local-compose.test.ts",
+    "test:env-01a": "node --conditions=react-server --test tests/unit/runtime/runtime-environment.test.ts tests/unit/runtime/test-database-config.test.ts tests/unit/auth/mode.test.ts tests/unit/identity/database-test-login.test.ts tests/unit/identity/postgresql-database-test-repository.test.ts tests/unit/shared/application-tenant-runner.test.ts tests/contract/database-test-login-route.test.ts tests/migration/database-test-identity-boundary.test.ts tests/unit/runtime/database-test-provision.test.ts tests/architecture/module-boundaries.test.ts tests/architecture/test-database-runtime-boundary.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
     "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "node scripts/db/plan-migration.ts --migrations db/migrations",
@@ -31,6 +32,7 @@
     "db:migrate:local": "node --env-file=.env.migration.local scripts/db/run-local-migrations.ts --apply",
     "db:seed:local-identity": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local scripts/db/seed-local-identity.ts",
     "db:seed:local-release1": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local scripts/db/seed-local-release1.ts",
+    "db:provision:test-identity": "node --conditions=react-server scripts/db/provision-database-test-identity.ts --password-stdin",
     "local:up": "docker compose -f compose.local.yml up -d --wait",
     "local:ps": "docker compose -f compose.local.yml ps",
     "local:down": "docker compose -f compose.local.yml down"

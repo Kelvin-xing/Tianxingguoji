@@ -64,6 +64,18 @@ export interface TenantTransactionRunner {
   ): Promise<Result>;
 }
 
+export interface TenantTransactionRunnerOptions {
+  readonly expectedLoginUser: string;
+  readonly requiredGroupRole: string;
+}
+
+export class ApplicationDatabaseRoleError extends Error {
+  constructor() {
+    super("Application database login role is not authorized.");
+    this.name = "ApplicationDatabaseRoleError";
+  }
+}
+
 export function loadApplicationDatabaseConfig(
   environment: Readonly<Record<string, string | undefined>>,
 ): ApplicationDatabaseConfig {
@@ -91,7 +103,10 @@ export function loadApplicationDatabaseConfig(
   });
 }
 
-export function createTenantTransactionRunner(pool: DatabasePool): TenantTransactionRunner {
+export function createTenantTransactionRunner(
+  pool: DatabasePool,
+  options?: TenantTransactionRunnerOptions,
+): TenantTransactionRunner {
   return Object.freeze({
     async run<Result>(
       context: TenantDatabaseContext,
@@ -104,6 +119,7 @@ export function createTenantTransactionRunner(pool: DatabasePool): TenantTransac
       try {
         await client.query({ text: "BEGIN" });
         began = true;
+        if (options) await assertDatabaseRole(client, options);
         await client.query({
           text: "SELECT set_config('app.organization_id', $1, true)",
           values: [context.organizationId],
@@ -129,6 +145,24 @@ export function createTenantTransactionRunner(pool: DatabasePool): TenantTransac
       }
     },
   });
+}
+
+async function assertDatabaseRole(
+  client: DatabaseClient,
+  options: TenantTransactionRunnerOptions,
+): Promise<void> {
+  const result = await client.query<{
+    current_user: string;
+    has_required_role: boolean;
+  }>({
+    text: `SELECT current_user,
+                  pg_has_role(current_user, $1, 'member') AS has_required_role`,
+    values: [options.requiredGroupRole],
+  });
+  const row = result.rows[0];
+  if (row?.current_user !== options.expectedLoginUser || row.has_required_role !== true) {
+    throw new ApplicationDatabaseRoleError();
+  }
 }
 
 function createTransaction(client: DatabaseClient): TenantTransaction {

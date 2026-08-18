@@ -3,8 +3,8 @@ import "server-only";
 import { AssessmentService } from "../application/assessment-service.ts";
 import type { CaseService } from "../application/service.ts";
 import { CaseWorkspaceService } from "../application/workspace-service.ts";
-import { isLocalSyntheticMode } from "../../../lib/runtime/local-synthetic-config.ts";
-import { getLocalApplicationTenantRunner } from "../../shared/server.ts";
+import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
+import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlCaseWorkspaceRepository } from "./postgresql-workspace-repository.ts";
 import { PostgresqlAssessmentRepository } from "./postgresql-assessment-repository.ts";
@@ -35,19 +35,25 @@ export interface CaseWorkspaceRuntime {
 }
 
 const globalForCaseWorkspace = globalThis as typeof globalThis & {
-  __txLocalCaseWorkspaceRuntime?: CaseWorkspaceRuntime;
+  __txCaseWorkspaceRuntimes?: Map<string, CaseWorkspaceRuntime>;
 };
 
 export function getCaseWorkspaceRuntime(): CaseWorkspaceRuntime {
-  if (!isLocalSyntheticMode()) throw new CaseRuntimeUnavailable();
-  if (!globalForCaseWorkspace.__txLocalCaseWorkspaceRuntime) {
-    const adapter = createPostgreSqlAdapter(getLocalApplicationTenantRunner());
-    globalForCaseWorkspace.__txLocalCaseWorkspaceRuntime = Object.freeze({
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new CaseRuntimeUnavailable();
+  const runtimes = globalForCaseWorkspace.__txCaseWorkspaceRuntimes ??
+    new Map<string, CaseWorkspaceRuntime>();
+  globalForCaseWorkspace.__txCaseWorkspaceRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    const adapter = createPostgreSqlAdapter(getApplicationTenantRunner());
+    runtime = Object.freeze({
       service: new CaseWorkspaceService(new PostgresqlCaseWorkspaceRepository(adapter)),
       assessmentService: new AssessmentService({
         repository: new PostgresqlAssessmentRepository(adapter),
       }),
     });
+    runtimes.set(mode, runtime);
   }
-  return globalForCaseWorkspace.__txLocalCaseWorkspaceRuntime;
+  return runtime;
 }

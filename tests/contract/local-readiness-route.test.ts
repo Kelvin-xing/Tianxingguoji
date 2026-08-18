@@ -7,7 +7,7 @@ import type { LocalSyntheticReadinessReport } from "../../lib/runtime/local-synt
 
 test("local readiness returns a versioned dependency report only in local mode", async () => {
   const response = await handleLocalReadinessRequest(request(), {
-    environment: { APP_RUNTIME_MODE: "local-synthetic" },
+    environment: localEnvironment(),
     checkReadiness: async () => report("ready"),
   });
   const body = await response.json();
@@ -32,7 +32,12 @@ test("local readiness returns a versioned dependency report only in local mode",
 test("local readiness is hidden outside local mode", async () => {
   let called = false;
   const response = await handleLocalReadinessRequest(request(), {
-    environment: { APP_RUNTIME_MODE: "production-aws", NODE_ENV: "production" },
+    environment: {
+      APP_ENV: "production",
+      APP_RUNTIME_MODE: "production-aws",
+      AUTH_MODE: "cognito",
+      NODE_ENV: "production",
+    },
     checkReadiness: async () => {
       called = true;
       return report("ready");
@@ -47,7 +52,7 @@ test("local readiness is hidden outside local mode", async () => {
 
 test("local readiness maps unavailable services to a safe 503", async () => {
   const response = await handleLocalReadinessRequest(request(), {
-    environment: { APP_RUNTIME_MODE: "local-synthetic" },
+    environment: localEnvironment(),
     checkReadiness: async () => ({
       ...report("not_ready"),
       dependencies: {
@@ -80,6 +85,15 @@ test("local readiness maps unavailable services to a safe 503", async () => {
 
 function request(): Request {
   return new Request("http://localhost:3000/api/v1/local/readiness");
+}
+
+function localEnvironment(): Record<string, string | undefined> {
+  return {
+    APP_ENV: "development",
+    APP_RUNTIME_MODE: "local-synthetic",
+    AUTH_MODE: "local-synthetic",
+    NODE_ENV: "development",
+  };
 }
 
 function report(status: "ready" | "not_ready"): LocalSyntheticReadinessReport {

@@ -1,8 +1,8 @@
 import "server-only";
 
-import { isLocalSyntheticMode } from "../../../lib/runtime/local-synthetic-config.ts";
+import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { CaseTransitionService } from "../application/transition-service.ts";
-import { getLocalApplicationTenantRunner } from "../../shared/server.ts";
+import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlCaseTransitionRepository } from "./postgresql-transition-repository.ts";
 
@@ -18,18 +18,24 @@ export class CaseTransitionRuntimeUnavailable extends Error {
 }
 
 const globalForCaseTransition = globalThis as typeof globalThis & {
-  __txLocalCaseTransitionRuntime?: CaseTransitionRuntime;
+  __txCaseTransitionRuntimes?: Map<string, CaseTransitionRuntime>;
 };
 
 export function getCaseTransitionRuntime(): CaseTransitionRuntime {
-  if (!isLocalSyntheticMode()) throw new CaseTransitionRuntimeUnavailable();
-  if (!globalForCaseTransition.__txLocalCaseTransitionRuntime) {
-    const adapter = createPostgreSqlAdapter(getLocalApplicationTenantRunner());
-    globalForCaseTransition.__txLocalCaseTransitionRuntime = Object.freeze({
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new CaseTransitionRuntimeUnavailable();
+  const runtimes = globalForCaseTransition.__txCaseTransitionRuntimes ??
+    new Map<string, CaseTransitionRuntime>();
+  globalForCaseTransition.__txCaseTransitionRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    const adapter = createPostgreSqlAdapter(getApplicationTenantRunner());
+    runtime = Object.freeze({
       service: new CaseTransitionService({
         repository: new PostgresqlCaseTransitionRepository(adapter),
       }),
     });
+    runtimes.set(mode, runtime);
   }
-  return globalForCaseTransition.__txLocalCaseTransitionRuntime;
+  return runtime;
 }

@@ -365,8 +365,10 @@ const BUSINESS_MODULES = [
 const LEGACY_LIB_ALLOWLIST = [
   "lib/api/client.ts",
   "lib/i18n-provider.tsx",
-  "lib/runtime/local-synthetic-config.ts",
-  "lib/runtime/local-synthetic-readiness.ts",
+    "lib/runtime/local-synthetic-config.ts",
+    "lib/runtime/local-synthetic-readiness.ts",
+    "lib/runtime/runtime-environment.ts",
+    "lib/runtime/test-database-config.ts",
 ];
 const SOURCE_EXTENSION = /\.(?:ts|tsx)$/;
 const TEMPLATE_LITERAL = /`((?:\\[\s\S]|[^`])*)`/g;

@@ -11,7 +11,20 @@ import { InMemoryIdentitySessionRepository } from "../../../modules/identity/inf
 
 test("selects authentication adapters explicitly and blocks local auth in production", () => {
   assert.equal(loadAuthMode(localEnvironment()), "local-synthetic");
-  assert.equal(loadAuthMode({ AUTH_MODE: "cognito", NODE_ENV: "development" }), "cognito");
+  assert.equal(loadAuthMode({
+    APP_ENV: "production",
+    APP_RUNTIME_MODE: "production-aws",
+    AUTH_MODE: "cognito",
+    NODE_ENV: "production",
+  }), "cognito");
+  assert.equal(loadAuthMode({
+    APP_ENV: "test",
+    APP_RUNTIME_MODE: "test-database",
+    AUTH_MODE: "database-test",
+    NODE_ENV: "production",
+    VERCEL: "1",
+    VERCEL_ENV: "preview",
+  }), "database-test");
   assert.throws(
     () => loadAuthMode({ ...localEnvironment(), AUTH_MODE: undefined }),
     (error: unknown) => error instanceof AuthModeConfigurationError && error.variable === "AUTH_MODE",
@@ -57,6 +70,7 @@ test("creates, validates, replaces, and revokes a local opaque session", async (
 
 function localEnvironment(): Record<string, string | undefined> {
   return {
+    APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
     AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",

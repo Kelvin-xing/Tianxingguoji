@@ -39,12 +39,16 @@ function environment(
   overrides: Record<string, string | undefined> = {},
 ): Record<string, string | undefined> {
   return {
+    APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
+    AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",
     MIGRATION_DATABASE_URL: OWNER_URL,
     LOCAL_SYNTHETIC_DATABASE_URL:
       "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
     LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL: IDENTITY_URL,
+    LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL:
+      "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
     LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
     LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",
