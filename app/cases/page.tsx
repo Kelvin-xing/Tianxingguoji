@@ -47,7 +47,7 @@ export default function CasesPage() {
 
   function loadCases() {
     setLoadState('loading')
-    fetch('/api/cases', { cache: 'no-store' })
+    fetch('/api/v1/cases', { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json() as { data?: { cases?: CaseListItem[] } }
         if (!response.ok || !payload.data?.cases) throw new Error('CASES_UNAVAILABLE')
@@ -90,8 +90,8 @@ export default function CasesPage() {
           </div>
         </div>
         {loadState === 'loading' && <div className="empty-state"><Icon name="clock" size={20} /><strong>正在載入案件</strong><span>確認 organization-scoped case data…</span></div>}
-        {loadState === 'error' && <div className="empty-state"><Icon name="x" size={20} /><strong>案件服務暫時不可用</strong><span>請確認登入工作階段和 Neon runtime。</span><button type="button" className="secondary-button mt-3" onClick={loadCases}>重新載入</button></div>}
-        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[760px]"><thead><tr><th>案件</th><th>學生</th><th>階段</th><th>Primary role</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((item) => <CaseRow key={item.id} item={item} />)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的案件。</div>}</div><div className="pt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}><span>顯示 {filtered.length} / {caseRecords.length} 案件</span><span>Neon authoritative read</span></div></>}
+        {loadState === 'error' && <div className="empty-state"><Icon name="x" size={20} /><strong>案件服務暫時不可用</strong><span>請確認登入工作階段和本地 PostgreSQL runtime。</span><button type="button" className="secondary-button mt-3" onClick={loadCases}>重新載入</button></div>}
+        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[760px]"><thead><tr><th>案件</th><th>學生</th><th>階段</th><th>Primary role</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((item) => <CaseRow key={item.id} item={item} />)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的案件。</div>}</div><div className="pt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}><span>顯示 {filtered.length} / {caseRecords.length} 案件</span><span>PostgreSQL authoritative read</span></div></>}
       </section>
     </div>
   )

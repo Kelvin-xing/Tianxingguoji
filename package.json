@@ -26,6 +26,7 @@
     "db:migrate:local:dry-run": "node --env-file=.env.migration.local scripts/db/run-local-migrations.ts --dry-run",
     "db:migrate:local": "node --env-file=.env.migration.local scripts/db/run-local-migrations.ts --apply",
     "db:seed:local-identity": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local scripts/db/seed-local-identity.ts",
+    "db:seed:local-release1": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local scripts/db/seed-local-release1.ts",
     "local:up": "docker compose -f compose.local.yml up -d --wait",
     "local:ps": "docker compose -f compose.local.yml ps",
     "local:down": "docker compose -f compose.local.yml down"

@@ -13,6 +13,7 @@ export interface LocalSyntheticConfig {
   readonly database: Readonly<{
     connectionString: string;
     identityConnectionString: string;
+    applicationConnectionString: string;
   }>;
   readonly localstack: Readonly<{
     endpoint: string;
@@ -82,6 +83,21 @@ export function loadLocalSyntheticConfig(
     throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL");
   }
 
+  const applicationDatabaseUrl = localUrl(
+    environment,
+    "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
+    new Set(["postgresql:"]),
+  );
+  if (
+    applicationDatabaseUrl.username !== "tianxing_app" ||
+    applicationDatabaseUrl.password.length === 0 ||
+    applicationDatabaseUrl.pathname !== "/tianxing" ||
+    applicationDatabaseUrl.search.length > 0 ||
+    applicationDatabaseUrl.hash.length > 0
+  ) {
+    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL");
+  }
+
   const localstackUrl = localUrl(
     environment,
     "LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT",
@@ -131,6 +147,7 @@ export function loadLocalSyntheticConfig(
     database: Object.freeze({
       connectionString: databaseUrl.toString(),
       identityConnectionString: identityDatabaseUrl.toString(),
+      applicationConnectionString: applicationDatabaseUrl.toString(),
     }),
     localstack: Object.freeze({
       endpoint: localstackUrl.origin,

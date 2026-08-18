@@ -21,6 +21,7 @@ test("local readiness returns a versioned dependency report only in local mode",
     dependencies: {
       postgresql: "ready",
       postgresql_identity: "ready",
+      postgresql_application: "ready",
       localstack_s3: "ready",
       localstack_sqs: "ready",
       clamav: "ready",
@@ -52,6 +53,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
       dependencies: {
         postgresql: "ready",
         postgresql_identity: "ready",
+        postgresql_application: "ready",
         localstack_s3: "ready",
         localstack_sqs: "unavailable",
         clamav: "unavailable",
@@ -67,6 +69,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
     dependencies: {
       postgresql: "ready",
       postgresql_identity: "ready",
+      postgresql_application: "ready",
       localstack_s3: "ready",
       localstack_sqs: "unavailable",
       clamav: "unavailable",
@@ -86,6 +89,7 @@ function report(status: "ready" | "not_ready"): LocalSyntheticReadinessReport {
     dependencies: {
       postgresql: "ready",
       postgresql_identity: "ready",
+      postgresql_application: "ready",
       localstack_s3: "ready",
       localstack_sqs: "ready",
       clamav: "ready",

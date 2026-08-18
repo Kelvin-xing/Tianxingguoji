@@ -10,6 +10,10 @@ import {
 } from "./local-synthetic-config.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
+const LOCAL_RELEASE1_STUDENT_IDS = Object.freeze([
+  "20000000-0000-4000-8000-000000000101",
+  "20000000-0000-4000-8000-000000000102",
+]);
 export type LocalDependencyState = "ready" | "unavailable";
 
 export interface LocalSyntheticReadinessReport {
@@ -18,6 +22,7 @@ export interface LocalSyntheticReadinessReport {
   readonly dependencies: Readonly<{
     postgresql: LocalDependencyState;
     postgresql_identity: LocalDependencyState;
+    postgresql_application: LocalDependencyState;
     localstack_s3: LocalDependencyState;
     localstack_sqs: LocalDependencyState;
     clamav: LocalDependencyState;
@@ -27,6 +32,7 @@ export interface LocalSyntheticReadinessReport {
 export interface LocalSyntheticReadinessProbes {
   postgresql(config: LocalSyntheticConfig): Promise<void>;
   identityPostgresql(config: LocalSyntheticConfig): Promise<void>;
+  applicationPostgresql(config: LocalSyntheticConfig): Promise<void>;
   localstack(config: LocalSyntheticConfig): Promise<Readonly<{ s3: boolean; sqs: boolean }>>;
   clamav(config: LocalSyntheticConfig): Promise<void>;
 }
@@ -39,9 +45,10 @@ export async function checkLocalSyntheticReadiness(
 ): Promise<LocalSyntheticReadinessReport> {
   const config = loadLocalSyntheticConfig(options.environment);
   const probes = options.probes ?? DEFAULT_PROBES;
-  const [postgresql, postgresqlIdentity, localstack, clamav] = await Promise.allSettled([
+  const [postgresql, postgresqlIdentity, postgresqlApplication, localstack, clamav] = await Promise.allSettled([
     probes.postgresql(config),
     probes.identityPostgresql(config),
+    probes.applicationPostgresql(config),
     probes.localstack(config),
     probes.clamav(config),
   ]);
@@ -49,6 +56,7 @@ export async function checkLocalSyntheticReadiness(
   const dependencies = Object.freeze({
     postgresql: state(postgresql.status === "fulfilled"),
     postgresql_identity: state(postgresqlIdentity.status === "fulfilled"),
+    postgresql_application: state(postgresqlApplication.status === "fulfilled"),
     localstack_s3: state(localstack.status === "fulfilled" && localstack.value.s3),
     localstack_sqs: state(localstack.status === "fulfilled" && localstack.value.sqs),
     clamav: state(clamav.status === "fulfilled"),
@@ -132,6 +140,50 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
           // Preserve the readiness failure without exposing rollback details.
         }
       }
+      if (connected) await client.end();
+    }
+  },
+
+  async applicationPostgresql(config: LocalSyntheticConfig): Promise<void> {
+    const client = new Client({
+      connectionString: config.database.applicationConnectionString,
+      application_name: "tianxing-local-application-readiness",
+      connectionTimeoutMillis: config.dependencyTimeoutMs,
+      query_timeout: config.dependencyTimeoutMs,
+      ssl: false,
+    });
+    let connected = false;
+    let transaction = false;
+    try {
+      await client.connect();
+      connected = true;
+      await client.query("BEGIN");
+      transaction = true;
+      await client.query("SELECT set_config('app.organization_id', $1, true)", [
+        "10000000-0000-4000-8000-000000000001",
+      ]);
+      await client.query("SELECT set_config('app.actor_user_id', $1, true)", [
+        "10000000-0000-4000-8000-000000000101",
+      ]);
+      const result = await client.query<{ students: number; manifests: number }>(
+        `SELECT
+           (SELECT count(*)::int
+              FROM crm_students
+             WHERE id = ANY($1::uuid[])
+               AND status = 'active') AS students,
+           (SELECT count(*)::int FROM cases_list_approved_manifests()) AS manifests`,
+        [LOCAL_RELEASE1_STUDENT_IDS],
+      );
+      if (
+        result.rows[0]?.students !== LOCAL_RELEASE1_STUDENT_IDS.length ||
+        result.rows[0]?.manifests !== 1
+      ) {
+        throw new Error("Local application readiness result was invalid.");
+      }
+      await client.query("ROLLBACK");
+      transaction = false;
+    } finally {
+      if (transaction) await client.query("ROLLBACK").catch(() => undefined);
       if (connected) await client.end();
     }
   },

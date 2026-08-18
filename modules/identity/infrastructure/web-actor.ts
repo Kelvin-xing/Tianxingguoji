@@ -5,6 +5,7 @@ import { SESSION_COOKIE_NAME } from './cookies.ts'
 import { IdentityServiceError } from '../application/service.ts'
 import { getIdentityRuntime, IdentityRuntimeUnavailable } from './runtime.ts'
 import type { SessionActor } from './postgresql-session-service.ts'
+import type { IdentitySessionActor } from '../domain/actor.ts'
 
 export type { SessionActor }
 
@@ -22,6 +23,23 @@ export async function requireActor(): Promise<SessionActor> {
     if (error instanceof IdentityRuntimeUnavailable) {
       throw createApiError('SERVICE_UNAVAILABLE')
     }
+    throw createApiError('SERVICE_UNAVAILABLE')
+  }
+}
+
+export async function requireIdentityActor(): Promise<IdentitySessionActor> {
+  const cookieStore = await cookies()
+  const secret = cookieStore.get(SESSION_COOKIE_NAME)?.value
+  if (!secret) throw createApiError('UNAUTHENTICATED')
+
+  try {
+    return await getIdentityRuntime().service.requireSession({
+      cookieSecret: secret,
+      sensitiveAction: false,
+    })
+  } catch (error) {
+    if (error instanceof IdentityServiceError) throw createApiError('UNAUTHENTICATED')
+    if (error instanceof IdentityRuntimeUnavailable) throw createApiError('SERVICE_UNAVAILABLE')
     throw createApiError('SERVICE_UNAVAILABLE')
   }
 }

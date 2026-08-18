@@ -1,139 +1,53 @@
-'use client'
-
-import { use } from 'react'
-import { useTranslation } from 'react-i18next'
-import { mockStudents } from '@/modules/crm/client'
-import type { Student, StudyApplicationAssessment } from '@/types'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+
 import { Icon } from '@/components/workspace/Icon'
+import { getStudentReadRuntime, StudentReadError } from '@/modules/crm/server'
+import { requireIdentityActor } from '@/modules/identity/web'
+import { ApiContractError } from '@/modules/shared/public'
 
-const STATUS_STYLES: Record<Student['status'], { bg: string; color: string }> = {
-  collecting: { bg: '#f3f4f6', color: '#374151' },
-  applying: { bg: '#eff6ff', color: '#1d4ed8' },
-  interview: { bg: '#fffbeb', color: '#b45309' },
-  admitted: { bg: '#f0fdf4', color: '#15803d' },
-  rejected: { bg: '#fef2f2', color: '#dc2626' },
-}
+export const dynamic = 'force-dynamic'
 
-const STATUS_FLOW: Student['status'][] = ['collecting', 'applying', 'interview', 'admitted']
-
-const ASSESSMENT_FIELDS: Array<{ key: keyof StudyApplicationAssessment; label: string }> = [
-  { key: 'applicant_name', label: '申請人姓名' },
-  { key: 'age', label: '年齡' },
-  { key: 'highest_education_institution', label: '最高學歷（院校）' },
-  { key: 'prior_education', label: '前置學歷' },
-  { key: 'major', label: '專業' },
-  { key: 'gpa', label: '在校均分（GPA）' },
-  { key: 'english_level', label: '英文水平' },
-  { key: 'english_test_score', label: '英文標準化考試分數（若有）' },
-  { key: 'work_experience', label: '工作經驗' },
-  { key: 'industry', label: '所屬行業' },
-  { key: 'awards_or_experiences', label: '特別獎項或經歷' },
-  { key: 'study_abroad_purpose', label: '留學目的' },
-  { key: 'target_institutions', label: '目標院校' },
-  { key: 'preferred_major', label: '心儀專業' },
-  { key: 'other_requirements', label: '其他需求' },
-  { key: 'planned_enrollment_time', label: '計劃入學時間' },
-]
-
-export default function StudentProfilePage({ params }: { params: Promise<{ studentId: string }> }) {
-  const { studentId } = use(params)
-  const { t } = useTranslation()
-
-  const student = mockStudents.find((s) => s.id === studentId)
+export default async function StudentDetailPage({ params }: { params: Promise<{ studentId: string }> }) {
+  const { studentId } = await params
+  let student
+  try {
+    student = await getStudentReadRuntime().service.findStudent(await requireIdentityActor(), studentId)
+  } catch (error) {
+    if (error instanceof ApiContractError && error.code === 'UNAUTHENTICATED') redirect('/login')
+    if (error instanceof StudentReadError && error.code === 'STUDENT_ID_INVALID') notFound()
+    throw error
+  }
   if (!student) notFound()
 
-  const currentStatusIdx = STATUS_FLOW.indexOf(student.status as Student['status'])
-
   return (
-    <div className="space-y-5 max-w-6xl">
-      <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <Link href="/students" style={{ color: 'var(--accent)' }}>{t('nav.students')}</Link>
-        <span>/</span>
-        <span style={{ color: 'var(--text-secondary)' }}>{student.name_zh}</span>
-      </div>
-
-      <div className="p-5 rounded-lg flex items-start justify-between" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{student.name_zh}</h2>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{student.name_en} · {student.id}</div>
-          <div className="mt-2.5 flex gap-2 flex-wrap">
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#475569' }}>{student.current_grade} → {student.target_grade}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f5f3ff', color: '#6d28d9' }}>{student.consultant}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#ecfeff', color: '#0e7490' }}>{student.application_assessment.planned_enrollment_time}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0"><Link href={`/cases/new?student=${student.id}`} className="secondary-button"><Icon name="plus" size={14} />建立案件</Link><span className="text-xs font-medium px-2.5 py-1 rounded-full" style={STATUS_STYLES[student.status]}>{t(`students.status_${student.status}`)}</span></div>
-      </div>
-
-      <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <h3 className="text-xs font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>申請進度</h3>
-        <div className="flex gap-0">
-          {STATUS_FLOW.map((step, i) => {
-            const past = i < currentStatusIdx
-            const active = i === currentStatusIdx
-            return (
-              <div key={step} className="flex-1 flex items-center">
-                <div className="flex flex-col items-center flex-1">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: active ? 'var(--accent)' : past ? '#10b981' : '#e5e7eb', color: active || past ? '#fff' : 'var(--text-muted)' }}>{past ? '✓' : i + 1}</div>
-                  <div className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>{t(`students.status_${step}`)}</div>
-                </div>
-                {i < STATUS_FLOW.length - 1 && <div className="h-0.5 flex-1 -mt-5" style={{ background: i < currentStatusIdx ? '#10b981' : '#e5e7eb' }} />}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <section className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>留學申請資料評估</h3>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>16 項必填資料</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {ASSESSMENT_FIELDS.map((field) => (
-            <AssessmentField key={field.key} label={field.label} value={student.application_assessment[field.key]} />
-          ))}
-        </div>
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/students" className="quiet-link">學生與監護人</Link><Icon name="chevron-right" size={14} /><span>{student.displayName}</span></div>
+      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        <div><div className="eyebrow">CRM · Student 360</div><h2 className="page-title">{student.displayName}</h2><p className="page-subtitle">{student.id}</p></div>
+        <div className="flex items-center gap-2"><Link href={`/cases/new?student=${student.id}`} className="primary-button"><Icon name="plus" size={15} />建立案件</Link><span className={`status-pill ${student.status === 'active' ? 'status-success' : 'status-warning'}`}>{student.status === 'active' ? '有效' : '待刪除'}</span></div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>{t('students.documents')}</h3>
-          <ul className="space-y-2">
-            {student.documents.map((doc) => (
-              <li key={doc.name} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{doc.name}</span>
-                <span className="text-xs font-medium" style={{ color: doc.uploaded ? '#15803d' : '#dc2626' }}>{doc.uploaded ? `✓ ${t('students.uploaded')}` : `✗ ${t('students.not_uploaded')}`}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>{t('students.notes')}</h3>
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{student.notes}</p>
-          <div className="mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>更新：{new Date(student.updated_at).toLocaleDateString('zh-TW')}</div>
-        </div>
-      </div>
+      <section className="workspace-section">
+        <div className="mb-4"><h3 className="section-title">學生身份資料</h3><p className="section-detail">這些欄位屬於 CRM Student，不代表任何一次申請案件。</p></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Info label="出生日期" value={student.dateOfBirth ?? '未提供'} /><Info label="聯絡 Email" value={student.contactEmail ?? '未提供'} /><Info label="聯絡電話" value={student.contactPhone ?? '未提供'} /><Info label="更新時間" value={formatDate(student.updatedAt)} /></div>
+      </section>
 
-      <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <h3 className="text-xs font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>{t('students.target_schools')}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {student.application_assessment.target_institutions.split('、').filter(Boolean).map((school) => (
-            <div key={school} className="text-sm p-3 rounded-md" style={{ border: '1px solid var(--border-subtle)', background: 'var(--bg)', color: 'var(--text-primary)' }}>{school}</div>
-          ))}
-        </div>
-      </div>
+      <section className="workspace-section">
+        <div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="section-title">監護人與聯絡關係</h3><p className="section-detail">Guardian 是獨立身份，關係表記錄誰是主要、緊急及帳務聯絡人。</p></div><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{student.guardians.length} 筆有效關係</span></div>
+        {student.guardians.length === 0 ? <div className="empty-state">目前沒有有效監護人關係。</div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{student.guardians.map((guardian) => <div key={guardian.id} className="selection-card selected"><span className="work-icon blue"><Icon name="user" size={15} /></span><span className="min-w-0 flex-1"><strong>{guardian.displayName}</strong><small>{guardian.relationshipType} · {guardian.email ?? '未提供 Email'} · {guardian.phone ?? '未提供電話'}</small><small>{[guardian.isPrimaryContact && '主要聯絡', guardian.isLegalGuardian && '法定監護', guardian.isEmergencyContact && '緊急聯絡', guardian.isBillingContact && '帳務聯絡'].filter(Boolean).join(' · ')}</small></span>{guardian.isPrimaryContact && <span className="status-pill status-success">Primary</span>}</div>)}</div>}
+      </section>
+
+      <div className="preview-notice"><Icon name="shield" size={15} /><span>PostgreSQL authoritative read · 此頁不再讀取 mockStudents；Assessment、任務和文件會在對應模組接通後顯示。</span></div>
     </div>
   )
 }
 
-function AssessmentField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-3 rounded-md min-h-20" style={{ border: '1px solid var(--border-subtle)', background: 'var(--bg)' }}>
-      <div className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>{label}</div>
-      <div className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{value || '—'}</div>
-    </div>
-  )
+function Info({ label, value }: { label: string; value: string }) {
+  return <div><div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</div><div className="mt-1 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{value}</div></div>
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-HK')
 }

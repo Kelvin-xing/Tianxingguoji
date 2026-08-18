@@ -40,6 +40,7 @@ export default function NewCasePage() {
   const [isLoadingOptions, setIsLoadingOptions] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createdCase, setCreatedCase] = useState<CreatedCase | null>(null)
+  const [idempotencyKey] = useState(() => crypto.randomUUID())
 
   const student = useMemo(
     () => options?.students.find((item) => item.id === studentId),
@@ -59,7 +60,7 @@ export default function NewCasePage() {
     if (preselectedStudent) setStudentId(preselectedStudent)
 
     let cancelled = false
-    fetch('/api/cases/options', { cache: 'no-store' })
+    fetch('/api/v1/cases/options', { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json() as {
           data?: { options?: CaseOptions }
@@ -109,9 +110,9 @@ export default function NewCasePage() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch('/api/cases', {
+      const response = await fetch('/api/v1/cases', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
         body: JSON.stringify({
           student_id: student.id,
           intake_year: Number(intakeYear),
@@ -144,7 +145,7 @@ export default function NewCasePage() {
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>建立案件</span></div>
       <section><div className="eyebrow">CaseWorkflow · New ServiceCase</div><h2 className="page-title">建立案件</h2><p className="page-subtitle">從既有 Student 建立一個 K12 ServiceCase，保留 identity 和 case 的邊界。</p></section>
 
-      <div className="preview-notice"><Icon name="shield" size={15} /><span>Neon authoritative command · Student、角色 binding、approved manifest 和 duplicate constraint 會由 server 再次驗證。</span></div>
+      <div className="preview-notice"><Icon name="shield" size={15} /><span>PostgreSQL authoritative command · Student、角色 binding、approved manifest 和 duplicate constraint 會由 server 再次驗證。</span></div>
       {isLoadingOptions && <div className="inline-callout"><Icon name="clock" size={15} /><span>正在載入 organization-scoped options…</span></div>}
       {optionsError && <div className="form-error" role="alert"><Icon name="x" size={15} />{optionsError}</div>}
 
@@ -180,7 +181,7 @@ function ReviewStep({ student, intakeYear, admissionType, primaryBinding, manife
 }
 
 function CreateComplete({ createdCase, studentName }: { createdCase: CreatedCase; studentName: string }) {
-  return <div className="max-w-2xl mx-auto pt-8"><section className="workspace-section text-center"><div className="success-mark"><Icon name="check" size={24} /></div><div className="eyebrow mt-5">Authoritative command completed</div><h2 className="page-title mt-1">案件已建立</h2><p className="page-subtitle mx-auto">{studentName} 的 ServiceCase 已由 Neon transaction 建立，後續 assessment 可以在案件 workspace 繼續。</p><div className="preview-result"><div><span>Case number</span><strong>{createdCase.caseNumber}</strong></div><div><span>Write status</span><strong className="text-green-700">persisted</strong></div></div><div className="flex justify-center gap-2 mt-6"><Link href={`/cases/${createdCase.id}`} className="primary-button">開啟案件<Icon name="arrow-right" size={15} /></Link><Link href="/cases" className="secondary-button">返回案件</Link></div></section></div>
+  return <div className="max-w-2xl mx-auto pt-8"><section className="workspace-section text-center"><div className="success-mark"><Icon name="check" size={24} /></div><div className="eyebrow mt-5">Authoritative command completed</div><h2 className="page-title mt-1">案件已建立</h2><p className="page-subtitle mx-auto">{studentName} 的 ServiceCase 已由 PostgreSQL transaction 建立，後續 assessment 可以在案件 workspace 繼續。</p><div className="preview-result"><div><span>Case number</span><strong>{createdCase.caseNumber}</strong></div><div><span>Write status</span><strong className="text-green-700">persisted</strong></div></div><div className="flex justify-center gap-2 mt-6"><Link href={`/cases/${createdCase.id}`} className="primary-button">開啟案件<Icon name="arrow-right" size={15} /></Link><Link href="/cases" className="secondary-button">返回案件</Link></div></section></div>
 }
 
 function caseErrorMessage(code: string): string {

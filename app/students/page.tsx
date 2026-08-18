@@ -1,160 +1,68 @@
 'use client'
 
-import { useTranslation } from 'react-i18next'
-import { mockStudents } from '@/modules/crm/client'
-import type { Student } from '@/types'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
 import { Icon } from '@/components/workspace/Icon'
 
-const STATUS_STYLES: Record<Student['status'], { bg: string; color: string }> = {
-  collecting: { bg: '#f3f4f6', color: '#374151' },
-  applying:   { bg: '#eff6ff', color: '#1d4ed8' },
-  interview:  { bg: '#fffbeb', color: '#b45309' },
-  admitted:   { bg: '#f0fdf4', color: '#15803d' },
-  rejected:   { bg: '#fef2f2', color: '#dc2626' },
+interface StudentListItem {
+  id: string
+  displayName: string
+  dateOfBirth: string | null
+  status: 'active' | 'pending_delete'
+  primaryGuardianName: string | null
+  updatedAt: string
 }
 
 export default function StudentsPage() {
-  const { t } = useTranslation()
+  const [students, setStudents] = useState<StudentListItem[]>([])
   const [search, setSearch] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
 
-  const filtered = mockStudents.filter(
-    (s) =>
-      s.name_zh.includes(search) ||
-      s.name_en.toLowerCase().includes(search.toLowerCase()) ||
-      s.consultant.includes(search),
-  )
+  function loadStudents() {
+    setLoadState('loading')
+    fetch('/api/v1/students', { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json() as { data?: { students?: StudentListItem[] } }
+        if (!response.ok || !payload.data?.students) throw new Error('STUDENTS_UNAVAILABLE')
+        setStudents(payload.data.students)
+        setLoadState('ready')
+      })
+      .catch(() => setLoadState('error'))
+  }
+
+  useEffect(() => {
+    loadStudents()
+  }, [])
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return students.filter((student) => !query ||
+      `${student.displayName} ${student.primaryGuardianName ?? ''} ${student.id}`
+        .toLowerCase().includes(query))
+  }, [search, students])
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-        <div className="relative">
-          <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
-            width="13"
-            height="13"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            placeholder={`${t('common.search')}…`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 w-56"
-            style={{ paddingLeft: '2rem' }}
-          />
-        </div>
-        <Link href="/cases/new" className="primary-button"><Icon name="plus" size={15} />建立案件</Link>
-      </div>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {filtered.length} 位學生
-        </span>
-      </div>
+    <div className="max-w-[1500px] mx-auto space-y-6">
+      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div><div className="eyebrow">CRM · Student identity</div><h2 className="page-title">學生與監護人</h2><p className="page-subtitle">Student 保存學生身份資料；ServiceCase 另行保存每次申請案件。</p></div>
+        <Link href="/cases/new" className="primary-button"><Icon name="plus" size={16} />為學生建立案件</Link>
+      </section>
 
-      <div
-        className="overflow-hidden"
-        style={{
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-        }}
-      >
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {[
-                t('students.name'),
-                t('students.grade'),
-                t('students.status'),
-                '目標院校',
-                '計劃入學',
-                t('students.consultant'),
-                t('students.deadline'),
-                '',
-              ].map((h, i) => (
-                <th
-                  key={i}
-                  className="text-left px-4 py-2.5 text-xs font-semibold"
-                  style={{ color: 'var(--text-secondary)' }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((s) => (
-              <tr
-                key={s.id}
-                className="transition-colors"
-                style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLElement).style.background = 'var(--bg)')
-                }
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLElement).style.background = 'transparent')
-                }
-              >
-                <td className="px-4 py-3">
-                  <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {s.name_zh}
-                  </div>
-                  <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    {s.name_en}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {s.current_grade} → {s.target_grade}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className="text-xs font-medium px-2 py-0.5 rounded-full"
-                    style={STATUS_STYLES[s.status]}
-                  >
-                    {t(`students.status_${s.status}`)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {s.application_assessment.target_institutions || '—'}
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {s.application_assessment.planned_enrollment_time || '—'}
-                </td>
-                <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {s.consultant}
-                </td>
-                <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {s.deadline}
-                </td>
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/students/${s.id}`}
-                    className="text-xs font-medium transition-colors"
-                    style={{ color: 'var(--accent)' }}
-                    onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLElement).style.color = 'var(--accent-hover)')
-                    }
-                    onMouseLeave={(e) =>
-                      ((e.currentTarget as HTMLElement).style.color = 'var(--accent)')
-                    }
-                  >
-                    {t('students.view')} →
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <section className="workspace-section overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4">
+          <div><h3 className="section-title">Student 目錄</h3><p className="section-detail">目前只顯示 PostgreSQL 中的本地合成資料，不使用前端 Mock。</p></div>
+          <label className="search-field"><Icon name="search" size={15} /><input type="search" placeholder="搜尋學生或監護人" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="搜尋學生" /></label>
+        </div>
+        {loadState === 'loading' && <div className="empty-state"><Icon name="clock" size={20} /><strong>正在載入學生</strong><span>讀取 organization-scoped CRM data…</span></div>}
+        {loadState === 'error' && <div className="empty-state"><Icon name="x" size={20} /><strong>學生服務暫時不可用</strong><span>請確認登入工作階段和本地 PostgreSQL runtime。</span><button type="button" className="secondary-button mt-3" onClick={loadStudents}>重新載入</button></div>}
+        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[720px]"><thead><tr><th>學生</th><th>出生日期</th><th>主要聯絡人</th><th>資料狀態</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((student) => <tr key={student.id} className="data-row"><td><Link href={`/students/${student.id}`} className="table-primary">{student.displayName}</Link><div className="table-secondary">{student.id}</div></td><td className="table-muted">{student.dateOfBirth ?? '未提供'}</td><td className="table-muted">{student.primaryGuardianName ?? '未設定'}</td><td><span className={`status-pill ${student.status === 'active' ? 'status-success' : 'status-warning'}`}>{student.status === 'active' ? '有效' : '待刪除'}</span></td><td className="table-muted">{formatDate(student.updatedAt)}</td><td><Link href={`/students/${student.id}`} className="icon-button" title="查看學生" aria-label="查看學生"><Icon name="chevron-right" size={16} /></Link></td></tr>)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的學生。</div>}</div><div className="pt-4 text-xs" style={{ color: 'var(--text-muted)' }}>顯示 {filtered.length} / {students.length} 位學生 · PostgreSQL authoritative read</div></>}
+      </section>
     </div>
   )
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-HK')
 }

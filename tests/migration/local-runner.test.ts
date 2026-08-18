@@ -76,9 +76,9 @@ test("verifies the committed ordered migration manifest", async () => {
   const manifest = await verifyMigrationManifest();
 
   assert.equal(manifest.manifestVersion, 1);
-  assert.equal(manifest.migrations.length, 17);
+  assert.equal(manifest.migrations.length, 19);
   assert.equal(manifest.migrations[0]?.name, "202608021330_001_expand_identity_access.sql");
-  assert.equal(manifest.migrations.at(-1)?.name, "202608180020_018_harden_identity_session_validation.sql");
+  assert.equal(manifest.migrations.at(-1)?.name, "202608180040_020_grant_audit_validation_to_application.sql");
 });
 
 test("rejects a changed SQL file before opening a database connection", async () => {

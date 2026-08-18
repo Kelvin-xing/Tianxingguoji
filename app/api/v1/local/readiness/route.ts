@@ -37,6 +37,7 @@ export function handleLocalReadinessRequest(
     const dependencyStates = {
       postgresql: report.dependencies.postgresql,
       postgresql_identity: report.dependencies.postgresql_identity,
+      postgresql_application: report.dependencies.postgresql_application,
       localstack_s3: report.dependencies.localstack_s3,
       localstack_sqs: report.dependencies.localstack_sqs,
       clamav: report.dependencies.clamav,

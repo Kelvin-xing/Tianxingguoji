@@ -206,6 +206,7 @@ function sanitizeDependencyReadiness(value: JsonValue | undefined): Readonly<Rec
   const allowedDependencies = [
     "postgresql",
     "postgresql_identity",
+    "postgresql_application",
     "localstack_s3",
     "localstack_sqs",
     "clamav",

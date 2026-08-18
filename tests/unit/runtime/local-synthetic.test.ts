@@ -20,6 +20,8 @@ test("loads an explicit loopback-only local synthetic configuration", () => {
         "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
       identityConnectionString:
         "postgresql://tianxing_local_identity:tianxing-local-identity-only@127.0.0.1:5432/tianxing",
+      applicationConnectionString:
+        "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     },
     localstack: {
       endpoint: "http://127.0.0.1:4566",
@@ -55,6 +57,10 @@ test("rejects remote database, LocalStack, and ClamAV endpoints", () => {
       value: "postgresql://tianxing_local_identity:secret@database.example.test:5432/tianxing",
     },
     {
+      variable: "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
+      value: "postgresql://tianxing_app:secret@database.example.test:5432/tianxing",
+    },
+    {
       variable: "LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT",
       value: "https://localstack.example.test:4566",
     },
@@ -84,6 +90,7 @@ test("reports all dependencies ready without exposing connection values", async 
     dependencies: {
       postgresql: "ready",
       postgresql_identity: "ready",
+      postgresql_application: "ready",
       localstack_s3: "ready",
       localstack_sqs: "ready",
       clamav: "ready",
@@ -103,6 +110,9 @@ test("reports each unavailable dependency without throwing raw probe errors", as
       identityPostgresql: async () => {
         throw new Error("identity detail");
       },
+      applicationPostgresql: async () => {
+        throw new Error("application detail");
+      },
       localstack: async () => ({ s3: true, sqs: false }),
       clamav: async () => {
         throw new Error("scanner detail");
@@ -116,6 +126,7 @@ test("reports each unavailable dependency without throwing raw probe errors", as
     dependencies: {
       postgresql: "unavailable",
       postgresql_identity: "unavailable",
+      postgresql_application: "unavailable",
       localstack_s3: "ready",
       localstack_sqs: "unavailable",
       clamav: "unavailable",
@@ -133,6 +144,8 @@ function validEnvironment(): Record<string, string | undefined> {
       "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
     LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL:
       "postgresql://tianxing_local_identity:tianxing-local-identity-only@127.0.0.1:5432/tianxing",
+    LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL:
+      "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
     LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
     LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",
@@ -150,6 +163,7 @@ function probes(
   return {
     postgresql: async () => undefined,
     identityPostgresql: async () => undefined,
+    applicationPostgresql: async () => undefined,
     localstack: async () => ({ s3: true, sqs: true }),
     clamav: async () => undefined,
     ...overrides,

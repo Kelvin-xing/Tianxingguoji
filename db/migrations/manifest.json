@@ -17,6 +17,8 @@
     { "name": "202608130030_013_expand_case_billing_projection.sql", "sha256": "3eaeb84dfe9a8436e1c98c4cecf49359abf2cd06ebd95ebc765a5e204b41fe76" },
     { "name": "202608130040_016_expand_application_predicates.sql", "sha256": "8b2bb281ecbb067f775c5e657af4b16ec6ef1cb4e9eb481025b2b149cf0d4209" },
     { "name": "202608180010_017_expand_local_synthetic_sessions.sql", "sha256": "8edb0e2a67ebe9ada581203fc043e223fa821a8aed90f56b4402324d39d7d963" },
-    { "name": "202608180020_018_harden_identity_session_validation.sql", "sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf" }
+    { "name": "202608180020_018_harden_identity_session_validation.sql", "sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf" },
+    { "name": "202608180030_019_expose_approved_case_manifests.sql", "sha256": "08977d92560a031970b087191c34ce776dc32578720d2e4b56282edb091b1870" },
+    { "name": "202608180040_020_grant_audit_validation_to_application.sql", "sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155" }
   ]
 }
