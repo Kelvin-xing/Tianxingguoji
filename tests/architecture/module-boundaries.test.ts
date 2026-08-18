@@ -240,14 +240,14 @@ test("keeps legacy lib limited to technical framework utilities", () => {
   assert.deepEqual(walkSourceFiles(resolve(REPOSITORY_ROOT, "adapters")), []);
 });
 
-test("keeps the frozen knowledge feature free of runtime schema mutation", () => {
-  const source = readFileSync(
-    resolve(REPOSITORY_ROOT, "modules/future/infrastructure/knowledge-db.ts"),
-    "utf8",
-  );
-
-  assert.equal(/\bcreate\s+table\b/i.test(source), false);
-  assert.match(source, /FUTURE_KNOWLEDGE_FEATURE_FROZEN/);
+test("keeps Future features free of runtime routes and persistence adapters", () => {
+  const prohibited = [
+    "app/ai/page.tsx",
+    "app/admin/knowledge/page.tsx",
+    "app/api/knowledge/route.ts",
+    "modules/future/infrastructure/knowledge-db.ts",
+  ];
+  assert.deepEqual(prohibited.filter((path) => existsSync(resolve(REPOSITORY_ROOT, path))), []);
 });
 
 test("keeps SQL writes inside the module that owns each table", () => {
@@ -279,7 +279,6 @@ test("marks repositories, database adapters, and runtime wiring as server-only",
         name.endsWith("-repository.ts") ||
         name === "postgresql.ts" ||
         name === "db.ts" ||
-        name === "knowledge-db.ts" ||
         name === "student-persistence.ts" ||
         name === "activation-cookie.ts" ||
         name === "cognito-adapter.ts";

@@ -61,7 +61,7 @@ layer or adapter.
 | `audit` + `operations` | Audit/outbox plus operational projections, alerts, and telemetry | each exposes `public.ts` and `server.ts`; one registry ownership group |
 | `external-portal` | Portal viewer, grant, and session | `public.ts`, `server.ts` |
 | `platform-billing` | Advancing-case metrics and opaque contract references | `public.ts`, `server.ts` |
-| `future` | Frozen post-Release-1 feature contracts | `public.ts`, `server.ts` |
+| `future` | Frozen post-Release-1 contracts only; no Release 1 runtime routes or persistence adapters | `public.ts`, `server.ts` |
 
 The authoritative resource list and accepted cross-module entrypoints are in
 `modules/shared/architecture/module-registry.ts`.
@@ -78,14 +78,17 @@ The authoritative resource list and accepted cross-module entrypoints are in
   i18n provider, and local runtime configuration/readiness helpers.
 - `types/index.ts` remains a transitional frontend/crawler type collection. It
   should be split by ownership only when each consumer is migrated.
-- Legacy `/api/cases`, crawler, and knowledge routes remain compatibility
-  surfaces. They are governed by the same entrypoint rules but are not the
-  target Release 1 API design.
+- Legacy `/api/cases` and crawler routes remain compatibility surfaces. They
+  are governed by the same entrypoint rules but are not the target Release 1
+  API design.
 - The crawler database adapter still performs legacy runtime schema setup. It
   must move to append-only migrations before crawler persistence becomes a
   supported Release 1 runtime.
-- Knowledge/AI is outside Release 1. Its server adapter fails closed with
-  `FUTURE_KNOWLEDGE_FEATURE_FROZEN` and performs no runtime schema mutation.
+- Knowledge/AI is outside Release 1. Only runtime-neutral disabled contracts
+  and navigation-placeholder metadata remain under `modules/future`; Release 1
+  has no AI/Knowledge page, Route Handler, job, credential, data write, or
+  persistence adapter. Historical UI and adapter source remains recoverable
+  from Git history rather than from an active runtime path.
 - Preview and synthetic fixtures remain explicit client/server adapters until
   real local runtimes replace each consumer.
 
@@ -101,4 +104,4 @@ The authoritative resource list and accepted cross-module entrypoints are in
 - SQL write ownership;
 - the exact technical allowlist remaining under `lib/`;
 - no source files remain under the former top-level `adapters/` directory;
-- the frozen Knowledge adapter cannot create schema at request time.
+- Future features have no runtime routes or persistence adapters.
