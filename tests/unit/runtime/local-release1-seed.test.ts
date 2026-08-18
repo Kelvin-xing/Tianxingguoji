@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  LOCAL_RELEASE1_SCHOOLS,
   readLocalRelease1SeedTarget,
 } from "../../../scripts/db/seed-local-release1.ts";
+import { sha256SchoolValue } from "../../../modules/schools/public.ts";
 
 const ownerUrl = "postgresql://tianxing_migration:owner@127.0.0.1:5432/tianxing";
 const applicationUrl = "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing";
@@ -27,6 +30,30 @@ test("accepts only the fixed local Release 1 application role", () => {
       Error,
     );
   }
+});
+
+test("defines exactly three deterministic synthetic schools without crawler input", () => {
+  assert.equal(LOCAL_RELEASE1_SCHOOLS.length, 3);
+  assert.equal(new Set(LOCAL_RELEASE1_SCHOOLS.map(({ id }) => id)).size, 3);
+  assert.equal(new Set(LOCAL_RELEASE1_SCHOOLS.map(({ sourceSchoolKey }) => sourceSchoolKey)).size, 3);
+  for (const school of LOCAL_RELEASE1_SCHOOLS) {
+    assert.match(school.id, /^[0-9a-f-]{36}$/);
+    assert.match(school.fields.official_website, /^https:\/\/synthetic-school-00[1-3]\.local\.invalid$/);
+    assert.equal(school.recordSha256, sha256SchoolValue({
+      sourceSchoolKey: school.sourceSchoolKey,
+      fields: school.fields,
+      provenance: school.provenance,
+    }));
+  }
+});
+
+test("seed verification compares both school and snapshot-record source keys", async () => {
+  const source = await readFile("scripts/db/seed-local-release1.ts", "utf8");
+
+  assert.match(source, /school\.source_school_key AS school_source_school_key/);
+  assert.match(source, /record\.source_school_key AS record_source_school_key/);
+  assert.match(source, /row\.school_source_school_key !== school\.sourceSchoolKey/);
+  assert.match(source, /row\.record_source_school_key !== school\.sourceSchoolKey/);
 });
 
 function environment(): Record<string, string> {

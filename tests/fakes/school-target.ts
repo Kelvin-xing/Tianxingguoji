@@ -10,7 +10,6 @@ import {
   resolveSchoolTargetView,
   SchoolResolutionError,
   type DisableSchoolOverlayResult,
-  type ResolvedSchoolTargetView,
   type ResolvedSchoolViewRepository,
   type SchoolResolutionSource,
 } from "../../modules/schools/application/resolved-view.ts";
@@ -24,6 +23,9 @@ interface StoredCase {
   readonly organizationId: string;
   readonly primaryAdvisorUserId: string;
   readonly active: boolean;
+  readonly stage: "signed" | "background_collection" | "school_selection_confirmed";
+  readonly intakeYear: number;
+  readonly admissionType: string;
 }
 
 interface StoredOverlay {
@@ -32,9 +34,8 @@ interface StoredOverlay {
 }
 
 interface StoredTarget {
+  readonly caseId: string;
   readonly result: SchoolTargetResult;
-  readonly admissionType: string;
-  readonly intakeYear: number;
 }
 
 interface StoredResult<Result> {
@@ -74,11 +75,17 @@ export class InMemorySchoolTargetRepository
     readonly organizationId: string;
     readonly primaryAdvisorUserId: string;
     readonly active?: boolean;
+    readonly stage?: StoredCase["stage"];
+    readonly intakeYear?: number;
+    readonly admissionType?: string;
   }): void {
     this.cases.set(input.caseId, {
       organizationId: input.organizationId,
       primaryAdvisorUserId: input.primaryAdvisorUserId,
       active: input.active ?? true,
+      stage: input.stage ?? "background_collection",
+      intakeYear: input.intakeYear ?? 2027,
+      admissionType: input.admissionType ?? "hk_k12_standard_v1",
     });
   }
 
@@ -149,16 +156,52 @@ export class InMemorySchoolTargetRepository
     }
   }
 
-  async readSchoolTargetResolution(
-    input: Parameters<SchoolTargetRepository["readSchoolTargetResolution"]>[0],
-  ): Promise<SchoolResolutionSource> {
-    this.assertPrimaryAdvisor(input.organizationId, input.actorUserId, input.caseId);
-    return this.sourceForSchool(input.organizationId, input.schoolId);
+  async readSchoolTargetWorkspace(
+    input: Parameters<SchoolTargetRepository["readSchoolTargetWorkspace"]>[0],
+  ) {
+    const serviceCase = this.assertReadableCase(
+      input.organizationId,
+      input.actorUserId,
+      input.actorRole,
+      input.caseId,
+    );
+    const items = [...this.targets.values()]
+      .filter((target) => target.caseId === input.caseId)
+      .map(({ result }) => result)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) ||
+        left.targetId.localeCompare(right.targetId));
+    const targeted = new Set(items.map((target) => target.schoolId));
+    const schoolOptions = [...this.bases.values()]
+      .filter((base) => base.organizationId === input.organizationId && !targeted.has(base.schoolId))
+      .map((base) => resolveSchoolTargetView(this.sourceForSchool(
+        input.organizationId,
+        base.schoolId,
+      )))
+      .map((resolved) => Object.freeze({
+        schoolId: resolved.view.schoolId,
+        displayName: displayName(resolved.view.fields, resolved.view.sourceSchoolKey),
+        resolutionSha256: resolved.view.resolutionSha256,
+      }))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName) ||
+        left.schoolId.localeCompare(right.schoolId));
+    return Object.freeze({
+      caseId: input.caseId,
+      caseStage: serviceCase.stage,
+      intakeYear: serviceCase.intakeYear,
+      admissionType: serviceCase.admissionType,
+      items: Object.freeze(items),
+      schoolOptions: Object.freeze(schoolOptions),
+    });
   }
 
   async createSchoolTarget(
     input: Parameters<SchoolTargetRepository["createSchoolTarget"]>[0],
   ): Promise<SchoolTargetResult> {
+    const serviceCase = this.assertPrimaryAdvisor(
+      input.organizationId,
+      input.actorUserId,
+      input.caseId,
+    );
     const scope = [
       input.organizationId,
       input.actorUserId,
@@ -173,20 +216,17 @@ export class InMemorySchoolTargetRepository
       return existing.result;
     }
 
-    this.assertPrimaryAdvisor(input.organizationId, input.actorUserId, input.caseId);
+    if (serviceCase.stage !== "background_collection") {
+      throw new SchoolTargetError("SCHOOL_TARGET_STAGE_NOT_ALLOWED");
+    }
     const current = resolveSchoolTargetView(this.sourceForSchool(input.organizationId, input.schoolId));
-    if (
-      current.pin.resolutionSha256 !== input.expectedResolutionSha256 ||
-      !samePin(current, input.pin)
-    ) {
+    if (current.pin.resolutionSha256 !== input.expectedResolutionSha256) {
       throw new SchoolTargetError("SCHOOL_TARGET_RESOLUTION_STALE");
     }
     for (const target of this.targets.values()) {
       if (
-        target.result.caseId === input.caseId &&
-        target.result.schoolId === input.schoolId &&
-        target.intakeYear === input.intakeYear &&
-        target.admissionType === input.admissionType
+        target.caseId === input.caseId &&
+        target.result.schoolId === input.schoolId
       ) {
         throw new SchoolTargetError("SCHOOL_TARGET_DUPLICATE");
       }
@@ -194,26 +234,24 @@ export class InMemorySchoolTargetRepository
 
     const result: SchoolTargetResult = Object.freeze({
       targetId: input.targetId,
-      caseId: input.caseId,
       schoolId: input.schoolId,
+      schoolName: displayName(current.view.fields, current.view.sourceSchoolKey),
       state: "candidate",
+      intakeYear: serviceCase.intakeYear,
+      admissionType: serviceCase.admissionType,
       recordVersion: 1,
-      pin: input.pin,
+      resolvedRevisionId: input.proposedResolvedRevisionId,
+      resolutionSha256: current.view.resolutionSha256,
+      createdAt: new Date(input.createdAtMs).toISOString(),
     });
     const nextTargets = new Map(this.targets);
     const nextResolvedRevisionIds = new Set(this.resolvedRevisionIds);
     const nextResults = new Map(this.targetResults);
     const nextEffects = new Map(this.effects);
-    nextTargets.set(input.targetId, {
-      result,
-      intakeYear: input.intakeYear,
-      admissionType: input.admissionType,
-    });
+    nextTargets.set(input.targetId, { caseId: input.caseId, result });
     nextResults.set(scope, { requestHash: input.requestHash, result });
     nextEffects.set(input.targetId, input.effects);
-    if (input.pin.resolvedRevisionId !== null) {
-      nextResolvedRevisionIds.add(input.pin.resolvedRevisionId);
-    }
+    nextResolvedRevisionIds.add(input.proposedResolvedRevisionId);
 
     this.commitOrFail(() => {
       this.targets = nextTargets;
@@ -305,17 +343,43 @@ export class InMemorySchoolTargetRepository
     return result;
   }
 
-  private assertPrimaryAdvisor(organizationId: string, actorUserId: string, caseId: string): void {
+  private assertReadableCase(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: "founder" | "advisor",
+    caseId: string,
+  ): StoredCase {
     const serviceCase = this.cases.get(caseId);
     if (!serviceCase || serviceCase.organizationId !== organizationId || !serviceCase.active) {
       throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
     }
+    if (this.activeRoles.get(actorKey(organizationId, actorUserId)) !== actorRole) {
+      throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
+    }
+    if (actorRole === "advisor" && serviceCase.primaryAdvisorUserId !== actorUserId) {
+      throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
+    }
+    return serviceCase;
+  }
+
+  private assertPrimaryAdvisor(
+    organizationId: string,
+    actorUserId: string,
+    caseId: string,
+  ): StoredCase {
+    const serviceCase = this.assertReadableCase(
+      organizationId,
+      actorUserId,
+      "advisor",
+      caseId,
+    );
     if (
       serviceCase.primaryAdvisorUserId !== actorUserId ||
       this.activeRoles.get(actorKey(organizationId, actorUserId)) !== "advisor"
     ) {
-      throw new SchoolTargetError("SCHOOL_TARGET_CASE_FORBIDDEN");
+      throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
     }
+    return serviceCase;
   }
 
   private sourceForSchool(
@@ -355,11 +419,9 @@ function baseKey(organizationId: string, schoolId: string): string {
   return `${organizationId}:${schoolId}`;
 }
 
-function samePin(current: ResolvedSchoolTargetView, pin: SchoolTargetResult["pin"]): boolean {
-  return (
-    current.pin.baseSnapshotId === pin.baseSnapshotId &&
-    current.pin.overlayRevisionId === pin.overlayRevisionId &&
-    current.pin.resolutionSha256 === pin.resolutionSha256 &&
-    JSON.stringify(current.pin.provenance) === JSON.stringify(pin.provenance)
-  );
+function displayName(fields: Readonly<Record<string, unknown>>, sourceSchoolKey: string): string {
+  for (const value of [fields.school_name_zh, fields.school_name_en]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return sourceSchoolKey;
 }

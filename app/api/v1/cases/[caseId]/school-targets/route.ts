@@ -1,58 +1,53 @@
 import { cookies } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import {
-  SchoolTargetRuntimeUnavailable,
-  getSchoolTargetRuntime,
-} from "@/modules/cases/server";
 import {
   SchoolTargetError,
-  type CreateSchoolTargetCommand,
+  SchoolTargetRuntimeUnavailable,
+  getSchoolTargetRuntime,
+  type SchoolTargetItem,
 } from "@/modules/cases/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import {
+  IdentityRuntimeUnavailable,
+  IdentityServiceError,
+  SESSION_COOKIE_NAME,
+  getIdentityRuntime,
+} from "@/modules/identity/server";
+import { requireIdentityActor } from "@/modules/identity/web";
+import {
+  ApiContractError,
+  createApiError,
+  handleApiRequest,
+} from "@/modules/shared/public";
+import { parseCreateSchoolTargetRequest } from "./route-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
+export async function GET(
   request: Request,
   context: { readonly params: Promise<{ readonly caseId: string }> },
 ): Promise<Response> {
-  return handleApiRequest(request, async (requestContext) => {
-    const { caseId } = await context.params;
-    if (!UUID.test(caseId)) throw createApiError("INVALID_REQUEST");
-    const parsed = await parseCreateCommand(request, requestContext.requestId);
-    const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-    if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-
+  return handleApiRequest(request, async () => {
     try {
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: true,
-      });
-      const result = await getSchoolTargetRuntime().service.createSchoolTarget({
-        actor,
-        caseId,
-        schoolId: parsed.schoolId,
-        command: parsed.command,
-      });
+      const { caseId } = await context.params;
+      if (!UUID.test(caseId)) throw createApiError("INVALID_REQUEST");
+      const actor = await requireIdentityActor();
+      const result = await getSchoolTargetRuntime().service.getSchoolTargets({ actor, caseId });
       return {
-        target_id: result.targetId,
         case_id: result.caseId,
-        school_id: result.schoolId,
-        state: result.state,
-        record_version: result.recordVersion,
-        pin: {
-          resolved_revision_id: result.pin.resolvedRevisionId,
-          base_snapshot_id: result.pin.baseSnapshotId,
-          overlay_revision_id: result.pin.overlayRevisionId,
-          resolution_sha256: result.pin.resolutionSha256,
-        },
+        case_stage: result.caseStage,
+        intake_year: result.intakeYear,
+        admission_type: result.admissionType,
+        can_create: result.canCreate,
+        create_blocked_reason: result.createBlockedReason,
+        items: result.items.map(toApiItem),
+        school_options: result.schoolOptions.map((option) => ({
+          school_id: option.schoolId,
+          display_name: option.displayName,
+          resolution_sha256: option.resolutionSha256,
+        })),
       };
     } catch (error) {
       throw mapSchoolTargetError(error);
@@ -60,42 +55,51 @@ export async function POST(
   });
 }
 
-async function parseCreateCommand(
+export async function POST(
   request: Request,
-  requestId: string,
-): Promise<{ readonly schoolId: string; readonly command: CreateSchoolTargetCommand }> {
-  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-  if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
-    throw createApiError("INVALID_REQUEST");
-  }
+  context: { readonly params: Promise<{ readonly caseId: string }> },
+): Promise<Response> {
+  return handleApiRequest(request, async (requestContext) => {
+    try {
+      const { caseId } = await context.params;
+      if (!UUID.test(caseId)) throw createApiError("INVALID_REQUEST");
+      const parsed = await parseCreateSchoolTargetRequest(request, requestContext.requestId);
+      const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+      if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
+      const actor = await getIdentityRuntime().service.requireSession({
+        cookieSecret,
+        sensitiveAction: true,
+      });
+      const item = await getSchoolTargetRuntime().service.createSchoolTarget({
+        actor,
+        caseId,
+        schoolId: parsed.schoolId,
+        command: parsed.command,
+      });
+      return { case_id: caseId, item: toApiItem(item) };
+    } catch (error) {
+      throw mapSchoolTargetError(error);
+    }
+  });
+}
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    throw createApiError("INVALID_REQUEST");
-  }
-  if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
-
-  const schoolId = body.school_id;
-  const intakeYear = body.intake_year;
-  const admissionType = body.admission_type;
-  const expectedResolutionSha256 = body.expected_resolution_sha256;
-  if (
-    typeof schoolId !== "string" ||
-    typeof intakeYear !== "number" ||
-    typeof admissionType !== "string" ||
-    typeof expectedResolutionSha256 !== "string"
-  ) {
-    throw createApiError("VALIDATION_FAILED");
-  }
+function toApiItem(item: SchoolTargetItem) {
   return {
-    schoolId,
-    command: { intakeYear, admissionType, expectedResolutionSha256, requestId, idempotencyKey },
+    target_id: item.targetId,
+    school_id: item.schoolId,
+    school_name: item.schoolName,
+    state: item.state,
+    intake_year: item.intakeYear,
+    admission_type: item.admissionType,
+    record_version: item.recordVersion,
+    resolved_revision_id: item.resolvedRevisionId,
+    resolution_sha256: item.resolutionSha256,
+    created_at: item.createdAt,
   };
 }
 
-function mapSchoolTargetError(error: unknown) {
+function mapSchoolTargetError(error: unknown): ApiContractError {
+  if (error instanceof ApiContractError) return error;
   if (error instanceof IdentityRuntimeUnavailable || error instanceof SchoolTargetRuntimeUnavailable) {
     return createApiError("SERVICE_UNAVAILABLE");
   }
@@ -105,6 +109,7 @@ function mapSchoolTargetError(error: unknown) {
   switch (error.code) {
     case "SCHOOL_TARGET_INVALID":
       return createApiError("VALIDATION_FAILED");
+    case "SCHOOL_TARGET_READ_FORBIDDEN":
     case "SCHOOL_TARGET_ADVISOR_REQUIRED":
     case "SCHOOL_TARGET_CASE_FORBIDDEN":
       return createApiError("FORBIDDEN");
@@ -113,6 +118,7 @@ function mapSchoolTargetError(error: unknown) {
       return createApiError("NOT_FOUND");
     case "SCHOOL_TARGET_RESOLUTION_STALE":
       return createApiError("STALE_VERSION");
+    case "SCHOOL_TARGET_STAGE_NOT_ALLOWED":
     case "SCHOOL_TARGET_IDEMPOTENCY_KEY_REUSED":
     case "SCHOOL_TARGET_IDEMPOTENCY_IN_PROGRESS":
     case "SCHOOL_TARGET_DUPLICATE":
@@ -120,8 +126,4 @@ function mapSchoolTargetError(error: unknown) {
     case "SCHOOL_TARGET_RESOLUTION_INVALID":
       return createApiError("SERVICE_UNAVAILABLE");
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

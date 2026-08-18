@@ -13,12 +13,15 @@ import {
   LOCAL_SYNTHETIC_ORGANIZATION,
   getLocalSyntheticPrincipal,
 } from "../../modules/identity/server.ts";
+import { sha256SchoolValue } from "../../modules/schools/public.ts";
 import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-config.ts";
 import { readLocalMigrationTarget } from "./run-local-migrations.ts";
 
 const LOCAL_APPLICATION_PASSWORD = "tianxing-local-app-only";
 const MANIFEST_ID = "30000000-0000-4000-8000-000000000002";
 const MANIFEST_COMPOSITION_VERSION = "local-release1-v2";
+const SCHOOL_SNAPSHOT_ID = "40000000-0000-4000-8000-000000000001";
+const SCHOOL_SOURCE_RELEASE_ID = "local-release1-synthetic-schools-v1";
 const MODULE_FILES = Object.freeze([
   "schema/k12/student-profile.v1.json",
   "schema/k12/education-profile.v1.json",
@@ -52,6 +55,15 @@ const STUDENTS = Object.freeze([
     relationshipId: "20000000-0000-4000-8000-000000000302",
     relationshipType: "parent",
   }),
+]);
+
+export const LOCAL_RELEASE1_SCHOOLS = Object.freeze([
+  schoolSeed("40000000-0000-4000-8000-000000000101", "40000000-0000-4000-8000-000000000201",
+    "synthetic-school-001", "本地合成学校一", "Local Synthetic School One", "Central"),
+  schoolSeed("40000000-0000-4000-8000-000000000102", "40000000-0000-4000-8000-000000000202",
+    "synthetic-school-002", "本地合成学校二", "Local Synthetic School Two", "Eastern"),
+  schoolSeed("40000000-0000-4000-8000-000000000103", "40000000-0000-4000-8000-000000000203",
+    "synthetic-school-003", "本地合成学校三", "Local Synthetic School Three", "Kowloon"),
 ]);
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
@@ -92,7 +104,16 @@ export function readLocalRelease1SeedTarget(
 
 export async function seedLocalRelease1(
   target: LocalRelease1SeedTarget,
-): Promise<Readonly<{ students: number; guardians: number; relationships: number; manifests: number; fields: number }>> {
+): Promise<Readonly<{
+  students: number;
+  guardians: number;
+  relationships: number;
+  manifests: number;
+  fields: number;
+  schools: number;
+  schoolSnapshots: number;
+  schoolRecords: number;
+}>> {
   const modules = await loadSchemaModules();
   const owner = new Client({
     connectionString: target.ownerConnectionString,
@@ -109,6 +130,7 @@ export async function seedLocalRelease1(
       await provisionApplicationRole(owner);
       await seedStudentsAndGuardians(owner);
       await seedManifest(owner, modules);
+      await seedSchools(owner);
       const counts = await verifySeed(owner, modules);
       await owner.query("COMMIT");
       await verifyRuntimeBoundary(target.runtimeConnectionString);
@@ -235,6 +257,106 @@ async function seedManifest(client: Client, modules: readonly K12Module[]): Prom
   );
 }
 
+async function seedSchools(client: Client): Promise<void> {
+  const active = await client.query<{ id: string }>(
+    `SELECT id FROM schools_snapshots
+      WHERE organization_id = $1 AND status = 'active'`,
+    [LOCAL_SYNTHETIC_ORGANIZATION.id],
+  );
+  if (active.rows[0] && active.rows[0].id !== SCHOOL_SNAPSHOT_ID) {
+    throw new LocalRelease1SeedSafetyError("Another active school snapshot already exists.");
+  }
+
+  for (const school of LOCAL_RELEASE1_SCHOOLS) {
+    await client.query(
+      `INSERT INTO schools_schools
+        (id, organization_id, source_school_key, record_version)
+       VALUES ($1,$2,$3,1) ON CONFLICT (id) DO NOTHING`,
+      [school.id, LOCAL_SYNTHETIC_ORGANIZATION.id, school.sourceSchoolKey],
+    );
+  }
+  const manifestSha256 = schoolSnapshotManifestSha256();
+  const fileSet = Object.freeze({
+    kind: "local_synthetic",
+    source: "inline_seed",
+    version: 1,
+  });
+  await client.query(
+    `INSERT INTO schools_snapshots
+      (id, organization_id, source_release_id, manifest_sha256, file_set_json,
+       status, record_count)
+     VALUES ($1,$2,$3,$4,$5::jsonb,'active',$6)
+     ON CONFLICT (id) DO NOTHING`,
+    [SCHOOL_SNAPSHOT_ID, LOCAL_SYNTHETIC_ORGANIZATION.id, SCHOOL_SOURCE_RELEASE_ID,
+      manifestSha256, JSON.stringify(fileSet), LOCAL_RELEASE1_SCHOOLS.length],
+  );
+  for (const school of LOCAL_RELEASE1_SCHOOLS) {
+    await client.query(
+      `INSERT INTO schools_snapshot_records
+        (id, organization_id, snapshot_id, school_id, source_school_key,
+         fields_json, provenance_json, record_sha256)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)
+       ON CONFLICT (id) DO NOTHING`,
+      [school.recordId, LOCAL_SYNTHETIC_ORGANIZATION.id, SCHOOL_SNAPSHOT_ID,
+        school.id, school.sourceSchoolKey, JSON.stringify(school.fields),
+        JSON.stringify(school.provenance), school.recordSha256],
+    );
+  }
+  await verifySchoolSeedContent(client, manifestSha256, fileSet);
+}
+
+async function verifySchoolSeedContent(
+  client: Client,
+  manifestSha256: string,
+  fileSet: Readonly<Record<string, string | number>>,
+): Promise<void> {
+  const snapshot = await client.query<{
+    source_release_id: string;
+    manifest_sha256: string;
+    file_set_json: unknown;
+    status: string;
+    record_count: number;
+  }>(
+    `SELECT source_release_id, manifest_sha256, file_set_json, status, record_count
+       FROM schools_snapshots WHERE id = $1 AND organization_id = $2`,
+    [SCHOOL_SNAPSHOT_ID, LOCAL_SYNTHETIC_ORGANIZATION.id],
+  );
+  const storedSnapshot = snapshot.rows[0];
+  if (!storedSnapshot || storedSnapshot.source_release_id !== SCHOOL_SOURCE_RELEASE_ID ||
+      storedSnapshot.manifest_sha256 !== manifestSha256 || storedSnapshot.status !== "active" ||
+      storedSnapshot.record_count !== LOCAL_RELEASE1_SCHOOLS.length ||
+      sha256SchoolValue(storedSnapshot.file_set_json) !== sha256SchoolValue(fileSet)) {
+    throw new LocalRelease1SeedSafetyError("Local school snapshot is inconsistent.");
+  }
+  for (const school of LOCAL_RELEASE1_SCHOOLS) {
+    const stored = await client.query<{
+      school_source_school_key: string;
+      record_source_school_key: string;
+      fields_json: unknown;
+      provenance_json: unknown;
+      record_sha256: string;
+    }>(
+      `SELECT school.source_school_key AS school_source_school_key,
+              record.source_school_key AS record_source_school_key, record.fields_json,
+              record.provenance_json, record.record_sha256
+         FROM schools_schools AS school
+         JOIN schools_snapshot_records AS record
+           ON record.school_id = school.id AND record.organization_id = school.organization_id
+        WHERE school.id = $1 AND school.organization_id = $2
+          AND record.id = $3 AND record.snapshot_id = $4`,
+      [school.id, LOCAL_SYNTHETIC_ORGANIZATION.id, school.recordId, SCHOOL_SNAPSHOT_ID],
+    );
+    const row = stored.rows[0];
+    if (!row || row.school_source_school_key !== school.sourceSchoolKey ||
+        row.record_source_school_key !== school.sourceSchoolKey ||
+        row.record_sha256 !== school.recordSha256 ||
+        sha256SchoolValue(row.fields_json) !== sha256SchoolValue(school.fields) ||
+        sha256SchoolValue(row.provenance_json) !== sha256SchoolValue(school.provenance)) {
+      throw new LocalRelease1SeedSafetyError(`Local synthetic school is inconsistent: ${school.id}`);
+    }
+  }
+}
+
 async function verifySeed(client: Client, modules: readonly K12Module[]) {
   const expectedFields = modules.reduce((total, module) => total + module.fields.length, 0);
   const result = await client.query<{
@@ -243,22 +365,43 @@ async function verifySeed(client: Client, modules: readonly K12Module[]) {
     relationships: number;
     manifests: number;
     fields: number;
+    schools: number;
+    school_snapshots: number;
+    school_records: number;
   }>(
     `SELECT
        (SELECT count(*)::int FROM crm_students WHERE id = ANY($1::uuid[])) AS students,
        (SELECT count(*)::int FROM crm_guardians WHERE id = ANY($2::uuid[])) AS guardians,
        (SELECT count(*)::int FROM crm_student_guardian_relationships WHERE id = ANY($3::uuid[])) AS relationships,
        (SELECT count(*)::int FROM cases_schema_manifests WHERE id = $4 AND status = 'approved') AS manifests,
-       (SELECT count(*)::int FROM cases_schema_manifest_fields WHERE manifest_id = $4) AS fields`,
+       (SELECT count(*)::int FROM cases_schema_manifest_fields WHERE manifest_id = $4) AS fields,
+       (SELECT count(*)::int FROM schools_schools WHERE id = ANY($5::uuid[])) AS schools,
+       (SELECT count(*)::int FROM schools_snapshots
+         WHERE id = $6 AND status = 'active') AS school_snapshots,
+       (SELECT count(*)::int FROM schools_snapshot_records
+         WHERE snapshot_id = $6 AND id = ANY($7::uuid[])) AS school_records`,
     [STUDENTS.map(({ id }) => id), STUDENTS.map(({ guardianId }) => guardianId),
-      STUDENTS.map(({ relationshipId }) => relationshipId), MANIFEST_ID],
+      STUDENTS.map(({ relationshipId }) => relationshipId), MANIFEST_ID,
+      LOCAL_RELEASE1_SCHOOLS.map(({ id }) => id), SCHOOL_SNAPSHOT_ID,
+      LOCAL_RELEASE1_SCHOOLS.map(({ recordId }) => recordId)],
   );
   const counts = result.rows[0];
   if (!counts || counts.students !== STUDENTS.length || counts.guardians !== STUDENTS.length ||
-      counts.relationships !== STUDENTS.length || counts.manifests !== 1 || counts.fields !== expectedFields) {
+      counts.relationships !== STUDENTS.length || counts.manifests !== 1 ||
+      counts.fields !== expectedFields || counts.schools !== LOCAL_RELEASE1_SCHOOLS.length ||
+      counts.school_snapshots !== 1 || counts.school_records !== LOCAL_RELEASE1_SCHOOLS.length) {
     throw new LocalRelease1SeedSafetyError("Local Release 1 seed is inconsistent.");
   }
-  return Object.freeze(counts);
+  return Object.freeze({
+    students: counts.students,
+    guardians: counts.guardians,
+    relationships: counts.relationships,
+    manifests: counts.manifests,
+    fields: counts.fields,
+    schools: counts.schools,
+    schoolSnapshots: counts.school_snapshots,
+    schoolRecords: counts.school_records,
+  });
 }
 
 async function verifyRuntimeBoundary(connectionString: string): Promise<void> {
@@ -278,22 +421,66 @@ async function verifyRuntimeBoundary(connectionString: string): Promise<void> {
     await runtime.query("SELECT set_config('app.actor_user_id', $1, true)", [
       getLocalSyntheticPrincipal("founder").userId,
     ]);
-    const visible = await runtime.query<{ students: number; manifests: number }>(
+    const visible = await runtime.query<{ students: number; manifests: number; schools: number }>(
       `SELECT
          (SELECT count(*)::int
             FROM crm_students
            WHERE id = ANY($1::uuid[])
              AND status = 'active') AS students,
-         (SELECT count(*)::int FROM cases_list_approved_manifests() WHERE id = $2) AS manifests`,
-      [STUDENTS.map(({ id }) => id), MANIFEST_ID],
+         (SELECT count(*)::int FROM cases_list_approved_manifests() WHERE id = $2) AS manifests,
+         (SELECT count(*)::int FROM schools_snapshot_records
+           WHERE snapshot_id = $3 AND school_id = ANY($4::uuid[])) AS schools`,
+      [STUDENTS.map(({ id }) => id), MANIFEST_ID, SCHOOL_SNAPSHOT_ID,
+        LOCAL_RELEASE1_SCHOOLS.map(({ id }) => id)],
     );
     await runtime.query("ROLLBACK");
-    if (visible.rows[0]?.students !== STUDENTS.length || visible.rows[0]?.manifests !== 1) {
+    if (visible.rows[0]?.students !== STUDENTS.length || visible.rows[0]?.manifests !== 1 ||
+        visible.rows[0]?.schools !== LOCAL_RELEASE1_SCHOOLS.length) {
       throw new LocalRelease1SeedSafetyError("Local application runtime boundary is inconsistent.");
     }
   } finally {
     await runtime.end();
   }
+}
+
+function schoolSeed(
+  id: string,
+  recordId: string,
+  sourceSchoolKey: string,
+  schoolNameZh: string,
+  schoolNameEn: string,
+  district: string,
+) {
+  const fields = Object.freeze({
+    school_key: sourceSchoolKey,
+    school_name_zh: schoolNameZh,
+    school_name_en: schoolNameEn,
+    district,
+    official_website: `https://${sourceSchoolKey}.local.invalid`,
+  });
+  const provenance = Object.freeze(Object.fromEntries(Object.keys(fields).map((fieldName) => [
+    fieldName,
+    Object.freeze({ source_kind: "synthetic_seed", source_release_id: SCHOOL_SOURCE_RELEASE_ID }),
+  ])));
+  return Object.freeze({
+    id,
+    recordId,
+    sourceSchoolKey,
+    fields,
+    provenance,
+    recordSha256: sha256SchoolValue({ sourceSchoolKey, fields, provenance }),
+  });
+}
+
+function schoolSnapshotManifestSha256(): string {
+  return sha256SchoolValue({
+    sourceReleaseId: SCHOOL_SOURCE_RELEASE_ID,
+    schools: LOCAL_RELEASE1_SCHOOLS.map((school) => ({
+      id: school.id,
+      sourceSchoolKey: school.sourceSchoolKey,
+      recordSha256: school.recordSha256,
+    })),
+  });
 }
 
 function toStoredBlockerStage(stage: string): string {
