@@ -34,8 +34,11 @@ export interface TenantQueryRunner {
 }
 
 export function createPostgreSqlAdapter(runner: TenantQueryRunner): PostgreSqlAdapter {
-  return Object.freeze({
-    transaction<T>(context, work): Promise<T> {
+  const adapter: PostgreSqlAdapter = {
+    transaction<T>(
+      context: Readonly<{ organizationId: string; actorUserId: string }>,
+      work: (transaction: PostgreSqlTransaction) => Promise<T>,
+    ): Promise<T> {
       return runner.run(context, async (transaction) => work({
         async query<Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]) {
           const result = await transaction.query<Row>({ text, values });
@@ -43,7 +46,8 @@ export function createPostgreSqlAdapter(runner: TenantQueryRunner): PostgreSqlAd
         },
       }));
     },
-  });
+  };
+  return Object.freeze(adapter);
 }
 
 export type ProductionRepositoryErrorCode = "PRODUCTION_POSTGRES_ADAPTER_UNAVAILABLE";

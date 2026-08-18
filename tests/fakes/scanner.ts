@@ -4,13 +4,13 @@ export type SyntheticScannerErrorCode = "SCANNER_TIMEOUT";
 export interface SyntheticScanRequest {
   readonly requestId: string;
   readonly objectKey: string;
-  readonly objectVersionId: string | null;
+  readonly objectVersionId: string;
 }
 
 export interface SyntheticScanResult {
   readonly requestId: string;
   readonly objectKey: string;
-  readonly objectVersionId: string | null;
+  readonly objectVersionId: string;
   readonly verdict: "clean" | "malicious" | "failed";
   readonly scannerVersion: "synthetic-scanner-v1";
 }
@@ -18,7 +18,7 @@ export interface SyntheticScanResult {
 export interface SyntheticScanCall {
   readonly requestId: string;
   readonly objectKey: string;
-  readonly objectVersionId: string | null;
+  readonly objectVersionId: string;
 }
 
 export class SyntheticScannerError extends Error {
@@ -49,9 +49,7 @@ export class SyntheticScannerFake {
   async scan(input: SyntheticScanRequest): Promise<SyntheticScanResult> {
     assertSafeIdentifier(input.requestId, "requestId");
     assertSafeIdentifier(input.objectKey, "objectKey");
-    if (input.objectVersionId !== null) {
-      assertSafeIdentifier(input.objectVersionId, "objectVersionId");
-    }
+    assertSafeIdentifier(input.objectVersionId, "objectVersionId");
     this.recordedCalls.push({ ...input });
 
     const outcome = this.outcomeQueue.shift() ?? "clean";

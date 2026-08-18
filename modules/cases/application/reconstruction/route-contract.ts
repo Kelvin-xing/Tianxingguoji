@@ -162,7 +162,7 @@ export function reconstructionErrorResponse(context: RequestContext, error: unkn
   }
   const mapped = mapReconstructionError(error);
   const metadata = RECONSTRUCTION_ERROR_METADATA[mapped.code];
-  const details =
+  const details: JsonValue =
     mapped instanceof ReconstructionError && mapped.currentRecordVersion !== null
       ? { current_version: mapped.currentRecordVersion }
       : {};

@@ -77,12 +77,12 @@ export const HK_K12_STANDARD_V1_TEMPLATE: SchoolTargetRouteTemplate = Object.fre
         "due_date",
         "checklist_complete_receipt",
         "official_submission_reference",
-      ]),
+      ] as const),
     }),
     Object.freeze({
       from: "submitted",
       to: "interview",
-      requirements: Object.freeze(["invitation_evidence", "interview_time"]),
+      requirements: Object.freeze(["invitation_evidence", "interview_time"] as const),
     }),
     Object.freeze({ from: "submitted", to: "waitlisted", requirements: Object.freeze([]) }),
     Object.freeze({ from: "submitted", to: "accepted", requirements: Object.freeze([]) }),
@@ -95,7 +95,7 @@ export const HK_K12_STANDARD_V1_TEMPLATE: SchoolTargetRouteTemplate = Object.fre
     Object.freeze({ from: "waitlisted", to: "accepted", requirements: Object.freeze([]) }),
     Object.freeze({ from: "waitlisted", to: "rejected", requirements: Object.freeze([]) }),
     Object.freeze({ from: "waitlisted", to: "withdrawn", requirements: Object.freeze([]) }),
-  ]),
+  ] satisfies readonly SchoolTargetTransitionTemplate[]),
 });
 
 const CASE_FORWARD_STAGES: Readonly<Record<ServiceCaseStage, ServiceCaseStage | null>> = Object.freeze({

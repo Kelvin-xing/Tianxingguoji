@@ -94,18 +94,36 @@ class RecordingAdapter implements PostgreSqlAdapter, PostgreSqlTransaction {
   ): Promise<PostgreSqlQueryResult<Row>> {
     this.statements.push(text);
     if (this.failOnTable && text.includes(this.failOnTable)) throw new Error("injected failure");
-    if (text.includes("INSERT INTO shared_idempotency_records")) return rows([{ id: "claim" }]) as PostgreSqlQueryResult<Row>;
+    if (text.includes("INSERT INTO shared_idempotency_records")) {
+      return checkedRows<Row>([{ id: "claim" }], (row): row is Row => typeof row.id === "string");
+    }
     if (text.includes("shared_idempotency_records") && text.includes("SELECT")) return empty();
     if (text.includes("access_role_bindings")) {
-      return rows([{ role_binding_id: ids.role, membership_id: ids.membership, user_id: ids.actor }]) as PostgreSqlQueryResult<Row>;
+      return checkedRows<Row>(
+        [{ role_binding_id: ids.role, membership_id: ids.membership, user_id: ids.actor }],
+        (row): row is Row =>
+          typeof row.role_binding_id === "string" &&
+          typeof row.membership_id === "string" &&
+          typeof row.user_id === "string",
+      );
     }
-    if (text.includes("cases_manifest_is_approved")) return rows([{ id: ids.manifest }]) as PostgreSqlQueryResult<Row>;
+    if (text.includes("cases_manifest_is_approved")) {
+      return checkedRows<Row>([{ id: ids.manifest }], (row): row is Row => typeof row.id === "string");
+    }
     return empty();
   }
 }
 
 function rows<Row extends Record<string, unknown>>(value: readonly Row[]): PostgreSqlQueryResult<Row> {
   return { rows: value, rowCount: value.length };
+}
+
+function checkedRows<Row extends Record<string, unknown>>(
+  value: readonly Record<string, unknown>[],
+  isRow: (candidate: Record<string, unknown>) => candidate is Row,
+): PostgreSqlQueryResult<Row> {
+  if (!value.every(isRow)) throw new Error("invalid synthetic database row");
+  return rows(value.filter(isRow));
 }
 
 function empty<Row extends Record<string, unknown>>(): PostgreSqlQueryResult<Row> {

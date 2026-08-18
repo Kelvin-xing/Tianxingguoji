@@ -119,7 +119,7 @@ test("maps every approved Release 1 role and bounded collaborator mode", async (
     ["admin", "advisor", "case_collaborator", "contractor", "data_reviewer", "founder"],
   );
   const byId = new Map(fixture.scenarios.map((scenario) => [scenario.id, scenario]));
-  for (const [id, decision, code] of [
+  const expectedDecisions: ReadonlyArray<readonly [string, string, string | null]> = [
     ["authz.advisor.assigned_case", "allowed", null],
     ["authz.advisor.other_case", "denied", "CASE_ACCESS_DENIED"],
     ["authz.actor_disabled", "denied", "USER_DISABLED"],
@@ -128,7 +128,8 @@ test("maps every approved Release 1 role and bounded collaborator mode", async (
     ["authz.id_guessing", "denied", "CASE_NOT_FOUND"],
     ["authz.search", "denied", "CASE_ACCESS_DENIED"],
     ["authz.export", "denied", "COLLABORATOR_EXPORT_DENIED"],
-  ]) {
+  ];
+  for (const [id, decision, code] of expectedDecisions) {
     const scenario = byId.get(id);
     assert.deepEqual([scenario?.expected.decision, scenario?.expected.code ?? null], [decision, code]);
   }

@@ -11,7 +11,7 @@ const CONTRACTOR_ACTIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Ob
   approved: Object.freeze([]),
   overdue: Object.freeze([]),
   cancelled: Object.freeze([]),
-});
+} satisfies Record<TaskState, readonly TaskState[]>);
 
 export const CONTRACTOR_TASK_ALLOWED_TRANSITIONS = Object.freeze([
   "accepted",

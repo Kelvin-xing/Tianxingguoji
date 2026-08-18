@@ -304,7 +304,10 @@ export class SchoolService {
       requestHash: hashRequestPayload({
         baseSnapshotId: command.baseSnapshotId,
         baseValueSha256: command.baseValueSha256,
-        evidence: command.evidence,
+        evidence: {
+          sourceUrl: command.evidence.sourceUrl,
+          quote: command.evidence.quote,
+        },
         fieldClass: command.fieldClass,
         fieldName: command.fieldName,
         proposedValue: command.proposedValue,

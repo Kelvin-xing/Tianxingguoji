@@ -108,8 +108,8 @@ export async function verifyVerticalSliceEvidence(
       "SYNTHETIC_EVIDENCE_ONLY",
       "EXTERNAL_STAGING_EVIDENCE_REQUIRED",
       "HUMAN_GO_NO_GO_REQUIRED",
-    ],
-    requiredExternalEvidence: EXTERNAL_GATE_IDS.map((id) => ({ id, status: "unperformed" })),
+    ] as const,
+    requiredExternalEvidence: EXTERNAL_GATE_IDS.map((id) => ({ id, status: "unperformed" as const })),
     manifestSha256: compiledManifest.manifestSha256,
   });
 }

@@ -25,7 +25,7 @@ const CASE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CASE_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const NOW_MS = 1_754_265_600_000;
 
-const source: CaseDashboardProjectionSource = Object.freeze({
+const source = Object.freeze({
   schemaVersion: "case_dashboard_source_v1",
   sourceSnapshotId: "source-20260810-001",
   sourceCapturedAtMs: NOW_MS - 1_000,
@@ -60,7 +60,7 @@ const source: CaseDashboardProjectionSource = Object.freeze({
       unreadCommunicationCount: 0,
     },
   ]),
-});
+} satisfies CaseDashboardProjectionSource);
 
 test("live build and rebuild have one canonical hash for the same source snapshot", () => {
   const live = buildCaseDashboardProjection(source);
@@ -111,7 +111,7 @@ test("collaborator output follows only current scopes and never exposes sensitiv
 
   assert.equal(result.cases.length, 1);
   assert.deepEqual(Object.keys(result.cases[0]!).sort(), ["case_id", "summary", "tasks"]);
-  assert.deepEqual(result.cases[0]?.scopes, undefined);
+  assert.equal(Object.hasOwn(result.cases[0]!, "scopes"), false);
   assert.equal(JSON.stringify(result).includes("identity_contact"), false);
   assert.equal(JSON.stringify(result).includes("internal_notes"), false);
   assert.equal(JSON.stringify(result).includes("export"), false);

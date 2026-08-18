@@ -188,7 +188,12 @@ export class CaseService {
         caseNumber: input.command.caseNumber,
         intakeYear: input.command.intakeYear,
         schemaManifestId: input.command.schemaManifestId,
-        student: input.command.student,
+        student: {
+          displayName: input.command.student.displayName,
+          dateOfBirth: input.command.student.dateOfBirth,
+          contactEmail: input.command.student.contactEmail,
+          contactPhone: input.command.student.contactPhone,
+        },
       }),
       createdAtMs,
       effects: buildAtomicMutationEffects({ audit, outbox }),

@@ -227,7 +227,7 @@ async function edgeRows(vectors: Vector[]): Promise<MatrixRow[]> {
       const decision = evaluateServiceCaseCreation({ applicationType: "non_k12", organizationId: "synthetic-org", studentOrganizationId: "synthetic-org", studentStatus: "active", primaryOrganizationId: "synthetic-org", primaryRole: "advisor", primaryBindingStatus: "active", manifestStatus: "approved", initialStage: "signed" });
       rows.push(executed(vector, "modules/cases/domain/contract.ts#evaluateServiceCaseCreation", decision.allowed ? "allowed" : decision.code));
     } else if (vector.id === "exception.assessment_unknown") {
-      const decision = evaluateAssessmentFieldAnswer({ field: { valueType: "text", enumValues: null }, semanticState: "unknown", value: null, valueType: null });
+      const decision = evaluateAssessmentFieldAnswer({ field: { valueType: "text" }, semanticState: "unknown", value: null, valueType: null });
       rows.push(deferred(vector, "P3-08", "The public contract accepts unknown but returns allowed rather than the fixture state label unknown.", { locator: "modules/cases/domain/contract.ts#evaluateAssessmentFieldAnswer", observed: decision.allowed ? "allowed" : decision.code }));
     } else if (vector.id === "concurrency.stale_write") {
       const decision = evaluateTaskTransition({ policy: approvedTaskPolicy, organizationId: "synthetic-org", taskOrganizationId: "synthetic-org", caseId: "synthetic-case", taskCaseId: "synthetic-case", from: "assigned", to: "accepted", actorId: "synthetic-actor", actorRole: "advisor", actorIsActive: true, assigneeId: "synthetic-actor", approverId: "synthetic-approver", ownerId: "synthetic-owner", redactedTaskContext: true, recordVersion: 5, expectedRecordVersion: 4, reason: "" });

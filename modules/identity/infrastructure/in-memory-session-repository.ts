@@ -37,9 +37,12 @@ interface StoredInvite extends InvitePersistenceInput {
   deliveryReceipt: InviteDeliveryReceipt | null;
 }
 
-interface StoredSession extends StoredIdentitySession {
+interface StoredSession extends Omit<StoredIdentitySession, "status" | "lastSeenAtMs" | "idleExpiresAtMs"> {
   readonly secretHash: string;
   readonly sessionSlot: SessionSlot;
+  status: StoredIdentitySession["status"];
+  lastSeenAtMs: number;
+  idleExpiresAtMs: number;
 }
 
 interface StoredIdentityUser {

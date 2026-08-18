@@ -5,6 +5,7 @@ import {
   PortalBillingCompositionUnavailable,
   composePortalBillingProductionRuntime,
   loadPortalBillingProductionConfig,
+  type PortalDiscoveryLocator,
 } from "../../modules/platform-billing/infrastructure/portal-billing-production.ts";
 import { createPortalRuntime } from "../../modules/external-portal/infrastructure/runtime.ts";
 import { createPlatformBillingRuntime } from "../../modules/platform-billing/infrastructure/runtime.ts";
@@ -118,7 +119,7 @@ test("composition enforces portal_auth discovery before tenant runtime resolutio
         calls.push(`tenant-config:${input.database.user}`);
         assert.deepEqual(Object.keys(input), ["database"]);
         return Object.freeze({
-          async resolve(locator) {
+          async resolve(locator: PortalDiscoveryLocator) {
             calls.push(`tenant:${locator.organizationId}:${locator.grantId}`);
             return createPortalRuntime(portalRepository as never);
           },

@@ -41,6 +41,51 @@ export type OrganizationRole =
   | "contractor";
 export type RoleBindingStatus = "active" | "revoked";
 
+export const WORKSPACE_CAPABILITIES = Object.freeze([
+  "today.read",
+  "cases.read",
+  "students.read",
+  "schools.read",
+  "tasks.read",
+  "documents.read",
+  "access.manage",
+  "schools.manage",
+  "crawler.manage",
+] as const);
+
+export type WorkspaceCapability = (typeof WORKSPACE_CAPABILITIES)[number];
+
+const ROLE_CAPABILITIES: Readonly<Record<OrganizationRole, readonly WorkspaceCapability[]>> = Object.freeze({
+  founder: WORKSPACE_CAPABILITIES,
+  admin: Object.freeze([
+    "today.read",
+    "students.read",
+    "schools.read",
+    "access.manage",
+    "schools.manage",
+    "crawler.manage",
+  ] as const),
+  advisor: Object.freeze([
+    "today.read",
+    "cases.read",
+    "students.read",
+    "schools.read",
+    "tasks.read",
+    "documents.read",
+  ] as const),
+  data_reviewer: Object.freeze([
+    "today.read",
+    "schools.read",
+    "schools.manage",
+    "crawler.manage",
+  ] as const),
+  contractor: Object.freeze(["tasks.read"] as const),
+});
+
+export function workspaceCapabilitiesForRole(role: OrganizationRole): readonly WorkspaceCapability[] {
+  return ROLE_CAPABILITIES[role];
+}
+
 export type ScopeGrantDenialCode =
   | "COLLABORATOR_EXPORT_DENIED"
   | "USER_DISABLED"
