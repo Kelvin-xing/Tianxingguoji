@@ -314,7 +314,10 @@ export class DuplicateMergeService {
         expectedCandidateRecordVersion: command.expectedCandidateRecordVersion,
         expectedCanonicalRecordVersion: command.expectedCanonicalRecordVersion,
         expectedSourceRecordVersion: command.expectedSourceRecordVersion,
-        fieldSelections: command.fieldSelections,
+        fieldSelections: command.fieldSelections.map((selection) => ({
+          fieldName: selection.fieldName,
+          sourceRecordId: selection.sourceRecordId,
+        })),
         reasonCode: command.reasonCode,
         sourceRecordId: command.sourceRecordId,
       }),
@@ -399,7 +402,9 @@ function assertCandidateActor(actor: IdentitySessionActor): void {
   if (
     !UUID.test(actor.organizationId) ||
     !UUID.test(actor.userId) ||
-    !(["founder", "advisor", "data_reviewer"] as const).includes(actor.role)
+    actor.role !== "founder" &&
+    actor.role !== "advisor" &&
+    actor.role !== "data_reviewer"
   ) {
     throw new DuplicateMergeError("DUPLICATE_MERGE_CANDIDATE_ACTOR_REQUIRED");
   }
@@ -617,7 +622,7 @@ function isEntityType(value: unknown): value is DuplicateEntityType {
 }
 
 function validRecordVersion(value: unknown): value is number {
-  return Number.isSafeInteger(value) && value >= 1;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
 
 function validNow(value: number): number {

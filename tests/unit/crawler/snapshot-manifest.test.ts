@@ -59,7 +59,7 @@ async function writeBundle(
     published_at: "2026-08-10T03:00:00Z",
     publisher: "synthetic-test",
     notes: "fixture",
-  };
+  } satisfies Omit<SnapshotManifest, "manifest_sha256" | "warning_receipt">;
   const manifest: SnapshotManifest = {
     ...descriptor,
     manifest_sha256: sha(canonical(descriptor)),

@@ -68,7 +68,7 @@ export class CaseReconstructionService {
       requestId: input.command.requestId,
       idempotencyKey: input.command.idempotencyKey,
       command: input.command,
-      requestHash: hashRequestPayload(idempotencyScope as unknown as JsonValue),
+      requestHash: hashRequestPayload(serializeIdempotencyScope(idempotencyScope)),
       idempotencyScope,
       recordedAt,
     });
@@ -81,7 +81,7 @@ export class CaseReconstructionService {
   }): Promise<ReconstructionResult> {
     assertAdvisor(input.actor);
     const context = this.context(input.actor, input.reconstructionId, input.command, "record_event", {
-      event: input.command.event,
+      event: serializeReconstructionEvent(input.command.event),
     });
     assertReconstructionEvent(input.command.event, context.recordedAt);
     return this.repository.appendEvent({ ...context, eventId: this.id(), event: input.command.event });
@@ -94,7 +94,7 @@ export class CaseReconstructionService {
   }): Promise<ReconstructionResult> {
     assertAdvisor(input.actor);
     const context = this.context(input.actor, input.reconstructionId, input.command, "record_gap", {
-      gap: input.command.gap,
+      gap: serializeReconstructionGap(input.command.gap),
     });
     assertReconstructionGap(input.command.gap, context.recordedAt);
     return this.repository.appendGap({ ...context, gapId: this.id(), gap: input.command.gap });
@@ -202,7 +202,7 @@ export class CaseReconstructionService {
     const context = this.context(input.actor, input.reconstructionId, input.command, "append_correction", {
       correctionOfEventId: input.command.correctionOfEventId,
       reasonCode: input.command.reasonCode,
-      event: input.command.event,
+      event: serializeReconstructionEvent(input.command.event),
     });
     assertUuid(input.command.correctionOfEventId);
     if (!input.command.reasonCode) throw new ReconstructionError("RECONSTRUCTION_INVALID_INPUT");
@@ -262,7 +262,7 @@ export class CaseReconstructionService {
       expectedRecordVersion: command.expectedRecordVersion,
       requestId: command.requestId,
       idempotencyKey: command.idempotencyKey,
-      requestHash: hashRequestPayload(idempotencyScope as unknown as JsonValue),
+      requestHash: hashRequestPayload(serializeIdempotencyScope(idempotencyScope)),
       idempotencyScope,
       recordedAt,
     };
@@ -350,10 +350,41 @@ function normalizeJson(value: JsonValue): JsonValue {
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([, nested]) => nested !== undefined)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, nested]) => [key, normalizeJson(nested as JsonValue)]),
-    ) as JsonValue;
+        .map(([key, nested]) => [key, normalizeJson(nested)]),
+    );
   }
   return value;
+}
+
+function serializeIdempotencyScope(scope: ReconstructionIdempotencyScope): JsonValue {
+  return {
+    organizationId: scope.organizationId,
+    actorUserId: scope.actorUserId,
+    commandType: scope.commandType,
+    aggregateId: scope.aggregateId,
+    pilotReference: scope.pilotReference,
+    expectedRecordVersion: scope.expectedRecordVersion,
+    businessPayload: scope.businessPayload,
+  };
+}
+
+function serializeReconstructionEvent(event: ReconstructionEventInput): JsonValue {
+  return {
+    eventType: event.eventType,
+    occurredAt: event.occurredAt,
+    sequenceNo: event.sequenceNo,
+    evidenceType: event.evidenceType,
+    evidenceRef: event.evidenceRef,
+    ...(event.reportedActorRef === undefined ? {} : { reportedActorRef: event.reportedActorRef }),
+  };
+}
+
+function serializeReconstructionGap(gap: ReconstructionGapInput): JsonValue {
+  return {
+    gapType: gap.gapType,
+    reasonCode: gap.reasonCode,
+    ownerRef: gap.ownerRef,
+    resolutionTargetAt: gap.resolutionTargetAt,
+  };
 }

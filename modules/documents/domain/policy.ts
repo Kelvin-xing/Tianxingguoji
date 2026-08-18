@@ -95,7 +95,7 @@ const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
 function isValidTimestamp(value: number | null): value is number {
-  return Number.isSafeInteger(value) && value >= 0;
+  return value !== null && Number.isSafeInteger(value) && value >= 0;
 }
 
 function resolveClassification(value: string): DocumentClassification | null {

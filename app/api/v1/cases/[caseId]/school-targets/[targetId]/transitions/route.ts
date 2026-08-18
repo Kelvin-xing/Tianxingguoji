@@ -104,7 +104,13 @@ function parseEvidence(value: unknown): SchoolTargetEvidence | null {
   const officialSubmissionReference = nullableString(value.official_submission_reference);
   const invitationEvidence = nullableString(value.invitation_evidence);
   const interviewAt = nullableString(value.interview_at);
-  if ([dueDate, checklistCompleteReceipt, officialSubmissionReference, invitationEvidence, interviewAt].some((entry) => entry === undefined)) {
+  if (
+    dueDate === undefined ||
+    checklistCompleteReceipt === undefined ||
+    officialSubmissionReference === undefined ||
+    invitationEvidence === undefined ||
+    interviewAt === undefined
+  ) {
     return null;
   }
   return { dueDate, checklistCompleteReceipt, officialSubmissionReference, invitationEvidence, interviewAt };

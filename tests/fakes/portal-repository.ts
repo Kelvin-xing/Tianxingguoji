@@ -143,7 +143,8 @@ export class InMemoryPortalRepository implements PortalRepository {
       );
       if (active.length >= 3) throw new PortalRepositoryError("PORTAL_SESSION_LIMIT_REACHED");
       const used = new Set(active.map((session) => session.sessionSlot));
-      const slot = [1, 2, 3].find((candidate) => !used.has(candidate)) as 1 | 2 | 3;
+      const slot = ([1, 2, 3] as const).find((candidate) => !used.has(candidate));
+      if (slot === undefined) throw new PortalRepositoryError("PORTAL_SESSION_LIMIT_REACHED");
       const session: StoredSession = {
         id: input.sessionId,
         organizationId: input.organizationId,

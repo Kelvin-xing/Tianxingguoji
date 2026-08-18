@@ -99,7 +99,13 @@ function assertNoDuplicateRules(rules: readonly TaskTransitionRule[]): void {
 
 export function approveTaskTransitionPolicy(
   policy: TaskTransitionPolicy,
-  receipt: TaskPolicyApprovalReceipt,
+  receipt: Readonly<{
+    decisionId: string;
+    decisionStatus: string;
+    reviewerId: string;
+    reviewerRole: string;
+    approvedAt: string;
+  }>,
 ): TaskTransitionPolicy {
   if (policy.status !== "candidate") {
     throw new TaskContractError("TASK_TRANSITION_RULE_INVALID");
@@ -124,7 +130,13 @@ export function approveTaskTransitionPolicy(
   return deepFreeze({
     ...policy,
     status: "approved",
-    approvalReceipt: deepFreeze({ ...receipt }),
+    approvalReceipt: deepFreeze({
+      decisionId: receipt.decisionId,
+      decisionStatus: receipt.decisionStatus,
+      reviewerId: receipt.reviewerId,
+      reviewerRole: receipt.reviewerRole,
+      approvedAt: receipt.approvedAt,
+    } satisfies TaskPolicyApprovalReceipt),
   });
 }
 

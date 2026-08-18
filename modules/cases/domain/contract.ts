@@ -451,6 +451,7 @@ function parseK12ModuleField(value: unknown, approvedCatalogue: boolean): K12Mod
     throw new CaseContractError("INVALID_K12_MODULE", "K12 field must be an object.");
   }
 
+  const blockingStages = approvedCatalogue ? [] : value.blockingStages;
   if (
     typeof value.fieldId !== "string" ||
     value.fieldId.trim().length === 0 ||
@@ -462,14 +463,15 @@ function parseK12ModuleField(value: unknown, approvedCatalogue: boolean): K12Mod
     (approvedCatalogue &&
       (typeof value.label !== "string" || value.label.trim().length === 0 || value.visibility !== "advisor")) ||
     (!approvedCatalogue &&
-      (!Array.isArray(value.blockingStages) ||
-        value.blockingStages.some((stage) => typeof stage !== "string" || stage.trim().length === 0))) ||
+      (!Array.isArray(blockingStages) ||
+        blockingStages.some((stage) => typeof stage !== "string" || stage.trim().length === 0))) ||
     (approvedCatalogue && value.blockingStages !== undefined)
   ) {
     throw new CaseContractError("INVALID_K12_MODULE", "K12 field metadata is invalid.");
   }
 
   const enumValues = parseEnumValues(value.enumValues, value.valueType);
+  const validatedBlockingStages = approvedCatalogue ? [] : parseBlockingStages(blockingStages);
 
   return Object.freeze({
     fieldId: value.fieldId,
@@ -477,8 +479,15 @@ function parseK12ModuleField(value: unknown, approvedCatalogue: boolean): K12Mod
     valueType: value.valueType,
     ...(enumValues ? { enumValues } : {}),
     visibility: value.visibility,
-    blockingStages: Object.freeze(approvedCatalogue ? [] : [...value.blockingStages]),
+    blockingStages: Object.freeze(validatedBlockingStages),
   });
+}
+
+function parseBlockingStages(value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((stage) => typeof stage !== "string")) {
+    throw new CaseContractError("INVALID_K12_MODULE", "K12 blocking stages are invalid.");
+  }
+  return value;
 }
 
 function parseK12ModuleBlockers(

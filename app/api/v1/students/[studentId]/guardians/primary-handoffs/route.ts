@@ -63,6 +63,7 @@ async function parseHandoffCommand(request: Request, studentId: string) {
   if (
     typeof successorGuardianId !== "string" ||
     !UUID.test(successorGuardianId) ||
+    typeof expectedPrimaryRecordVersion !== "number" ||
     !Number.isSafeInteger(expectedPrimaryRecordVersion) ||
     expectedPrimaryRecordVersion < 1 ||
     typeof reason !== "string" ||

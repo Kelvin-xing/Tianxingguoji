@@ -5,6 +5,7 @@ import { handleApiRequest } from "@/modules/shared/public";
 import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
 import { IdentityServiceError } from "@/modules/identity/server";
 import { createApiError } from "@/modules/shared/public";
+import { workspaceCapabilitiesForRole } from "@/modules/access/public";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET(request: Request): Promise<Response> {
         user_id: actor.userId,
         organization_id: actor.organizationId,
         role: actor.role,
+        capabilities: workspaceCapabilitiesForRole(actor.role),
       };
     } catch (error) {
       if (error instanceof IdentityServiceError) throw createApiError("UNAUTHENTICATED");

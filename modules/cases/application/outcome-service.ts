@@ -233,8 +233,8 @@ export class CaseOutcomeService {
         target_id: input.targetId,
         expected_record_version: input.command.expectedRecordVersion,
         to_state: input.command.toState,
-        evidence: input.command.evidence,
-        outcome: input.command.outcome,
+        evidence: serializeTargetEvidence(input.command.evidence),
+        outcome: input.command.outcome === null ? null : serializeOutcome(input.command.outcome),
       }),
       transitionedAtMs,
       effects,
@@ -315,12 +315,31 @@ export class CaseOutcomeService {
         case_id: input.caseId,
         target_id: input.targetId,
         expected_outcome_record_version: input.command.expectedOutcomeRecordVersion,
-        outcome: input.command.outcome,
+        outcome: serializeOutcome(input.command.outcome),
       }),
       correctedAtMs,
       effects,
     });
   }
+}
+
+function serializeTargetEvidence(evidence: SchoolTargetEvidence) {
+  return {
+    dueDate: evidence.dueDate,
+    checklistCompleteReceipt: evidence.checklistCompleteReceipt,
+    officialSubmissionReference: evidence.officialSubmissionReference,
+    invitationEvidence: evidence.invitationEvidence,
+    interviewAt: evidence.interviewAt,
+  };
+}
+
+function serializeOutcome(outcome: CaseOutcomeDraft) {
+  return {
+    code: outcome.code,
+    occurredOn: outcome.occurredOn,
+    evidenceSource: outcome.evidenceSource,
+    sourceReference: outcome.sourceReference,
+  };
 }
 
 function assertAdvisorAndIds(actor: IdentitySessionActor, caseId: string, targetId: string): void {

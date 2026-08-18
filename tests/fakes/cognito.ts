@@ -20,13 +20,23 @@ export interface SyntheticCognitoRequest {
   readonly providerSubject: string;
 }
 
-export interface SyntheticCognitoResult {
-  readonly operation: SyntheticCognitoOperation;
-  readonly status: "authenticated" | "revoked" | "denied";
+interface SyntheticCognitoResultBase {
   readonly providerSubject: string;
   readonly errorCode: "COGNITO_AUTHENTICATION_DENIED" | "COGNITO_REVOKE_DENIED" | null;
   readonly retryable: boolean;
 }
+
+export interface SyntheticCognitoAuthenticationResult extends SyntheticCognitoResultBase {
+  readonly operation: "authenticate";
+  readonly status: "authenticated" | "denied";
+}
+
+export interface SyntheticCognitoRevokeResult extends SyntheticCognitoResultBase {
+  readonly operation: "revoke";
+  readonly status: "revoked" | "denied";
+}
+
+export type SyntheticCognitoResult = SyntheticCognitoAuthenticationResult | SyntheticCognitoRevokeResult;
 
 export interface SyntheticCognitoCall {
   readonly operation: SyntheticCognitoOperation;
@@ -62,11 +72,11 @@ export class SyntheticCognitoFake {
     this.outcomeQueues[operation].push(...outcomes);
   }
 
-  async authenticate(input: SyntheticCognitoRequest): Promise<SyntheticCognitoResult> {
+  async authenticate(input: SyntheticCognitoRequest): Promise<SyntheticCognitoAuthenticationResult> {
     return this.execute("authenticate", input);
   }
 
-  async revoke(input: SyntheticCognitoRequest): Promise<SyntheticCognitoResult> {
+  async revoke(input: SyntheticCognitoRequest): Promise<SyntheticCognitoRevokeResult> {
     return this.execute("revoke", input);
   }
 
@@ -74,6 +84,14 @@ export class SyntheticCognitoFake {
     return this.recordedCalls.slice();
   }
 
+  private execute(
+    operation: "authenticate",
+    input: SyntheticCognitoRequest,
+  ): Promise<SyntheticCognitoAuthenticationResult>;
+  private execute(
+    operation: "revoke",
+    input: SyntheticCognitoRequest,
+  ): Promise<SyntheticCognitoRevokeResult>;
   private async execute(
     operation: SyntheticCognitoOperation,
     input: SyntheticCognitoRequest,
@@ -100,9 +118,18 @@ export class SyntheticCognitoFake {
       };
     }
 
+    if (operation === "authenticate") {
+      return {
+        operation,
+        status: "authenticated",
+        providerSubject: input.providerSubject,
+        errorCode: null,
+        retryable: false,
+      };
+    }
     return {
       operation,
-      status: operation === "authenticate" ? "authenticated" : "revoked",
+      status: "revoked",
       providerSubject: input.providerSubject,
       errorCode: null,
       retryable: false,
