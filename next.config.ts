@@ -6,9 +6,10 @@ const isProduction = process.env.NODE_ENV === "production";
 
 function readBuildIdentity(
   name: "GIT_SHA" | "NEXT_DEPLOYMENT_ID",
+  vercelName: "VERCEL_GIT_COMMIT_SHA" | "VERCEL_DEPLOYMENT_ID",
   pattern: RegExp,
 ): string | undefined {
-  const value = process.env[name]?.trim();
+  const value = process.env[name]?.trim() || process.env[vercelName]?.trim();
 
   if (value && !pattern.test(value)) {
     throw new Error(`${name} has an invalid production build identity format`);
@@ -21,8 +22,16 @@ function readBuildIdentity(
   return value || undefined;
 }
 
-const gitSha = readBuildIdentity("GIT_SHA", GIT_SHA_PATTERN);
-const deploymentId = readBuildIdentity("NEXT_DEPLOYMENT_ID", DEPLOYMENT_ID_PATTERN);
+const gitSha = readBuildIdentity(
+  "GIT_SHA",
+  "VERCEL_GIT_COMMIT_SHA",
+  GIT_SHA_PATTERN,
+);
+const deploymentId = readBuildIdentity(
+  "NEXT_DEPLOYMENT_ID",
+  "VERCEL_DEPLOYMENT_ID",
+  DEPLOYMENT_ID_PATTERN,
+);
 
 const nextConfig: NextConfig = {
   output: "standalone",
