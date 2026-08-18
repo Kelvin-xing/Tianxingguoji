@@ -27,6 +27,7 @@ test("registers one owner for every authoritative resource", () => {
   assert.equal(owners.get("User"), "identity");
   assert.equal(owners.get("Student"), "crm");
   assert.equal(owners.get("ServiceCase"), "cases");
+  assert.equal(owners.get("ResolvedSchoolRevision"), "schools");
   assert.equal(owners.get("Task"), "tasks");
   assert.equal(owners.get("DocumentVersion"), "documents");
   assert.equal(owners.get("AuditEvent"), "audit_operations");

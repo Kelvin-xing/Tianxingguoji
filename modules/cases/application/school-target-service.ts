@@ -7,70 +7,97 @@ import {
   type MutationEffectBundle,
 } from "../../audit/public.ts";
 import type { IdentitySessionActor } from "../../identity/public.ts";
-import {
-  resolveSchoolTargetView,
-  persistResolvedSchoolPin,
-  SchoolResolutionError,
-  type ResolvedSchoolPin,
-  type ResolvedSchoolTargetView,
-  type SchoolResolutionSource,
-} from "../../schools/server.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 import { evaluateSchoolTargetCreation } from "../domain/contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
-const SHA256 = /^[0-9a-f]{64}$/i;
+const SHA256 = /^[0-9a-f]{64}$/;
 
-export interface SchoolTargetClock {
-  nowMs(): number;
-}
+export type SchoolTargetCaseStage =
+  | "signed"
+  | "background_collection"
+  | "school_selection_confirmed"
+  | "interview_preparation"
+  | "application_submitted"
+  | "awaiting_result"
+  | "offer_confirmed"
+  | "closed";
+
+export type SchoolTargetCreateBlockedReason =
+  | "founder_read_only"
+  | "case_stage_not_allowed"
+  | "no_school_options"
+  | null;
 
 export interface CreateSchoolTargetCommand {
-  readonly intakeYear: number;
-  readonly admissionType: string;
   readonly expectedResolutionSha256: string;
   readonly requestId: string;
   readonly idempotencyKey: string;
 }
 
-export interface SchoolTargetResult {
+export type SchoolTargetState =
+  | "candidate"
+  | "preparing"
+  | "submitted"
+  | "interview"
+  | "waitlisted"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
+
+export interface SchoolTargetItem {
   readonly targetId: string;
-  readonly caseId: string;
   readonly schoolId: string;
-  readonly state: "candidate";
-  readonly recordVersion: 1;
-  readonly pin: ResolvedSchoolPin;
+  readonly schoolName: string;
+  readonly state: SchoolTargetState;
+  readonly intakeYear: number;
+  readonly admissionType: string;
+  readonly recordVersion: number;
+  readonly resolvedRevisionId: string;
+  readonly resolutionSha256: string;
+  readonly createdAt: string;
 }
 
+export interface SchoolTargetOption {
+  readonly schoolId: string;
+  readonly displayName: string;
+  readonly resolutionSha256: string;
+}
+
+export interface SchoolTargetWorkspaceSnapshot {
+  readonly caseId: string;
+  readonly caseStage: SchoolTargetCaseStage;
+  readonly intakeYear: number;
+  readonly admissionType: string;
+  readonly items: readonly SchoolTargetItem[];
+  readonly schoolOptions: readonly SchoolTargetOption[];
+}
+
+export interface SchoolTargetWorkspace extends SchoolTargetWorkspaceSnapshot {
+  readonly canCreate: boolean;
+  readonly createBlockedReason: SchoolTargetCreateBlockedReason;
+}
+
+export type SchoolTargetResult = SchoolTargetItem;
+
 export interface SchoolTargetRepository {
-  /**
-   * Authorizes the caller's case visibility before returning snapshot and
-   * overlay inputs. The create method must repeat this read under its write
-   * transaction before committing a target pin.
-   */
-  readSchoolTargetResolution(input: {
+  readSchoolTargetWorkspace(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
+    readonly actorRole: "founder" | "advisor";
     readonly caseId: string;
-    readonly schoolId: string;
-  }): Promise<SchoolResolutionSource>;
+  }): Promise<SchoolTargetWorkspaceSnapshot>;
 
-  /**
-   * Production must authorize current primary ownership, compare the current
-   * resolved hash, enforce target uniqueness and then atomically persist the
-   * immutable target pin, idempotency result, audit, and outbox rows.
-   */
+  /** Rechecks authority and resolves the school inside the write transaction. */
   createSchoolTarget(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
+    readonly actorRole: "advisor";
     readonly caseId: string;
     readonly targetId: string;
     readonly schoolId: string;
-    readonly intakeYear: number;
-    readonly admissionType: string;
-    readonly pin: ResolvedSchoolPin;
+    readonly proposedResolvedRevisionId: string;
     readonly expectedResolutionSha256: string;
     readonly requestId: string;
     readonly idempotencyKey: string;
@@ -82,9 +109,11 @@ export interface SchoolTargetRepository {
 
 export type SchoolTargetErrorCode =
   | "SCHOOL_TARGET_INVALID"
+  | "SCHOOL_TARGET_READ_FORBIDDEN"
   | "SCHOOL_TARGET_ADVISOR_REQUIRED"
   | "SCHOOL_TARGET_CASE_NOT_FOUND"
   | "SCHOOL_TARGET_CASE_FORBIDDEN"
+  | "SCHOOL_TARGET_STAGE_NOT_ALLOWED"
   | "SCHOOL_TARGET_RESOLUTION_NOT_FOUND"
   | "SCHOOL_TARGET_RESOLUTION_STALE"
   | "SCHOOL_TARGET_IDEMPOTENCY_KEY_REUSED"
@@ -108,7 +137,11 @@ export interface SchoolTargetServiceOptions {
   readonly createId?: () => string;
 }
 
-/** CaseWorkflow owns target facts; SchoolIntelligence only owns the resolved input. */
+export interface SchoolTargetClock {
+  nowMs(): number;
+}
+
+/** Cases owns target facts; Schools owns the resolved school input. */
 export class SchoolTargetService {
   private readonly repository: SchoolTargetRepository;
   private readonly clock: SchoolTargetClock;
@@ -120,6 +153,30 @@ export class SchoolTargetService {
     this.createId = options.createId ?? randomUUID;
   }
 
+  async getSchoolTargets(input: {
+    readonly actor: IdentitySessionActor;
+    readonly caseId: string;
+  }): Promise<SchoolTargetWorkspace> {
+    const actorRole = assertReadableActor(input.actor);
+    assertUuid(input.caseId);
+    const snapshot = await this.repository.readSchoolTargetWorkspace({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorRole,
+      caseId: input.caseId,
+    });
+    const createBlockedReason: SchoolTargetCreateBlockedReason =
+      actorRole === "founder" ? "founder_read_only"
+        : snapshot.caseStage !== "background_collection" ? "case_stage_not_allowed"
+        : snapshot.schoolOptions.length === 0 ? "no_school_options"
+        : null;
+    return Object.freeze({
+      ...snapshot,
+      canCreate: createBlockedReason === null,
+      createBlockedReason,
+    });
+  }
+
   async createSchoolTarget(input: {
     readonly actor: IdentitySessionActor;
     readonly caseId: string;
@@ -127,39 +184,17 @@ export class SchoolTargetService {
     readonly command: CreateSchoolTargetCommand;
   }): Promise<SchoolTargetResult> {
     assertAdvisor(input.actor);
-    if (!UUID.test(input.caseId) || !UUID.test(input.schoolId)) {
-      throw new SchoolTargetError("SCHOOL_TARGET_INVALID");
-    }
+    assertUuid(input.caseId);
+    assertUuid(input.schoolId);
     assertCommand(input.command);
     const creation = evaluateSchoolTargetCreation({ initialState: "candidate" });
     if (!creation.allowed) throw new SchoolTargetError("SCHOOL_TARGET_INVALID");
 
-    const source = await this.repository.readSchoolTargetResolution({
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      caseId: input.caseId,
-      schoolId: input.schoolId,
-    });
-    let resolved: ResolvedSchoolTargetView;
-    try {
-      resolved = resolveSchoolTargetView(source);
-    } catch (error) {
-      if (error instanceof SchoolResolutionError) {
-        throw new SchoolTargetError("SCHOOL_TARGET_RESOLUTION_INVALID");
-      }
-      throw error;
-    }
-    let pin: ResolvedSchoolPin = resolved.pin;
-    if (pin.resolutionSha256 !== input.command.expectedResolutionSha256) {
-      throw new SchoolTargetError("SCHOOL_TARGET_RESOLUTION_STALE");
-    }
-
     const targetId = this.createId();
-    const resolvedRevisionId = this.createId();
+    const proposedResolvedRevisionId = this.createId();
     const auditId = this.createId();
     const outboxId = this.createId();
-    for (const id of [targetId, resolvedRevisionId, auditId, outboxId]) assertUuid(id);
-    pin = persistResolvedSchoolPin(resolved, resolvedRevisionId).pin;
+    for (const id of [targetId, proposedResolvedRevisionId, auditId, outboxId]) assertUuid(id);
     const createdAtMs = validNow(this.clock.nowMs());
     const occurredAt = new Date(createdAtMs).toISOString();
     const eventType = "cases.school_target_created";
@@ -176,7 +211,7 @@ export class SchoolTargetService {
       outcome: "succeeded",
       requestId: input.command.requestId,
       occurredAt,
-      afterHashSha256: pin.resolutionSha256,
+      afterHashSha256: input.command.expectedResolutionSha256,
       metadata: {
         effect_type: "school_target_created",
         record_version: 1,
@@ -207,26 +242,31 @@ export class SchoolTargetService {
     return this.repository.createSchoolTarget({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
+      actorRole: "advisor",
       caseId: input.caseId,
       targetId,
       schoolId: input.schoolId,
-      intakeYear: input.command.intakeYear,
-      admissionType: input.command.admissionType,
-      pin,
+      proposedResolvedRevisionId,
       expectedResolutionSha256: input.command.expectedResolutionSha256,
       requestId: input.command.requestId,
       idempotencyKey: input.command.idempotencyKey,
       requestHash: hashRequestPayload({
-        admissionType: input.command.admissionType,
         caseId: input.caseId,
         expectedResolutionSha256: input.command.expectedResolutionSha256,
-        intakeYear: input.command.intakeYear,
         schoolId: input.schoolId,
       }),
       createdAtMs,
       effects: buildAtomicMutationEffects({ audit, outbox }),
     });
   }
+}
+
+function assertReadableActor(actor: IdentitySessionActor): "founder" | "advisor" {
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId)) {
+    throw new SchoolTargetError("SCHOOL_TARGET_READ_FORBIDDEN");
+  }
+  if (actor.role === "founder" || actor.role === "advisor") return actor.role;
+  throw new SchoolTargetError("SCHOOL_TARGET_READ_FORBIDDEN");
 }
 
 function assertAdvisor(actor: IdentitySessionActor): void {
@@ -236,13 +276,7 @@ function assertAdvisor(actor: IdentitySessionActor): void {
 }
 
 function assertCommand(command: CreateSchoolTargetCommand): void {
-  if (
-    !Number.isSafeInteger(command.intakeYear) ||
-    command.intakeYear < 1 ||
-    !SAFE_CODE.test(command.admissionType) ||
-    !SHA256.test(command.expectedResolutionSha256) ||
-    !REQUEST_ID.test(command.requestId)
-  ) {
+  if (!SHA256.test(command.expectedResolutionSha256) || !REQUEST_ID.test(command.requestId)) {
     throw new SchoolTargetError("SCHOOL_TARGET_INVALID");
   }
   try {

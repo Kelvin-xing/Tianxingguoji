@@ -110,6 +110,7 @@ export const MODULE_REGISTRY = Object.freeze({
     publicEntrypoints: [
       "modules/cases/public.ts",
       "modules/cases/server.ts",
+      "modules/cases/client.ts",
     ],
     owns: [
       "ServiceCase",
@@ -145,6 +146,7 @@ export const MODULE_REGISTRY = Object.freeze({
       "ProvisionalSchool",
       "SchoolChangeRequest",
       "OverlayRevision",
+      "ResolvedSchoolRevision",
       "PublishedSnapshot",
       "Manifest",
     ],

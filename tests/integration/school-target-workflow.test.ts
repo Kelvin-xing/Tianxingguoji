@@ -119,8 +119,6 @@ function setup(): InMemorySchoolTargetRepository {
 
 function targetCommand(expectedResolutionSha256: string, overrides: Record<string, unknown> = {}) {
   return {
-    intakeYear: 2027,
-    admissionType: "hk_k12_standard_v1",
     expectedResolutionSha256,
     requestId: "request-p1-09-target-001",
     idempotencyKey: "school-target-p1-09-001",
@@ -128,7 +126,7 @@ function targetCommand(expectedResolutionSha256: string, overrides: Record<strin
   };
 }
 
-test("an approved active overlay creates an immutable SchoolTarget pin with provenance", async () => {
+test("an approved active overlay creates one immutable candidate target", async () => {
   const repository = setup();
   const first = approvedOverlay({
     revisionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -172,18 +170,11 @@ test("an approved active overlay creates an immutable SchoolTarget pin with prov
 
   assert.equal(result.targetId, "00000000-0000-4000-8000-000000000101");
   assert.equal(result.state, "candidate");
-  assert.equal(result.pin.resolvedRevisionId, "00000000-0000-4000-8000-000000000102");
-  assert.equal(result.pin.baseSnapshotId, SNAPSHOT_ID);
-  assert.equal(result.pin.overlayRevisionId, first.revisionId);
-  assert.equal(result.pin.resolutionSha256, expected.pin.resolutionSha256);
-  assert.deepEqual(result.pin.provenance.district, {
-    sourceKind: "approved_overlay",
-    sourceSnapshotId: SNAPSHOT_ID,
-    sourceSchoolKey: "crawler-school-001",
-    overlayRevisionId: first.revisionId,
-    baseValueSha256: sha256SchoolValue("Central"),
-    valueSha256: sha256SchoolValue("Eastern"),
-  });
+  assert.equal(result.resolvedRevisionId, "00000000-0000-4000-8000-000000000102");
+  assert.equal(result.resolutionSha256, expected.pin.resolutionSha256);
+  assert.equal(result.schoolName, "Original School");
+  assert.equal(result.intakeYear, 2027);
+  assert.equal(result.admissionType, "hk_k12_standard_v1");
   assert.deepEqual(repository.snapshot(), {
     targets: 1,
     overlays: 2,
@@ -196,6 +187,60 @@ test("an approved active overlay creates an immutable SchoolTarget pin with prov
   const effects = repository.effectsFor(result.targetId);
   assert.ok(effects);
   assert.doesNotMatch(JSON.stringify(effects), /Eastern|example\.test|Synthetic correction/i);
+});
+
+test("Founder and Primary Advisor read the workspace with server-derived creation policy", async () => {
+  const repository = setup();
+  const service = new SchoolTargetService({ repository });
+
+  const advisor = await service.getSchoolTargets({ actor: ADVISOR, caseId: CASE_ID });
+  assert.equal(advisor.canCreate, true);
+  assert.equal(advisor.createBlockedReason, null);
+  assert.equal(advisor.intakeYear, 2027);
+  assert.equal(advisor.admissionType, "hk_k12_standard_v1");
+  assert.equal(advisor.schoolOptions.length, 1);
+
+  const founder = await service.getSchoolTargets({ actor: FOUNDER, caseId: CASE_ID });
+  assert.equal(founder.canCreate, false);
+  assert.equal(founder.createBlockedReason, "founder_read_only");
+  assert.deepEqual(founder.schoolOptions, advisor.schoolOptions);
+});
+
+test("non-primary Advisor cannot read a case and non-target stages fail closed", async () => {
+  const repository = setup();
+  repository.seedCase({
+    caseId: OTHER_CASE_ID,
+    organizationId: ADVISOR.organizationId,
+    primaryAdvisorUserId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  });
+  repository.seedCase({
+    caseId: CASE_ID,
+    organizationId: ADVISOR.organizationId,
+    primaryAdvisorUserId: ADVISOR.userId,
+    stage: "signed",
+    intakeYear: 2031,
+    admissionType: "server_owned_route",
+  });
+  const service = new SchoolTargetService({ repository, clock: new FixedClock() });
+
+  await assert.rejects(
+    service.getSchoolTargets({ actor: ADVISOR, caseId: OTHER_CASE_ID }),
+    targetError("SCHOOL_TARGET_CASE_NOT_FOUND"),
+  );
+  const workspace = await service.getSchoolTargets({ actor: ADVISOR, caseId: CASE_ID });
+  assert.equal(workspace.canCreate, false);
+  assert.equal(workspace.createBlockedReason, "case_stage_not_allowed");
+  const expected = resolveSchoolTargetView({ base: baseRecord(), revisions: [] });
+  await assert.rejects(
+    service.createSchoolTarget({
+      actor: ADVISOR,
+      caseId: CASE_ID,
+      schoolId: SCHOOL_ID,
+      command: targetCommand(expected.pin.resolutionSha256),
+    }),
+    targetError("SCHOOL_TARGET_STAGE_NOT_ALLOWED"),
+  );
+  assert.equal(repository.snapshot().targets, 0);
 });
 
 test("a target pointer based on an older resolved hash fails with a stale conflict", async () => {
@@ -299,13 +344,13 @@ test("disabling an approved revision creates a rollback view without rewriting a
     disabled.rollback.pin.resolvedRevisionId ?? "",
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
-  assert.notEqual(disabled.rollback.pin.resolvedRevisionId, target.pin.resolvedRevisionId);
+  assert.notEqual(disabled.rollback.pin.resolvedRevisionId, target.resolvedRevisionId);
   assert.equal(disabled.rollback.pin.resolutionSha256, expectedRollback.pin.resolutionSha256);
   assert.equal(disabled.rollback.pin.overlayRevisionId, first.revisionId);
   assert.deepEqual(disabled.rollback.pin.provenance, expectedRollback.pin.provenance);
   assert.equal(repository.overlay(second.revisionId)?.revision.status, "disabled");
   assert.equal(repository.overlay(first.revisionId)?.revision.status, "approved");
-  assert.equal(repository.target(target.targetId)?.pin.resolutionSha256, current.pin.resolutionSha256);
+  assert.equal(repository.target(target.targetId)?.resolutionSha256, current.pin.resolutionSha256);
   assert.deepEqual(
     await resolutionService.disableApprovedOverlay({
       actor: FOUNDER,
@@ -359,7 +404,7 @@ test("a cross-case Advisor and a non-reviewer are denied without disclosing or c
       schoolId: SCHOOL_ID,
       command: targetCommand(current.pin.resolutionSha256),
     }),
-    targetError("SCHOOL_TARGET_CASE_FORBIDDEN"),
+    targetError("SCHOOL_TARGET_CASE_NOT_FOUND"),
   );
   await assert.rejects(
     resolutionService.disableApprovedOverlay({
@@ -408,7 +453,7 @@ test("target idempotency replays once and injected failure leaves no target or e
   await assert.rejects(
     service.createSchoolTarget({
       ...input,
-      command: { ...input.command, admissionType: "different_route" },
+      command: { ...input.command, expectedResolutionSha256: "f".repeat(64) },
     }),
     targetError("SCHOOL_TARGET_IDEMPOTENCY_KEY_REUSED"),
   );
