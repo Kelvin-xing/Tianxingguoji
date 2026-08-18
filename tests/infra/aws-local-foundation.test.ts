@@ -69,7 +69,11 @@ function loadNextConfig(
     "const buildId = await config.generateBuildId();",
     "process.stdout.write(JSON.stringify({ buildId, deploymentId: config.deploymentId }));",
   ].join("\n");
-  const environment = { ...process.env, NODE_ENV: "production", ...values };
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: "production",
+    ...values,
+  };
   for (const name of [
     "GIT_SHA",
     "NEXT_DEPLOYMENT_ID",
