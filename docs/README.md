@@ -49,7 +49,7 @@
 |---|---:|---|---|
 | `P0-*` | 7 | Identity、CRM、Case、School、Task、Document、Audit 基础迁移与契约 | 多数为本地实现，数据库证据仍有缺口 |
 | `P1-*` | 20 | 首条端到端纵向切片、认证、Case、文件、Task、通知和 rollback | 多数使用 synthetic adapter 或旧 Neon seam，不能等同生产运行时 |
-| `P2-*` | 12 | Guardian、K12 catalogue、结果、Contractor、治理、Dashboard、Crawler 和 future scope | 本地契约较完整，RDS/浏览器证据不齐 |
+| `P2-*` | 15 | Guardian、K12 catalogue、结果、Contractor、治理、Dashboard、Crawler、权限与配置治理 | 本地契约较完整，RDS/浏览器证据不齐；P2-13 至 P2-15 尚未开始 |
 | `P3-*` | 13 | 合成场景、重建、telemetry、生产源码、repositories、浏览器、安全、restore 和首案 gate | 当前 release blocker 集中区域 |
 | `R1X-*` | 9 | Portal、PlatformBilling、运行组合和 AWS source foundation | 本地 contract/slice 存在，生产集成未获准；决策基线位于 `txgj-doc/decisions/` |
 
