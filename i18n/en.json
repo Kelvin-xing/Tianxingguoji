@@ -1,8 +1,17 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "today": "Today's Work",
+    "cases": "Cases",
     "students": "Student CRM",
+    "studentsAndGuardians": "Students & Guardians",
     "schools": "Admissions",
+    "schoolData": "School Data",
+    "tasks": "Tasks",
+    "documents": "Documents",
+    "access": "Identity & Access",
+    "schoolGovernance": "School Governance",
+    "dataReview": "Data Review",
     "selector": "School Selector",
     "ai": "AI Assistant",
     "adminCrawler": "Crawler Admin",

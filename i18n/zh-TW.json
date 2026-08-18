@@ -1,8 +1,17 @@
 {
   "nav": {
     "dashboard": "儀表板",
+    "today": "今日工作",
+    "cases": "案件",
     "students": "學生 CRM",
+    "studentsAndGuardians": "學生與監護人",
     "schools": "招生資訊",
+    "schoolData": "學校資料",
+    "tasks": "任務",
+    "documents": "文件",
+    "access": "身份與權限",
+    "schoolGovernance": "學校治理",
+    "dataReview": "資料審核",
     "selector": "選校報告",
     "ai": "AI 助理",
     "adminCrawler": "爬蟲管理",

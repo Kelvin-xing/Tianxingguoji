@@ -33,12 +33,15 @@ export type CollaboratorScope = (typeof COLLABORATOR_SCOPES)[number];
 export type CollaboratorCapability = (typeof COLLABORATOR_CAPABILITIES)[number];
 export type CollaboratorStatus = "active" | "removed" | "expired";
 export type ScopeGrantStatus = "pending_approval" | "active" | "revoked" | "expired";
-export type OrganizationRole =
-  | "founder"
-  | "admin"
-  | "advisor"
-  | "data_reviewer"
-  | "contractor";
+export const ORGANIZATION_ROLES = Object.freeze([
+  "founder",
+  "admin",
+  "advisor",
+  "data_reviewer",
+  "contractor",
+] as const);
+
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 export type RoleBindingStatus = "active" | "revoked";
 
 export const WORKSPACE_CAPABILITIES = Object.freeze([
@@ -55,7 +58,9 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
 
 export type WorkspaceCapability = (typeof WORKSPACE_CAPABILITIES)[number];
 
-const ROLE_CAPABILITIES: Readonly<Record<OrganizationRole, readonly WorkspaceCapability[]>> = Object.freeze({
+export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
+  Record<OrganizationRole, readonly WorkspaceCapability[]>
+> = Object.freeze({
   founder: WORKSPACE_CAPABILITIES,
   admin: Object.freeze([
     "today.read",
@@ -83,7 +88,15 @@ const ROLE_CAPABILITIES: Readonly<Record<OrganizationRole, readonly WorkspaceCap
 });
 
 export function workspaceCapabilitiesForRole(role: OrganizationRole): readonly WorkspaceCapability[] {
-  return ROLE_CAPABILITIES[role];
+  return BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE[role];
+}
+
+export function isOrganizationRole(value: unknown): value is OrganizationRole {
+  return typeof value === "string" && (ORGANIZATION_ROLES as readonly string[]).includes(value);
+}
+
+export function isWorkspaceCapability(value: unknown): value is WorkspaceCapability {
+  return typeof value === "string" && (WORKSPACE_CAPABILITIES as readonly string[]).includes(value);
 }
 
 export type ScopeGrantDenialCode =
