@@ -24,6 +24,7 @@
     "test:architecture": "node --test tests/architecture/module-boundaries.test.ts",
     "test:local-foundation": "node --conditions=react-server --test tests/unit/runtime/local-synthetic.test.ts tests/contract/local-readiness-route.test.ts tests/infra/local-compose.test.ts",
     "test:env-01a": "node --conditions=react-server --test tests/unit/runtime/runtime-environment.test.ts tests/unit/runtime/test-database-config.test.ts tests/unit/auth/mode.test.ts tests/unit/identity/database-test-login.test.ts tests/unit/identity/postgresql-database-test-repository.test.ts tests/unit/shared/application-tenant-runner.test.ts tests/contract/database-test-login-route.test.ts tests/migration/database-test-identity-boundary.test.ts tests/unit/runtime/database-test-provision.test.ts tests/architecture/module-boundaries.test.ts tests/architecture/test-database-runtime-boundary.test.ts",
+    "test:env-01b": "node --test tests/unit/auth/login-page.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
     "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "node scripts/db/plan-migration.ts --migrations db/migrations",
