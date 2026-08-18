@@ -34,8 +34,9 @@ managed logout endpoint。
 
 ## 剩余 Gate
 
-本地身份仓库当前为进程内合成适配器，重启 Next.js 后会话失效；下一步应建立
-PostgreSQL 合成组织、用户、membership、role binding 和本地 session repository。
+本记录交付时，本地身份仓库仍是进程内适配器。该 Gate 已由
+`LOCAL-04_IDENTITY_POSTGRESQL.md` 关闭：合成组织、用户、membership、role binding
+和本地 session 已迁入 PostgreSQL，Session 已验证可跨 Next.js 进程重启。
 真实 Cognito 仍需要已批准的 User Pool/App Client/domain、香港 RDS 连接、加密密钥和
 生产 composition root。首次邀请激活依赖的正式 Cognito verifier/repository 尚未装配，
 在完成该 Gate 前会返回 service unavailable，不会降级到本地身份。

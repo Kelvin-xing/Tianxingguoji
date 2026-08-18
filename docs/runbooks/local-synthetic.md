@@ -56,12 +56,16 @@ pnpm local:ps
 然后启动 Next.js：
 
 ```sh
+pnpm db:plan:local
+pnpm db:migrate:local:dry-run
+pnpm db:migrate:local
+pnpm db:seed:local-identity
 pnpm dev
 ```
 
 打开 `http://localhost:3000/login`，选择 Founder、Admin、Advisor、Data reviewer
-或 Contractor，再点击“使用本地角色登入”。本地会话只存在于 Next.js 进程内；
-重启开发服务器会使它失效，这是当前合成身份阶段的预期行为。
+或 Contractor，再点击“使用本地角色登入”。本地身份和会话保存在 PostgreSQL；
+只要数据库卷仍存在且 Session 未过期或撤销，重启开发服务器不会使它失效。
 
 检查原有存活接口：
 
@@ -76,7 +80,9 @@ curl --fail http://127.0.0.1:3000/api/v1/local/readiness
 ```
 
 全部可用时，第二个接口返回 `status: ready`，并将 `postgresql`、
-`localstack_s3`、`localstack_sqs` 和 `clamav` 标为 `ready`。任一依赖不可用时
+`postgresql_identity`、`localstack_s3`、`localstack_sqs` 和 `clamav` 标为 `ready`。
+其中 `postgresql` 只检查健康账号连通性，`postgresql_identity` 还会检查受限身份账号、
+五个合成角色和 Session schema。任一依赖不可用时
 返回 HTTP 503 和经过白名单过滤的状态；响应不会包含连接串、端点或原始错误。
 非本地模式访问该路径返回 HTTP 404。
 
@@ -108,6 +114,7 @@ ClamAV 应用探测发送官方 `zPING\0` 命令并要求 `PONG`。
 pnpm db:plan:local
 pnpm db:migrate:local:dry-run
 pnpm db:migrate:local
+pnpm db:seed:local-identity
 ```
 
 迁移进程只读取被 Git 忽略的 `.env.migration.local`，Next.js 继续只读取
@@ -119,10 +126,13 @@ pnpm db:migrate:local
 `apply` 使用 advisory lock、5 秒 statement/lock timeout 和单事务；重复执行在完整
 ledger 上安全返回 no-op。历史迁移一旦应用便不得修改，修复必须新增迁移。
 
-2026-08-17 本地库已应用 15 份迁移，ledger 为 15，public schema 有 61 张表。
-迁移创建 `tianxing_app`，但当前仍没有为它设置本地密码，也没有向 PostgreSQL 插入
-组织、用户或会话。本地角色登录已经可用，但其合成身份和会话暂存在 Next.js 进程内；
-后续阶段才将确定性合成资料及会话迁入 PostgreSQL。
+2026-08-17 已从空库应用最初 15 份迁移；2026-08-18 再追加应用两份身份迁移，当前
+ledger 为 17，public schema 仍有 61 张表。尚未重新执行“17 份迁移从空库完整重放”，
+因此不能把增量应用记录描述成新的空库恢复证据。
+
+`db:seed:local-identity` 同时读取 `.env.local` 和 `.env.migration.local`，只接受固定回环
+数据库、`local-synthetic` 非生产模式和本地专用账号。它可以重复执行，不会重置数据库
+或删除 Session；发现固定身份资料漂移时会失败，而不是静默覆盖。
 
 ## 停止与重置
 
@@ -150,7 +160,7 @@ ClamAV 容器均为 `healthy`，以下实机检查通过：
   `ready`；
 - 首页返回 HTTP 200，12 项本地底座聚焦测试通过。
 
-本地底座状态为 `local_identity_runtime_validated`。本地角色登录、HttpOnly opaque
-session、`/api/v1/auth/me` 和登出已经端到端通过；身份暂存在应用进程内。PostgreSQL
-合成身份持久化、其他领域 runtime 和 Worker 尚未接通，因此这不代表 Release 1 的
-业务 API 已经端到端可用。
+本地底座状态为 `local_identity_postgresql_validated`。本地角色登录、HttpOnly opaque
+session、`/api/v1/auth/me`、Next.js 重启后复用同一 Session 和登出撤销已经端到端通过；
+readiness 的五项依赖均为 `ready`。其他领域 runtime 和 Worker 尚未接通，因此这不代表
+Release 1 的业务 API 已经端到端可用。

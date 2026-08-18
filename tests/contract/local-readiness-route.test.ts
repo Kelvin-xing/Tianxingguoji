@@ -20,6 +20,7 @@ test("local readiness returns a versioned dependency report only in local mode",
     status: "ready",
     dependencies: {
       postgresql: "ready",
+      postgresql_identity: "ready",
       localstack_s3: "ready",
       localstack_sqs: "ready",
       clamav: "ready",
@@ -50,6 +51,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
       ...report("not_ready"),
       dependencies: {
         postgresql: "ready",
+        postgresql_identity: "ready",
         localstack_s3: "ready",
         localstack_sqs: "unavailable",
         clamav: "unavailable",
@@ -64,6 +66,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
   assert.deepEqual(body.error.details, {
     dependencies: {
       postgresql: "ready",
+      postgresql_identity: "ready",
       localstack_s3: "ready",
       localstack_sqs: "unavailable",
       clamav: "unavailable",
@@ -82,6 +85,7 @@ function report(status: "ready" | "not_ready"): LocalSyntheticReadinessReport {
     status,
     dependencies: {
       postgresql: "ready",
+      postgresql_identity: "ready",
       localstack_s3: "ready",
       localstack_sqs: "ready",
       clamav: "ready",

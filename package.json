@@ -16,6 +16,7 @@
     "test:identity-access-schema": "node --test tests/integration/identity-access-schema.test.ts",
     "test:migration": "node --test tests/migration/drift.test.ts",
     "test:local-migration": "node --test tests/migration/local-runner.test.ts tests/migration/drift.test.ts",
+    "test:local-identity-postgresql": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local --test tests/unit/runtime/local-identity-seed.test.ts tests/integration/local-synthetic-identity-postgresql.test.ts",
     "test:architecture": "node --test tests/architecture/module-boundaries.test.ts",
     "test:local-foundation": "node --conditions=react-server --test tests/unit/runtime/local-synthetic.test.ts tests/contract/local-readiness-route.test.ts tests/infra/local-compose.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
@@ -24,6 +25,7 @@
     "db:plan:local": "node scripts/db/plan-migration.ts --migrations db/migrations --snapshot db/migration-snapshots/empty.json",
     "db:migrate:local:dry-run": "node --env-file=.env.migration.local scripts/db/run-local-migrations.ts --dry-run",
     "db:migrate:local": "node --env-file=.env.migration.local scripts/db/run-local-migrations.ts --apply",
+    "db:seed:local-identity": "node --conditions=react-server --env-file=.env.local --env-file=.env.migration.local scripts/db/seed-local-identity.ts",
     "local:up": "docker compose -f compose.local.yml up -d --wait",
     "local:ps": "docker compose -f compose.local.yml ps",
     "local:down": "docker compose -f compose.local.yml down"

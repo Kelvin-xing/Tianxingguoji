@@ -5,14 +5,19 @@ import {
   findActorBySecret,
   revokeSessionBySecret,
   SessionAccessError,
+  type SessionActor,
 } from "./postgresql-session-service.ts";
 import type { CognitoManagedLoginVerifier } from "../application/cognito-port.ts";
-import { CognitoInviteAdapter } from "./cognito-adapter.ts";
 import {
   LocalSyntheticLoginService,
 } from "./local-synthetic-login.ts";
-import { IdentityService, IdentityServiceError } from "../application/service.ts";
-import { InMemoryIdentitySessionRepository } from "./in-memory-session-repository.ts";
+import { IdentityServiceError, type IdentityService } from "../application/service.ts";
+import { IdentityRepositoryError } from "../application/session-port.ts";
+import { hashOpaqueSecret } from "../application/opaque-secret.ts";
+import { loadLocalSyntheticConfig } from "../../../lib/runtime/local-synthetic-config.ts";
+import {
+  getPostgresqlLocalSyntheticSessionRepository,
+} from "./postgresql-local-synthetic-repository.ts";
 
 export type IdentityRuntimeService = Pick<
   IdentityService,
@@ -28,6 +33,9 @@ export interface IdentityRuntime {
   readonly service: IdentityRuntimeService;
   readonly managedLoginVerifier: CognitoManagedLoginVerifier | null;
   readonly localLogin: LocalSyntheticLoginService | null;
+  readonly legacySessionReader: Readonly<{
+    findByCookieSecret(cookieSecret: string): Promise<SessionActor>;
+  }>;
 }
 
 export class IdentityRuntimeUnavailable extends Error {
@@ -48,32 +56,60 @@ const globalForIdentity = globalThis as typeof globalThis & {
 
 function getLocalSyntheticRuntime(): IdentityRuntime {
   if (!globalForIdentity.__txLocalSyntheticIdentityRuntime) {
-    const repository = new InMemoryIdentitySessionRepository();
-    const service = new IdentityService({
-      repository,
-      cognito: new CognitoInviteAdapter({
-        userPoolId: "ap-east-1_localSynthetic",
-        client: {
-          async adminCreateUser(request) {
-            return { providerSubject: `local_${request.username}` };
-          },
-        },
-      }),
-      deliveryChannel: {
-        async deliver(input) {
-          return {
-            channelPolicyId: "hk_dpa_reviewed_transactional",
-            receiptReference: `local-${input.inviteId}`,
-            deliveredAtMs: Date.now(),
-          };
-        },
+    const config = loadLocalSyntheticConfig();
+    const repository = getPostgresqlLocalSyntheticSessionRepository(
+      config.database.identityConnectionString,
+      config.dependencyTimeoutMs,
+    );
+    const unavailable = async (): Promise<never> => {
+      throw new IdentityRuntimeUnavailable();
+    };
+    const service: IdentityRuntimeService = {
+      createFounderInvite: unavailable,
+      claimInviteActivation: unavailable,
+      completeManagedLogin: unavailable,
+      async requireSession(input) {
+        try {
+          return await repository.findActorBySessionSecretHash({
+            secretHash: hashOpaqueSecret(input.cookieSecret),
+            nowMs: Date.now(),
+            sensitiveAction: input.sensitiveAction,
+          });
+        } catch (error) {
+          if (error instanceof IdentityRepositoryError) {
+            throw new IdentityServiceError("SESSION_NOT_FOUND");
+          }
+          throw error;
+        }
       },
-    });
+      async revokeSession(input) {
+        await repository.revokeSessionBySecretHash({
+          secretHash: hashOpaqueSecret(input.cookieSecret),
+          reason: input.reason,
+        });
+      },
+    };
     globalForIdentity.__txLocalSyntheticIdentityRuntime = Object.freeze({
       authMode: "local-synthetic",
       service,
       managedLoginVerifier: null,
       localLogin: new LocalSyntheticLoginService(repository),
+      legacySessionReader: Object.freeze({
+        async findByCookieSecret(cookieSecret: string) {
+          try {
+            return await repository.findLegacyActorBySessionSecretHash({
+              secretHash: hashOpaqueSecret(cookieSecret),
+              nowMs: Date.now(),
+              sensitiveAction: false,
+            });
+          } catch (error) {
+            if (error instanceof IdentityRepositoryError) {
+              throw new IdentityServiceError("SESSION_NOT_FOUND");
+            }
+            throw error;
+          }
+        },
+      }),
     });
   }
   return globalForIdentity.__txLocalSyntheticIdentityRuntime;
@@ -118,5 +154,8 @@ function getCognitoRuntime(): IdentityRuntime {
     service,
     managedLoginVerifier: null,
     localLogin: null,
+    legacySessionReader: Object.freeze({
+      findByCookieSecret: findActorBySecret,
+    }),
   });
 }

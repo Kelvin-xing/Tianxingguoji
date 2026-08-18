@@ -6,6 +6,10 @@ import type { OrganizationRole } from "../../access/public.ts";
 import type { IdentitySessionActor } from "../domain/actor.ts";
 import { hashOpaqueSecret } from "../application/opaque-secret.ts";
 import type { LocalSyntheticSessionRepository } from "../application/session-port.ts";
+import {
+  getLocalSyntheticPrincipal,
+  LOCAL_SYNTHETIC_ORGANIZATION,
+} from "./local-synthetic-principals.ts";
 
 export const LOCAL_SYNTHETIC_ROLES = [
   "founder",
@@ -22,15 +26,6 @@ export interface LocalSyntheticSession {
   readonly actor: IdentitySessionActor;
 }
 
-const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
-const USER_IDS: Readonly<Record<LocalSyntheticRole, string>> = Object.freeze({
-  founder: "10000000-0000-4000-8000-000000000101",
-  admin: "10000000-0000-4000-8000-000000000102",
-  advisor: "10000000-0000-4000-8000-000000000103",
-  data_reviewer: "10000000-0000-4000-8000-000000000104",
-  contractor: "10000000-0000-4000-8000-000000000105",
-});
-
 export class LocalSyntheticLoginService {
   private readonly repository: LocalSyntheticSessionRepository;
 
@@ -42,10 +37,11 @@ export class LocalSyntheticLoginService {
     if (!isLocalSyntheticRole(role)) {
       throw new TypeError("Local synthetic login requires an approved role.");
     }
+    const principal = getLocalSyntheticPrincipal(role);
     const cookieSecret = randomBytes(32).toString("base64url");
     const actor = await this.repository.createLocalSyntheticSession({
-      userId: USER_IDS[role],
-      organizationId: ORGANIZATION_ID,
+      userId: principal.userId,
+      organizationId: LOCAL_SYNTHETIC_ORGANIZATION.id,
       role,
       sessionId: randomUUID(),
       secretHash: hashOpaqueSecret(cookieSecret),

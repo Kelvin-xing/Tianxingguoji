@@ -36,6 +36,7 @@ export function handleLocalReadinessRequest(
     const report = await dependencies.checkReadiness(dependencies.environment);
     const dependencyStates = {
       postgresql: report.dependencies.postgresql,
+      postgresql_identity: report.dependencies.postgresql_identity,
       localstack_s3: report.dependencies.localstack_s3,
       localstack_sqs: report.dependencies.localstack_sqs,
       clamav: report.dependencies.clamav,

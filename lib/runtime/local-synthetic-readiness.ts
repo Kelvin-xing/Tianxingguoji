@@ -17,6 +17,7 @@ export interface LocalSyntheticReadinessReport {
   readonly status: "ready" | "not_ready";
   readonly dependencies: Readonly<{
     postgresql: LocalDependencyState;
+    postgresql_identity: LocalDependencyState;
     localstack_s3: LocalDependencyState;
     localstack_sqs: LocalDependencyState;
     clamav: LocalDependencyState;
@@ -25,6 +26,7 @@ export interface LocalSyntheticReadinessReport {
 
 export interface LocalSyntheticReadinessProbes {
   postgresql(config: LocalSyntheticConfig): Promise<void>;
+  identityPostgresql(config: LocalSyntheticConfig): Promise<void>;
   localstack(config: LocalSyntheticConfig): Promise<Readonly<{ s3: boolean; sqs: boolean }>>;
   clamav(config: LocalSyntheticConfig): Promise<void>;
 }
@@ -37,14 +39,16 @@ export async function checkLocalSyntheticReadiness(
 ): Promise<LocalSyntheticReadinessReport> {
   const config = loadLocalSyntheticConfig(options.environment);
   const probes = options.probes ?? DEFAULT_PROBES;
-  const [postgresql, localstack, clamav] = await Promise.allSettled([
+  const [postgresql, postgresqlIdentity, localstack, clamav] = await Promise.allSettled([
     probes.postgresql(config),
+    probes.identityPostgresql(config),
     probes.localstack(config),
     probes.clamav(config),
   ]);
 
   const dependencies = Object.freeze({
     postgresql: state(postgresql.status === "fulfilled"),
+    postgresql_identity: state(postgresqlIdentity.status === "fulfilled"),
     localstack_s3: state(localstack.status === "fulfilled" && localstack.value.s3),
     localstack_sqs: state(localstack.status === "fulfilled" && localstack.value.sqs),
     clamav: state(clamav.status === "fulfilled"),
@@ -76,6 +80,58 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
         throw new Error("PostgreSQL readiness result was invalid.");
       }
     } finally {
+      if (connected) await client.end();
+    }
+  },
+
+  async identityPostgresql(config: LocalSyntheticConfig): Promise<void> {
+    const client = new Client({
+      connectionString: config.database.identityConnectionString,
+      application_name: "tianxing-local-identity-readiness",
+      connectionTimeoutMillis: config.dependencyTimeoutMs,
+      query_timeout: config.dependencyTimeoutMs,
+      ssl: false,
+    });
+    let connected = false;
+    let transaction = false;
+    try {
+      await client.connect();
+      connected = true;
+      await client.query("BEGIN");
+      transaction = true;
+      await client.query("SELECT set_config('app.organization_id', $1, true)", [
+        "10000000-0000-4000-8000-000000000001",
+      ]);
+      const result = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+           FROM identity_users AS identity_user
+           JOIN access_organization_memberships AS membership
+             ON membership.user_id = identity_user.id
+            AND membership.status = 'active'
+           JOIN access_role_bindings AS role_binding
+             ON role_binding.membership_id = membership.id
+            AND role_binding.organization_id = membership.organization_id
+            AND role_binding.user_id = membership.user_id
+            AND role_binding.status = 'active'
+          WHERE membership.organization_id = $1
+            AND identity_user.status = 'active'
+            AND identity_user.normalized_email LIKE '%@local.invalid'`,
+        ["10000000-0000-4000-8000-000000000001"],
+      );
+      await client.query("SELECT session_kind FROM identity_sessions LIMIT 0");
+      if (Number(result.rows[0]?.count) !== 5) {
+        throw new Error("Local identity readiness result was invalid.");
+      }
+      await client.query("ROLLBACK");
+      transaction = false;
+    } finally {
+      if (transaction) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          // Preserve the readiness failure without exposing rollback details.
+        }
+      }
       if (connected) await client.end();
     }
   },

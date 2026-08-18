@@ -36,6 +36,8 @@
 [`implementation/LOCAL-02_DATABASE_MIGRATION.md`](implementation/LOCAL-02_DATABASE_MIGRATION.md)。
 身份模式开关、本地角色登录和 Cognito 回访登录边界见
 [`implementation/LOCAL-03_IDENTITY_MODE.md`](implementation/LOCAL-03_IDENTITY_MODE.md)。
+本地合成身份、最小权限数据库账号和持久化 Session 见
+[`implementation/LOCAL-04_IDENTITY_POSTGRESQL.md`](implementation/LOCAL-04_IDENTITY_POSTGRESQL.md)。
 当前模块分层、公开入口和兼容债务见
 [`architecture/MODULE_MAP.md`](architecture/MODULE_MAP.md)。
 
@@ -111,6 +113,6 @@
 - 当前接手范围与推进边界记录在 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.md`，本目录不保存平行副本。
 - README 根文档仍是 create-next-app 默认内容；是否重写留待后续单独确认。
 
-项目已进入阶段 1：本地依赖底座、空库 schema 和进程内合成身份已验证，下一步是把
-合成组织、用户、membership、role binding 和 session 持久化到本地 PostgreSQL。
+阶段 1 本地底座已完成：依赖、schema、确定性合成身份和持久化 Session 均已验证。
+下一步进入阶段 2，先选择并实现首个内部 ERP API v1 纵向闭环。
 云端、真实数据、提交、推送和部署仍需独立授权。

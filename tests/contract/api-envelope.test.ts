@@ -150,6 +150,7 @@ test("service unavailability exposes only allowlisted local dependency states", 
       details: {
         dependencies: {
           postgresql: "ready",
+          postgresql_identity: "ready",
           localstack_s3: "ready",
           localstack_sqs: "unavailable",
           clamav: "unavailable",
@@ -164,6 +165,7 @@ test("service unavailability exposes only allowlisted local dependency states", 
   assert.deepEqual(body.error.details, {
     dependencies: {
       postgresql: "ready",
+      postgresql_identity: "ready",
       localstack_s3: "ready",
       localstack_sqs: "unavailable",
       clamav: "unavailable",

@@ -32,13 +32,16 @@ test("local compose initializes versioned S3 and a scan queue with a DLQ", async
   assert.match(init, /maxReceiveCount/);
 });
 
-test("local database bootstrap creates only compatibility and health roles", async () => {
+test("local database bootstrap creates compatibility, health, and restricted identity roles", async () => {
   const roles = await source("infra/local/postgres/init/001-local-roles.sql");
 
   assert.match(roles, /CREATE ROLE rds_iam NOLOGIN/);
   assert.match(roles, /CREATE ROLE tianxing_health/);
+  assert.match(roles, /CREATE ROLE tianxing_local_identity/);
+  assert.match(roles, /PASSWORD 'tianxing-local-identity-only'/);
   assert.match(roles, /NOSUPERUSER/);
   assert.match(roles, /NOCREATEDB/);
+  assert.match(roles, /NOBYPASSRLS/);
   assert.doesNotMatch(roles, /INSERT\s+INTO/i);
 });
 
@@ -49,6 +52,7 @@ test("the committed environment example is explicit and local-only", async () =>
 
   assert.match(example, /^APP_RUNTIME_MODE=local-synthetic$/m);
   assert.match(example, /127\.0\.0\.1/);
+  assert.match(example, /^LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL=postgresql:\/\//m);
   assert.doesNotMatch(example, /\.rds\.amazonaws\.com/);
   assert.match(ignore, /^!\/\.env\.local\.example$/m);
   assert.equal(packageJson.dependencies.pg, "8.20.0");

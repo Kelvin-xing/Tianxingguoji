@@ -1,9 +1,10 @@
 import { cookies } from 'next/headers'
 import { createApiError, type ApiContractError } from '../../shared/public.ts'
 import type { OrganizationRole } from '../../access/public.ts'
-import { AuthConfigurationError } from './auth-config.ts'
 import { SESSION_COOKIE_NAME } from './cookies.ts'
-import { findActorBySecret, type SessionActor, SessionAccessError } from './postgresql-session-service.ts'
+import { IdentityServiceError } from '../application/service.ts'
+import { getIdentityRuntime, IdentityRuntimeUnavailable } from './runtime.ts'
+import type { SessionActor } from './postgresql-session-service.ts'
 
 export type { SessionActor }
 
@@ -13,12 +14,12 @@ export async function requireActor(): Promise<SessionActor> {
   if (!secret) throw createApiError('UNAUTHENTICATED')
 
   try {
-    return await findActorBySecret(secret)
+    return await getIdentityRuntime().legacySessionReader.findByCookieSecret(secret)
   } catch (error) {
-    if (error instanceof SessionAccessError) {
+    if (error instanceof IdentityServiceError) {
       throw createApiError('UNAUTHENTICATED')
     }
-    if (error instanceof AuthConfigurationError) {
+    if (error instanceof IdentityRuntimeUnavailable) {
       throw createApiError('SERVICE_UNAVAILABLE')
     }
     throw createApiError('SERVICE_UNAVAILABLE')

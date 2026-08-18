@@ -12,6 +12,8 @@ export * from "./infrastructure/cognito-client.ts";
 export * from "./infrastructure/cookies.ts";
 export * from "./infrastructure/in-memory-session-repository.ts";
 export * from "./infrastructure/local-synthetic-login.ts";
+export * from "./infrastructure/local-synthetic-principals.ts";
+export * from "./infrastructure/postgresql-local-synthetic-repository.ts";
 export * from "./infrastructure/pkce.ts";
 export * from "./infrastructure/postgresql-client.ts";
 export * from "./infrastructure/postgresql-session-service.ts";
