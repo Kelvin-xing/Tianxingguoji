@@ -29,6 +29,16 @@ const SILENT_LOGGER = Object.freeze({
   warn: (_message?: unknown) => undefined,
   error: (_message?: unknown) => undefined,
 });
+const POSTGRES_ERROR_SEVERITIES = new Set([
+  "ERROR",
+  "FATAL",
+  "PANIC",
+  "WARNING",
+  "NOTICE",
+  "DEBUG",
+  "INFO",
+  "LOG",
+]);
 
 export const MIGRATION_CREATED_ROLES = Object.freeze([
   "tianxing_app",
@@ -62,16 +72,6 @@ const REJECTED_ENVIRONMENT_VARIABLES = Object.freeze([
   "VERCEL_ENV",
 ] as const);
 
-const REDACTED_ENVIRONMENT_VARIABLES = Object.freeze([
-  "APP_ENV",
-  "NODE_ENV",
-  "APP_RUNTIME_MODE",
-  "AUTH_MODE",
-  "TEST_DATABASE_EXPECTED_NAME",
-  "TEST_MIGRATION_DATABASE_URL",
-  ...REJECTED_ENVIRONMENT_VARIABLES,
-] as const);
-
 export type NeonTestMigrationMode = "dry-run" | "apply";
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -81,6 +81,9 @@ export type NeonTestMigrationExecution = Readonly<{
 }>;
 
 export type NeonTestMigrationFailureStage =
+  | "cli"
+  | "preflight_manifest"
+  | "preflight_database_inspection"
   | "transaction_begin"
   | "advisory_lock"
   | "migration_manifest_before"
@@ -89,6 +92,10 @@ export type NeonTestMigrationFailureStage =
   | "transaction_rollback"
   | "dry_run_execution"
   | "apply_runner"
+  | "rollback_manifest"
+  | "rollback_database_inspection"
+  | "postflight_manifest"
+  | "postflight_database_inspection"
   | "rollback_state_verification";
 
 export type NeonTestMigrationFailureEvidence = Readonly<{
@@ -188,7 +195,9 @@ export class NeonTestMigrationRunError extends NeonTestMigrationSafetyError {
         ? "Migration rollback verification is incomplete; architecture escalation required."
         : rollbackState === "metadata_cleanup_required"
           ? "Migration execution failed; business rollback passed and metadata cleanup is required."
-          : "Migration execution failed and business rollback verification passed; stop without retry.",
+          : rollbackState === "clean"
+            ? "Migration execution failed and business rollback verification passed; stop without retry."
+            : "Migration safety gate failed; stop without retry.",
     );
     this.name = "NeonTestMigrationRunError";
     this.originalFailure = originalFailure;
@@ -204,6 +213,111 @@ export const EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS = Object.freeze([
   "class:r:schema_migrations",
   "constraint:p:schema_migrations_pkey",
 ] as const);
+
+export const MIGRATION_METADATA_INVENTORY_SQL = `
+      SELECT object_key, object_owner
+        FROM (
+          SELECT 'class:' || class_row.relkind::text || ':' || class_row.relname AS object_key,
+                 pg_get_userbyid(class_row.relowner) AS object_owner
+            FROM pg_class AS class_row
+            JOIN pg_namespace AS namespace_row ON namespace_row.oid = class_row.relnamespace
+           WHERE namespace_row.nspname = 'migration'
+          UNION ALL
+          SELECT 'constraint:' || constraint_row.contype::text || ':' || constraint_row.conname
+                   AS object_key,
+                 NULL::text AS object_owner
+            FROM pg_constraint AS constraint_row
+            JOIN pg_namespace AS namespace_row ON namespace_row.oid = constraint_row.connamespace
+           WHERE namespace_row.nspname = 'migration'
+        ) AS metadata_rows
+       ORDER BY object_key COLLATE "C"
+    `;
+
+export const MIGRATION_EXTERNAL_DEPENDENCY_SQL = `
+      WITH migration_references AS (
+        SELECT 'pg_namespace'::regclass::oid AS refclassid,
+               namespace_row.oid AS refobjid
+          FROM pg_namespace AS namespace_row
+         WHERE namespace_row.nspname = 'migration'
+        UNION ALL
+        SELECT 'pg_class'::regclass::oid,
+               class_row.oid
+          FROM pg_class AS class_row
+          JOIN pg_namespace AS namespace_row ON namespace_row.oid = class_row.relnamespace
+         WHERE namespace_row.nspname = 'migration'
+        UNION ALL
+        SELECT 'pg_constraint'::regclass::oid,
+               constraint_row.oid
+          FROM pg_constraint AS constraint_row
+          JOIN pg_namespace AS namespace_row ON namespace_row.oid = constraint_row.connamespace
+         WHERE namespace_row.nspname = 'migration'
+      ), normal_dependencies AS (
+        SELECT DISTINCT dependency_row.classid,
+                        dependency_row.objid,
+                        dependency_row.objsubid
+          FROM pg_depend AS dependency_row
+          JOIN migration_references AS reference_row
+            ON reference_row.refclassid = dependency_row.refclassid
+           AND reference_row.refobjid = dependency_row.refobjid
+         WHERE dependency_row.deptype = 'n'
+      ), resolved_dependencies AS (
+        SELECT dependency_row.classid,
+               dependency_row.objid,
+               dependency_row.objsubid,
+               COALESCE(
+                 class_namespace.nspname,
+                 procedure_namespace.nspname,
+                 type_namespace.nspname,
+                 constraint_namespace.nspname,
+                 rewrite_namespace.nspname,
+                 default_namespace.nspname
+               ) AS dependent_schema
+          FROM normal_dependencies AS dependency_row
+          LEFT JOIN pg_class AS dependent_class
+            ON dependency_row.classid = 'pg_class'::regclass
+           AND dependent_class.oid = dependency_row.objid
+          LEFT JOIN pg_namespace AS class_namespace
+            ON class_namespace.oid = dependent_class.relnamespace
+          LEFT JOIN pg_proc AS dependent_procedure
+            ON dependency_row.classid = 'pg_proc'::regclass
+           AND dependent_procedure.oid = dependency_row.objid
+          LEFT JOIN pg_namespace AS procedure_namespace
+            ON procedure_namespace.oid = dependent_procedure.pronamespace
+          LEFT JOIN pg_type AS dependent_type
+            ON dependency_row.classid = 'pg_type'::regclass
+           AND dependent_type.oid = dependency_row.objid
+          LEFT JOIN pg_namespace AS type_namespace
+            ON type_namespace.oid = dependent_type.typnamespace
+          LEFT JOIN pg_constraint AS dependent_constraint
+            ON dependency_row.classid = 'pg_constraint'::regclass
+           AND dependent_constraint.oid = dependency_row.objid
+          LEFT JOIN pg_namespace AS constraint_namespace
+            ON constraint_namespace.oid = dependent_constraint.connamespace
+          LEFT JOIN pg_rewrite AS dependent_rewrite
+            ON dependency_row.classid = 'pg_rewrite'::regclass
+           AND dependent_rewrite.oid = dependency_row.objid
+          LEFT JOIN pg_class AS rewrite_class
+            ON rewrite_class.oid = dependent_rewrite.ev_class
+          LEFT JOIN pg_namespace AS rewrite_namespace
+            ON rewrite_namespace.oid = rewrite_class.relnamespace
+          LEFT JOIN pg_attrdef AS dependent_default
+            ON dependency_row.classid = 'pg_attrdef'::regclass
+           AND dependent_default.oid = dependency_row.objid
+          LEFT JOIN pg_class AS default_class
+            ON default_class.oid = dependent_default.adrelid
+          LEFT JOIN pg_namespace AS default_namespace
+            ON default_namespace.oid = default_class.relnamespace
+      )
+      SELECT count(*)::text AS count
+        FROM resolved_dependencies
+       WHERE dependent_schema IS NULL
+          OR (
+            dependent_schema <> 'migration'
+            AND dependent_schema <> 'pg_catalog'
+            AND dependent_schema <> 'information_schema'
+            AND dependent_schema NOT LIKE 'pg_toast%'
+          )
+    `;
 const EXPECTED_MIGRATION_CLASS_OBJECT_COUNT =
   EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS.filter((object) =>
     object.startsWith("class:"),
@@ -635,11 +749,25 @@ function normalizeMigrationAttemptFailure(
   error: unknown,
   fallbackStage: NeonTestMigrationFailureStage,
 ): NeonTestMigrationAttemptError {
-  return error instanceof NeonTestMigrationAttemptError
-    ? error
-    : new NeonTestMigrationAttemptError(
-        migrationFailureEvidence(fallbackStage, undefined, error),
-      );
+  if (error instanceof NeonTestMigrationAttemptError) return error;
+  if (error instanceof NeonTestMigrationRunError) {
+    return new NeonTestMigrationAttemptError(
+      error.originalFailure,
+      error.transactionRollbackFailure,
+    );
+  }
+  return new NeonTestMigrationAttemptError(
+    migrationFailureEvidence(fallbackStage, undefined, error),
+  );
+}
+
+export function createNeonTestMigrationRunError(
+  stage: NeonTestMigrationFailureStage,
+  error?: unknown,
+): NeonTestMigrationRunError {
+  return new NeonTestMigrationRunError(
+    migrationFailureEvidence(stage, undefined, error),
+  );
 }
 
 function migrationFailureEvidence(
@@ -658,8 +786,18 @@ function migrationFailureEvidence(
 function readPostgresCode(error: unknown): string | undefined {
   let current = error;
   for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
-    const code = (current as Error & { code?: unknown }).code;
-    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+    const databaseError = current as Error & {
+      code?: unknown;
+      severity?: unknown;
+    };
+    const code = databaseError.code;
+    if (
+      POSTGRES_ERROR_SEVERITIES.has(String(databaseError.severity)) &&
+      typeof code === "string" &&
+      /^[0-9A-Z]{5}$/.test(code)
+    ) {
+      return code;
+    }
     current = current.cause;
   }
   return undefined;
@@ -754,20 +892,20 @@ async function inspectNeonTestDatabase(
     }>(`
       SELECT current_database() AS database_name,
              current_user AS user_name,
-             pg_get_userbyid(database.datdba) AS database_owner,
-             role.rolname,
-             role.rolcanlogin,
-             role.rolsuper,
-             role.rolcreaterole,
-             role.rolcreatedb,
-             role.rolinherit,
-             role.rolreplication,
-             role.rolbypassrls,
-             pg_has_role(role.rolname, 'neon_superuser', 'member')
+             pg_get_userbyid(database_row.datdba) AS database_owner,
+             role_row.rolname,
+             role_row.rolcanlogin,
+             role_row.rolsuper,
+             role_row.rolcreaterole,
+             role_row.rolcreatedb,
+             role_row.rolinherit,
+             role_row.rolreplication,
+             role_row.rolbypassrls,
+             pg_has_role(role_row.rolname, 'neon_superuser', 'member')
                AS member_of_neon_superuser
-        FROM pg_database AS database
-        JOIN pg_roles AS role ON role.rolname = current_user
-       WHERE database.datname = current_database()
+        FROM pg_database AS database_row
+        JOIN pg_roles AS role_row ON role_row.rolname = current_user
+       WHERE database_row.datname = current_database()
     `);
     const current = identity.rows[0];
     if (!current) {
@@ -785,18 +923,18 @@ async function inspectNeonTestDatabase(
       rolbypassrls: boolean;
       member_of_neon_superuser: boolean;
     }>(`
-      SELECT role.rolname,
-             role.rolcanlogin,
-             role.rolsuper,
-             role.rolcreaterole,
-             role.rolcreatedb,
-             role.rolinherit,
-             role.rolreplication,
-             role.rolbypassrls,
-             pg_has_role(role.rolname, 'neon_superuser', 'member')
+      SELECT role_row.rolname,
+             role_row.rolcanlogin,
+             role_row.rolsuper,
+             role_row.rolcreaterole,
+             role_row.rolcreatedb,
+             role_row.rolinherit,
+             role_row.rolreplication,
+             role_row.rolbypassrls,
+             pg_has_role(role_row.rolname, 'neon_superuser', 'member')
                AS member_of_neon_superuser
-        FROM pg_roles AS role
-       WHERE role.rolname = 'rds_iam'
+        FROM pg_roles AS role_row
+       WHERE role_row.rolname = 'rds_iam'
     `);
     const adminOption = await client.query<{ has_admin_option: boolean }>(`
       SELECT EXISTS (
@@ -813,9 +951,9 @@ async function inspectNeonTestDatabase(
       SELECT count(*)::text AS count FROM pg_tables WHERE schemaname = 'public'
     `);
     const migrationSchema = await client.query<{ schema_owner: string }>(`
-      SELECT pg_get_userbyid(namespace.nspowner) AS schema_owner
-        FROM pg_namespace AS namespace
-       WHERE namespace.nspname = 'migration'
+      SELECT pg_get_userbyid(namespace_row.nspowner) AS schema_owner
+        FROM pg_namespace AS namespace_row
+       WHERE namespace_row.nspname = 'migration'
     `);
     const ledger = await client.query<{ ledger: string | null }>(
       "SELECT to_regclass('migration.schema_migrations')::text AS ledger",
@@ -831,123 +969,24 @@ async function inspectNeonTestDatabase(
     const metadataObjects = await client.query<{
       object_key: string;
       object_owner: string | null;
-    }>(`
-      SELECT object_key, object_owner
-        FROM (
-          SELECT 'class:' || class.relkind::text || ':' || class.relname AS object_key,
-                 pg_get_userbyid(class.relowner) AS object_owner
-            FROM pg_class AS class
-            JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
-           WHERE namespace.nspname = 'migration'
-          UNION ALL
-          SELECT 'constraint:' || constraint.contype::text || ':' || constraint.conname
-                   AS object_key,
-                 NULL::text AS object_owner
-            FROM pg_constraint AS constraint
-            JOIN pg_namespace AS namespace ON namespace.oid = constraint.connamespace
-           WHERE namespace.nspname = 'migration'
-        ) AS metadata
-       ORDER BY object_key COLLATE "C"
-    `);
-    const externalDependencies = await client.query<{ count: string }>(`
-      WITH migration_references AS (
-        SELECT 'pg_namespace'::regclass::oid AS refclassid,
-               namespace.oid AS refobjid
-          FROM pg_namespace AS namespace
-         WHERE namespace.nspname = 'migration'
-        UNION ALL
-        SELECT 'pg_class'::regclass::oid,
-               class.oid
-          FROM pg_class AS class
-          JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
-         WHERE namespace.nspname = 'migration'
-        UNION ALL
-        SELECT 'pg_constraint'::regclass::oid,
-               constraint.oid
-          FROM pg_constraint AS constraint
-          JOIN pg_namespace AS namespace ON namespace.oid = constraint.connamespace
-         WHERE namespace.nspname = 'migration'
-      ), normal_dependencies AS (
-        SELECT DISTINCT dependency.classid,
-                        dependency.objid,
-                        dependency.objsubid
-          FROM pg_depend AS dependency
-          JOIN migration_references AS reference
-            ON reference.refclassid = dependency.refclassid
-           AND reference.refobjid = dependency.refobjid
-         WHERE dependency.deptype = 'n'
-      ), resolved_dependencies AS (
-        SELECT dependency.classid,
-               dependency.objid,
-               dependency.objsubid,
-               COALESCE(
-                 class_namespace.nspname,
-                 procedure_namespace.nspname,
-                 type_namespace.nspname,
-                 constraint_namespace.nspname,
-                 rewrite_namespace.nspname,
-                 default_namespace.nspname
-               ) AS dependent_schema
-          FROM normal_dependencies AS dependency
-          LEFT JOIN pg_class AS dependent_class
-            ON dependency.classid = 'pg_class'::regclass
-           AND dependent_class.oid = dependency.objid
-          LEFT JOIN pg_namespace AS class_namespace
-            ON class_namespace.oid = dependent_class.relnamespace
-          LEFT JOIN pg_proc AS dependent_procedure
-            ON dependency.classid = 'pg_proc'::regclass
-           AND dependent_procedure.oid = dependency.objid
-          LEFT JOIN pg_namespace AS procedure_namespace
-            ON procedure_namespace.oid = dependent_procedure.pronamespace
-          LEFT JOIN pg_type AS dependent_type
-            ON dependency.classid = 'pg_type'::regclass
-           AND dependent_type.oid = dependency.objid
-          LEFT JOIN pg_namespace AS type_namespace
-            ON type_namespace.oid = dependent_type.typnamespace
-          LEFT JOIN pg_constraint AS dependent_constraint
-            ON dependency.classid = 'pg_constraint'::regclass
-           AND dependent_constraint.oid = dependency.objid
-          LEFT JOIN pg_namespace AS constraint_namespace
-            ON constraint_namespace.oid = dependent_constraint.connamespace
-          LEFT JOIN pg_rewrite AS dependent_rewrite
-            ON dependency.classid = 'pg_rewrite'::regclass
-           AND dependent_rewrite.oid = dependency.objid
-          LEFT JOIN pg_class AS rewrite_class
-            ON rewrite_class.oid = dependent_rewrite.ev_class
-          LEFT JOIN pg_namespace AS rewrite_namespace
-            ON rewrite_namespace.oid = rewrite_class.relnamespace
-          LEFT JOIN pg_attrdef AS dependent_default
-            ON dependency.classid = 'pg_attrdef'::regclass
-           AND dependent_default.oid = dependency.objid
-          LEFT JOIN pg_class AS default_class
-            ON default_class.oid = dependent_default.adrelid
-          LEFT JOIN pg_namespace AS default_namespace
-            ON default_namespace.oid = default_class.relnamespace
-      )
-      SELECT count(*)::text AS count
-        FROM resolved_dependencies
-       WHERE dependent_schema IS NULL
-          OR (
-            dependent_schema <> 'migration'
-            AND dependent_schema <> 'pg_catalog'
-            AND dependent_schema <> 'information_schema'
-            AND dependent_schema NOT LIKE 'pg_toast%'
-          )
-    `);
+    }>(MIGRATION_METADATA_INVENTORY_SQL);
+    const externalDependencies = await client.query<{ count: string }>(
+      MIGRATION_EXTERNAL_DEPENDENCY_SQL,
+    );
     const roles = await client.query<RoleQueryRow>(`
-      SELECT role.rolname,
-             role.rolcanlogin,
-             role.rolsuper,
-             role.rolcreaterole,
-             role.rolcreatedb,
-             role.rolinherit,
-             role.rolreplication,
-             role.rolbypassrls,
-             pg_has_role(role.rolname, 'neon_superuser', 'member')
+      SELECT role_row.rolname,
+             role_row.rolcanlogin,
+             role_row.rolsuper,
+             role_row.rolcreaterole,
+             role_row.rolcreatedb,
+             role_row.rolinherit,
+             role_row.rolreplication,
+             role_row.rolbypassrls,
+             pg_has_role(role_row.rolname, 'neon_superuser', 'member')
                AS member_of_neon_superuser
-        FROM pg_roles AS role
-       WHERE role.rolname = ANY($1::text[])
-       ORDER BY role.rolname
+        FROM pg_roles AS role_row
+       WHERE role_row.rolname = ANY($1::text[])
+       ORDER BY role_row.rolname
     `, [MIGRATION_CREATED_ROLES]);
     const staleSchemas = await client.query<{ schema_name: string }>(`
       SELECT schema_name
@@ -1038,16 +1077,61 @@ async function runNeonTestTransactionalDryRun(
   }
 }
 
+async function readMigrationManifestForStage(
+  stage:
+  | "preflight_manifest"
+  | "rollback_manifest"
+  | "postflight_manifest",
+): Promise<MigrationManifest> {
+  try {
+    const manifest = await verifyOrderedMigrationManifest();
+    assertNeonTestManifest(manifest);
+    return manifest;
+  } catch (error) {
+    throw createNeonTestMigrationRunError(stage, error);
+  }
+}
+
+async function inspectNeonTestDatabaseForStage(
+  target: NeonTestMigrationTarget,
+  stage:
+  | "preflight_database_inspection"
+  | "rollback_database_inspection"
+  | "postflight_database_inspection",
+): Promise<NeonTestDatabaseState> {
+  try {
+    return await inspectNeonTestDatabase(target);
+  } catch (error) {
+    throw createNeonTestMigrationRunError(stage, error);
+  }
+}
+
+function assertManifestUnchangedForStage(
+  expected: MigrationManifest,
+  actual: MigrationManifest,
+  stage: "rollback_manifest" | "postflight_manifest",
+): void {
+  if (!manifestsEqual(expected, actual)) {
+    throw createNeonTestMigrationRunError(stage);
+  }
+}
+
 async function runCli(
   arguments_: readonly string[],
   environment: RuntimeEnvironment,
 ): Promise<void> {
   const mode = readNeonTestMigrationMode(arguments_);
   const target = readNeonTestMigrationTarget(environment);
-  const manifestBefore = await verifyOrderedMigrationManifest();
-  assertNeonTestManifest(manifestBefore);
-  const before = await inspectNeonTestDatabase(target);
-  validateNeonTestPreflight(before);
+  const manifestBefore = await readMigrationManifestForStage("preflight_manifest");
+  const before = await inspectNeonTestDatabaseForStage(
+    target,
+    "preflight_database_inspection",
+  );
+  try {
+    validateNeonTestPreflight(before);
+  } catch (error) {
+    throw createNeonTestMigrationRunError("preflight_database_inspection", error);
+  }
 
   await executeNeonTestMigrationRun(mode, {
     runMigration: async () => {
@@ -1058,13 +1142,16 @@ async function runCli(
       }
     },
     verifyRollbackAfterFailure: async () => {
-      const manifestAfterFailure = await verifyOrderedMigrationManifest();
-      if (!manifestsEqual(manifestBefore, manifestAfterFailure)) {
-        throw new NeonTestMigrationSafetyError(
-          "Migration files changed during execution; stop without retry.",
-        );
-      }
-      const failed = await inspectNeonTestDatabase(target);
+      const manifestAfterFailure = await readMigrationManifestForStage("rollback_manifest");
+      assertManifestUnchangedForStage(
+        manifestBefore,
+        manifestAfterFailure,
+        "rollback_manifest",
+      );
+      const failed = await inspectNeonTestDatabaseForStage(
+        target,
+        "rollback_database_inspection",
+      );
       const rollback = validateNeonTestRollback(failed);
       if (mode === "dry-run" && rollback.state !== "clean") {
         throw new NeonTestMigrationAttemptError(
@@ -1075,22 +1162,29 @@ async function runCli(
     },
   });
 
-  const manifestAfter = await verifyOrderedMigrationManifest();
-  if (!manifestsEqual(manifestBefore, manifestAfter)) {
-    throw new NeonTestMigrationSafetyError(
-      "Migration files changed during execution; stop without retry.",
-    );
-  }
-  const after = await inspectNeonTestDatabase(target);
-  if (mode === "apply") {
-    validateNeonTestApplyResult(after, manifestAfter);
-  } else {
-    const rollback = validateNeonTestRollback(after);
-    if (rollback.state !== "clean") {
-      throw new NeonTestMigrationSafetyError(
-        "Dry-run left database metadata behind.",
-      );
+  const manifestAfter = await readMigrationManifestForStage("postflight_manifest");
+  assertManifestUnchangedForStage(
+    manifestBefore,
+    manifestAfter,
+    "postflight_manifest",
+  );
+  const after = await inspectNeonTestDatabaseForStage(
+    target,
+    "postflight_database_inspection",
+  );
+  try {
+    if (mode === "apply") {
+      validateNeonTestApplyResult(after, manifestAfter);
+    } else {
+      const rollback = validateNeonTestRollback(after);
+      if (rollback.state !== "clean") {
+        throw new NeonTestMigrationSafetyError(
+          "Dry-run left database metadata behind.",
+        );
+      }
     }
+  } catch (error) {
+    throw createNeonTestMigrationRunError("postflight_database_inspection", error);
   }
   process.stdout.write(
     `${JSON.stringify(createNeonTestMigrationEvidence(mode, manifestAfter, before, after), null, 2)}\n`,
@@ -1101,29 +1195,12 @@ function hasValue(value: string | undefined): boolean {
   return value !== undefined && value.trim() !== "";
 }
 
-function redactError(error: unknown, environment: RuntimeEnvironment): string {
+function redactError(error: unknown): string {
   const migrationFailure = formatNeonTestMigrationFailure(error);
   if (migrationFailure) return migrationFailure;
-  let message = error instanceof Error ? error.message : "Neon migration failed.";
-  const secrets = new Set<string>();
-  for (const name of REDACTED_ENVIRONMENT_VARIABLES) {
-    const value = environment[name];
-    if (hasValue(value)) secrets.add(value!.trim());
-  }
-  const url = environment.TEST_MIGRATION_DATABASE_URL?.trim();
-  if (url) {
-    try {
-      const parsed = new URL(url);
-      secrets.add(parsed.hostname);
-      secrets.add(decodeURIComponent(parsed.password));
-    } catch {
-      // The raw invalid value is already included above.
-    }
-  }
-  for (const secret of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) {
-    message = message.replaceAll(secret, "[redacted]");
-  }
-  return message;
+  return JSON.stringify({
+    original_failure: { failure_stage: "cli" },
+  });
 }
 
 const isMainModule =
@@ -1131,7 +1208,7 @@ const isMainModule =
 
 if (isMainModule) {
   runCli(process.argv.slice(2), process.env).catch((error: unknown) => {
-    process.stderr.write(`${redactError(error, process.env)}\n`);
+    process.stderr.write(`${redactError(error)}\n`);
     process.exitCode = 1;
   });
 }

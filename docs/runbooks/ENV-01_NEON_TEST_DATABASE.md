@@ -24,6 +24,7 @@
 - 上一次 apply 已获批准并执行，但业务 SQL 失败；只读证据为 0 ledger rows、0 public tables、0 migration roles、0 stale dry-run schemas；
 - 上一次失败留下的 exact empty tool metadata 已按独立审批完成受控 cleanup；
 - cleanup 后由独立新连接确认 `migration` schema/ledger 均不存在、public tables 为 0、migration roles 为 0、stale dry-run schemas 为 0；
+- 最近一次真实事务 dry-run 在事务开始前的 preflight inspection 因 metadata SQL 使用 PostgreSQL 保留字别名而停止，未执行 27 个 SQL、DDL 或 DML；现已改用安全别名，并将 preflight/postflight inspection 异常固定为脱敏结构化 evidence；
 - 修正后的真实事务 migration dry-run 尚未连接数据库执行，seed dry-run/apply 均未执行。
 
 ## 2. 审批门
@@ -149,6 +150,8 @@ runner 在连接后强制检查：
 apply 执行策略固定为 `node-pg-migrate@9.0.0`、`checkOrder=true`、`singleTransaction=true`、`advisoryLockMode=fail`、`noLock=false`。runner 在执行前后都重新验证 manifest。
 
 修正后的 dry-run 不再使用 `node-pg-migrate dryRun`，因为该模式只打印 SQL，不能证明 27 个冻结 SQL 文件可由 PostgreSQL 执行。新 dry-run 使用一个显式事务和 transaction-scoped advisory lock，严格按 manifest 顺序执行 27 个文件；每个文件在执行前后都重新读取并校验 SHA-256，并把整个文件作为一次 query 交给 PostgreSQL，不自行拆分 SQL。无论成功或失败都只执行 `ROLLBACK`，不执行 `COMMIT`，也不创建正式 migration ledger。事务结束后使用独立连接复验 public tables、migration roles、正式 ledger 和 dry-run residue 均与 preflight 空状态一致。
+
+preflight、rollback verification 和 postflight 的 manifest/database inspection 均使用固定 `failure_stage`，只保留可验证的 migration name（若已确定）和合法 SQLSTATE；PostgreSQL message、detail、query、where、stack、hostname、连接串和 secret 不进入 CLI evidence。
 
 ### 6.1 上一次 apply 事故与 metadata 分类
 
