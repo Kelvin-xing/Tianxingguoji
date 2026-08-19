@@ -1,13 +1,16 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
-import { runner, type RunnerOption } from "node-pg-migrate";
-import { Client } from "pg";
+import { PG_MIGRATE_LOCK_ID, runner, type RunnerOption } from "node-pg-migrate";
+import { Client, type ClientConfig } from "pg";
 
 import { MIGRATION_CONFIG } from "../../db/migrate.config.ts";
 import {
   EXPECTED_MIGRATION_COUNT,
+  MIGRATION_DIRECTORY,
   NEON_TEST_DATABASE,
   NEON_TEST_MIGRATION_LOGIN,
   assertNeonTestManifest,
@@ -74,8 +77,36 @@ type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type NeonTestMigrationExecution = Readonly<{
   runMigration(): Promise<void>;
-  cleanupDryRun(): Promise<void>;
-  verifyRollbackAfterFailure(): Promise<void>;
+  verifyRollbackAfterFailure(): Promise<NeonTestRollbackVerification>;
+}>;
+
+export type NeonTestMigrationFailureStage =
+  | "transaction_begin"
+  | "advisory_lock"
+  | "migration_manifest_before"
+  | "migration_sql"
+  | "migration_manifest_after"
+  | "transaction_rollback"
+  | "dry_run_execution"
+  | "apply_runner"
+  | "rollback_state_verification";
+
+export type NeonTestMigrationFailureEvidence = Readonly<{
+  failure_stage: NeonTestMigrationFailureStage;
+  migration_name?: string;
+  postgres_code?: string;
+}>;
+
+export type NeonTestRollbackVerification = Readonly<{
+  state: "clean" | "metadata_cleanup_required";
+}>;
+
+export type NeonTestTransactionalDryRunExecution = Readonly<{
+  query(
+    sql: string,
+    parameters?: readonly unknown[],
+  ): Promise<Readonly<{ rows: readonly Record<string, unknown>[] }>>;
+  readMigration(name: string): Promise<Uint8Array>;
 }>;
 
 export type NeonTestMigrationTarget = Readonly<{
@@ -106,8 +137,13 @@ export type NeonTestDatabaseState = Readonly<{
   rdsIamRole: RoleState | null;
   hasRdsIamAdminOption: boolean;
   publicTableCount: number;
+  migrationSchemaExists: boolean;
+  migrationSchemaOwner: string | null;
   ledgerExists: boolean;
   appliedMigrations: readonly string[];
+  migrationMetadataObjects: readonly string[];
+  migrationClassObjectOwners: readonly string[];
+  migrationExternalUserDependencyCount: number;
   existingMigrationRoles: readonly string[];
   migrationRoles: readonly RoleState[];
   staleDryRunSchemas: readonly string[];
@@ -119,6 +155,59 @@ export class NeonTestMigrationSafetyError extends Error {
     this.name = "NeonTestMigrationSafetyError";
   }
 }
+
+class NeonTestMigrationAttemptError extends NeonTestMigrationSafetyError {
+  readonly originalFailure: NeonTestMigrationFailureEvidence;
+  readonly transactionRollbackFailure?: NeonTestMigrationFailureEvidence;
+
+  constructor(
+    originalFailure: NeonTestMigrationFailureEvidence,
+    transactionRollbackFailure?: NeonTestMigrationFailureEvidence,
+  ) {
+    super("Migration attempt failed.");
+    this.name = "NeonTestMigrationAttemptError";
+    this.originalFailure = originalFailure;
+    this.transactionRollbackFailure = transactionRollbackFailure;
+  }
+}
+
+export class NeonTestMigrationRunError extends NeonTestMigrationSafetyError {
+  readonly originalFailure: NeonTestMigrationFailureEvidence;
+  readonly rollbackState?: NeonTestRollbackVerification["state"];
+  readonly transactionRollbackFailure?: NeonTestMigrationFailureEvidence;
+  readonly rollbackVerificationFailure?: NeonTestMigrationFailureEvidence;
+
+  constructor(
+    originalFailure: NeonTestMigrationFailureEvidence,
+    rollbackState?: NeonTestRollbackVerification["state"],
+    transactionRollbackFailure?: NeonTestMigrationFailureEvidence,
+    rollbackVerificationFailure?: NeonTestMigrationFailureEvidence,
+  ) {
+    super(
+      rollbackVerificationFailure
+        ? "Migration rollback verification is incomplete; architecture escalation required."
+        : rollbackState === "metadata_cleanup_required"
+          ? "Migration execution failed; business rollback passed and metadata cleanup is required."
+          : "Migration execution failed and business rollback verification passed; stop without retry.",
+    );
+    this.name = "NeonTestMigrationRunError";
+    this.originalFailure = originalFailure;
+    this.rollbackState = rollbackState;
+    this.transactionRollbackFailure = transactionRollbackFailure;
+    this.rollbackVerificationFailure = rollbackVerificationFailure;
+  }
+}
+
+export const EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS = Object.freeze([
+  "class:S:schema_migrations_id_seq",
+  "class:i:schema_migrations_pkey",
+  "class:r:schema_migrations",
+  "constraint:p:schema_migrations_pkey",
+] as const);
+const EXPECTED_MIGRATION_CLASS_OBJECT_COUNT =
+  EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS.filter((object) =>
+    object.startsWith("class:"),
+  ).length;
 
 export function readNeonTestMigrationMode(
   arguments_: readonly string[],
@@ -202,14 +291,9 @@ export function readNeonTestMigrationTarget(
   });
 }
 
-export function createNeonTestMigrationOptions(
+export function createNeonTestMigrationApplyOptions(
   target: NeonTestMigrationTarget,
-  mode: NeonTestMigrationMode,
-  dryRunSchema = `${DRY_RUN_SCHEMA_PREFIX}contract`,
 ): RunnerOption {
-  if (mode === "dry-run" && !isDryRunSchema(dryRunSchema)) {
-    throw new NeonTestMigrationSafetyError("Dry-run migration schema name is invalid.");
-  }
   return {
     databaseUrl: {
       connectionString: target.connectionString,
@@ -221,7 +305,7 @@ export function createNeonTestMigrationOptions(
     dir: MIGRATION_CONFIG.migrationsGlob,
     useGlob: true,
     schema: MIGRATION_CONFIG.schema,
-    migrationsSchema: mode === "dry-run" ? dryRunSchema : MIGRATION_CONFIG.migrationsSchema,
+    migrationsSchema: MIGRATION_CONFIG.migrationsSchema,
     migrationsTable: MIGRATION_CONFIG.migrationsTable,
     createMigrationsSchema: true,
     direction: "up",
@@ -229,9 +313,23 @@ export function createNeonTestMigrationOptions(
     singleTransaction: true,
     noLock: false,
     advisoryLockMode: "fail",
-    dryRun: mode === "dry-run",
+    dryRun: false,
     migrationLoaderStrategies: [{ extensions: [".sql"], loader: "sql" }],
     logger: SILENT_LOGGER,
+  };
+}
+
+export function createNeonTestDryRunClientOptions(
+  target: NeonTestMigrationTarget,
+): ClientConfig {
+  return {
+    connectionString: target.connectionString,
+    application_name: "tianxing-neon-test-migration-dry-run",
+    connectionTimeoutMillis: 5_000,
+    query_timeout: 10_000,
+    statement_timeout: MIGRATION_CONFIG.statementTimeoutMs,
+    lock_timeout: MIGRATION_CONFIG.lockTimeoutMs,
+    ssl: { rejectUnauthorized: true },
   };
 }
 
@@ -272,9 +370,15 @@ export function validateNeonTestPreflight(state: NeonTestDatabaseState): void {
   }
   if (
     state.publicTableCount !== 0 ||
+    state.migrationSchemaExists ||
+    state.migrationSchemaOwner !== null ||
     state.ledgerExists ||
     state.appliedMigrations.length !== 0 ||
+    state.migrationMetadataObjects.length !== 0 ||
+    state.migrationClassObjectOwners.length !== 0 ||
+    state.migrationExternalUserDependencyCount !== 0 ||
     state.existingMigrationRoles.length !== 0 ||
+    state.migrationRoles.length !== 0 ||
     state.staleDryRunSchemas.length !== 0
   ) {
     throw new NeonTestMigrationSafetyError("Neon migration target is not an empty bootstrap database.");
@@ -289,6 +393,12 @@ export function validateNeonTestApplyResult(
   const expectedLedger = manifest.migrations.map(({ name }) => name.replace(/\.sql$/, ""));
   if (
     !state.ledgerExists ||
+    !state.migrationSchemaExists ||
+    !hasExpectedMigrationMetadataAuthority(state) ||
+    !arraysEqual(
+      state.migrationMetadataObjects,
+      EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS,
+    ) ||
     state.publicTableCount !== EXPECTED_PUBLIC_TABLES ||
     state.appliedMigrations.length !== EXPECTED_MIGRATION_COUNT ||
     state.appliedMigrations.some((name, index) => name !== expectedLedger[index]) ||
@@ -317,15 +427,129 @@ export function validateNeonTestApplyResult(
   }
 }
 
-export function validateNeonTestRollback(state: NeonTestDatabaseState): void {
+export function validateNeonTestRollback(
+  state: NeonTestDatabaseState,
+): NeonTestRollbackVerification {
   if (
-    state.ledgerExists ||
     state.appliedMigrations.length !== 0 ||
     state.publicTableCount !== 0 ||
-    state.existingMigrationRoles.length !== 0
+    state.existingMigrationRoles.length !== 0 ||
+    state.migrationRoles.length !== 0 ||
+    state.staleDryRunSchemas.length !== 0
   ) {
-    throw new NeonTestMigrationSafetyError(
-      "Migration rollback verification failed; stop without retry or cleanup.",
+    throw new NeonTestMigrationAttemptError(
+      migrationFailureEvidence("rollback_state_verification"),
+    );
+  }
+
+  if (
+    !state.migrationSchemaExists &&
+    state.migrationSchemaOwner === null &&
+    !state.ledgerExists &&
+    state.migrationMetadataObjects.length === 0 &&
+    state.migrationClassObjectOwners.length === 0 &&
+    state.migrationExternalUserDependencyCount === 0
+  ) {
+    return Object.freeze({ state: "clean" });
+  }
+
+  if (
+    state.migrationSchemaExists &&
+    state.ledgerExists &&
+    hasExpectedMigrationMetadataAuthority(state) &&
+    arraysEqual(
+      state.migrationMetadataObjects,
+      EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS,
+    )
+  ) {
+    return Object.freeze({ state: "metadata_cleanup_required" });
+  }
+
+  throw new NeonTestMigrationAttemptError(
+    migrationFailureEvidence("rollback_state_verification"),
+  );
+}
+
+export async function executeNeonTestTransactionalDryRun(
+  manifest: MigrationManifest,
+  execution: NeonTestTransactionalDryRunExecution,
+): Promise<void> {
+  assertNeonTestManifest(manifest);
+
+  try {
+    await execution.query("BEGIN");
+  } catch (error) {
+    throw new NeonTestMigrationAttemptError(
+      migrationFailureEvidence("transaction_begin", undefined, error),
+    );
+  }
+
+  let originalFailure: NeonTestMigrationFailureEvidence | undefined;
+  let transactionRollbackFailure: NeonTestMigrationFailureEvidence | undefined;
+  try {
+    let lock: Readonly<{ rows: readonly Record<string, unknown>[] }>;
+    try {
+      lock = await execution.query(
+        "SELECT pg_try_advisory_xact_lock($1::bigint) AS lock_obtained",
+        [String(PG_MIGRATE_LOCK_ID)],
+      );
+    } catch (error) {
+      throw new NeonTestMigrationAttemptError(
+        migrationFailureEvidence("advisory_lock", undefined, error),
+      );
+    }
+    if (lock.rows[0]?.lock_obtained !== true) {
+      throw new NeonTestMigrationAttemptError(
+        migrationFailureEvidence("advisory_lock"),
+      );
+    }
+
+    for (const entry of manifest.migrations) {
+      const before = await readVerifiedMigration(
+        execution,
+        entry.name,
+        entry.sha256,
+        "migration_manifest_before",
+      );
+      try {
+        await execution.query(Buffer.from(before).toString("utf8"));
+      } catch (error) {
+        throw new NeonTestMigrationAttemptError(
+          migrationFailureEvidence("migration_sql", entry.name, error),
+        );
+      }
+      await readVerifiedMigration(
+        execution,
+        entry.name,
+        entry.sha256,
+        "migration_manifest_after",
+      );
+    }
+  } catch (error) {
+    const attempt = normalizeMigrationAttemptFailure(error, "dry_run_execution");
+    originalFailure = attempt.originalFailure;
+    transactionRollbackFailure = attempt.transactionRollbackFailure;
+  }
+
+  try {
+    await execution.query("ROLLBACK");
+  } catch (error) {
+    const rollbackFailure = migrationFailureEvidence(
+      "transaction_rollback",
+      undefined,
+      error,
+    );
+    if (!originalFailure) {
+      originalFailure = rollbackFailure;
+    } else {
+      transactionRollbackFailure = rollbackFailure;
+    }
+  }
+
+  if (originalFailure) {
+    throw new NeonTestMigrationAttemptError(
+      originalFailure,
+      transactionRollbackFailure,
     );
   }
 }
@@ -334,60 +558,133 @@ export async function executeNeonTestMigrationRun(
   mode: NeonTestMigrationMode,
   execution: NeonTestMigrationExecution,
 ): Promise<void> {
-  let migrationFailed = false;
-  let migrationFailure: unknown;
+  let migrationFailure: NeonTestMigrationAttemptError | undefined;
 
   try {
     await execution.runMigration();
   } catch (error) {
-    migrationFailed = true;
-    migrationFailure = error;
+    migrationFailure = normalizeMigrationAttemptFailure(
+      error,
+      mode === "dry-run" ? "dry_run_execution" : "apply_runner",
+    );
   }
 
-  if (!migrationFailed) {
-    if (mode === "dry-run") {
-      try {
-        await execution.cleanupDryRun();
-      } catch (error) {
-        throw new NeonTestMigrationSafetyError(
-          "Dry-run cleanup failed; stop without retry.",
-          { cause: error },
-        );
-      }
-    }
-    return;
-  }
+  if (!migrationFailure) return;
 
-  let cleanupFailed = false;
-  let cleanupFailure: unknown;
-  if (mode === "dry-run") {
-    try {
-      await execution.cleanupDryRun();
-    } catch (error) {
-      cleanupFailed = true;
-      cleanupFailure = error;
-    }
-  }
-
+  let rollbackState: NeonTestRollbackVerification;
   try {
-    await execution.verifyRollbackAfterFailure();
+    rollbackState = await execution.verifyRollbackAfterFailure();
   } catch (error) {
-    throw new NeonTestMigrationSafetyError(
-      "Migration rollback or state verification is incomplete; architecture escalation required.",
-      { cause: error },
+    const verificationFailure = normalizeMigrationAttemptFailure(
+      error,
+      "rollback_state_verification",
+    );
+    throw new NeonTestMigrationRunError(
+      migrationFailure.originalFailure,
+      undefined,
+      migrationFailure.transactionRollbackFailure,
+      verificationFailure.originalFailure,
     );
   }
 
-  if (cleanupFailed) {
-    throw new NeonTestMigrationSafetyError(
-      "Migration execution failed; dry-run cleanup failed and state verification passed; stop without retry.",
-      { cause: cleanupFailure },
+  throw new NeonTestMigrationRunError(
+    migrationFailure.originalFailure,
+    rollbackState.state,
+    migrationFailure.transactionRollbackFailure,
+  );
+}
+
+export function formatNeonTestMigrationFailure(error: unknown): string | undefined {
+  if (!(error instanceof NeonTestMigrationRunError)) return undefined;
+  return JSON.stringify({
+    original_failure: error.originalFailure,
+    ...(error.transactionRollbackFailure
+      ? { transaction_rollback_failure: error.transactionRollbackFailure }
+      : {}),
+    ...(error.rollbackVerificationFailure
+      ? { rollback_verification_failure: error.rollbackVerificationFailure }
+      : {}),
+    ...(error.rollbackState ? { rollback_state: error.rollbackState } : {}),
+  });
+}
+
+async function readVerifiedMigration(
+  execution: NeonTestTransactionalDryRunExecution,
+  migrationName: string,
+  expectedSha256: string,
+  stage: "migration_manifest_before" | "migration_manifest_after",
+): Promise<Uint8Array> {
+  let contents: Uint8Array;
+  try {
+    contents = await execution.readMigration(migrationName);
+  } catch (error) {
+    throw new NeonTestMigrationAttemptError(
+      migrationFailureEvidence(stage, migrationName, error),
     );
   }
+  const actualSha256 = createHash("sha256").update(contents).digest("hex");
+  if (actualSha256 !== expectedSha256) {
+    throw new NeonTestMigrationAttemptError(
+      migrationFailureEvidence(stage, migrationName),
+    );
+  }
+  return contents;
+}
 
-  throw new NeonTestMigrationSafetyError(
-    "Migration execution failed and rollback verification passed; stop without retry.",
-    { cause: migrationFailure },
+function normalizeMigrationAttemptFailure(
+  error: unknown,
+  fallbackStage: NeonTestMigrationFailureStage,
+): NeonTestMigrationAttemptError {
+  return error instanceof NeonTestMigrationAttemptError
+    ? error
+    : new NeonTestMigrationAttemptError(
+        migrationFailureEvidence(fallbackStage, undefined, error),
+      );
+}
+
+function migrationFailureEvidence(
+  stage: NeonTestMigrationFailureStage,
+  migrationName?: string,
+  error?: unknown,
+): NeonTestMigrationFailureEvidence {
+  const postgresCode = readPostgresCode(error);
+  return Object.freeze({
+    failure_stage: stage,
+    ...(migrationName ? { migration_name: migrationName } : {}),
+    ...(postgresCode ? { postgres_code: postgresCode } : {}),
+  });
+}
+
+function readPostgresCode(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    const code = (current as Error & { code?: unknown }).code;
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+    current = current.cause;
+  }
+  return undefined;
+}
+
+function arraysEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function hasExpectedMigrationMetadataAuthority(
+  state: NeonTestDatabaseState,
+): boolean {
+  return (
+    state.migrationSchemaOwner === NEON_TEST_MIGRATION_LOGIN &&
+    state.migrationClassObjectOwners.length === EXPECTED_MIGRATION_CLASS_OBJECT_COUNT &&
+    state.migrationClassObjectOwners.every(
+      (owner) => owner === NEON_TEST_MIGRATION_LOGIN,
+    ) &&
+    state.migrationExternalUserDependencyCount === 0
   );
 }
 
@@ -515,6 +812,11 @@ async function inspectNeonTestDatabase(
     const publicTables = await client.query<{ count: string }>(`
       SELECT count(*)::text AS count FROM pg_tables WHERE schemaname = 'public'
     `);
+    const migrationSchema = await client.query<{ schema_owner: string }>(`
+      SELECT pg_get_userbyid(namespace.nspowner) AS schema_owner
+        FROM pg_namespace AS namespace
+       WHERE namespace.nspname = 'migration'
+    `);
     const ledger = await client.query<{ ledger: string | null }>(
       "SELECT to_regclass('migration.schema_migrations')::text AS ledger",
     );
@@ -526,6 +828,112 @@ async function inspectNeonTestDatabase(
           )
         ).rows.map(({ name }) => name)
       : [];
+    const metadataObjects = await client.query<{
+      object_key: string;
+      object_owner: string | null;
+    }>(`
+      SELECT object_key, object_owner
+        FROM (
+          SELECT 'class:' || class.relkind::text || ':' || class.relname AS object_key,
+                 pg_get_userbyid(class.relowner) AS object_owner
+            FROM pg_class AS class
+            JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
+           WHERE namespace.nspname = 'migration'
+          UNION ALL
+          SELECT 'constraint:' || constraint.contype::text || ':' || constraint.conname
+                   AS object_key,
+                 NULL::text AS object_owner
+            FROM pg_constraint AS constraint
+            JOIN pg_namespace AS namespace ON namespace.oid = constraint.connamespace
+           WHERE namespace.nspname = 'migration'
+        ) AS metadata
+       ORDER BY object_key COLLATE "C"
+    `);
+    const externalDependencies = await client.query<{ count: string }>(`
+      WITH migration_references AS (
+        SELECT 'pg_namespace'::regclass::oid AS refclassid,
+               namespace.oid AS refobjid
+          FROM pg_namespace AS namespace
+         WHERE namespace.nspname = 'migration'
+        UNION ALL
+        SELECT 'pg_class'::regclass::oid,
+               class.oid
+          FROM pg_class AS class
+          JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
+         WHERE namespace.nspname = 'migration'
+        UNION ALL
+        SELECT 'pg_constraint'::regclass::oid,
+               constraint.oid
+          FROM pg_constraint AS constraint
+          JOIN pg_namespace AS namespace ON namespace.oid = constraint.connamespace
+         WHERE namespace.nspname = 'migration'
+      ), normal_dependencies AS (
+        SELECT DISTINCT dependency.classid,
+                        dependency.objid,
+                        dependency.objsubid
+          FROM pg_depend AS dependency
+          JOIN migration_references AS reference
+            ON reference.refclassid = dependency.refclassid
+           AND reference.refobjid = dependency.refobjid
+         WHERE dependency.deptype = 'n'
+      ), resolved_dependencies AS (
+        SELECT dependency.classid,
+               dependency.objid,
+               dependency.objsubid,
+               COALESCE(
+                 class_namespace.nspname,
+                 procedure_namespace.nspname,
+                 type_namespace.nspname,
+                 constraint_namespace.nspname,
+                 rewrite_namespace.nspname,
+                 default_namespace.nspname
+               ) AS dependent_schema
+          FROM normal_dependencies AS dependency
+          LEFT JOIN pg_class AS dependent_class
+            ON dependency.classid = 'pg_class'::regclass
+           AND dependent_class.oid = dependency.objid
+          LEFT JOIN pg_namespace AS class_namespace
+            ON class_namespace.oid = dependent_class.relnamespace
+          LEFT JOIN pg_proc AS dependent_procedure
+            ON dependency.classid = 'pg_proc'::regclass
+           AND dependent_procedure.oid = dependency.objid
+          LEFT JOIN pg_namespace AS procedure_namespace
+            ON procedure_namespace.oid = dependent_procedure.pronamespace
+          LEFT JOIN pg_type AS dependent_type
+            ON dependency.classid = 'pg_type'::regclass
+           AND dependent_type.oid = dependency.objid
+          LEFT JOIN pg_namespace AS type_namespace
+            ON type_namespace.oid = dependent_type.typnamespace
+          LEFT JOIN pg_constraint AS dependent_constraint
+            ON dependency.classid = 'pg_constraint'::regclass
+           AND dependent_constraint.oid = dependency.objid
+          LEFT JOIN pg_namespace AS constraint_namespace
+            ON constraint_namespace.oid = dependent_constraint.connamespace
+          LEFT JOIN pg_rewrite AS dependent_rewrite
+            ON dependency.classid = 'pg_rewrite'::regclass
+           AND dependent_rewrite.oid = dependency.objid
+          LEFT JOIN pg_class AS rewrite_class
+            ON rewrite_class.oid = dependent_rewrite.ev_class
+          LEFT JOIN pg_namespace AS rewrite_namespace
+            ON rewrite_namespace.oid = rewrite_class.relnamespace
+          LEFT JOIN pg_attrdef AS dependent_default
+            ON dependency.classid = 'pg_attrdef'::regclass
+           AND dependent_default.oid = dependency.objid
+          LEFT JOIN pg_class AS default_class
+            ON default_class.oid = dependent_default.adrelid
+          LEFT JOIN pg_namespace AS default_namespace
+            ON default_namespace.oid = default_class.relnamespace
+      )
+      SELECT count(*)::text AS count
+        FROM resolved_dependencies
+       WHERE dependent_schema IS NULL
+          OR (
+            dependent_schema <> 'migration'
+            AND dependent_schema <> 'pg_catalog'
+            AND dependent_schema <> 'information_schema'
+            AND dependent_schema NOT LIKE 'pg_toast%'
+          )
+    `);
     const roles = await client.query<RoleQueryRow>(`
       SELECT role.rolname,
              role.rolcanlogin,
@@ -558,8 +966,21 @@ async function inspectNeonTestDatabase(
       rdsIamRole: rdsIam.rows[0] ? toRoleState(rdsIam.rows[0]) : null,
       hasRdsIamAdminOption: adminOption.rows[0]?.has_admin_option === true,
       publicTableCount: Number(publicTables.rows[0]?.count ?? "0"),
+      migrationSchemaExists: migrationSchema.rows.length === 1,
+      migrationSchemaOwner: migrationSchema.rows[0]?.schema_owner ?? null,
       ledgerExists,
       appliedMigrations: Object.freeze(appliedMigrations),
+      migrationMetadataObjects: Object.freeze(
+        metadataObjects.rows.map(({ object_key }) => object_key),
+      ),
+      migrationClassObjectOwners: Object.freeze(
+        metadataObjects.rows
+          .filter(({ object_key }) => object_key.startsWith("class:"))
+          .map(({ object_owner }) => object_owner ?? ""),
+      ),
+      migrationExternalUserDependencyCount: Number(
+        externalDependencies.rows[0]?.count ?? "0",
+      ),
       existingMigrationRoles: Object.freeze(migrationRoles.map(({ rolname }) => rolname)),
       migrationRoles: Object.freeze(migrationRoles),
       staleDryRunSchemas: Object.freeze(staleSchemas.rows.map(({ schema_name }) => schema_name)),
@@ -595,48 +1016,23 @@ function toRoleState(row: RoleQueryRow): RoleState {
   });
 }
 
-async function cleanupDryRunSchema(
+async function runNeonTestTransactionalDryRun(
   target: NeonTestMigrationTarget,
-  schemaName: string,
+  manifest: MigrationManifest,
 ): Promise<void> {
-  if (!isDryRunSchema(schemaName)) {
-    throw new NeonTestMigrationSafetyError("Dry-run cleanup target is invalid.");
-  }
-  const client = new Client({
-    connectionString: target.connectionString,
-    application_name: "tianxing-neon-test-migration-dry-run-cleanup",
-    connectionTimeoutMillis: 5_000,
-    query_timeout: 10_000,
-    ssl: { rejectUnauthorized: true },
-  });
+  const client = new Client(createNeonTestDryRunClientOptions(target));
   await client.connect();
   try {
-    const schema = await client.query<{ exists: boolean }>(`
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.schemata WHERE schema_name = $1
-      ) AS exists
-    `, [schemaName]);
-    if (!schema.rows[0]?.exists) return;
-
-    const unexpectedTables = await client.query<{ table_name: string }>(`
-      SELECT table_name
-        FROM information_schema.tables
-       WHERE table_schema = $1
-         AND table_name <> 'schema_migrations'
-    `, [schemaName]);
-    if (unexpectedTables.rows.length !== 0) {
-      throw new NeonTestMigrationSafetyError(
-        "Dry-run schema contains unexpected objects; stop without cleanup.",
-      );
-    }
-    await client.query("BEGIN");
-    try {
-      await client.query(`DROP SCHEMA ${quoteIdentifier(schemaName)} CASCADE`);
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    }
+    await executeNeonTestTransactionalDryRun(manifest, {
+      query: async (sql, parameters) => {
+        const result = parameters
+          ? await client.query(sql, [...parameters])
+          : await client.query(sql);
+        return { rows: result.rows as readonly Record<string, unknown>[] };
+      },
+      readMigration: async (name) =>
+        readFile(resolve(MIGRATION_DIRECTORY, name)),
+    });
   } finally {
     await client.end();
   }
@@ -652,14 +1048,14 @@ async function runCli(
   assertNeonTestManifest(manifestBefore);
   const before = await inspectNeonTestDatabase(target);
   validateNeonTestPreflight(before);
-  const dryRunSchema = `${DRY_RUN_SCHEMA_PREFIX}${process.pid}_${Date.now()}`;
 
   await executeNeonTestMigrationRun(mode, {
     runMigration: async () => {
-      await runner(createNeonTestMigrationOptions(target, mode, dryRunSchema));
-    },
-    cleanupDryRun: async () => {
-      await cleanupDryRunSchema(target, dryRunSchema);
+      if (mode === "dry-run") {
+        await runNeonTestTransactionalDryRun(target, manifestBefore);
+      } else {
+        await runner(createNeonTestMigrationApplyOptions(target));
+      }
     },
     verifyRollbackAfterFailure: async () => {
       const manifestAfterFailure = await verifyOrderedMigrationManifest();
@@ -669,7 +1065,13 @@ async function runCli(
         );
       }
       const failed = await inspectNeonTestDatabase(target);
-      validateNeonTestRollback(failed);
+      const rollback = validateNeonTestRollback(failed);
+      if (mode === "dry-run" && rollback.state !== "clean") {
+        throw new NeonTestMigrationAttemptError(
+          migrationFailureEvidence("rollback_state_verification"),
+        );
+      }
+      return rollback;
     },
   });
 
@@ -683,9 +1085,11 @@ async function runCli(
   if (mode === "apply") {
     validateNeonTestApplyResult(after, manifestAfter);
   } else {
-    validateNeonTestRollback(after);
-    if (after.ledgerExists || after.staleDryRunSchemas.length !== 0) {
-      throw new NeonTestMigrationSafetyError("Dry-run left database metadata behind.");
+    const rollback = validateNeonTestRollback(after);
+    if (rollback.state !== "clean") {
+      throw new NeonTestMigrationSafetyError(
+        "Dry-run left database metadata behind.",
+      );
     }
   }
   process.stdout.write(
@@ -697,15 +1101,9 @@ function hasValue(value: string | undefined): boolean {
   return value !== undefined && value.trim() !== "";
 }
 
-function isDryRunSchema(value: string): boolean {
-  return new RegExp(`^${DRY_RUN_SCHEMA_PREFIX}[a-z0-9_]+$`).test(value);
-}
-
-function quoteIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
 function redactError(error: unknown, environment: RuntimeEnvironment): string {
+  const migrationFailure = formatNeonTestMigrationFailure(error);
+  if (migrationFailure) return migrationFailure;
   let message = error instanceof Error ? error.message : "Neon migration failed.";
   const secrets = new Set<string>();
   for (const name of REDACTED_ENVIRONMENT_VARIABLES) {
