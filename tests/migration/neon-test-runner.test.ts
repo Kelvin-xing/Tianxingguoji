@@ -10,11 +10,14 @@ import {
 } from "../../scripts/db/migration-manifest.ts";
 import {
   EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS,
+  MIGRATION_EXTERNAL_DEPENDENCY_SQL,
+  MIGRATION_METADATA_INVENTORY_SQL,
   MIGRATION_CREATED_ROLES,
   NeonTestMigrationRunError,
   NeonTestMigrationSafetyError,
   createNeonTestDryRunClientOptions,
   createNeonTestMigrationEvidence,
+  createNeonTestMigrationRunError,
   createNeonTestMigrationApplyOptions,
   executeNeonTestMigrationRun,
   executeNeonTestTransactionalDryRun,
@@ -122,6 +125,68 @@ test("pins aligned dry-run and apply TLS and timeout contracts", () => {
   );
   assert.equal(apply.dryRun, false);
   assert.equal(apply.migrationsSchema, "migration");
+});
+
+test("keeps metadata inspection SQL aliases away from PostgreSQL keyword collisions", async () => {
+  const source = await readFile("scripts/db/run-neon-test-migrations.ts", "utf8");
+  assert.doesNotMatch(
+    source,
+    /(?:FROM|JOIN)\s+pg_[a-z_]+\s+AS\s+(?:constraint|database|role|namespace|class|dependency|reference)\b/i,
+  );
+  assert.doesNotMatch(source, /\bconstraint\./i);
+  for (const sql of [MIGRATION_METADATA_INVENTORY_SQL, MIGRATION_EXTERNAL_DEPENDENCY_SQL]) {
+    assert.doesNotMatch(sql, /\bAS\s+(?:constraint|database|role|namespace|class|dependency|reference)\b/i);
+    assert.doesNotMatch(sql, /\b(?:constraint|database|role|namespace|class|dependency|reference)\./i);
+  }
+  assert.match(MIGRATION_METADATA_INVENTORY_SQL, /pg_constraint\s+AS\s+constraint_row/i);
+  assert.match(MIGRATION_EXTERNAL_DEPENDENCY_SQL, /pg_constraint\s+AS\s+constraint_row/i);
+});
+
+test("formats preflight and postflight inspection failures as fixed redacted evidence", () => {
+  const secretError = Object.assign(
+    new Error("secret message with hostname and password"),
+    {
+      code: "42601",
+      severity: "ERROR",
+      detail: "secret detail",
+      query: "SELECT secret_query",
+      where: "secret where",
+    },
+  );
+  for (const stage of [
+    "preflight_database_inspection",
+    "postflight_database_inspection",
+    "rollback_database_inspection",
+  ] as const) {
+    const output = formatNeonTestMigrationFailure(
+      createNeonTestMigrationRunError(stage, secretError),
+    )!;
+    assert.deepEqual(JSON.parse(output), {
+      original_failure: {
+        failure_stage: stage,
+        postgres_code: "42601",
+      },
+    });
+    assert.doesNotMatch(output, /secret|hostname|password|query|detail|where|stack/i);
+  }
+
+  const nodeError = Object.assign(new Error("secret ENOENT details"), {
+    code: "ENOENT",
+    severity: "ERROR",
+    detail: "secret detail",
+  });
+  const nodeOutput = formatNeonTestMigrationFailure(
+    createNeonTestMigrationRunError("preflight_database_inspection", nodeError),
+  )!;
+  assert.deepEqual(JSON.parse(nodeOutput), {
+    original_failure: { failure_stage: "preflight_database_inspection" },
+  });
+  assert.doesNotMatch(nodeOutput, /ENOENT|secret|detail/i);
+});
+
+test("uses a neutral message for a safety gate without rollback state", () => {
+  const error = createNeonTestMigrationRunError("preflight_database_inspection");
+  assert.equal(error.message, "Migration safety gate failed; stop without retry.");
 });
 
 test("validates the empty Neon bootstrap preflight contract", () => {
@@ -306,6 +371,7 @@ test("reports failed dry-run migration name and SQLSTATE without raw PostgreSQL 
           if (sql === failedSql) {
             throw Object.assign(new Error("secret query text and hostname"), {
               code: "42P01",
+              severity: "ERROR",
               detail: "secret detail",
               query: "secret query",
             });
@@ -361,7 +427,10 @@ test("reports exact empty apply metadata residue as a separately gated cleanup",
   await assert.rejects(
     executeNeonTestMigrationRun("apply", {
       runMigration: async () => {
-        throw Object.assign(new Error("synthetic apply failure"), { code: "42P01" });
+        throw Object.assign(new Error("synthetic apply failure"), {
+          code: "42P01",
+          severity: "ERROR",
+        });
       },
       verifyRollbackAfterFailure: async () =>
         validateNeonTestRollback(emptyMigrationMetadataResidueState()),
@@ -383,11 +452,17 @@ test("prioritizes rollback verification failure while preserving original failur
     executeNeonTestMigrationRun("apply", {
       runMigration: async () => {
         runnerCalls += 1;
-        throw Object.assign(new Error("secret original migration failure"), { code: "42P01" });
+        throw Object.assign(new Error("secret original migration failure"), {
+          code: "42P01",
+          severity: "ERROR",
+        });
       },
       verifyRollbackAfterFailure: async () => {
         verificationCalls += 1;
-        throw Object.assign(new Error("secret verification failure"), { code: "08006" });
+        throw Object.assign(new Error("secret verification failure"), {
+          code: "08006",
+          severity: "FATAL",
+        });
       },
     }),
     (error: unknown) => {
