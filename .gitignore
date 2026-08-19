@@ -48,6 +48,7 @@ yarn-error.log*
 .env*
 !/.env.local.example
 !/.env.migration.local.example
+!/.env.migration.neon-test.example
 
 # vercel
 .vercel
