@@ -4,15 +4,21 @@ import test from "node:test";
 
 import {
   EXPECTED_LAST_MIGRATION_SHA256,
+  MIGRATION_DIRECTORY,
   createNeonTestPlanEvidence,
   verifyOrderedMigrationManifest,
 } from "../../scripts/db/migration-manifest.ts";
 import {
+  EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS,
   MIGRATION_CREATED_ROLES,
+  NeonTestMigrationRunError,
   NeonTestMigrationSafetyError,
+  createNeonTestDryRunClientOptions,
   createNeonTestMigrationEvidence,
-  createNeonTestMigrationOptions,
+  createNeonTestMigrationApplyOptions,
   executeNeonTestMigrationRun,
+  executeNeonTestTransactionalDryRun,
+  formatNeonTestMigrationFailure,
   readNeonTestMigrationMode,
   readNeonTestMigrationTarget,
   validateNeonTestApplyResult,
@@ -83,34 +89,37 @@ test("accepts only the fixed Neon us-east-1 direct migration target", () => {
   }
 });
 
-test("pins TLS, direct runner policy, advisory locking, and one transaction", () => {
+test("pins aligned dry-run and apply TLS and timeout contracts", () => {
   const target = readNeonTestMigrationTarget(validEnvironment());
-  const dryRun = createNeonTestMigrationOptions(
-    target,
-    "dry-run",
-    "migration_dry_run_env01_test",
-  );
-  const apply = createNeonTestMigrationOptions(target, "apply");
+  const dryRun = createNeonTestDryRunClientOptions(target);
+  const apply = createNeonTestMigrationApplyOptions(target);
 
-  for (const options of [dryRun, apply]) {
-    assert.equal(options.checkOrder, true);
-    assert.equal(options.singleTransaction, true);
-    assert.equal(options.noLock, false);
-    assert.equal(options.advisoryLockMode, "fail");
-    assert.equal(options.direction, "up");
-    assert.equal(options.dir, "db/migrations/*.sql");
-    assert.equal(options.useGlob, true);
-    assert.equal(options.migrationsTable, "schema_migrations");
-    assert.equal("databaseUrl" in options, true);
-    const databaseUrl = "databaseUrl" in options ? options.databaseUrl : undefined;
-    assert.equal(typeof databaseUrl, "object");
-    assert.deepEqual(
-      typeof databaseUrl === "object" ? databaseUrl.ssl : undefined,
-      { rejectUnauthorized: true },
-    );
-  }
-  assert.equal(dryRun.dryRun, true);
-  assert.equal(dryRun.migrationsSchema, "migration_dry_run_env01_test");
+  assert.equal(apply.checkOrder, true);
+  assert.equal(apply.singleTransaction, true);
+  assert.equal(apply.noLock, false);
+  assert.equal(apply.advisoryLockMode, "fail");
+  assert.equal(apply.direction, "up");
+  assert.equal(apply.dir, "db/migrations/*.sql");
+  assert.equal(apply.useGlob, true);
+  assert.equal(apply.migrationsTable, "schema_migrations");
+  assert.equal("databaseUrl" in apply, true);
+  const databaseUrl = "databaseUrl" in apply ? apply.databaseUrl : undefined;
+  assert.equal(typeof databaseUrl, "object");
+  assert.equal(dryRun.statement_timeout, 5_000);
+  assert.equal(dryRun.lock_timeout, 5_000);
+  assert.equal(
+    dryRun.statement_timeout,
+    typeof databaseUrl === "object" ? databaseUrl.statement_timeout : undefined,
+  );
+  assert.equal(
+    dryRun.lock_timeout,
+    typeof databaseUrl === "object" ? databaseUrl.lock_timeout : undefined,
+  );
+  assert.deepEqual(dryRun.ssl, { rejectUnauthorized: true });
+  assert.deepEqual(
+    typeof databaseUrl === "object" ? databaseUrl.ssl : undefined,
+    { rejectUnauthorized: true },
+  );
   assert.equal(apply.dryRun, false);
   assert.equal(apply.migrationsSchema, "migration");
 });
@@ -134,7 +143,7 @@ test("validates the empty Neon bootstrap preflight contract", () => {
   );
 });
 
-test("validates complete apply and clean rollback states", async () => {
+test("classifies clean rollback and exact empty node-pg-migrate metadata residue", async () => {
   const manifest = await verifyOrderedMigrationManifest();
   const applied = applyState(manifest.migrations.map(({ name }) => name.replace(/\.sql$/, "")));
   assert.doesNotThrow(() => validateNeonTestApplyResult(applied, manifest));
@@ -142,160 +151,268 @@ test("validates complete apply and clean rollback states", async () => {
     () => validateNeonTestApplyResult({ ...applied, publicTableCount: 62 }, manifest),
     NeonTestMigrationSafetyError,
   );
-  assert.doesNotThrow(() => validateNeonTestRollback(preflightState()));
   assert.throws(
-    () => validateNeonTestRollback({ ...preflightState(), ledgerExists: true }),
+    () => validateNeonTestApplyResult({
+      ...applied,
+      migrationSchemaOwner: "neondb_owner",
+    }, manifest),
     NeonTestMigrationSafetyError,
   );
+  assert.throws(
+    () => validateNeonTestApplyResult({
+      ...applied,
+      migrationClassObjectOwners: [
+        "env01_migration_login",
+        "neondb_owner",
+        "env01_migration_login",
+      ],
+    }, manifest),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestApplyResult({
+      ...applied,
+      migrationExternalUserDependencyCount: 1,
+    }, manifest),
+    NeonTestMigrationSafetyError,
+  );
+  assert.deepEqual(validateNeonTestRollback(preflightState()), { state: "clean" });
+
+  const metadataResidue = emptyMigrationMetadataResidueState();
+  assert.deepEqual(
+    validateNeonTestRollback(metadataResidue),
+    { state: "metadata_cleanup_required" },
+  );
+  assert.throws(() => validateNeonTestPreflight(metadataResidue), NeonTestMigrationSafetyError);
   assert.throws(
     () => validateNeonTestRollback({ ...preflightState(), existingMigrationRoles: ["tianxing_app"] }),
     NeonTestMigrationSafetyError,
   );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...preflightState(),
+      migrationRoles: [role("tianxing_app", { login: true })],
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...preflightState(),
+      migrationExternalUserDependencyCount: 1,
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...metadataResidue,
+      migrationSchemaOwner: "neondb_owner",
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...metadataResidue,
+      migrationClassObjectOwners: [
+        "env01_migration_login",
+        "neondb_owner",
+        "env01_migration_login",
+      ],
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...metadataResidue,
+      migrationExternalUserDependencyCount: 1,
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...metadataResidue,
+      migrationMetadataObjects: [
+        ...metadataResidue.migrationMetadataObjects,
+        "class:v:unexpected_view",
+      ],
+    }),
+    NeonTestMigrationSafetyError,
+  );
+  assert.throws(
+    () => validateNeonTestRollback({
+      ...preflightState(),
+      migrationSchemaExists: true,
+    }),
+    NeonTestMigrationSafetyError,
+  );
 });
 
-test("does not retry cleanup when a successful dry-run cleanup fails", async () => {
-  const cleanupFailure = new Error("synthetic cleanup failure");
-  let runnerCalls = 0;
-  let cleanupCalls = 0;
-  let rollbackVerificationCalls = 0;
+test("executes every frozen SQL file in order and always rolls back without a ledger", async () => {
+  const manifest = await verifyOrderedMigrationManifest();
+  const contents = await migrationContents(manifest.migrations.map(({ name }) => name));
+  const nameBySql = new Map(
+    manifest.migrations.map(({ name }) => [contents.get(name)!.toString("utf8"), name]),
+  );
+  const events: string[] = [];
+  const readCounts = new Map<string, number>();
+
+  await executeNeonTestTransactionalDryRun(manifest, {
+    query: async (sql, parameters) => {
+      if (sql === "BEGIN") {
+        events.push("BEGIN");
+      } else if (sql.startsWith("SELECT pg_try_advisory_xact_lock")) {
+        events.push("ADVISORY_XACT_LOCK");
+        assert.deepEqual(parameters, ["7241865325823964"]);
+        return { rows: [{ lock_obtained: true }] };
+      } else if (sql === "ROLLBACK") {
+        events.push("ROLLBACK");
+      } else {
+        const name = nameBySql.get(sql);
+        assert.ok(name, "each query must be one complete manifest SQL file");
+        events.push(name);
+      }
+      return { rows: [] };
+    },
+    readMigration: async (name) => {
+      readCounts.set(name, (readCounts.get(name) ?? 0) + 1);
+      return contents.get(name)!;
+    },
+  });
+
+  assert.deepEqual(events, [
+    "BEGIN",
+    "ADVISORY_XACT_LOCK",
+    ...manifest.migrations.map(({ name }) => name),
+    "ROLLBACK",
+  ]);
+  assert.equal(events.includes("COMMIT"), false);
+  for (const { name } of manifest.migrations) assert.equal(readCounts.get(name), 2);
+});
+
+test("reports failed dry-run migration name and SQLSTATE without raw PostgreSQL fields", async () => {
+  const manifest = await verifyOrderedMigrationManifest();
+  const contents = await migrationContents(manifest.migrations.map(({ name }) => name));
+  const failedName = manifest.migrations[4]!.name;
+  const failedSql = contents.get(failedName)!.toString("utf8");
+  const events: string[] = [];
 
   await assert.rejects(
     executeNeonTestMigrationRun("dry-run", {
-      runMigration: async () => {
-        runnerCalls += 1;
-      },
-      cleanupDryRun: async () => {
-        cleanupCalls += 1;
-        throw cleanupFailure;
-      },
-      verifyRollbackAfterFailure: async () => {
-        rollbackVerificationCalls += 1;
-      },
+      runMigration: async () => executeNeonTestTransactionalDryRun(manifest, {
+        query: async (sql) => {
+          events.push(sql === failedSql ? failedName : sql);
+          if (sql.startsWith("SELECT pg_try_advisory_xact_lock")) {
+            return { rows: [{ lock_obtained: true }] };
+          }
+          if (sql === failedSql) {
+            throw Object.assign(new Error("secret query text and hostname"), {
+              code: "42P01",
+              detail: "secret detail",
+              query: "secret query",
+            });
+          }
+          return { rows: [] };
+        },
+        readMigration: async (name) => contents.get(name)!,
+      }),
+      verifyRollbackAfterFailure: async () => ({ state: "clean" }),
     }),
     (error: unknown) => {
-      assert.ok(error instanceof NeonTestMigrationSafetyError);
-      assert.equal(error.message, "Dry-run cleanup failed; stop without retry.");
-      assert.equal(error.cause, cleanupFailure);
-      assert.doesNotMatch(error.message, /synthetic cleanup failure/);
+      assert.ok(error instanceof NeonTestMigrationRunError);
+      assert.deepEqual(error.originalFailure, {
+        failure_stage: "migration_sql",
+        migration_name: failedName,
+        postgres_code: "42P01",
+      });
+      assert.equal(error.rollbackState, "clean");
+      const output = formatNeonTestMigrationFailure(error)!;
+      assert.doesNotMatch(output, /secret|hostname|query|detail|stack/i);
+      assert.deepEqual(JSON.parse(output), {
+        original_failure: error.originalFailure,
+        rollback_state: "clean",
+      });
       return true;
     },
   );
 
-  assert.equal(runnerCalls, 1);
-  assert.equal(cleanupCalls, 1);
-  assert.equal(rollbackVerificationCalls, 0);
+  assert.equal(events[0], "BEGIN");
+  assert.equal(events.at(-1), "ROLLBACK");
+  assert.equal(events.includes("COMMIT"), false);
 });
 
-test("does not rerun a failed migration and verifies rollback after one cleanup", async () => {
-  const runnerFailure = new Error("synthetic runner failure");
-  let runnerCalls = 0;
-  let cleanupCalls = 0;
-  let rollbackVerificationCalls = 0;
-
+test("rejects arbitrary thrown objects as PostgreSQL error evidence", async () => {
   await assert.rejects(
-    executeNeonTestMigrationRun("dry-run", {
+    executeNeonTestMigrationRun("apply", {
+      runMigration: async () => {
+        throw { code: "42P01", message: "secret arbitrary object" };
+      },
+      verifyRollbackAfterFailure: async () => ({ state: "clean" }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof NeonTestMigrationRunError);
+      assert.deepEqual(error.originalFailure, { failure_stage: "apply_runner" });
+      const output = formatNeonTestMigrationFailure(error)!;
+      assert.doesNotMatch(output, /42P01|secret|message/);
+      return true;
+    },
+  );
+});
+
+test("reports exact empty apply metadata residue as a separately gated cleanup", async () => {
+  await assert.rejects(
+    executeNeonTestMigrationRun("apply", {
+      runMigration: async () => {
+        throw Object.assign(new Error("synthetic apply failure"), { code: "42P01" });
+      },
+      verifyRollbackAfterFailure: async () =>
+        validateNeonTestRollback(emptyMigrationMetadataResidueState()),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof NeonTestMigrationRunError);
+      assert.equal(error.rollbackState, "metadata_cleanup_required");
+      assert.match(error.message, /business rollback passed/i);
+      assert.match(error.message, /metadata cleanup is required/i);
+      return true;
+    },
+  );
+});
+
+test("prioritizes rollback verification failure while preserving original failure", async () => {
+  let runnerCalls = 0;
+  let verificationCalls = 0;
+  await assert.rejects(
+    executeNeonTestMigrationRun("apply", {
       runMigration: async () => {
         runnerCalls += 1;
-        throw runnerFailure;
-      },
-      cleanupDryRun: async () => {
-        cleanupCalls += 1;
+        throw Object.assign(new Error("secret original migration failure"), { code: "42P01" });
       },
       verifyRollbackAfterFailure: async () => {
-        rollbackVerificationCalls += 1;
+        verificationCalls += 1;
+        throw Object.assign(new Error("secret verification failure"), { code: "08006" });
       },
     }),
     (error: unknown) => {
-      assert.ok(error instanceof NeonTestMigrationSafetyError);
+      assert.ok(error instanceof NeonTestMigrationRunError);
       assert.equal(
         error.message,
-        "Migration execution failed and rollback verification passed; stop without retry.",
+        "Migration rollback verification is incomplete; architecture escalation required.",
       );
-      assert.equal(error.cause, runnerFailure);
+      assert.deepEqual(error.originalFailure, {
+        failure_stage: "apply_runner",
+        postgres_code: "42P01",
+      });
+      assert.deepEqual(error.rollbackVerificationFailure, {
+        failure_stage: "rollback_state_verification",
+        postgres_code: "08006",
+      });
+      const output = formatNeonTestMigrationFailure(error)!;
+      assert.match(output, /42P01/);
+      assert.match(output, /08006/);
+      assert.doesNotMatch(output, /secret|message|stack/i);
       return true;
     },
   );
-
   assert.equal(runnerCalls, 1);
-  assert.equal(cleanupCalls, 1);
-  assert.equal(rollbackVerificationCalls, 1);
-});
-
-test("verifies state once after both migration and cleanup fail", async () => {
-  const cleanupFailure = new Error(
-    "postgresql://env01_migration_login:do-not-print@ep-secret.example/test",
-  );
-  let runnerCalls = 0;
-  let cleanupCalls = 0;
-  let rollbackVerificationCalls = 0;
-
-  await assert.rejects(
-    executeNeonTestMigrationRun("dry-run", {
-      runMigration: async () => {
-        runnerCalls += 1;
-        throw new Error("synthetic runner failure");
-      },
-      cleanupDryRun: async () => {
-        cleanupCalls += 1;
-        throw cleanupFailure;
-      },
-      verifyRollbackAfterFailure: async () => {
-        rollbackVerificationCalls += 1;
-      },
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof NeonTestMigrationSafetyError);
-      assert.equal(
-        error.message,
-        "Migration execution failed; dry-run cleanup failed and state verification passed; stop without retry.",
-      );
-      assert.equal(error.cause, cleanupFailure);
-      assert.doesNotMatch(error.message, /do-not-print|ep-secret|postgresql:\/\//);
-      return true;
-    },
-  );
-
-  assert.equal(runnerCalls, 1);
-  assert.equal(cleanupCalls, 1);
-  assert.equal(rollbackVerificationCalls, 1);
-});
-
-test("gives failed rollback verification priority over cleanup failure", async () => {
-  const verificationFailure = new Error("synthetic state verification failure");
-  let runnerCalls = 0;
-  let cleanupCalls = 0;
-  let rollbackVerificationCalls = 0;
-
-  await assert.rejects(
-    executeNeonTestMigrationRun("dry-run", {
-      runMigration: async () => {
-        runnerCalls += 1;
-        throw new Error("synthetic runner failure");
-      },
-      cleanupDryRun: async () => {
-        cleanupCalls += 1;
-        throw new Error("synthetic cleanup failure");
-      },
-      verifyRollbackAfterFailure: async () => {
-        rollbackVerificationCalls += 1;
-        throw verificationFailure;
-      },
-    }),
-    (error: unknown) => {
-      assert.ok(error instanceof NeonTestMigrationSafetyError);
-      assert.equal(
-        error.message,
-        "Migration rollback or state verification is incomplete; architecture escalation required.",
-      );
-      assert.equal(error.cause, verificationFailure);
-      assert.doesNotMatch(error.message, /passed|synthetic/);
-      return true;
-    },
-  );
-
-  assert.equal(runnerCalls, 1);
-  assert.equal(cleanupCalls, 1);
-  assert.equal(rollbackVerificationCalls, 1);
+  assert.equal(verificationCalls, 1);
 });
 
 test("emits only approved plan and migration evidence fields", async () => {
@@ -364,6 +481,17 @@ function withUrl(url: string): Record<string, string | undefined> {
   return { ...validEnvironment(), TEST_MIGRATION_DATABASE_URL: url };
 }
 
+async function migrationContents(names: readonly string[]): Promise<Map<string, Buffer>> {
+  return new Map(
+    await Promise.all(
+      names.map(async (name) => [
+        name,
+        await readFile(`${MIGRATION_DIRECTORY}/${name}`),
+      ] as const),
+    ),
+  );
+}
+
 function preflightState(): NeonTestDatabaseState {
   return {
     databaseName: "txgj_env01_test",
@@ -376,11 +504,31 @@ function preflightState(): NeonTestDatabaseState {
     rdsIamRole: role("rds_iam"),
     hasRdsIamAdminOption: true,
     publicTableCount: 0,
+    migrationSchemaExists: false,
+    migrationSchemaOwner: null,
     ledgerExists: false,
     appliedMigrations: [],
+    migrationMetadataObjects: [],
+    migrationClassObjectOwners: [],
+    migrationExternalUserDependencyCount: 0,
     existingMigrationRoles: [],
     migrationRoles: [],
     staleDryRunSchemas: [],
+  };
+}
+
+function emptyMigrationMetadataResidueState(): NeonTestDatabaseState {
+  return {
+    ...preflightState(),
+    migrationSchemaExists: true,
+    migrationSchemaOwner: "env01_migration_login",
+    ledgerExists: true,
+    migrationMetadataObjects: [...EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS],
+    migrationClassObjectOwners: [
+      "env01_migration_login",
+      "env01_migration_login",
+      "env01_migration_login",
+    ],
   };
 }
 
@@ -394,8 +542,16 @@ function applyState(appliedMigrations: readonly string[]): NeonTestDatabaseState
   return {
     ...preflightState(),
     publicTableCount: 63,
+    migrationSchemaExists: true,
+    migrationSchemaOwner: "env01_migration_login",
     ledgerExists: true,
     appliedMigrations,
+    migrationMetadataObjects: [...EXPECTED_EMPTY_MIGRATION_METADATA_OBJECTS],
+    migrationClassObjectOwners: [
+      "env01_migration_login",
+      "env01_migration_login",
+      "env01_migration_login",
+    ],
     existingMigrationRoles: roles.map(({ rolname }) => rolname),
     migrationRoles: roles,
   };

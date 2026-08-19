@@ -20,8 +20,11 @@
 
 - Neon SQL Editor 已确认以 `neondb_owner` 身份执行；
 - `txgj_env01_test`、`env01_migration_login`、角色授权和首次密码初始化已验收；
-- 本机通过外部 Direct endpoint 使用 `env01_migration_login` 登录尚未确认；
-- migration dry-run/apply 和 seed dry-run/apply 均未执行。
+- migration runner 已通过外部 Direct endpoint 连接；独立 Direct `psql` 登录仍未单独验收；
+- 上一次 apply 已获批准并执行，但业务 SQL 失败；只读证据为 0 ledger rows、0 public tables、0 migration roles、0 stale dry-run schemas；
+- 上一次失败留下的 exact empty tool metadata 已按独立审批完成受控 cleanup；
+- cleanup 后由独立新连接确认 `migration` schema/ledger 均不存在、public tables 为 0、migration roles 为 0、stale dry-run schemas 为 0；
+- 修正后的真实事务 migration dry-run 尚未连接数据库执行，seed dry-run/apply 均未执行。
 
 ## 2. 审批门
 
@@ -35,10 +38,12 @@
 
 以下动作仍必须分别获得用户明确批准，前一项通过不自动批准后一项：
 
-1. migration dry-run。
-2. migration apply。
+1. 修正后的 migration dry-run。
+2. migration apply 重试。
 3. seed dry-run。
 4. seed apply。
+
+上一次 metadata cleanup 已作为独立审批完成，不授权 migration dry-run 或 apply 重试。preflight 继续拒绝任何新的 `migration` schema、ledger、异常 owner 或外部用户依赖 residue；runner 不会自动 `DROP`。
 
 密码和连接串绝不能进入 Git 或 GitHub。允许操作员在 Neon Console 查看，并保存在本机 Git 已忽略且权限为 `0600` 的操作员文件中。migration secret 仍不得出现在聊天、截图、命令输出、应用环境或 Vercel 环境中，也不得放入命令行参数、终端历史或可复用 SQL 文件。第 4.1 节记录的首次初始化是唯一的 SQL Editor 明文例外。
 
@@ -115,7 +120,7 @@ chmod 600 .env.migration.neon-test
 
 该文件不得加载到 Next.js 或 Vercel。不得设置 `DATABASE_URL` 或 `MIGRATION_DATABASE_URL`。
 
-本机 Direct 连接仍是待确认状态。使用本机 libpq/`psql` 18 验证时，密码只允许交互式输入，连接参数必须同时保留 `sslmode=verify-full` 和已经验证的系统 CA 路径：
+独立 Direct `psql` 登录仍是待确认状态。使用本机 libpq/`psql` 18 验证时，密码只允许交互式输入，连接参数必须同时保留 `sslmode=verify-full` 和已经验证的系统 CA 路径：
 
 ```bash
 psql "host=<DIRECT_HOST> port=5432 dbname=txgj_env01_test user=env01_migration_login sslmode=verify-full sslrootcert=system"
@@ -141,19 +146,36 @@ runner 在连接后强制检查：
 - migration 将创建的 7 个角色不存在；
 - 不存在上一次遗留的 ENV-01 dry-run schema。
 
-执行策略固定为 `node-pg-migrate@9.0.0`、`checkOrder=true`、`singleTransaction=true`、`advisoryLockMode=fail`、`noLock=false`。runner 在执行前后都重新验证 manifest。
+apply 执行策略固定为 `node-pg-migrate@9.0.0`、`checkOrder=true`、`singleTransaction=true`、`advisoryLockMode=fail`、`noLock=false`。runner 在执行前后都重新验证 manifest。
 
-dry-run 使用唯一临时 ledger schema；它不执行业务 SQL，结束时只删除本次创建的临时 schema，并验证正式 ledger、public 表和 migration roles 仍为空。若临时 schema 清理失败，停止，不继续 apply。
+修正后的 dry-run 不再使用 `node-pg-migrate dryRun`，因为该模式只打印 SQL，不能证明 27 个冻结 SQL 文件可由 PostgreSQL 执行。新 dry-run 使用一个显式事务和 transaction-scoped advisory lock，严格按 manifest 顺序执行 27 个文件；每个文件在执行前后都重新读取并校验 SHA-256，并把整个文件作为一次 query 交给 PostgreSQL，不自行拆分 SQL。无论成功或失败都只执行 `ROLLBACK`，不执行 `COMMIT`，也不创建正式 migration ledger。事务结束后使用独立连接复验 public tables、migration roles、正式 ledger 和 dry-run residue 均与 preflight 空状态一致。
+
+### 6.1 上一次 apply 事故与 metadata 分类
+
+`node-pg-migrate@9.0.0` 会在其 single-transaction `BEGIN` 之前创建 `migration` schema 并确保 `migration.schema_migrations` 存在。因此，上一次业务 SQL 失败并回滚后，仍留下了工具 metadata：空 ledger table、对应 sequence、index 和 primary-key constraint。0 ledger rows、0 public tables 和 0 migration roles 证明业务变更已回滚，但不代表数据库完全回到 preflight 状态。
+
+该 residue 随后已通过独立审批的受控 cleanup 移除，并由独立新连接取得 schema/ledger absent、0 public tables、0 migration roles 和 0 stale dry-run schemas 的 postcheck。该完成事实不能作为后续 dry-run、apply 或 seed 的授权。
+
+失败后的只读分类固定为：
+
+- 完全无 `migration` schema/owner、ledger、metadata objects、class owners、外部用户依赖、public tables 和 migration roles：`clean`；
+- 只有 `migration` schema、0-row `schema_migrations` 和该表唯一预期的 table/sequence/index/PK，schema 及全部 class objects 均由 `env01_migration_login` 拥有，外部用户依赖为 0，且 public tables 和 migration roles 均为 0：`metadata_cleanup_required`；
+- ledger 非空、存在 public table/role、schema 或 class owner 错误、外部用户依赖非 0、对象集合不精确或出现其他 residue：回滚验证失败，必须架构升级。
+
+`metadata_cleanup_required` 只表示 business rollback passed；它不会触发自动清理。清理需要独立审批，清理前 preflight 必须继续 fail closed。
+
+失败证据只输出固定 failure stage、manifest 中的 migration name（能够确定时）和合法 PostgreSQL SQLSTATE/code。不得输出数据库 message、query、detail、stack、hostname、连接串或 secret。若 migration 执行和独立 rollback/state verification 同时失败，输出必须同时保留两份脱敏证据，并以 rollback/state verification failure 为最高优先级。
 
 apply 成功预期：
 
 - `migration.schema_migrations` 为 27 条且顺序与 manifest 完全一致；
+- `migration` schema 和全部 ledger class objects 均由 `env01_migration_login` 拥有，metadata 外部用户依赖为 0；
 - public tables 为 63；
 - 最后一项为 `202608180120_028_expand_database_test_identity`；
 - migration 028 SHA-256 为 `a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb`；
 - migration 创建的角色均不属于 `neon_superuser`，且无 superuser/createdb/createrole/replication/bypassrls 属性。
 
-apply 失败时 runner 验证正式 `migration` ledger schema 不存在、ledger 行仍为 0、public 表仍为 0、migration roles 不存在。若未完整回滚，立即停止；不得重试或人工清理。
+apply 失败时 runner 使用独立连接验证 ledger rows、public tables、migration roles、schema/class owners、外部用户依赖和 `migration` schema 对象集合，并只接受 `clean` 或 exact empty tool metadata 两种分类。前者停止且不重试；后者停止并等待独立 cleanup 审批。其他状态均按回滚不完整处理并立即升级。
 
 ## 7. 纯合成 Seed
 
@@ -277,8 +299,9 @@ Seed 示例：
 ## 9. 回滚与停止条件
 
 - bootstrap 任一步异常：停止；不自动删除 Database/Role。
-- migration 失败且完整回滚：正式 `migration` ledger schema 不存在，且为 0 ledger、0 public tables、0 migration roles；随后停止，不重试。
-- migration 未完整回滚：立即升级给架构师；不得人工清理。
+- migration 失败且状态完全干净：记录 business rollback passed，随后停止，不重试。
+- migration 失败且只有 exact empty tool metadata：记录 business rollback passed + metadata cleanup required；停止且不得自动 `DROP`，等待独立 cleanup 审批。
+- migration 失败且存在业务对象、ledger rows、migration roles 或非精确 metadata：按回滚不完整处理，立即升级给架构师；不得人工清理。
 - seed 失败：事务 `ROLLBACK` 后停止；不得跳过检查、手工补数据或将部分 seed 当作幂等成功。
 - 已执行 migration 后不修改历史 migration；修复只能使用后续经批准的追加迁移。
 - Vercel、identity/application/provision login 和部署属于后续独立审批，不在本手册当前执行范围。
