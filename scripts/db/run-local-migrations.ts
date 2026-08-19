@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
@@ -10,28 +8,22 @@ import {
   createMigrationApplyOptions,
   createMigrationRunnerOptions,
 } from "../../db/migrate.config.ts";
+import {
+  MigrationManifestSafetyError,
+  verifyOrderedMigrationManifest,
+  type MigrationManifest as SharedMigrationManifest,
+} from "./migration-manifest.ts";
 
 const LOCAL_MODE = "local-synthetic";
 const LOCAL_DATABASE = "tianxing";
 const LOCAL_MIGRATION_USER = "tianxing_migration";
-const MIGRATION_DIRECTORY = "db/migrations";
-const MIGRATION_MANIFEST = "db/migrations/manifest.json";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
-const SHA256 = /^[a-f0-9]{64}$/;
 
 export type LocalMigrationMode = "dry-run" | "apply";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
-type MigrationManifestEntry = Readonly<{
-  name: string;
-  sha256: string;
-}>;
-
-export type MigrationManifest = Readonly<{
-  manifestVersion: 1;
-  migrations: readonly MigrationManifestEntry[];
-}>;
+export type MigrationManifest = SharedMigrationManifest;
 
 export type LocalMigrationTarget = Readonly<{
   connectionString: string;
@@ -115,59 +107,17 @@ export function createLocalMigrationOptions(
 }
 
 export async function verifyMigrationManifest(
-  migrationDirectory = MIGRATION_DIRECTORY,
-  manifestPath = MIGRATION_MANIFEST,
+  migrationDirectory = "db/migrations",
+  manifestPath = "db/migrations/manifest.json",
 ): Promise<MigrationManifest> {
-  const [entries, rawManifest] = await Promise.all([
-    readdir(migrationDirectory, { withFileTypes: true }),
-    readFile(manifestPath, "utf8"),
-  ]);
-  const migrationNames = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
-    .map((entry) => entry.name)
-    .sort();
-  const manifest = parseManifest(JSON.parse(rawManifest) as unknown);
-  const manifestNames = manifest.migrations.map(({ name }) => name);
-
-  if (
-    migrationNames.length !== manifestNames.length ||
-    migrationNames.some((name, index) => name !== manifestNames[index])
-  ) {
-    throw new LocalMigrationSafetyError("Migration manifest does not match the ordered SQL files.");
-  }
-
-  await Promise.all(
-    manifest.migrations.map(async ({ name, sha256 }) => {
-      const contents = await readFile(resolve(migrationDirectory, name));
-      const actual = createHash("sha256").update(contents).digest("hex");
-      if (actual !== sha256) {
-        throw new LocalMigrationSafetyError(`Migration checksum mismatch: ${name}`);
-      }
-    }),
-  );
-
-  return manifest;
-}
-
-function parseManifest(value: unknown): MigrationManifest {
-  if (!isRecord(value) || value.manifest_version !== 1 || !Array.isArray(value.migrations)) {
-    throw new LocalMigrationSafetyError("Migration manifest is invalid.");
-  }
-
-  const migrations = value.migrations.map((entry) => {
-    if (
-      !isRecord(entry) ||
-      typeof entry.name !== "string" ||
-      !entry.name.endsWith(".sql") ||
-      typeof entry.sha256 !== "string" ||
-      !SHA256.test(entry.sha256)
-    ) {
-      throw new LocalMigrationSafetyError("Migration manifest entry is invalid.");
+  try {
+    return await verifyOrderedMigrationManifest(migrationDirectory, manifestPath);
+  } catch (error) {
+    if (error instanceof MigrationManifestSafetyError) {
+      throw new LocalMigrationSafetyError(error.message);
     }
-    return Object.freeze({ name: entry.name, sha256: entry.sha256 });
-  });
-
-  return Object.freeze({ manifestVersion: 1 as const, migrations: Object.freeze(migrations) });
+    throw error;
+  }
 }
 
 async function inspectDatabase(
@@ -280,10 +230,6 @@ async function runCli(arguments_: readonly string[], environment: RuntimeEnviron
       2,
     )}\n`,
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const isMainModule =
