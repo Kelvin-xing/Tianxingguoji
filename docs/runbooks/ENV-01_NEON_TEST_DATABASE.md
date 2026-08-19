@@ -108,7 +108,7 @@ chmod 600 .env.migration.neon-test
 - 使用 `postgresql:`；
 - user 为 `env01_migration_login`；
 - database 为 `txgj_env01_test`；
-- hostname 匹配 `ep-*.us-east-1.aws.neon.tech` 且不含 `-pooler`；
+- hostname 匹配 Neon Direct 格式 `ep-*.(c-<数字>.)?us-east-1.aws.neon.tech`，允许 Neon 当前的 cell 标签（例如 `c-2`），且 endpoint ID 不含 `-pooler`；
 - 显式端口 `5432`；
 - 不含 query 或 hash；
 - 密码非空。

@@ -23,6 +23,10 @@ import {
 
 const MIGRATION_URL =
   "postgresql://env01_migration_login:synthetic-secret@ep-synthetic-123.us-east-1.aws.neon.tech:5432/txgj_env01_test";
+const CELL_MIGRATION_URL = MIGRATION_URL.replace(
+  ".us-east-1",
+  ".c-2.us-east-1",
+);
 
 test("requires one explicit Neon migration mode", () => {
   assert.equal(readNeonTestMigrationMode(["--dry-run"]), "dry-run");
@@ -43,6 +47,14 @@ test("accepts only the fixed Neon us-east-1 direct migration target", () => {
     user: "env01_migration_login",
   });
 
+  assert.deepEqual(readNeonTestMigrationTarget(withUrl(CELL_MIGRATION_URL)), {
+    connectionString: CELL_MIGRATION_URL,
+    host: "ep-synthetic-123.c-2.us-east-1.aws.neon.tech",
+    port: 5432,
+    database: "txgj_env01_test",
+    user: "env01_migration_login",
+  });
+
   const invalidEnvironments: Record<string, string | undefined>[] = [
     {},
     { ...validEnvironment(), APP_ENV: "production" },
@@ -51,7 +63,12 @@ test("accepts only the fixed Neon us-east-1 direct migration target", () => {
     { ...validEnvironment(), VERCEL: "1" },
     withUrl(MIGRATION_URL.replace("postgresql:", "postgres:")),
     withUrl(MIGRATION_URL.replace("ep-synthetic-123", "ep-synthetic-123-pooler")),
+    withUrl(CELL_MIGRATION_URL.replace("ep-synthetic-123", "ep-synthetic-123-pooler")),
+    withUrl(CELL_MIGRATION_URL.replace(".c-2.", ".cell-2.")),
+    withUrl(CELL_MIGRATION_URL.replace(".c-2.", ".c-two.")),
+    withUrl(CELL_MIGRATION_URL.replace(".c-2.", ".c-2.extra.")),
     withUrl(MIGRATION_URL.replace("us-east-1", "ap-southeast-1")),
+    withUrl(CELL_MIGRATION_URL.replace("us-east-1", "ap-southeast-1")),
     withUrl(MIGRATION_URL.replace("ep-synthetic-123.us-east-1.aws.neon.tech", "127.0.0.1")),
     withUrl(MIGRATION_URL.replace("ep-synthetic-123.us-east-1.aws.neon.tech", "localhost")),
     withUrl(MIGRATION_URL.replace(":5432", "")),
