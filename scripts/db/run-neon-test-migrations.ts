@@ -16,7 +16,8 @@ import {
   type MigrationManifest,
 } from "./migration-manifest.ts";
 
-const NEON_DIRECT_HOST = /^ep-[a-z0-9-]+\.us-east-1\.aws\.neon\.tech$/;
+const NEON_DIRECT_HOST =
+  /^ep-[a-z0-9-]+(?:\.c-[0-9]+)?\.us-east-1\.aws\.neon\.tech$/;
 const DRY_RUN_SCHEMA_PREFIX = "migration_dry_run_env01_";
 const EXPECTED_PUBLIC_TABLES = 63;
 const SILENT_LOGGER = Object.freeze({
