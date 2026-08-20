@@ -10,7 +10,6 @@ import {
 } from "../application/database-test-login.ts";
 import { IdentityRepositoryError } from "../application/session-port.ts";
 import type { IdentitySessionActor } from "../domain/actor.ts";
-import { TEST_IDENTITY_GROUP_ROLE } from "../../../lib/runtime/test-database-config.ts";
 
 interface DatabaseTestIdentityPool {
   connect(): Promise<DatabaseTestIdentityClient>;
@@ -168,12 +167,11 @@ export class PostgresqlDatabaseTestSessionRepository implements DatabaseTestLogi
     try {
       client = await this.pool.connect();
       await client.query("BEGIN");
-      const preflight = await client.query<{ current_user: string; has_required_role: boolean }>(
-        "SELECT current_user, pg_has_role(current_user, $1, 'member') AS has_required_role",
-        [TEST_IDENTITY_GROUP_ROLE],
+      const preflight = await client.query<{ current_user: string }>(
+        "SELECT current_user",
       );
       const role = preflight.rows[0];
-      if (role?.current_user !== this.expectedLoginUser || role.has_required_role !== true) {
+      if (role?.current_user !== this.expectedLoginUser) {
         throw new DatabaseTestIdentityRoleError();
       }
       const result = await operation(client);

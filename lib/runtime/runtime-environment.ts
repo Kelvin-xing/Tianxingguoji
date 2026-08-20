@@ -48,6 +48,7 @@ export function loadRuntimeEnvironment(
     requireValue(authMode, "local-synthetic", "AUTH_MODE");
     rejectPresent(environment, "VERCEL");
     rejectPresent(environment, "VERCEL_ENV");
+    rejectLegacyLocalDatabaseUrls(environment);
     return freezeConfiguration({
       appEnvironment,
       nodeEnvironment,
@@ -94,6 +95,7 @@ export function loadRuntimeEnvironment(
 
 function rejectProductionTestDatabaseUrls(environment: RuntimeEnvironment): void {
   for (const variable of [
+    "TEST_DATABASE_URL",
     "TEST_IDENTITY_DATABASE_URL",
     "TEST_APPLICATION_DATABASE_URL",
     "TEST_PROVISION_DATABASE_URL",
@@ -107,6 +109,8 @@ function rejectTestWebSecrets(environment: RuntimeEnvironment): void {
   for (const variable of [
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",
+    "TEST_IDENTITY_DATABASE_URL",
+    "TEST_APPLICATION_DATABASE_URL",
     "TEST_MIGRATION_DATABASE_URL",
     "TEST_PROVISION_DATABASE_URL",
   ]) {
@@ -116,6 +120,15 @@ function rejectTestWebSecrets(environment: RuntimeEnvironment): void {
     .sort()
     .find((variable) => variable.startsWith("LOCAL_SYNTHETIC_") && present(environment[variable]));
   if (localVariable) throw new RuntimeEnvironmentConfigurationError(localVariable);
+}
+
+function rejectLegacyLocalDatabaseUrls(environment: RuntimeEnvironment): void {
+  for (const variable of [
+    "LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL",
+    "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
+  ]) {
+    rejectPresent(environment, variable);
+  }
 }
 
 function exact<const Values extends readonly string[]>(

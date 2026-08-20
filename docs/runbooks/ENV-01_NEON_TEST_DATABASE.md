@@ -2,6 +2,11 @@
 
 ## 1. 目的与当前边界
 
+> **单角色裁决（2026-08-20）**：local、Vercel test 和 AWS production 的唯一 runtime login
+> role 为 `tianxing_app`。本手册中 `env01_migration_login`、`rds_iam` 及其他 operator/group role
+> 只代表历史 ENV-01C migration 运行记录，不得作为新的运行时或 one-role baseline 依据。新的独立合同见
+> `db/baselines/one-role/manifest.json`，当前状态为 `executable-unapplied`：代码已生成并验算，但尚未执行。
+
 本手册记录 `txgj_env01_test` 的 bootstrap 状态，以及后续 migration 和纯合成 seed 顺序。bootstrap 已按独立审批完成；当前仍未授权执行 migration/seed、修改 Vercel 或部署。
 
 固定目标：
@@ -10,7 +15,7 @@
 - Branch：`main`
 - Region：AWS `us-east-1`
 - Database：`txgj_env01_test`
-- migration login：`env01_migration_login`
+- runtime / baseline login：`tianxing_app`
 - endpoint：Neon direct endpoint；hostname 不得包含 `-pooler`
 - TLS：证书校验必须开启，`rejectUnauthorized=true`
 
@@ -18,18 +23,17 @@
 
 当前状态（截至 2026-08-19）：
 
-- Neon SQL Editor 已确认以 `neondb_owner` 身份执行；
-- `txgj_env01_test`、`env01_migration_login`、角色授权和首次密码初始化已验收；
-- migration runner 已通过外部 Direct endpoint 连接；独立 Direct `psql` 登录仍未单独验收；
+- 历史 bootstrap 已确认 `txgj_env01_test` 和旧 operator 角色曾存在；这些角色不属于当前单角色合同；
+- 当前 baseline runner 只接受 `tianxing_app` 的 Direct endpoint；没有执行 baseline、migration 或 seed；
 - 上一次 apply 已获批准并执行，但业务 SQL 失败；只读证据为 0 ledger rows、0 public tables、0 migration roles、0 stale dry-run schemas；
 - 上一次失败留下的 exact empty tool metadata 已按独立审批完成受控 cleanup；
 - cleanup 后由独立新连接确认 `migration` schema/ledger 均不存在、public tables 为 0、migration roles 为 0、stale dry-run schemas 为 0；
 - 最近一次真实事务 dry-run 在事务开始前的 preflight inspection 因 metadata SQL 使用 PostgreSQL 保留字别名而停止，未执行 27 个 SQL、DDL 或 DML；现已改用安全别名，并将 preflight/postflight inspection 异常固定为脱敏结构化 evidence；
-- 修正后的真实事务 migration dry-run 尚未连接数据库执行，seed dry-run/apply 均未执行。
+- 单角色 baseline 的离线生成、manifest 哈希和事务模拟已通过；真实数据库 dry-run、apply、seed dry-run/apply 均未执行。
 
 ## 2. 审批门
 
-以下 bootstrap 项已经用户逐项批准并验收：
+以下历史 bootstrap 项已经用户逐项批准并验收，但不再作为当前单角色执行入口：
 
 1. Neon SQL Editor 的执行身份为 `neondb_owner`。
 2. 创建 `env01_migration_login`。
@@ -37,26 +41,27 @@
 4. 创建 `txgj_env01_test`。
 5. 首次初始化 `env01_migration_login` 密码。
 
-以下动作仍必须分别获得用户明确批准，前一项通过不自动批准后一项：
+当前单角色动作仍必须分别获得用户明确批准，前一项通过不自动批准后一项：
 
-1. 修正后的 migration dry-run。
-2. migration apply 重试。
-3. seed dry-run。
-4. seed apply。
+1. 单角色 baseline dry-run。
+2. 单角色 baseline apply。
+3. synthetic seed dry-run。
+4. synthetic seed apply。
 
-上一次 metadata cleanup 已作为独立审批完成，不授权 migration dry-run 或 apply 重试。preflight 继续拒绝任何新的 `migration` schema、ledger、异常 owner 或外部用户依赖 residue；runner 不会自动 `DROP`。
+上一次 metadata cleanup 已作为独立审批完成，不授权当前 baseline dry-run 或 apply。baseline preflight
+继续拒绝非空 public schema、已有 marker 或异常 owner；runner 不会自动 `DROP`。历史 ledger/residue 的清理结论来自上一次独立 postcheck，不由当前 one-role marker 取代。
 
 密码和连接串绝不能进入 Git 或 GitHub。允许操作员在 Neon Console 查看，并保存在本机 Git 已忽略且权限为 `0600` 的操作员文件中。migration secret 仍不得出现在聊天、截图、命令输出、应用环境或 Vercel 环境中，也不得放入命令行参数、终端历史或可复用 SQL 文件。第 4.1 节记录的首次初始化是唯一的 SQL Editor 明文例外。
 
 ## 3. 本地无连接计划
 
-此命令只读取 `db/migrations/manifest.json` 和 27 个 SQL 文件，重新计算 SHA-256，不读取环境文件，也不连接数据库：
+此命令验证独立 one-role manifest、28 个 generated SQL（27 个源迁移转换结果加 1 个 hardening 文件），并回溯验证历史 manifest 与所有源 SHA-256；不读取环境文件，也不连接数据库：
 
 ```bash
 pnpm db:plan:neon-test
 ```
 
-预期：JSON 只包含目标逻辑标识、TLS 状态、manifest 版本/数量/SHA-256、迁移名称与哈希、事务策略和 `status`。
+预期：JSON 只包含 baseline id、源/生成文件数量、manifest SHA-256、事务合同、独立 marker 和 `status`。
 
 ## 4. 已验收的 Bootstrap 操作
 
@@ -70,9 +75,9 @@ ALTER ROLE env01_migration_login PASSWORD '<ONE_TIME_OPERATOR_SECRET>';
 
 `<ONE_TIME_OPERATOR_SECRET>` 只是占位符，实际密码不得写入本手册、Git、GitHub、聊天、截图或命令输出。该例外只适用于首次初始化，不得扩展为日常登录、密码轮换、migration、seed 或其他角色管理方式。
 
-### 4.2 创建 migration login
+### 4.2 历史 migration login（仅存档）
 
-该步骤已经验收。migration login 的固定属性和授权为：
+该步骤已经验收，但角色只属于历史 ENV-01C 操作记录；当前 baseline 不使用它，也不要求重新创建：
 
 ```sql
 CREATE ROLE env01_migration_login
@@ -90,9 +95,10 @@ GRANT rds_iam TO env01_migration_login WITH ADMIN OPTION;
 
 不得授予 `neon_superuser`、其他角色成员关系或对象权限。
 
-### 4.3 创建 Database
+### 4.3 历史 Database bootstrap（仅存档）
 
-该步骤已经验收。`CREATE DATABASE` 不属于 migration 事务，固定目标为：
+该步骤已经验收。`CREATE DATABASE` 不属于 migration 事务；后续代码只把该空库作为
+`tianxing_app` owner 的单角色 baseline 目标，不再使用旧 migration login：
 
 ```sql
 CREATE DATABASE txgj_env01_test OWNER env01_migration_login;
@@ -109,10 +115,10 @@ cp .env.migration.neon-test.example .env.migration.neon-test
 chmod 600 .env.migration.neon-test
 ```
 
-由用户在本机编辑 `TEST_MIGRATION_DATABASE_URL`。URL 必须：
+由用户在本机编辑 `ONE_ROLE_BASELINE_DATABASE_URL`。URL 必须：
 
 - 使用 `postgresql:`；
-- user 为 `env01_migration_login`；
+- user 为 `tianxing_app`；
 - database 为 `txgj_env01_test`；
 - hostname 匹配 Neon Direct 格式 `ep-*.(c-<数字>.)?us-east-1.aws.neon.tech`，允许 Neon 当前的 cell 标签（例如 `c-2`），且 endpoint ID 不含 `-pooler`；
 - 显式端口 `5432`；
@@ -121,39 +127,42 @@ chmod 600 .env.migration.neon-test
 
 该文件不得加载到 Next.js 或 Vercel。不得设置 `DATABASE_URL` 或 `MIGRATION_DATABASE_URL`。
 
-独立 Direct `psql` 登录仍是待确认状态。使用本机 libpq/`psql` 18 验证时，密码只允许交互式输入，连接参数必须同时保留 `sslmode=verify-full` 和已经验证的系统 CA 路径：
+独立 Direct `psql` 登录不是 baseline 的必要 gate；如需单独验证，使用本机 libpq/`psql` 连接
+`tianxing_app`，密码只允许交互式输入，连接参数必须同时保留 `sslmode=verify-full` 和已经验证的系统 CA 路径：
 
 ```bash
-psql "host=<DIRECT_HOST> port=5432 dbname=txgj_env01_test user=env01_migration_login sslmode=verify-full sslrootcert=system"
+psql "host=<DIRECT_HOST> port=5432 dbname=txgj_env01_test user=tianxing_app sslmode=verify-full sslrootcert=system"
 ```
 
-该命令成功只代表外部 Direct migration login 可用，不代表 migration dry-run、migration apply 或任何 seed 已经执行或通过。
+该命令成功只代表外部 Direct baseline login 可用，不代表 baseline dry-run、baseline apply 或任何 seed 已经执行或通过。
 
 ## 6. Migration 顺序
 
 未来获得逐项批准后的命令：
 
 ```bash
-pnpm db:migrate:neon-test:dry-run
-pnpm db:migrate:neon-test
+pnpm db:baseline:neon-test:dry-run
+pnpm db:baseline:neon-test
 ```
 
 runner 在连接后强制检查：
 
-- database/user/owner 精确匹配；
-- migration role 属性和 `rds_iam` ADMIN OPTION；
-- migration role 与 `rds_iam` 均不属于 `neon_superuser`；
-- public 表为 0、正式 ledger 不存在；
-- migration 将创建的 7 个角色不存在；
-- 不存在上一次遗留的 ENV-01 dry-run schema。
+- database/user/owner 精确匹配为 `txgj_env01_test` / `tianxing_app`；
+- `tianxing_app` 为可登录、非 superuser、不可 CREATEDB/CREATEROLE/INHERIT/REPLICATION/BYPASSRLS；
+- public schema 中没有业务对象，独立 baseline marker 不存在；
+- RLS/SECURITY DEFINER hardening 计数处于空库预期状态；
+- 同一事务取得 advisory lock 后、首个 generated SQL 前，再次执行同样的 preflight，避免检查与执行之间的状态竞争。
 
-apply 执行策略固定为 `node-pg-migrate@9.0.0`、`checkOrder=true`、`singleTransaction=true`、`advisoryLockMode=fail`、`noLock=false`。runner 在执行前后都重新验证 manifest。
+baseline 执行策略固定为单事务、transaction-scoped advisory lock、每个生成文件的 SHA-256 复核和独立 marker；runner 在执行前后都重新验证 manifest。
 
-修正后的 dry-run 不再使用 `node-pg-migrate dryRun`，因为该模式只打印 SQL，不能证明 27 个冻结 SQL 文件可由 PostgreSQL 执行。新 dry-run 使用一个显式事务和 transaction-scoped advisory lock，严格按 manifest 顺序执行 27 个文件；每个文件在执行前后都重新读取并校验 SHA-256，并把整个文件作为一次 query 交给 PostgreSQL，不自行拆分 SQL。无论成功或失败都只执行 `ROLLBACK`，不执行 `COMMIT`，也不创建正式 migration ledger。事务结束后使用独立连接复验 public tables、migration roles、正式 ledger 和 dry-run residue 均与 preflight 空状态一致。
+baseline dry-run 不使用 `node-pg-migrate dryRun`，因为该模式只打印 SQL，不能证明冻结 SQL 文件可由 PostgreSQL 执行。新 dry-run 使用一个显式事务和 transaction-scoped advisory lock，严格按 baseline manifest 顺序执行 28 个生成文件；每个文件在执行前后都重新读取并校验 SHA-256，并把整个文件作为一次 query 交给 PostgreSQL，不自行拆分 SQL。无论成功或失败都只执行 `ROLLBACK`，不执行 `COMMIT`，也不创建历史 migration ledger。事务结束后使用独立连接复验 public objects、baseline marker、RLS 和 SECURITY DEFINER 状态均与 preflight 空状态一致。
 
 preflight、rollback verification 和 postflight 的 manifest/database inspection 均使用固定 `failure_stage`，只保留可验证的 migration name（若已确定）和合法 SQLSTATE；PostgreSQL message、detail、query、where、stack、hostname、连接串和 secret 不进入 CLI evidence。
 
-### 6.1 上一次 apply 事故与 metadata 分类
+### 6.1 历史 ENV-01C apply 事故与 metadata 分类（仅存档）
+
+以下内容描述旧的多角色 `node-pg-migrate` 运行记录，不是当前单角色 baseline 的执行合同；
+它保留在本手册中用于解释历史残留和 cleanup 证据。
 
 `node-pg-migrate@9.0.0` 会在其 single-transaction `BEGIN` 之前创建 `migration` schema 并确保 `migration.schema_migrations` 存在。因此，上一次业务 SQL 失败并回滚后，仍留下了工具 metadata：空 ledger table、对应 sequence、index 和 primary-key constraint。0 ledger rows、0 public tables 和 0 migration roles 证明业务变更已回滚，但不代表数据库完全回到 preflight 状态。
 
@@ -189,7 +198,7 @@ pnpm db:seed:neon-test:dry-run
 pnpm db:seed:neon-test
 ```
 
-seed 只在完整 27 条 ledger、63 张 public 表时运行，并在事务内锁定本 seed 涉及的表。业务数据必须处于以下两种状态之一：
+seed 只在 one-role marker 的 id、transform version、baseline manifest SHA-256 和 source count 全部匹配，且所有 seed 必需表均存在时运行。public 表总数按实际 baseline 读取，不再硬编码为 63；seed 会逐表拒绝任何非固定 synthetic fixture 的业务行，并在事务内锁定本 seed 涉及的表。业务数据必须处于以下两种状态之一：
 
 - 所有 public 业务表为空：允许首次写入；
 - public 中只存在本手册固定 UUID 的完整 ENV01 seed，且逐字段、manifest hash、school hash、approved 状态和 synthetic-only 标记全部一致：允许幂等复验，不重复写入。
@@ -215,26 +224,18 @@ Migration 示例（所有值均为非秘密元数据）：
 ```json
 {
   "mode": "apply",
-  "endpoint_kind": "neon-direct",
-  "target_database": "txgj_env01_test",
-  "migration_login": "env01_migration_login",
-  "tls": { "verified": true, "reject_unauthorized": true },
-  "manifest": {
-    "version": 1,
-    "count": 27,
-    "sha256": "<MANIFEST_SHA256>",
-    "migrations": [{ "name": "<ORDERED_NAME>", "sha256": "<SHA256>" }]
-  },
-  "ledger": { "before": 0, "after": 27 },
-  "public_table_count": { "before": 0, "after": 63 },
-  "transaction_policy": {
-    "tool": "node-pg-migrate",
-    "version": "9.0.0",
-    "check_order": true,
+  "baseline_id": "tianxing-one-role-v1",
+  "canonical_login_role": "tianxing_app",
+  "source_migrations": 27,
+  "generated_files": 28,
+  "manifest_sha256": "<BASELINE_MANIFEST_SHA256>",
+  "transaction_contract": {
     "single_transaction": true,
-    "advisory_lock_mode": "fail",
-    "no_lock": false
+    "advisory_lock": "transaction-scoped",
+    "dry_run": "rollback",
+    "apply": "commit"
   },
+  "marker": "installed",
   "status": "pass"
 }
 ```
@@ -245,18 +246,26 @@ Seed 示例：
 {
   "mode": "apply",
   "endpoint_kind": "neon-direct",
-  "target_database": "txgj_env01_test",
-  "migration_login": "env01_migration_login",
+  "canonical_login_role": "tianxing_app",
   "tls": { "verified": true, "reject_unauthorized": true },
-  "manifest": { "version": 1, "count": 27, "sha256": "<MANIFEST_SHA256>" },
-  "ledger": { "before": 27, "after": 27 },
-  "public_table_count": { "before": 63, "after": 63 },
+  "baseline": {
+    "id": "tianxing-one-role-v1",
+    "transform_version": "one-role-transform-v1",
+    "source_migration_count": 27,
+    "manifest_sha256": "<BASELINE_MANIFEST_SHA256>"
+  },
+  "marker": { "before": "verified", "after": "verified" },
+  "public_table_count": "<OBSERVED_COUNT>",
+  "database_isolation": {
+    "model": "single-owner-role",
+    "credential_table_owner_access_is_residual_risk": true
+  },
   "seed": {
-      "version": "env01-neon-release1-v1",
-      "synthetic_only": true,
-      "manifest_content_sha256": "<MANIFEST_CONTENT_SHA256>",
-      "school_snapshot_manifest_sha256": "<SCHOOL_SNAPSHOT_MANIFEST_SHA256>",
-      "rows": {
+    "version": "env01-neon-release1-v1",
+    "synthetic_only": true,
+    "manifest_content_sha256": "<MANIFEST_CONTENT_SHA256>",
+    "school_snapshot_manifest_sha256": "<SCHOOL_SNAPSHOT_MANIFEST_SHA256>",
+    "rows": {
       "organizations": 1,
       "users": 5,
       "memberships": 5,
@@ -275,27 +284,26 @@ Seed 示例：
 }
 ```
 
-后续 application/identity login 创建并单独批准连接后，使用源码中的
-`validateNeonTestRuntimeBoundary()` 校验以下 future evidence contract。此模板只是预期合同，不代表本轮已经连接或验证：
+后续真实连接获批后，使用源码中的 `validateNeonTestRuntimeBoundary()` 校验以下单角色证据合同。此模板只是预期合同，不代表本轮已经连接或验证：
 
 ```json
 {
-  "identity": {
-    "member_of_expected_group": true,
-    "can_read_credentials": true,
-    "can_write_business_data": false,
-    "can_run_ddl": false
-  },
-  "application": {
-    "member_of_expected_group": true,
-    "can_read_business_data": true,
-    "can_write_business_data": true,
-    "can_read_credentials": false,
-    "can_run_ddl": false
-  },
+  "user_name": "tianxing_app",
+  "database_owner": "tianxing_app",
+  "login": true,
+  "superuser": false,
+  "create_database": false,
+  "create_role": false,
+  "inherit": false,
+  "replication": false,
+  "bypass_rls": false,
+  "credential_table_owner": "tianxing_app",
+  "credential_table_owner_access_is_residual_risk": true,
   "status": "pass"
 }
 ```
+
+单角色 owner 仍可执行 DDL，也能直接读取其拥有的 credential table；`FORCE ROW LEVEL SECURITY`、安全的 `SECURITY DEFINER` 和应用层授权只能缩小风险，不能在同一数据库凭据泄露后提供角色隔离。
 
 证据不得包含 hostname、连接串、密码、Token、API Key、数据库行内容或 email。异常输出只允许脱敏后的单行消息，不输出 stack trace。
 

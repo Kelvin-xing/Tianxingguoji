@@ -7,28 +7,24 @@ import type { PlatformBillingActor } from "../domain/policy.ts";
 const HK_REGION = "ap-east-1" as const;
 const HK_RDS_HOST = /^[a-z0-9][a-z0-9.-]*\.ap-east-1\.rds\.amazonaws\.com$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_DATABASE_ROLE = "tianxing_app" as const;
 
 type Environment = Readonly<Record<string, string | undefined>>;
-type DatabaseRole =
-  | "portal_auth"
-  | "tianxing_app"
-  | "platform_billing"
-  | "platform_billing_reader";
-
-export interface ProductionDatabaseIdentity<Role extends DatabaseRole> {
+export interface ProductionDatabaseIdentity {
   readonly host: string;
   readonly port: 5432;
   readonly database: "tianxing";
-  readonly user: Role;
+  readonly user: typeof CANONICAL_DATABASE_ROLE;
   readonly ssl: Readonly<{ rejectUnauthorized: true }>;
 }
 
 export interface PortalBillingProductionConfig {
   readonly region: typeof HK_REGION;
-  readonly portalDiscovery: ProductionDatabaseIdentity<"portal_auth">;
-  readonly portalTenant: ProductionDatabaseIdentity<"tianxing_app">;
-  readonly platformBilling: ProductionDatabaseIdentity<"platform_billing">;
-  readonly platformBillingReader: ProductionDatabaseIdentity<"platform_billing_reader">;
+  readonly database: ProductionDatabaseIdentity;
+  readonly portalDiscovery: ProductionDatabaseIdentity;
+  readonly portalTenant: ProductionDatabaseIdentity;
+  readonly platformBilling: ProductionDatabaseIdentity;
+  readonly platformBillingReader: ProductionDatabaseIdentity;
 }
 
 export class PortalBillingProductionConfigurationError extends Error {
@@ -89,12 +85,12 @@ export interface PlatformBillingAggregateReader {
 export interface PortalBillingProductionFactories {
   readonly portalDiscovery?: {
     create(input: Readonly<{
-      database: ProductionDatabaseIdentity<"portal_auth">;
+      database: ProductionDatabaseIdentity;
     }>): PortalDiscoveryAdapter;
   };
   readonly portalTenant?: {
     create(input: Readonly<{
-      database: ProductionDatabaseIdentity<"tianxing_app">;
+      database: ProductionDatabaseIdentity;
     }>): PortalTenantRuntimeResolver;
   };
   readonly platformOperatorAuth?: {
@@ -103,12 +99,12 @@ export interface PortalBillingProductionFactories {
   };
   readonly platformBilling?: {
     create(input: Readonly<{
-      database: ProductionDatabaseIdentity<"platform_billing">;
+      database: ProductionDatabaseIdentity;
     }>): PlatformBillingRuntime;
   };
   readonly platformBillingOverview?: {
     create(input: Readonly<{
-      database: ProductionDatabaseIdentity<"platform_billing_reader">;
+      database: ProductionDatabaseIdentity;
     }>): PlatformBillingAggregateReader;
   };
 }
@@ -128,16 +124,14 @@ export function loadPortalBillingProductionConfig(
     throw new PortalBillingProductionConfigurationError("AWS_REGION");
   }
 
+  const database = loadDatabase(environment);
   return Object.freeze({
     region: HK_REGION,
-    portalDiscovery: loadIdentity(environment, "PORTAL_AUTH", "portal_auth"),
-    portalTenant: loadIdentity(environment, "PORTAL_TENANT", "tianxing_app"),
-    platformBilling: loadIdentity(environment, "PLATFORM_BILLING", "platform_billing"),
-    platformBillingReader: loadIdentity(
-      environment,
-      "PLATFORM_BILLING_READER",
-      "platform_billing_reader",
-    ),
+    database,
+    portalDiscovery: database,
+    portalTenant: database,
+    platformBilling: database,
+    platformBillingReader: database,
   });
 }
 
@@ -197,37 +191,60 @@ export function composePortalBillingProductionRuntime(
   });
 }
 
-function loadIdentity<Role extends DatabaseRole>(
-  environment: Environment,
-  prefix:
-    | "PORTAL_AUTH"
-    | "PORTAL_TENANT"
-    | "PLATFORM_BILLING"
-    | "PLATFORM_BILLING_READER",
-  expectedRole: Role,
-): ProductionDatabaseIdentity<Role> {
-  const hostVariable = `${prefix}_DATABASE_HOST`;
-  const host = required(environment, hostVariable).toLowerCase();
-  if (!HK_RDS_HOST.test(host)) {
-    throw new PortalBillingProductionConfigurationError(hostVariable);
+function loadDatabase(environment: Environment): ProductionDatabaseIdentity {
+  const raw = required(environment, "DATABASE_URL");
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new PortalBillingProductionConfigurationError("DATABASE_URL");
   }
-  if (required(environment, `${prefix}_DATABASE_NAME`) !== "tianxing") {
-    throw new PortalBillingProductionConfigurationError(`${prefix}_DATABASE_NAME`);
+  const host = parsed.hostname.toLowerCase();
+  if (
+    parsed.protocol !== "postgresql:" ||
+    !HK_RDS_HOST.test(host) ||
+    parsed.username !== CANONICAL_DATABASE_ROLE ||
+    parsed.password.length === 0 ||
+    parsed.pathname !== "/tianxing" ||
+    parsed.port !== "5432" ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0
+  ) {
+    throw new PortalBillingProductionConfigurationError("DATABASE_URL");
   }
-  if (required(environment, `${prefix}_DATABASE_PORT`) !== "5432") {
-    throw new PortalBillingProductionConfigurationError(`${prefix}_DATABASE_PORT`);
-  }
-  if (required(environment, `${prefix}_DATABASE_USER`) !== expectedRole) {
-    throw new PortalBillingProductionConfigurationError(`${prefix}_DATABASE_USER`);
-  }
-
+  rejectLegacyDatabaseVariables(environment);
   return Object.freeze({
     host,
     port: 5432,
     database: "tianxing",
-    user: expectedRole,
+    user: CANONICAL_DATABASE_ROLE,
     ssl: Object.freeze({ rejectUnauthorized: true }),
   });
+}
+
+function rejectLegacyDatabaseVariables(environment: Environment): void {
+  for (const variable of [
+    "PORTAL_AUTH_DATABASE_HOST",
+    "PORTAL_AUTH_DATABASE_NAME",
+    "PORTAL_AUTH_DATABASE_PORT",
+    "PORTAL_AUTH_DATABASE_USER",
+    "PORTAL_TENANT_DATABASE_HOST",
+    "PORTAL_TENANT_DATABASE_NAME",
+    "PORTAL_TENANT_DATABASE_PORT",
+    "PORTAL_TENANT_DATABASE_USER",
+    "PLATFORM_BILLING_DATABASE_HOST",
+    "PLATFORM_BILLING_DATABASE_NAME",
+    "PLATFORM_BILLING_DATABASE_PORT",
+    "PLATFORM_BILLING_DATABASE_USER",
+    "PLATFORM_BILLING_READER_DATABASE_HOST",
+    "PLATFORM_BILLING_READER_DATABASE_NAME",
+    "PLATFORM_BILLING_READER_DATABASE_PORT",
+    "PLATFORM_BILLING_READER_DATABASE_USER",
+  ]) {
+    if (environment[variable]?.trim()) {
+      throw new PortalBillingProductionConfigurationError(variable);
+    }
+  }
 }
 
 function required(environment: Environment, variable: string): string {

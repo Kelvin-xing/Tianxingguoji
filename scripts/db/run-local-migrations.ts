@@ -14,10 +14,8 @@ import {
   type MigrationManifest as SharedMigrationManifest,
 } from "./migration-manifest.ts";
 
-const LOCAL_MODE = "local-synthetic";
-const LOCAL_DATABASE = "tianxing";
-const LOCAL_MIGRATION_USER = "tianxing_migration";
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+type LocalDatabase = "tianxing";
+type LocalApplicationUser = "tianxing_app";
 
 export type LocalMigrationMode = "dry-run" | "apply";
 
@@ -29,8 +27,8 @@ export type LocalMigrationTarget = Readonly<{
   connectionString: string;
   host: string;
   port: number;
-  database: typeof LOCAL_DATABASE;
-  user: typeof LOCAL_MIGRATION_USER;
+  database: LocalDatabase;
+  user: LocalApplicationUser;
 }>;
 
 type DatabaseState = Readonly<{
@@ -53,48 +51,12 @@ export function readLocalMigrationMode(arguments_: readonly string[]): LocalMigr
 }
 
 export function readLocalMigrationTarget(
-  environment: RuntimeEnvironment = process.env,
+  _environment: RuntimeEnvironment = process.env,
 ): LocalMigrationTarget {
-  if (environment.APP_RUNTIME_MODE !== LOCAL_MODE || environment.NODE_ENV === "production") {
-    throw new LocalMigrationSafetyError("Local migrations require non-production local-synthetic mode.");
-  }
-
-  const connectionString = environment.MIGRATION_DATABASE_URL?.trim();
-  if (!connectionString || /[\r\n]/.test(connectionString)) {
-    throw new LocalMigrationSafetyError("MIGRATION_DATABASE_URL is required.");
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(connectionString);
-  } catch {
-    throw new LocalMigrationSafetyError("MIGRATION_DATABASE_URL must be a valid PostgreSQL URL.");
-  }
-
-  const database = decodeURIComponent(parsed.pathname.slice(1));
-  const port = parsed.port === "" ? 5432 : Number(parsed.port);
-  if (
-    !["postgres:", "postgresql:"].includes(parsed.protocol) ||
-    !LOOPBACK_HOSTS.has(parsed.hostname) ||
-    parsed.username !== LOCAL_MIGRATION_USER ||
-    parsed.password.length === 0 ||
-    database !== LOCAL_DATABASE ||
-    port !== 5432 ||
-    parsed.search !== "" ||
-    parsed.hash !== ""
-  ) {
-    throw new LocalMigrationSafetyError(
-      "Migration target must be the loopback tianxing database and tianxing_migration user.",
-    );
-  }
-
-  return Object.freeze({
-    connectionString,
-    host: parsed.hostname,
-    port,
-    database: LOCAL_DATABASE,
-    user: LOCAL_MIGRATION_USER,
-  });
+  void _environment;
+  throw new LocalMigrationSafetyError(
+    "Local migration target is disabled until the one-role baseline is approved.",
+  );
 }
 
 export function createLocalMigrationOptions(

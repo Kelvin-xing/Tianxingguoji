@@ -514,7 +514,7 @@ test("emits only approved plan and migration evidence fields", async () => {
   assert.match(applyText, /"verified":true/);
 });
 
-test("keeps Neon migration secrets isolated from app and Vercel variables", async () => {
+test("keeps the legacy runner isolated while active commands use the one-role baseline", async () => {
   const [example, ignore, packageText, source] = await Promise.all([
     readFile(".env.migration.neon-test.example", "utf8"),
     readFile(".gitignore", "utf8"),
@@ -525,19 +525,21 @@ test("keeps Neon migration secrets isolated from app and Vercel variables", asyn
 
   assert.match(example, /^APP_ENV=test$/m);
   assert.match(example, /^NODE_ENV=production$/m);
-  assert.match(example, /^APP_RUNTIME_MODE=test-database$/m);
-  assert.match(example, /^AUTH_MODE=database-test$/m);
-  assert.match(example, /^TEST_DATABASE_EXPECTED_NAME=txgj_env01_test$/m);
-  assert.match(example, /^TEST_MIGRATION_DATABASE_URL=postgresql:\/\//m);
+  assert.match(example, /^ONE_ROLE_BASELINE_EXPECTED_DATABASE=txgj_env01_test$/m);
+  assert.match(example, /^ONE_ROLE_BASELINE_DATABASE_URL=postgresql:\/\/tianxing_app:/m);
   assert.doesNotMatch(example, /^DATABASE_URL=/m);
   assert.doesNotMatch(example, /^MIGRATION_DATABASE_URL=/m);
+  assert.doesNotMatch(example, /^TEST_MIGRATION_DATABASE_URL=/m);
+  assert.doesNotMatch(example, /env01_migration_login/);
   assert.match(ignore, /^!\/\.env\.migration\.neon-test\.example$/m);
+  assert.equal(packageJson.scripts["db:plan:neon-test"], "pnpm db:baseline:plan");
   assert.equal(
-    packageJson.scripts["db:plan:neon-test"],
-    "node scripts/db/migration-manifest.ts --neon-test-plan",
+    packageJson.scripts["db:migrate:neon-test:dry-run"],
+    "pnpm db:baseline:neon-test:dry-run",
   );
-  assert.match(packageJson.scripts["db:migrate:neon-test:dry-run"], /--dry-run$/);
-  assert.match(packageJson.scripts["db:migrate:neon-test"], /--apply$/);
+  assert.equal(packageJson.scripts["db:migrate:neon-test"], "pnpm db:baseline:neon-test");
+  assert.match(packageJson.scripts["db:baseline:neon-test:dry-run"], /run-one-role-baseline/);
+  assert.match(packageJson.scripts["db:baseline:neon-test"], /--apply$/);
   assert.doesNotMatch(source, /error\.stack/);
 });
 

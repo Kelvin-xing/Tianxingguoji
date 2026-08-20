@@ -5,7 +5,6 @@ import { Pool } from "pg";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import {
   loadTestDatabaseConfiguration,
-  TEST_APPLICATION_GROUP_ROLE,
 } from "../../../lib/runtime/test-database-config.ts";
 import { createTenantTransactionRunner, type DatabasePool } from "./db.ts";
 import { getLocalApplicationTenantRunner } from "./local-postgresql.ts";
@@ -33,7 +32,7 @@ export function getApplicationTenantRunner() {
   const config = loadTestDatabaseConfiguration();
   if (!globalForApplicationPostgresql.__txTestApplicationPool) {
     globalForApplicationPostgresql.__txTestApplicationPool = new Pool({
-      connectionString: config.application.connectionString,
+      connectionString: config.database.connectionString,
       application_name: "tianxing-test-application",
       max: config.poolMax,
       connectionTimeoutMillis: config.connectionTimeoutMs,
@@ -44,8 +43,7 @@ export function getApplicationTenantRunner() {
   return createTenantTransactionRunner(
     globalForApplicationPostgresql.__txTestApplicationPool as unknown as DatabasePool,
     {
-      expectedLoginUser: config.application.loginUser,
-      requiredGroupRole: TEST_APPLICATION_GROUP_ROLE,
+      expectedLoginUser: config.database.loginUser,
     },
   );
 }

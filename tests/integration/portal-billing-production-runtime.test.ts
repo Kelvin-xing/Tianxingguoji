@@ -16,29 +16,15 @@ const UUID = "11111111-1111-4111-8111-111111111111";
 function validEnvironment(): Record<string, string> {
   return {
     AWS_REGION: "ap-east-1",
-    PORTAL_AUTH_DATABASE_HOST: HK_HOST,
-    PORTAL_AUTH_DATABASE_NAME: "tianxing",
-    PORTAL_AUTH_DATABASE_PORT: "5432",
-    PORTAL_AUTH_DATABASE_USER: "portal_auth",
-    PORTAL_TENANT_DATABASE_HOST: HK_HOST,
-    PORTAL_TENANT_DATABASE_NAME: "tianxing",
-    PORTAL_TENANT_DATABASE_PORT: "5432",
-    PORTAL_TENANT_DATABASE_USER: "tianxing_app",
-    PLATFORM_BILLING_DATABASE_HOST: HK_HOST,
-    PLATFORM_BILLING_DATABASE_NAME: "tianxing",
-    PLATFORM_BILLING_DATABASE_PORT: "5432",
-    PLATFORM_BILLING_DATABASE_USER: "platform_billing",
-    PLATFORM_BILLING_READER_DATABASE_HOST: HK_HOST,
-    PLATFORM_BILLING_READER_DATABASE_NAME: "tianxing",
-    PLATFORM_BILLING_READER_DATABASE_PORT: "5432",
-    PLATFORM_BILLING_READER_DATABASE_USER: "platform_billing_reader",
+    DATABASE_URL: `postgresql://tianxing_app:secret@${HK_HOST}:5432/tianxing`,
   };
 }
 
-test("loads four explicit HK RDS identities with TLS and no credential fallback", () => {
+test("loads one explicit HK RDS identity for every Portal/Billing adapter", () => {
   const config = loadPortalBillingProductionConfig(validEnvironment());
 
   assert.equal(config.region, "ap-east-1");
+  assert.equal(config.database.user, "tianxing_app");
   assert.deepEqual(
     [
       config.portalDiscovery.user,
@@ -46,9 +32,12 @@ test("loads four explicit HK RDS identities with TLS and no credential fallback"
       config.platformBilling.user,
       config.platformBillingReader.user,
     ],
-    ["portal_auth", "tianxing_app", "platform_billing", "platform_billing_reader"],
+    ["tianxing_app", "tianxing_app", "tianxing_app", "tianxing_app"],
   );
-  assert.notEqual(config.portalDiscovery, config.portalTenant);
+  assert.equal(config.portalDiscovery, config.database);
+  assert.equal(config.portalTenant, config.database);
+  assert.equal(config.platformBilling, config.database);
+  assert.equal(config.platformBillingReader, config.database);
   assert.deepEqual(config.portalDiscovery.ssl, { rejectUnauthorized: true });
   assert.equal("password" in config.portalDiscovery, false);
   assert.equal("url" in config.portalDiscovery, false);
@@ -57,11 +46,9 @@ test("loads four explicit HK RDS identities with TLS and no credential fallback"
 test("rejects non-HK, malformed, missing, and role-confused production configuration", () => {
   const cases: Array<[string, Partial<Record<string, string>>]> = [
     ["region", { AWS_REGION: "us-east-1" }],
-    ["host", { PORTAL_AUTH_DATABASE_HOST: "localhost" }],
-    ["port", { PLATFORM_BILLING_DATABASE_PORT: "5433" }],
-    ["role", { PORTAL_AUTH_DATABASE_USER: "tianxing_app" }],
-    ["reader role", { PLATFORM_BILLING_READER_DATABASE_USER: "platform_billing" }],
-    ["missing", { PORTAL_TENANT_DATABASE_NAME: "" }],
+    ["url", { DATABASE_URL: "postgresql://legacy:secret@localhost:5432/tianxing" }],
+    ["legacy role", { PORTAL_AUTH_DATABASE_USER: "portal_auth" }],
+    ["missing", { DATABASE_URL: "" }],
   ];
 
   for (const [name, override] of cases) {
@@ -91,7 +78,7 @@ test("composition remains typed unavailable while production factories are absen
   );
 });
 
-test("composition enforces portal_auth discovery before tenant runtime resolution", async () => {
+test("composition enforces discovery before tenant runtime resolution", async () => {
   const calls: string[] = [];
   const portalRepository = Object.freeze({ marker: "portal" });
   const billingRepository = Object.freeze({ marker: "billing" });
@@ -147,11 +134,11 @@ test("composition enforces portal_auth discovery before tenant runtime resolutio
   });
 
   assert.deepEqual(calls, [
-    "discovery-config:portal_auth",
+    "discovery-config:tianxing_app",
     "tenant-config:tianxing_app",
     "auth:platform-identity",
-    "write:platform_billing",
-    "read:platform_billing_reader",
+    "write:tianxing_app",
+    "read:tianxing_app",
   ]);
   const portal = await composition.resolvePortalRuntime("a".repeat(64));
   assert.equal(portal?.repository, portalRepository);

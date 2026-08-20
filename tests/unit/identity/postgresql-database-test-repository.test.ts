@@ -8,12 +8,12 @@ import {
   type DatabaseTestIdentityClient,
 } from "../../../modules/identity/infrastructure/postgresql-database-test-repository.ts";
 
-const LOGIN_USER = "env01_identity_login";
+const LOGIN_USER = "tianxing_app";
 
-test("reads only the fixed scrypt-v1 credential shape after role membership preflight", async () => {
+test("reads only the fixed scrypt-v1 credential shape after canonical login preflight", async () => {
   const client = fakeClient((sql) => {
-    if (sql.includes("pg_has_role")) {
-      return [{ current_user: LOGIN_USER, has_required_role: true }];
+    if (sql.includes("SELECT current_user")) {
+      return [{ current_user: LOGIN_USER }];
     }
     if (sql.includes("lookup_credential")) {
       return [{
@@ -40,8 +40,8 @@ test("reads only the fixed scrypt-v1 credential shape after role membership pref
 
 test("returns the exact actor from a version-CAS complete-login function", async () => {
   const client = fakeClient((sql) => {
-    if (sql.includes("pg_has_role")) {
-      return [{ current_user: LOGIN_USER, has_required_role: true }];
+    if (sql.includes("SELECT current_user")) {
+      return [{ current_user: LOGIN_USER }];
     }
     if (sql.includes("complete_login")) return [actorRow()];
     return [];
@@ -72,8 +72,8 @@ test("returns the exact actor from a version-CAS complete-login function", async
 });
 
 test("distinguishes a role configuration failure from an unavailable repository", async () => {
-  const wrongRole = fakeClient((sql) => sql.includes("pg_has_role")
-    ? [{ current_user: "wrong_login", has_required_role: false }]
+  const wrongRole = fakeClient((sql) => sql.includes("SELECT current_user")
+    ? [{ current_user: "wrong_login" }]
     : []);
   await assert.rejects(
     new PostgresqlDatabaseTestSessionRepository(
@@ -84,8 +84,8 @@ test("distinguishes a role configuration failure from an unavailable repository"
   );
 
   const unavailable = fakeClient((sql) => {
-    if (sql.includes("pg_has_role")) {
-      return [{ current_user: LOGIN_USER, has_required_role: true }];
+    if (sql.includes("SELECT current_user")) {
+      return [{ current_user: LOGIN_USER }];
     }
     if (sql.includes("lookup_credential")) throw new Error("connection closed");
     return [];

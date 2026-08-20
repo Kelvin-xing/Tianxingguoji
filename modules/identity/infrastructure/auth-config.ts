@@ -73,7 +73,18 @@ export function getCognitoAuthConfig(environment: RuntimeEnvironment = process.e
 }
 
 export function getDatabaseUrl(environment: RuntimeEnvironment = process.env): string {
-  return required(environment, 'DATABASE_URL')
+  const value = required(environment, 'DATABASE_URL')
+  const parsed = parseUrl(value, 'DATABASE_URL')
+  if (
+    parsed.protocol !== 'postgresql:' ||
+    parsed.username !== 'tianxing_app' ||
+    !parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new AuthConfigurationError('DATABASE_URL')
+  }
+  return parsed.toString()
 }
 
 function required(environment: RuntimeEnvironment, variable: string): string {

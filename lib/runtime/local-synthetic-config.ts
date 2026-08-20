@@ -17,8 +17,6 @@ export interface LocalSyntheticConfig {
   readonly mode: typeof LOCAL_MODE;
   readonly database: Readonly<{
     connectionString: string;
-    identityConnectionString: string;
-    applicationConnectionString: string;
   }>;
   readonly localstack: Readonly<{
     endpoint: string;
@@ -74,43 +72,13 @@ export function loadLocalSyntheticConfig(
     new Set(["postgresql:"]),
   );
   if (
-    databaseUrl.username !== "tianxing_health" ||
+    databaseUrl.username !== "tianxing_app" ||
     databaseUrl.password.length === 0 ||
     databaseUrl.pathname !== "/tianxing" ||
     databaseUrl.search.length > 0 ||
     databaseUrl.hash.length > 0
   ) {
     throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_DATABASE_URL");
-  }
-
-  const identityDatabaseUrl = localUrl(
-    environment,
-    "LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL",
-    new Set(["postgresql:"]),
-  );
-  if (
-    identityDatabaseUrl.username !== "tianxing_local_identity" ||
-    identityDatabaseUrl.password.length === 0 ||
-    identityDatabaseUrl.pathname !== "/tianxing" ||
-    identityDatabaseUrl.search.length > 0 ||
-    identityDatabaseUrl.hash.length > 0
-  ) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL");
-  }
-
-  const applicationDatabaseUrl = localUrl(
-    environment,
-    "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
-    new Set(["postgresql:"]),
-  );
-  if (
-    applicationDatabaseUrl.username !== "tianxing_app" ||
-    applicationDatabaseUrl.password.length === 0 ||
-    applicationDatabaseUrl.pathname !== "/tianxing" ||
-    applicationDatabaseUrl.search.length > 0 ||
-    applicationDatabaseUrl.hash.length > 0
-  ) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL");
   }
 
   const localstackUrl = localUrl(
@@ -161,8 +129,6 @@ export function loadLocalSyntheticConfig(
     mode: LOCAL_MODE,
     database: Object.freeze({
       connectionString: databaseUrl.toString(),
-      identityConnectionString: identityDatabaseUrl.toString(),
-      applicationConnectionString: applicationDatabaseUrl.toString(),
     }),
     localstack: Object.freeze({
       endpoint: localstackUrl.origin,

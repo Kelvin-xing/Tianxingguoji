@@ -1,0 +1,352 @@
+{
+  "baseline_version": 1,
+  "baseline_id": "tianxing-one-role-v1",
+  "status": "executable-unapplied",
+  "transform_version": "one-role-transform-v1",
+  "canonical_login_role": "tianxing_app",
+  "source_history_manifest": "db/migrations/manifest.json",
+  "source_history_manifest_sha256": "d32d23ef8bde853803a48511226c7bd0215d8cb76fd0795818629aa7ace44587",
+  "transaction_contract": {
+    "single_transaction": true,
+    "advisory_lock": "transaction-scoped",
+    "dry_run": "rollback",
+    "apply": "commit"
+  },
+  "marker": {
+    "schema": "tianxing_baseline",
+    "table": "installations"
+  },
+  "source_migrations": [
+    {
+      "name": "202608021330_001_expand_identity_access.sql",
+      "source_sha256": "fd3ebd439502eb570882a4daca910dd6dd124810d4a3764c511b05b5db5a5457",
+      "generated_file": "001_202608021330_001_expand_identity_access.sql",
+      "generated_sha256": "fd3ebd439502eb570882a4daca910dd6dd124810d4a3764c511b05b5db5a5457",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608021630_002_expand_crm.sql",
+      "source_sha256": "e1e8310a194d95848e063a42b1391076875e58a3dfac30fe024c621b54373b50",
+      "generated_file": "002_202608021630_002_expand_crm.sql",
+      "generated_sha256": "e1e8310a194d95848e063a42b1391076875e58a3dfac30fe024c621b54373b50",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608021830_003_expand_cases.sql",
+      "source_sha256": "9bc3064eb8bbc82613b11a7627754b074eb5a13c905d4fdc1e5319039f9774b6",
+      "generated_file": "003_202608021830_003_expand_cases.sql",
+      "generated_sha256": "9bc3064eb8bbc82613b11a7627754b074eb5a13c905d4fdc1e5319039f9774b6",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608022030_004_expand_school_overlay.sql",
+      "source_sha256": "8fe2ba80bddcb3fd264f4f79af4ff34ffc091fe53606676550402d49a482008b",
+      "generated_file": "004_202608022030_004_expand_school_overlay.sql",
+      "generated_sha256": "8fe2ba80bddcb3fd264f4f79af4ff34ffc091fe53606676550402d49a482008b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608022230_005_expand_tasks.sql",
+      "source_sha256": "2a617638b88be65c3c875e4689fa9ee87819d9deb7e11cb2d3147aff19daa4ac",
+      "generated_file": "005_202608022230_005_expand_tasks.sql",
+      "generated_sha256": "2a617638b88be65c3c875e4689fa9ee87819d9deb7e11cb2d3147aff19daa4ac",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608022430_006_expand_documents.sql",
+      "source_sha256": "5bf8cf047bc9ac10fcad6813a0bfb42431c469c03570e86e237897beb5d09758",
+      "generated_file": "006_202608022430_006_expand_documents.sql",
+      "generated_sha256": "5bf8cf047bc9ac10fcad6813a0bfb42431c469c03570e86e237897beb5d09758",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608022530_007_expand_audit_outbox.sql",
+      "source_sha256": "893f3853ec04ed27b15a79b1bfe8b62162bce2e33afd7549627c865913d705e8",
+      "generated_file": "007_202608022530_007_expand_audit_outbox.sql",
+      "generated_sha256": "893f3853ec04ed27b15a79b1bfe8b62162bce2e33afd7549627c865913d705e8",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608030030_008_expand_application_database_role.sql",
+      "source_sha256": "7897a575374753aa94a7e946116fbb043758d91ee9e296cb9993ce1f7ead580d",
+      "generated_file": "008_202608030030_008_expand_application_database_role.sql",
+      "generated_sha256": "ea9a5ac96d6cc23f5b0f19ee69a08a970348fb351417fec4670caf186a5b2074",
+      "transform": "application-role-v1"
+    },
+    {
+      "name": "202608030040_009_expand_identity_invite_delivery_receipts.sql",
+      "source_sha256": "210978592fca47ca68f64268dd352e526ce073bfa1bc37a6b380c614a53d2f10",
+      "generated_file": "009_202608030040_009_expand_identity_invite_delivery_receipts.sql",
+      "generated_sha256": "210978592fca47ca68f64268dd352e526ce073bfa1bc37a6b380c614a53d2f10",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608030050_010_expand_identity_cognito_revoke_receipts.sql",
+      "source_sha256": "21a5c53928632370f5a3ac28dfba668b2f174445ea351387595918d26f89c2ea",
+      "generated_file": "010_202608030050_010_expand_identity_cognito_revoke_receipts.sql",
+      "generated_sha256": "21a5c53928632370f5a3ac28dfba668b2f174445ea351387595918d26f89c2ea",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608120030_015_expand_case_reconstruction.sql",
+      "source_sha256": "2cdce03a2397b00416644b590976be57082f7e9da5d7c62733a37e368f4acfa5",
+      "generated_file": "011_202608120030_015_expand_case_reconstruction.sql",
+      "generated_sha256": "2cdce03a2397b00416644b590976be57082f7e9da5d7c62733a37e368f4acfa5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608130010_011_expand_external_portal_access.sql",
+      "source_sha256": "79ce9dc99de2e947e68970f9cf4a2a0d4917bfd21f5868c052b25050f5251a1a",
+      "generated_file": "012_202608130010_011_expand_external_portal_access.sql",
+      "generated_sha256": "c6a08466f377626441dec4bd5550be41fc8a0ca8c60758f40535c44f378c5f95",
+      "transform": "external-portal-v1"
+    },
+    {
+      "name": "202608130020_012_expand_platform_billing.sql",
+      "source_sha256": "a8c81b0674d5083b558d11aab8f528f486593ce7e125d2e937d61fc5a9727fb2",
+      "generated_file": "013_202608130020_012_expand_platform_billing.sql",
+      "generated_sha256": "4618ecd50db6ce6734b5d8cfdc4d4e3b7fd10ad0b0e55bd9cb564ffcaba521f4",
+      "transform": "platform-billing-v1"
+    },
+    {
+      "name": "202608130030_013_expand_case_billing_projection.sql",
+      "source_sha256": "3eaeb84dfe9a8436e1c98c4cecf49359abf2cd06ebd95ebc765a5e204b41fe76",
+      "generated_file": "014_202608130030_013_expand_case_billing_projection.sql",
+      "generated_sha256": "1c7889958d237e60e7a61dba2063791468ebf3452a34d3dd67ddcfee6212d4e2",
+      "transform": "case-billing-projection-v1"
+    },
+    {
+      "name": "202608130040_016_expand_application_predicates.sql",
+      "source_sha256": "8b2bb281ecbb067f775c5e657af4b16ec6ef1cb4e9eb481025b2b149cf0d4209",
+      "generated_file": "015_202608130040_016_expand_application_predicates.sql",
+      "generated_sha256": "8b2bb281ecbb067f775c5e657af4b16ec6ef1cb4e9eb481025b2b149cf0d4209",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180010_017_expand_local_synthetic_sessions.sql",
+      "source_sha256": "8edb0e2a67ebe9ada581203fc043e223fa821a8aed90f56b4402324d39d7d963",
+      "generated_file": "016_202608180010_017_expand_local_synthetic_sessions.sql",
+      "generated_sha256": "8edb0e2a67ebe9ada581203fc043e223fa821a8aed90f56b4402324d39d7d963",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180020_018_harden_identity_session_validation.sql",
+      "source_sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf",
+      "generated_file": "017_202608180020_018_harden_identity_session_validation.sql",
+      "generated_sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180030_019_expose_approved_case_manifests.sql",
+      "source_sha256": "08977d92560a031970b087191c34ce776dc32578720d2e4b56282edb091b1870",
+      "generated_file": "018_202608180030_019_expose_approved_case_manifests.sql",
+      "generated_sha256": "08977d92560a031970b087191c34ce776dc32578720d2e4b56282edb091b1870",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180040_020_grant_audit_validation_to_application.sql",
+      "source_sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155",
+      "generated_file": "019_202608180040_020_grant_audit_validation_to_application.sql",
+      "generated_sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180050_021_enable_assessment_background_completion.sql",
+      "source_sha256": "2625f5a744ca1dc8840c5aba404f0e29d6a1974bf6bfdfdfe81b80bc1ad521e2",
+      "generated_file": "020_202608180050_021_enable_assessment_background_completion.sql",
+      "generated_sha256": "2625f5a744ca1dc8840c5aba404f0e29d6a1974bf6bfdfdfe81b80bc1ad521e2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180060_022_expose_bound_assessment_manifest.sql",
+      "source_sha256": "f5a82516d72044c7c41114326fee7eb1215ffa9d4631e308aa28bf111b219116",
+      "generated_file": "021_202608180060_022_expose_bound_assessment_manifest.sql",
+      "generated_sha256": "f5a82516d72044c7c41114326fee7eb1215ffa9d4631e308aa28bf111b219116",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180070_023_harden_assessment_answer_validation.sql",
+      "source_sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e",
+      "generated_file": "022_202608180070_023_harden_assessment_answer_validation.sql",
+      "generated_sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180080_024_enable_case_stage_transition.sql",
+      "source_sha256": "b8baaa8680a8dc3f3796483d1ffe2f1cf214ae184e007b77f133214a9c801baa",
+      "generated_file": "023_202608180080_024_enable_case_stage_transition.sql",
+      "generated_sha256": "b8baaa8680a8dc3f3796483d1ffe2f1cf214ae184e007b77f133214a9c801baa",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180090_025_harden_case_stage_transition.sql",
+      "source_sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
+      "generated_file": "024_202608180090_025_harden_case_stage_transition.sql",
+      "generated_sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180100_026_fix_case_stage_transition_evidence_binding.sql",
+      "source_sha256": "2818679cc8b82dd3b3df8e6a39578c1eeda7ab522a3983e7d764969d93313556",
+      "generated_file": "025_202608180100_026_fix_case_stage_transition_evidence_binding.sql",
+      "generated_sha256": "2818679cc8b82dd3b3df8e6a39578c1eeda7ab522a3983e7d764969d93313556",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180110_027_enable_candidate_school_target.sql",
+      "source_sha256": "1585a14650346e47e7631a768c1362423e6ea62d5377608e928f133318a145f5",
+      "generated_file": "026_202608180110_027_enable_candidate_school_target.sql",
+      "generated_sha256": "1585a14650346e47e7631a768c1362423e6ea62d5377608e928f133318a145f5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608180120_028_expand_database_test_identity.sql",
+      "source_sha256": "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb",
+      "generated_file": "027_202608180120_028_expand_database_test_identity.sql",
+      "generated_sha256": "7a1c642e002900e6a6c9b7d680aecb15e4668fd8f469bfee75519a603032439b",
+      "transform": "database-test-identity-v1"
+    }
+  ],
+  "generated_files": [
+    {
+      "name": "001_202608021330_001_expand_identity_access.sql",
+      "sha256": "fd3ebd439502eb570882a4daca910dd6dd124810d4a3764c511b05b5db5a5457",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "002_202608021630_002_expand_crm.sql",
+      "sha256": "e1e8310a194d95848e063a42b1391076875e58a3dfac30fe024c621b54373b50",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "003_202608021830_003_expand_cases.sql",
+      "sha256": "9bc3064eb8bbc82613b11a7627754b074eb5a13c905d4fdc1e5319039f9774b6",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "004_202608022030_004_expand_school_overlay.sql",
+      "sha256": "8fe2ba80bddcb3fd264f4f79af4ff34ffc091fe53606676550402d49a482008b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "005_202608022230_005_expand_tasks.sql",
+      "sha256": "2a617638b88be65c3c875e4689fa9ee87819d9deb7e11cb2d3147aff19daa4ac",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "006_202608022430_006_expand_documents.sql",
+      "sha256": "5bf8cf047bc9ac10fcad6813a0bfb42431c469c03570e86e237897beb5d09758",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "007_202608022530_007_expand_audit_outbox.sql",
+      "sha256": "893f3853ec04ed27b15a79b1bfe8b62162bce2e33afd7549627c865913d705e8",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "008_202608030030_008_expand_application_database_role.sql",
+      "sha256": "ea9a5ac96d6cc23f5b0f19ee69a08a970348fb351417fec4670caf186a5b2074",
+      "transform": "application-role-v1"
+    },
+    {
+      "name": "009_202608030040_009_expand_identity_invite_delivery_receipts.sql",
+      "sha256": "210978592fca47ca68f64268dd352e526ce073bfa1bc37a6b380c614a53d2f10",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "010_202608030050_010_expand_identity_cognito_revoke_receipts.sql",
+      "sha256": "21a5c53928632370f5a3ac28dfba668b2f174445ea351387595918d26f89c2ea",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "011_202608120030_015_expand_case_reconstruction.sql",
+      "sha256": "2cdce03a2397b00416644b590976be57082f7e9da5d7c62733a37e368f4acfa5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "012_202608130010_011_expand_external_portal_access.sql",
+      "sha256": "c6a08466f377626441dec4bd5550be41fc8a0ca8c60758f40535c44f378c5f95",
+      "transform": "external-portal-v1"
+    },
+    {
+      "name": "013_202608130020_012_expand_platform_billing.sql",
+      "sha256": "4618ecd50db6ce6734b5d8cfdc4d4e3b7fd10ad0b0e55bd9cb564ffcaba521f4",
+      "transform": "platform-billing-v1"
+    },
+    {
+      "name": "014_202608130030_013_expand_case_billing_projection.sql",
+      "sha256": "1c7889958d237e60e7a61dba2063791468ebf3452a34d3dd67ddcfee6212d4e2",
+      "transform": "case-billing-projection-v1"
+    },
+    {
+      "name": "015_202608130040_016_expand_application_predicates.sql",
+      "sha256": "8b2bb281ecbb067f775c5e657af4b16ec6ef1cb4e9eb481025b2b149cf0d4209",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "016_202608180010_017_expand_local_synthetic_sessions.sql",
+      "sha256": "8edb0e2a67ebe9ada581203fc043e223fa821a8aed90f56b4402324d39d7d963",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "017_202608180020_018_harden_identity_session_validation.sql",
+      "sha256": "0a3cb4e4e4947336d807b06ec6374df16240b4ac2d003ff276ca7d5ce59257cf",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "018_202608180030_019_expose_approved_case_manifests.sql",
+      "sha256": "08977d92560a031970b087191c34ce776dc32578720d2e4b56282edb091b1870",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "019_202608180040_020_grant_audit_validation_to_application.sql",
+      "sha256": "8e6cba1751180bf3a4f401239b53b3404b70e8ecf75a4a2903939836a23fd155",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "020_202608180050_021_enable_assessment_background_completion.sql",
+      "sha256": "2625f5a744ca1dc8840c5aba404f0e29d6a1974bf6bfdfdfe81b80bc1ad521e2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "021_202608180060_022_expose_bound_assessment_manifest.sql",
+      "sha256": "f5a82516d72044c7c41114326fee7eb1215ffa9d4631e308aa28bf111b219116",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "022_202608180070_023_harden_assessment_answer_validation.sql",
+      "sha256": "df192133f7c23cdb8e555eb973a38aba046570acaca027a03c7cb9b719153b6e",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "023_202608180080_024_enable_case_stage_transition.sql",
+      "sha256": "b8baaa8680a8dc3f3796483d1ffe2f1cf214ae184e007b77f133214a9c801baa",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "024_202608180090_025_harden_case_stage_transition.sql",
+      "sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "025_202608180100_026_fix_case_stage_transition_evidence_binding.sql",
+      "sha256": "2818679cc8b82dd3b3df8e6a39578c1eeda7ab522a3983e7d764969d93313556",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "026_202608180110_027_enable_candidate_school_target.sql",
+      "sha256": "1585a14650346e47e7631a768c1362423e6ea62d5377608e928f133318a145f5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "027_202608180120_028_expand_database_test_identity.sql",
+      "sha256": "7a1c642e002900e6a6c9b7d680aecb15e4668fd8f469bfee75519a603032439b",
+      "transform": "database-test-identity-v1"
+    },
+    {
+      "name": "999_one_role_hardening.sql",
+      "sha256": "4b68379039eb19dcfe6529763d74b59e4081e99dac45c51ac8b933f1e039a2a3",
+      "transform": "hardening-v1"
+    }
+  ]
+}

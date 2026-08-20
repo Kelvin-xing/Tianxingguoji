@@ -17,10 +17,6 @@ test("loads an explicit loopback-only local synthetic configuration", () => {
     mode: "local-synthetic",
     database: {
       connectionString:
-        "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
-      identityConnectionString:
-        "postgresql://tianxing_local_identity:tianxing-local-identity-only@127.0.0.1:5432/tianxing",
-      applicationConnectionString:
         "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     },
     localstack: {
@@ -50,14 +46,6 @@ test("rejects remote database, LocalStack, and ClamAV endpoints", () => {
   const cases = [
     {
       variable: "LOCAL_SYNTHETIC_DATABASE_URL",
-      value: "postgresql://tianxing_health:secret@database.example.test:5432/tianxing",
-    },
-    {
-      variable: "LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL",
-      value: "postgresql://tianxing_local_identity:secret@database.example.test:5432/tianxing",
-    },
-    {
-      variable: "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
       value: "postgresql://tianxing_app:secret@database.example.test:5432/tianxing",
     },
     {
@@ -96,7 +84,7 @@ test("reports all dependencies ready without exposing connection values", async 
       clamav: "ready",
     },
   });
-  assert.equal(JSON.stringify(report).includes("tianxing-local-health-only"), false);
+  assert.equal(JSON.stringify(report).includes("tianxing-local-app-only"), false);
   assert.equal(JSON.stringify(report).includes("127.0.0.1"), false);
 });
 
@@ -143,10 +131,6 @@ function validEnvironment(): Record<string, string | undefined> {
     AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",
     LOCAL_SYNTHETIC_DATABASE_URL:
-      "postgresql://tianxing_health:tianxing-local-health-only@127.0.0.1:5432/tianxing",
-    LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL:
-      "postgresql://tianxing_local_identity:tianxing-local-identity-only@127.0.0.1:5432/tianxing",
-    LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL:
       "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
     LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",

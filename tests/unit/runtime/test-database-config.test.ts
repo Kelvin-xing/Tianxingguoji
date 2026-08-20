@@ -1,25 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  loadTestDatabaseConfiguration,
-  TEST_APPLICATION_GROUP_ROLE,
-} from "../../../lib/runtime/test-database-config.ts";
+import { loadTestDatabaseConfiguration } from "../../../lib/runtime/test-database-config.ts";
 import { RuntimeEnvironmentConfigurationError } from "../../../lib/runtime/runtime-environment.ts";
 
-test("loads two separated TLS test database login endpoints", () => {
-  assert.equal(TEST_APPLICATION_GROUP_ROLE, "tianxing_test_application");
+test("loads one TLS test database endpoint for the canonical application role", () => {
   const config = loadTestDatabaseConfiguration(validEnvironment());
   assert.deepEqual(config, {
-    identity: {
-      connectionString: "postgresql://env01_identity_login:identity-secret@db.vendor.example:5432/txgj_env01_test",
-      loginUser: "env01_identity_login",
-      databaseName: "txgj_env01_test",
-      host: "db.vendor.example",
-    },
-    application: {
-      connectionString: "postgresql://env01_application_login:application-secret@db.vendor.example:5432/txgj_env01_test",
-      loginUser: "env01_application_login",
+    database: {
+      connectionString:
+        "postgresql://tianxing_app:test-secret@db.vendor.example:5432/txgj_env01_test",
+      loginUser: "tianxing_app",
       databaseName: "txgj_env01_test",
       host: "db.vendor.example",
     },
@@ -30,25 +21,33 @@ test("loads two separated TLS test database login endpoints", () => {
   });
 });
 
-test("rejects unsafe database names, hosts, roles, query parameters, and shared logins", () => {
-  const cases: readonly [string, string, string][] = [
-    ["TEST_DATABASE_EXPECTED_NAME", "tianxing", "TEST_DATABASE_EXPECTED_NAME"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://identity:secret@127.0.0.1:5432/txgj_env01_test", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://identity:secret@[::1]:5432/txgj_env01_test", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://identity:secret@db.localhost:5432/txgj_env01_test", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://tianxing_test_identity:secret@db.vendor.example:5432/txgj_env01_test", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://env01_migration_login:secret@db.vendor.example:5432/txgj_env01_test", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_IDENTITY_DATABASE_URL", "postgresql://identity:secret@db.vendor.example:5432/txgj_env01_test?sslmode=require", "TEST_IDENTITY_DATABASE_URL"],
-    ["TEST_APPLICATION_DATABASE_URL", "postgresql://env01_application_login:secret@other.vendor.example:5432/txgj_env01_test", "TEST_APPLICATION_DATABASE_URL"],
-    ["TEST_APPLICATION_DATABASE_URL", "postgresql://env01_identity_login:secret@db.vendor.example:5432/txgj_env01_test", "TEST_APPLICATION_DATABASE_URL"],
-    ["TEST_APPLICATION_DATABASE_URL", "postgresql://tianxing_test_application:secret@db.vendor.example:5432/txgj_env01_test", "TEST_APPLICATION_DATABASE_URL"],
-    ["TEST_DATABASE_POOL_MAX", "2", "TEST_DATABASE_POOL_MAX"],
-  ];
-  for (const [variable, value, expectedVariable] of cases) {
+test("rejects old multi-account variables and unsafe canonical endpoints", () => {
+  for (const variable of [
+    "TEST_IDENTITY_DATABASE_URL",
+    "TEST_APPLICATION_DATABASE_URL",
+    "TEST_PROVISION_DATABASE_URL",
+    "TEST_MIGRATION_DATABASE_URL",
+  ]) {
     assert.throws(
-      () => loadTestDatabaseConfiguration({ ...validEnvironment(), [variable]: value }),
+      () => loadTestDatabaseConfiguration({
+        ...validEnvironment(),
+        [variable]: "postgresql://legacy:secret@db.vendor.example:5432/txgj_env01_test",
+      }),
       (error: unknown) => error instanceof RuntimeEnvironmentConfigurationError &&
-        error.variable === expectedVariable,
+        error.variable === variable,
+    );
+  }
+
+  for (const value of [
+    "postgresql://other_role:secret@db.vendor.example:5432/txgj_env01_test",
+    "postgresql://tianxing_app:secret@127.0.0.1:5432/txgj_env01_test",
+    "postgresql://tianxing_app:secret@db.localhost:5432/txgj_env01_test",
+    "postgresql://tianxing_app:secret@db.vendor.example:5432/txgj_env01_test?sslmode=require",
+  ]) {
+    assert.throws(
+      () => loadTestDatabaseConfiguration({ ...validEnvironment(), TEST_DATABASE_URL: value }),
+      (error: unknown) => error instanceof RuntimeEnvironmentConfigurationError &&
+        error.variable === "TEST_DATABASE_URL",
     );
   }
 });
@@ -78,27 +77,9 @@ test("enforces the frozen Web database timeout boundaries", () => {
   }
 });
 
-test("rejects equal decoded identity and application passwords without exposing a password field", () => {
-  for (const [identityPassword, applicationPassword] of [
-    ["shared-secret", "shared-secret"],
-    ["shared%2Dsecret", "shared-secret"],
-  ]) {
-    const environment = validEnvironment();
-    environment.TEST_IDENTITY_DATABASE_URL =
-      `postgresql://env01_identity_login:${identityPassword}@db.vendor.example:5432/txgj_env01_test`;
-    environment.TEST_APPLICATION_DATABASE_URL =
-      `postgresql://env01_application_login:${applicationPassword}@db.vendor.example:5432/txgj_env01_test`;
-    assert.throws(
-      () => loadTestDatabaseConfiguration(environment),
-      (error: unknown) => error instanceof RuntimeEnvironmentConfigurationError &&
-        error.variable === "TEST_APPLICATION_DATABASE_URL" &&
-        !Object.hasOwn(error, "password"),
-    );
-  }
-
+test("does not expose a separate password field", () => {
   const config = loadTestDatabaseConfiguration(validEnvironment());
-  assert.equal(Object.hasOwn(config.identity, "password"), false);
-  assert.equal(Object.hasOwn(config.application, "password"), false);
+  assert.equal(Object.hasOwn(config.database, "password"), false);
 });
 
 function validEnvironment(): Record<string, string | undefined> {
@@ -110,10 +91,8 @@ function validEnvironment(): Record<string, string | undefined> {
     VERCEL: "1",
     VERCEL_ENV: "preview",
     TEST_DATABASE_EXPECTED_NAME: "txgj_env01_test",
-    TEST_IDENTITY_DATABASE_URL:
-      "postgresql://env01_identity_login:identity-secret@db.vendor.example:5432/txgj_env01_test",
-    TEST_APPLICATION_DATABASE_URL:
-      "postgresql://env01_application_login:application-secret@db.vendor.example:5432/txgj_env01_test",
+    TEST_DATABASE_URL:
+      "postgresql://tianxing_app:test-secret@db.vendor.example:5432/txgj_env01_test",
     TEST_DATABASE_CONNECTION_TIMEOUT_MS: "2000",
     TEST_DATABASE_STATEMENT_TIMEOUT_MS: "5000",
     TEST_DATABASE_POOL_MAX: "1",

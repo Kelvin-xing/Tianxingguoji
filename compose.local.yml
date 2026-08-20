@@ -5,15 +5,17 @@ services:
     image: postgres:17.10-alpine3.24
     environment:
       POSTGRES_DB: tianxing
-      POSTGRES_USER: tianxing_migration
-      POSTGRES_PASSWORD: tianxing-local-migration-only
+      POSTGRES_USER: tianxing_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/local_postgres_password
+    secrets:
+      - local_postgres_password
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - tianxing_postgres_data:/var/lib/postgresql/data
       - ./infra/local/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tianxing_migration -d tianxing"]
+      test: ["CMD-SHELL", "pg_isready -U tianxing_app -d tianxing"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -56,3 +58,7 @@ services:
 
 volumes:
   tianxing_postgres_data:
+
+secrets:
+  local_postgres_password:
+    environment: LOCAL_SYNTHETIC_POSTGRES_PASSWORD
