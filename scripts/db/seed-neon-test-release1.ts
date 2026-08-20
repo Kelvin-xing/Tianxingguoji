@@ -32,7 +32,7 @@ import {
   type OneRoleBaselineTarget,
 } from "./run-one-role-baseline.ts";
 
-const PROHIBITED_SEED_TABLES = Object.freeze([
+export const PROHIBITED_NEON_TEST_SEED_TABLES = Object.freeze([
   "identity_database_test_credentials",
   "identity_sessions",
   "cases_service_cases",
@@ -72,6 +72,21 @@ export const NEON_TEST_SEED_COUNTS = Object.freeze({
   schools: 3,
   school_snapshots: 1,
   school_records: 3,
+});
+
+export const NEON_TEST_SEED_TABLE_COUNTS = Object.freeze({
+  access_organizations: NEON_TEST_SEED_COUNTS.organizations,
+  identity_users: NEON_TEST_SEED_COUNTS.users,
+  access_organization_memberships: NEON_TEST_SEED_COUNTS.memberships,
+  access_role_bindings: NEON_TEST_SEED_COUNTS.role_bindings,
+  crm_students: NEON_TEST_SEED_COUNTS.students,
+  crm_guardians: NEON_TEST_SEED_COUNTS.guardians,
+  crm_student_guardian_relationships: NEON_TEST_SEED_COUNTS.relationships,
+  cases_schema_manifests: NEON_TEST_SEED_COUNTS.assessment_manifests,
+  cases_schema_manifest_fields: NEON_TEST_SEED_COUNTS.manifest_fields,
+  schools_schools: NEON_TEST_SEED_COUNTS.schools,
+  schools_snapshots: NEON_TEST_SEED_COUNTS.school_snapshots,
+  schools_snapshot_records: NEON_TEST_SEED_COUNTS.school_records,
 });
 
 export type NeonTestSeedMode = "dry-run" | "apply";
@@ -312,7 +327,7 @@ async function assertSeedPreflight(
     throw new NeonTestSeedSafetyError("Neon seed requires the exact one-role baseline marker.");
   }
 
-  const requiredTables = [...seedTableRules().keys(), ...PROHIBITED_SEED_TABLES];
+  const requiredTables = [...seedTableRules().keys(), ...PROHIBITED_NEON_TEST_SEED_TABLES];
   const publicTables = await client.query<{ total_count: string; required_count: string }>(`
     SELECT count(*)::text AS total_count,
            count(*) FILTER (WHERE tablename = ANY($1::text[]))::text AS required_count
@@ -703,7 +718,7 @@ async function assertExactSeedContent(
       JSON.stringify(school.provenance), school.recordSha256]);
   }
 
-  for (const table of PROHIBITED_SEED_TABLES) {
+  for (const table of PROHIBITED_NEON_TEST_SEED_TABLES) {
     const prohibited = await client.query<{ count: number }>(
       `SELECT count(*)::int AS count FROM public.${quoteIdentifier(table)}`,
     );
