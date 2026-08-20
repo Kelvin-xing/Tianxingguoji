@@ -39,9 +39,62 @@ const NEON_TEST_DIRECT_HOST =
   /^ep-[a-z0-9-]+(?:\.c-[0-9]+)?\.us-east-1\.aws\.neon\.tech$/;
 const AWS_PRODUCTION_RDS_HOST =
   /^[a-z0-9][a-z0-9.-]*\.ap-east-1\.rds\.amazonaws\.com$/;
+const POSTGRES_ERROR_SEVERITIES = new Set([
+  "ERROR",
+  "FATAL",
+  "PANIC",
+  "WARNING",
+  "NOTICE",
+  "DEBUG",
+  "INFO",
+  "LOG",
+]);
 
 type Environment = Readonly<Record<string, string | undefined>>;
 export type OneRoleBaselineMode = "plan" | "dry-run" | "apply";
+export type OneRoleBaselineFailureStage =
+  | "cli"
+  | "baseline_manifest"
+  | "preflight_database_inspection"
+  | "execution_connection"
+  | "transaction_begin"
+  | "transaction_execution"
+  | "advisory_lock"
+  | "locked_preflight"
+  | "generated_manifest_before"
+  | "generated_sql"
+  | "generated_manifest_after"
+  | "marker_write"
+  | "transaction_rollback"
+  | "transaction_commit"
+  | "execution_connection_close"
+  | "rollback_database_inspection"
+  | "rollback_state_verification"
+  | "postflight_database_inspection"
+  | "postflight_state_verification";
+export type OneRoleBaselineFailureEvidence = Readonly<{
+  failure_stage: OneRoleBaselineFailureStage;
+  migration_name?: string;
+  postgres_code?: string;
+}>;
+export type OneRoleBaselineRollbackAttempt = "not_attempted" | "succeeded" | "failed";
+export type OneRoleBaselineRollbackState = "clean" | "unknown" | "verification_failed";
+export type OneRoleBaselinePostFailureState =
+  | "clean"
+  | "installed"
+  | "unknown"
+  | "verification_failed";
+export type OneRoleBaselineSuccessEvidence = Readonly<{
+  status: "pass";
+  baseline_id: typeof ONE_ROLE_BASELINE_ID;
+  mode: Exclude<OneRoleBaselineMode, "plan">;
+  target_database: string;
+  canonical_login_role: typeof ONE_ROLE_CANONICAL_ROLE;
+  source_migrations: number;
+  generated_files: number;
+  postflight_state: "clean" | "installed";
+  marker: "rolled_back" | "installed";
+}>;
 
 export type OneRoleBaselineTarget = Readonly<{
   connectionString: string;
@@ -89,6 +142,86 @@ export class OneRoleBaselineRunError extends Error {
     this.name = "OneRoleBaselineRunError";
   }
 }
+
+export class OneRoleBaselineAttemptError extends OneRoleBaselineRunError {
+  readonly originalFailure: OneRoleBaselineFailureEvidence;
+  readonly transactionStarted: boolean;
+  readonly rollbackAttempt: OneRoleBaselineRollbackAttempt;
+  readonly transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
+  readonly commitResultUncertain: boolean;
+
+  constructor(input: Readonly<{
+    originalFailure: OneRoleBaselineFailureEvidence;
+    transactionStarted: boolean;
+    rollbackAttempt: OneRoleBaselineRollbackAttempt;
+    transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
+    commitResultUncertain?: boolean;
+  }>) {
+    super();
+    this.name = "OneRoleBaselineAttemptError";
+    this.originalFailure = input.originalFailure;
+    this.transactionStarted = input.transactionStarted;
+    this.rollbackAttempt = input.rollbackAttempt;
+    this.transactionRollbackFailure = input.transactionRollbackFailure;
+    this.commitResultUncertain = input.commitResultUncertain === true;
+  }
+}
+
+export class OneRoleBaselineOperationError extends OneRoleBaselineRunError {
+  readonly mode?: Exclude<OneRoleBaselineMode, "plan">;
+  readonly originalFailure: OneRoleBaselineFailureEvidence;
+  readonly transactionStarted: boolean;
+  readonly rollbackAttempt: OneRoleBaselineRollbackAttempt;
+  readonly transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
+  readonly rollbackState?: OneRoleBaselineRollbackState;
+  readonly rollbackVerificationFailure?: OneRoleBaselineFailureEvidence;
+  readonly executionConnectionCloseFailure?: OneRoleBaselineFailureEvidence;
+  readonly postFailureState?: OneRoleBaselinePostFailureState;
+  readonly postFailureVerificationFailure?: OneRoleBaselineFailureEvidence;
+  readonly commitResultUncertain: boolean;
+
+  constructor(input: Readonly<{
+    mode?: Exclude<OneRoleBaselineMode, "plan">;
+    originalFailure: OneRoleBaselineFailureEvidence;
+    transactionStarted?: boolean;
+    rollbackAttempt?: OneRoleBaselineRollbackAttempt;
+    transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
+    rollbackState?: OneRoleBaselineRollbackState;
+    rollbackVerificationFailure?: OneRoleBaselineFailureEvidence;
+    executionConnectionCloseFailure?: OneRoleBaselineFailureEvidence;
+    postFailureState?: OneRoleBaselinePostFailureState;
+    postFailureVerificationFailure?: OneRoleBaselineFailureEvidence;
+    commitResultUncertain?: boolean;
+  }>) {
+    super();
+    this.name = "OneRoleBaselineOperationError";
+    this.mode = input.mode;
+    this.originalFailure = input.originalFailure;
+    this.transactionStarted = input.transactionStarted === true;
+    this.rollbackAttempt = input.rollbackAttempt ?? "not_attempted";
+    this.transactionRollbackFailure = input.transactionRollbackFailure;
+    this.rollbackState = input.rollbackState;
+    this.rollbackVerificationFailure = input.rollbackVerificationFailure;
+    this.executionConnectionCloseFailure = input.executionConnectionCloseFailure;
+    this.postFailureState = input.postFailureState;
+    this.postFailureVerificationFailure = input.postFailureVerificationFailure;
+    this.commitResultUncertain = input.commitResultUncertain === true;
+  }
+}
+
+export type OneRoleBaselineExecutionConnection = Readonly<{
+  client: OneRoleBaselineQueryClient;
+  close(): Promise<void>;
+}>;
+
+export type OneRoleBaselineRunDependencies = Readonly<{
+  inspect(): Promise<OneRoleBaselineDatabaseState>;
+  openExecutionConnection(): Promise<OneRoleBaselineExecutionConnection>;
+  readGeneratedFile?: (name: string) => Promise<string>;
+  inspectLockedPreflight?: (
+    client: OneRoleBaselineQueryClient,
+  ) => Promise<OneRoleBaselineDatabaseState>;
+}>;
 
 export function readOneRoleBaselineMode(arguments_: readonly string[]): OneRoleBaselineMode {
   if (arguments_.length !== 1) throw new OneRoleBaselineRunError();
@@ -203,41 +336,118 @@ export async function executeOneRoleBaselineTransaction(input: Readonly<{
   const readGeneratedFile = input.readGeneratedFile ?? ((name: string) =>
     readFile(resolve(ONE_ROLE_GENERATED_DIRECTORY, name), "utf8"));
   const manifestSha256 = sha256(input.build.manifestJson);
-  let transactionOpen = false;
+
   try {
     await input.client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-    transactionOpen = true;
-    const lock = await input.client.query<{ acquired: boolean }>(
-      "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired",
-      [ONE_ROLE_BASELINE_ID],
-    );
-    if (lock.rows[0]?.acquired !== true) throw new OneRoleBaselineRunError();
-    const lockedState = await (input.inspectPreflight ?? inspectOneRoleBaselineDatabase)(input.client);
-    assertOneRoleBaselinePreflight(lockedState, input.target);
+  } catch (error) {
+    throw new OneRoleBaselineAttemptError({
+      originalFailure: failureEvidence("transaction_begin", undefined, error),
+      transactionStarted: false,
+      rollbackAttempt: "not_attempted",
+    });
+  }
+
+  let originalFailure: OneRoleBaselineFailureEvidence | undefined;
+  try {
+    let lock: Pick<QueryResult<{ acquired: boolean }>, "rows">;
+    try {
+      lock = await input.client.query<{ acquired: boolean }>(
+        "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired",
+        [ONE_ROLE_BASELINE_ID],
+      );
+    } catch (error) {
+      throw attemptFailure("advisory_lock", error);
+    }
+    if (lock.rows[0]?.acquired !== true) throw attemptFailure("advisory_lock");
+
+    try {
+      const lockedState = await (input.inspectPreflight ?? inspectOneRoleBaselineDatabase)(
+        input.client,
+      );
+      assertOneRoleBaselinePreflight(lockedState, input.target);
+    } catch (error) {
+      throw attemptFailure("locked_preflight", error);
+    }
 
     for (const file of input.build.manifest.generated_files) {
-      const before = await readGeneratedFile(file.name);
-      assertFileHash(file, before);
-      await input.client.query(before);
-      const after = await readGeneratedFile(file.name);
-      assertFileHash(file, after);
-    }
-    await createBaselineMarker(input.client, manifestSha256);
-    if (input.mode === "dry-run") {
-      await input.client.query("ROLLBACK");
-    } else {
-      await input.client.query("COMMIT");
-    }
-    transactionOpen = false;
-  } catch (error) {
-    if (transactionOpen) {
+      const before = await readVerifiedGeneratedFile(
+        readGeneratedFile,
+        file,
+        "generated_manifest_before",
+      );
       try {
-        await input.client.query("ROLLBACK");
-      } catch {
-        // The caller receives only the fixed safety error.
+        await input.client.query(before);
+      } catch (error) {
+        throw attemptFailure("generated_sql", error, file.name);
       }
+      await readVerifiedGeneratedFile(
+        readGeneratedFile,
+        file,
+        "generated_manifest_after",
+      );
     }
-    throw error instanceof OneRoleBaselineRunError ? error : new OneRoleBaselineRunError();
+
+    try {
+      await createBaselineMarker(input.client, manifestSha256);
+    } catch (error) {
+      throw attemptFailure("marker_write", error);
+    }
+  } catch (error) {
+    originalFailure = normalizeAttemptFailure(error, "transaction_execution").originalFailure;
+  }
+
+  if (originalFailure) {
+    let rollbackAttempt: OneRoleBaselineRollbackAttempt = "succeeded";
+    let transactionRollbackFailure: OneRoleBaselineFailureEvidence | undefined;
+    try {
+      await input.client.query("ROLLBACK");
+    } catch (error) {
+      rollbackAttempt = "failed";
+      transactionRollbackFailure = failureEvidence("transaction_rollback", undefined, error);
+    }
+    throw new OneRoleBaselineAttemptError({
+      originalFailure,
+      transactionStarted: true,
+      rollbackAttempt,
+      transactionRollbackFailure,
+    });
+  }
+
+  if (input.mode === "dry-run") {
+    try {
+      await input.client.query("ROLLBACK");
+      return;
+    } catch (error) {
+      throw new OneRoleBaselineAttemptError({
+        originalFailure: failureEvidence("transaction_rollback", undefined, error),
+        transactionStarted: true,
+        rollbackAttempt: "failed",
+      });
+    }
+  }
+
+  try {
+    await input.client.query("COMMIT");
+  } catch (error) {
+    let rollbackAttempt: OneRoleBaselineRollbackAttempt = "succeeded";
+    let transactionRollbackFailure: OneRoleBaselineFailureEvidence | undefined;
+    try {
+      await input.client.query("ROLLBACK");
+    } catch (rollbackError) {
+      rollbackAttempt = "failed";
+      transactionRollbackFailure = failureEvidence(
+        "transaction_rollback",
+        undefined,
+        rollbackError,
+      );
+    }
+    throw new OneRoleBaselineAttemptError({
+      originalFailure: failureEvidence("transaction_commit", undefined, error),
+      transactionStarted: true,
+      rollbackAttempt,
+      transactionRollbackFailure,
+      commitResultUncertain: true,
+    });
   }
 }
 
@@ -438,6 +648,70 @@ async function createBaselineMarker(
   `, [ONE_ROLE_BASELINE_ID, ONE_ROLE_TRANSFORM_VERSION, manifestSha256, ONE_ROLE_SOURCE_COUNT]);
 }
 
+async function readVerifiedGeneratedFile(
+  readGeneratedFile: (name: string) => Promise<string>,
+  file: OneRoleBaselineManifest["generated_files"][number],
+  stage: "generated_manifest_before" | "generated_manifest_after",
+): Promise<string> {
+  try {
+    const contents = await readGeneratedFile(file.name);
+    assertFileHash(file, contents);
+    return contents;
+  } catch (error) {
+    throw attemptFailure(stage, error, file.name);
+  }
+}
+
+function attemptFailure(
+  stage: OneRoleBaselineFailureStage,
+  error?: unknown,
+  migrationName?: string,
+): OneRoleBaselineAttemptError {
+  return new OneRoleBaselineAttemptError({
+    originalFailure: failureEvidence(stage, migrationName, error),
+    transactionStarted: true,
+    rollbackAttempt: "not_attempted",
+  });
+}
+
+function normalizeAttemptFailure(
+  error: unknown,
+  fallbackStage: OneRoleBaselineFailureStage,
+): OneRoleBaselineAttemptError {
+  if (error instanceof OneRoleBaselineAttemptError) return error;
+  return attemptFailure(fallbackStage, error);
+}
+
+function failureEvidence(
+  stage: OneRoleBaselineFailureStage,
+  migrationName?: string,
+  error?: unknown,
+): OneRoleBaselineFailureEvidence {
+  const postgresCode = readPostgresCode(error);
+  return Object.freeze({
+    failure_stage: stage,
+    ...(migrationName ? { migration_name: migrationName } : {}),
+    ...(postgresCode ? { postgres_code: postgresCode } : {}),
+  });
+}
+
+function readPostgresCode(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    const databaseError = current as Error & { code?: unknown; severity?: unknown };
+    const code = databaseError.code;
+    if (
+      POSTGRES_ERROR_SEVERITIES.has(String(databaseError.severity)) &&
+      typeof code === "string" &&
+      /^[0-9A-Z]{5}$/.test(code)
+    ) {
+      return code;
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
 function assertFileHash(
   file: OneRoleBaselineManifest["generated_files"][number],
   contents: string,
@@ -475,39 +749,289 @@ async function inspectWithNewClient(target: OneRoleBaselineTarget): Promise<OneR
   }
 }
 
-async function runDatabaseMode(
-  mode: Exclude<OneRoleBaselineMode, "plan">,
-  environment: Environment,
-  build: OneRoleBaselineBuild,
-): Promise<void> {
-  const target = readOneRoleBaselineTarget(environment, mode);
-  const before = await inspectWithNewClient(target);
-  assertOneRoleBaselinePreflight(before, target);
-  const client = new Client(createOneRoleBaselineClientConfig(target));
-  await client.connect();
-  try {
-    await executeOneRoleBaselineTransaction({ client, target, mode, build });
-  } finally {
-    await client.end();
-  }
+export async function executeOneRoleBaselineRun(input: Readonly<{
+  mode: Exclude<OneRoleBaselineMode, "plan">;
+  target: OneRoleBaselineTarget;
+  build: OneRoleBaselineBuild;
+  dependencies: OneRoleBaselineRunDependencies;
+}>): Promise<OneRoleBaselineSuccessEvidence> {
+  const { mode, target, build, dependencies } = input;
   const manifestSha256 = sha256(build.manifestJson);
-  const after = await inspectWithNewClient(target);
-  assertOneRoleBaselinePostflight({ state: after, target, mode, manifestSha256 });
-  process.stdout.write(`${JSON.stringify({
+
+  try {
+    const before = await dependencies.inspect();
+    assertOneRoleBaselinePreflight(before, target);
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      mode,
+      originalFailure: failureEvidence("preflight_database_inspection", undefined, error),
+    });
+  }
+
+  let connection: OneRoleBaselineExecutionConnection;
+  try {
+    connection = await dependencies.openExecutionConnection();
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      mode,
+      originalFailure: failureEvidence("execution_connection", undefined, error),
+    });
+  }
+
+  let attemptFailureResult: OneRoleBaselineAttemptError | undefined;
+  try {
+    await executeOneRoleBaselineTransaction({
+      client: connection.client,
+      target,
+      mode,
+      build,
+      readGeneratedFile: dependencies.readGeneratedFile,
+      inspectPreflight: dependencies.inspectLockedPreflight,
+    });
+  } catch (error) {
+    attemptFailureResult = normalizeAttemptFailure(error, "transaction_execution");
+  }
+
+  let closeFailure: OneRoleBaselineFailureEvidence | undefined;
+  try {
+    await connection.close();
+  } catch (error) {
+    closeFailure = failureEvidence("execution_connection_close", undefined, error);
+  }
+
+  if (attemptFailureResult || closeFailure) {
+    const transactionStarted = attemptFailureResult?.transactionStarted ?? true;
+    const operation = Object.freeze({
+      mode,
+      originalFailure: attemptFailureResult?.originalFailure ?? closeFailure!,
+      transactionStarted,
+      rollbackAttempt: attemptFailureResult?.rollbackAttempt ?? (
+        mode === "dry-run" ? "succeeded" as const : "not_attempted" as const
+      ),
+      transactionRollbackFailure: attemptFailureResult?.transactionRollbackFailure,
+      executionConnectionCloseFailure:
+        attemptFailureResult && closeFailure ? closeFailure : undefined,
+      commitResultUncertain: attemptFailureResult?.commitResultUncertain === true,
+    });
+    if (!transactionStarted) throw new OneRoleBaselineOperationError(operation);
+    await throwAfterIndependentStateVerification(
+      operation,
+      target,
+      manifestSha256,
+      dependencies.inspect,
+    );
+  }
+
+  let after: OneRoleBaselineDatabaseState;
+  try {
+    after = await dependencies.inspect();
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      mode,
+      originalFailure: failureEvidence("postflight_database_inspection", undefined, error),
+      transactionStarted: true,
+      rollbackAttempt: mode === "dry-run" ? "succeeded" : "not_attempted",
+      rollbackState: mode === "dry-run" ? "unknown" : undefined,
+      rollbackVerificationFailure: mode === "dry-run"
+        ? failureEvidence("rollback_database_inspection", undefined, error)
+        : undefined,
+      postFailureState: mode === "apply" ? "unknown" : undefined,
+      postFailureVerificationFailure: mode === "apply"
+        ? failureEvidence("postflight_database_inspection", undefined, error)
+        : undefined,
+    });
+  }
+
+  try {
+    if (mode === "dry-run") {
+      assertOneRoleBaselinePreflight(after, target);
+    } else {
+      assertOneRoleBaselinePostflight({ state: after, target, mode, manifestSha256 });
+    }
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      mode,
+      originalFailure: failureEvidence("postflight_state_verification", undefined, error),
+      transactionStarted: true,
+      rollbackAttempt: mode === "dry-run" ? "succeeded" : "not_attempted",
+      rollbackState: mode === "dry-run" ? "verification_failed" : undefined,
+      rollbackVerificationFailure: mode === "dry-run"
+        ? failureEvidence("rollback_state_verification", undefined, error)
+        : undefined,
+      postFailureState: mode === "apply" ? "verification_failed" : undefined,
+      postFailureVerificationFailure: mode === "apply"
+        ? failureEvidence("postflight_state_verification", undefined, error)
+        : undefined,
+    });
+  }
+
+  return createOneRoleBaselineSuccessEvidence(mode, target, build);
+}
+
+async function throwAfterIndependentStateVerification(
+  operation: Readonly<{
+    mode: Exclude<OneRoleBaselineMode, "plan">;
+    originalFailure: OneRoleBaselineFailureEvidence;
+    transactionStarted: boolean;
+    rollbackAttempt: OneRoleBaselineRollbackAttempt;
+    transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
+    executionConnectionCloseFailure?: OneRoleBaselineFailureEvidence;
+    commitResultUncertain: boolean;
+  }>,
+  target: OneRoleBaselineTarget,
+  manifestSha256: string,
+  inspect: () => Promise<OneRoleBaselineDatabaseState>,
+): Promise<never> {
+  let state: OneRoleBaselineDatabaseState;
+  try {
+    state = await inspect();
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      ...operation,
+      rollbackState: operation.mode === "dry-run" ? "unknown" : undefined,
+      rollbackVerificationFailure: operation.mode === "dry-run"
+        ? failureEvidence("rollback_database_inspection", undefined, error)
+        : undefined,
+      postFailureState: operation.mode === "apply" ? "unknown" : undefined,
+      postFailureVerificationFailure: operation.mode === "apply"
+        ? failureEvidence("postflight_database_inspection", undefined, error)
+        : undefined,
+    });
+  }
+
+  if (operation.mode === "dry-run") {
+    try {
+      assertOneRoleBaselinePreflight(state, target);
+    } catch (error) {
+      throw new OneRoleBaselineOperationError({
+        ...operation,
+        rollbackState: "verification_failed",
+        rollbackVerificationFailure: failureEvidence(
+          "rollback_state_verification",
+          undefined,
+          error,
+        ),
+      });
+    }
+    throw new OneRoleBaselineOperationError({ ...operation, rollbackState: "clean" });
+  }
+
+  let clean = false;
+  try {
+    assertOneRoleBaselinePreflight(state, target);
+    clean = true;
+  } catch {}
+  if (clean) {
+    throw new OneRoleBaselineOperationError({ ...operation, postFailureState: "clean" });
+  }
+  try {
+    assertOneRoleBaselinePostflight({
+      state,
+      target,
+      mode: "apply",
+      manifestSha256,
+    });
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      ...operation,
+      postFailureState: "verification_failed",
+      postFailureVerificationFailure: failureEvidence(
+        "postflight_state_verification",
+        undefined,
+        error,
+      ),
+    });
+  }
+  throw new OneRoleBaselineOperationError({ ...operation, postFailureState: "installed" });
+}
+
+function createOneRoleBaselineSuccessEvidence(
+  mode: Exclude<OneRoleBaselineMode, "plan">,
+  target: OneRoleBaselineTarget,
+  build: OneRoleBaselineBuild,
+): OneRoleBaselineSuccessEvidence {
+  return Object.freeze({
+    status: "pass",
     baseline_id: ONE_ROLE_BASELINE_ID,
     mode,
     target_database: target.database,
     canonical_login_role: ONE_ROLE_CANONICAL_ROLE,
     source_migrations: build.manifest.source_migrations.length,
     generated_files: build.manifest.generated_files.length,
+    postflight_state: mode === "apply" ? "installed" : "clean",
     marker: mode === "apply" ? "installed" : "rolled_back",
-    status: "pass",
-  })}\n`);
+  });
 }
 
-async function runCli(arguments_: readonly string[], environment: Environment): Promise<void> {
+export function formatOneRoleBaselineFailure(
+  error: unknown,
+  mode?: OneRoleBaselineMode,
+): string {
+  const operation = error instanceof OneRoleBaselineOperationError
+    ? error
+    : new OneRoleBaselineOperationError({
+      mode: mode === "plan" ? undefined : mode,
+      originalFailure: failureEvidence("cli"),
+    });
+  return JSON.stringify({
+    status: "failed",
+    baseline_id: ONE_ROLE_BASELINE_ID,
+    ...(operation.mode ? { mode: operation.mode } : mode ? { mode } : {}),
+    original_failure: operation.originalFailure,
+    transaction_started: operation.transactionStarted,
+    rollback_attempt: operation.rollbackAttempt,
+    ...(operation.transactionRollbackFailure
+      ? { transaction_rollback_failure: operation.transactionRollbackFailure }
+      : {}),
+    ...(operation.executionConnectionCloseFailure
+      ? { execution_connection_close_failure: operation.executionConnectionCloseFailure }
+      : {}),
+    ...(operation.rollbackState ? { rollback_state: operation.rollbackState } : {}),
+    ...(operation.rollbackVerificationFailure
+      ? { rollback_verification_failure: operation.rollbackVerificationFailure }
+      : {}),
+    ...(operation.postFailureState ? { post_failure_state: operation.postFailureState } : {}),
+    ...(operation.postFailureVerificationFailure
+      ? { post_failure_verification_failure: operation.postFailureVerificationFailure }
+      : {}),
+    ...(operation.commitResultUncertain ? { commit_result: "uncertain" } : {}),
+  });
+}
+
+async function runDatabaseMode(
+  mode: Exclude<OneRoleBaselineMode, "plan">,
+  environment: Environment,
+  build: OneRoleBaselineBuild,
+): Promise<OneRoleBaselineSuccessEvidence> {
+  const target = readOneRoleBaselineTarget(environment, mode);
+  return executeOneRoleBaselineRun({
+    mode,
+    target,
+    build,
+    dependencies: {
+      inspect: () => inspectWithNewClient(target),
+      openExecutionConnection: async () => {
+        const client = new Client(createOneRoleBaselineClientConfig(target));
+        await client.connect();
+        return Object.freeze({ client, close: () => client.end() });
+      },
+    },
+  });
+}
+
+export async function runOneRoleBaselineCli(
+  arguments_: readonly string[],
+  environment: Environment,
+): Promise<void> {
   const mode = readOneRoleBaselineMode(arguments_);
-  const build = await verifyCommittedOneRoleBaseline();
+  let build: OneRoleBaselineBuild;
+  try {
+    build = await verifyCommittedOneRoleBaseline();
+  } catch (error) {
+    throw new OneRoleBaselineOperationError({
+      originalFailure: failureEvidence("baseline_manifest", undefined, error),
+    });
+  }
   if (mode === "plan") {
     process.stdout.write(`${JSON.stringify({
       baseline_id: ONE_ROLE_BASELINE_ID,
@@ -521,15 +1045,21 @@ async function runCli(arguments_: readonly string[], environment: Environment): 
     }, null, 2)}\n`);
     return;
   }
-  await runDatabaseMode(mode, environment, build);
+  const evidence = await runDatabaseMode(mode, environment, build);
+  process.stdout.write(`${JSON.stringify(evidence)}\n`);
 }
 
 const isMainModule = process.argv[1] !== undefined &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
-  runCli(process.argv.slice(2), process.env).catch(() => {
-    process.stderr.write("One-role baseline operation failed safely.\n");
+  const arguments_ = process.argv.slice(2);
+  let mode: OneRoleBaselineMode | undefined;
+  try {
+    mode = readOneRoleBaselineMode(arguments_);
+  } catch {}
+  runOneRoleBaselineCli(arguments_, process.env).catch((error: unknown) => {
+    process.stderr.write(`${formatOneRoleBaselineFailure(error, mode)}\n`);
     process.exitCode = 1;
   });
 }
