@@ -12,7 +12,9 @@ import {
 } from "../../../scripts/db/neon-test-synthetic-fixture.ts";
 import {
   NEON_TEST_SEED_COUNTS,
+  NEON_TEST_SEED_TABLE_COUNTS,
   NeonTestSeedSafetyError,
+  PROHIBITED_NEON_TEST_SEED_TABLES,
   classifyNeonTestSeedPopulation,
   createNeonTestSeedEvidence,
   readNeonTestSeedMode,
@@ -68,6 +70,29 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     school_snapshots: 1,
     school_records: 3,
   });
+  assert.deepEqual(NEON_TEST_SEED_TABLE_COUNTS, {
+    access_organizations: 1,
+    identity_users: 5,
+    access_organization_memberships: 5,
+    access_role_bindings: 5,
+    crm_students: 2,
+    crm_guardians: 2,
+    crm_student_guardian_relationships: 2,
+    cases_schema_manifests: 1,
+    cases_schema_manifest_fields: 15,
+    schools_schools: 3,
+    schools_snapshots: 1,
+    schools_snapshot_records: 3,
+  });
+  assert.deepEqual(PROHIBITED_NEON_TEST_SEED_TABLES, [
+    "identity_database_test_credentials",
+    "identity_sessions",
+    "cases_service_cases",
+    "documents_documents",
+    "portal_access_grants",
+    "audit_events",
+    "audit_outbox",
+  ]);
 });
 
 test("uses only visibly synthetic invalid-domain data and fixed unique UUIDs", () => {
@@ -157,23 +182,16 @@ test("validates the single owner role and preserves the credential owner residua
 });
 
 test("does not import local seeds or create credentials, sessions, cases, or evidence", async () => {
-  const [fixtureSource, seedSource] = await Promise.all([
+  const [fixtureSource, seedSource, packageJsonSource] = await Promise.all([
     readFile("scripts/db/neon-test-synthetic-fixture.ts", "utf8"),
     readFile("scripts/db/seed-neon-test-release1.ts", "utf8"),
+    readFile("package.json", "utf8"),
   ]);
   const combined = `${fixtureSource}\n${seedSource}`;
   assert.doesNotMatch(combined, /seed-local-identity|seed-local-release1/);
   assert.doesNotMatch(combined, /LOCAL_SYNTHETIC_ORGANIZATION|LOCAL_SYNTHETIC_PRINCIPALS/);
   assert.doesNotMatch(combined, /local\.invalid|tianxing-local-/);
-  for (const table of [
-    "identity_database_test_credentials",
-    "identity_sessions",
-    "cases_service_cases",
-    "documents_documents",
-    "portal_access_grants",
-    "audit_events",
-    "audit_outbox",
-  ]) {
+  for (const table of PROHIBITED_NEON_TEST_SEED_TABLES) {
     assert.doesNotMatch(combined, new RegExp(`INSERT\\s+INTO\\s+${table}`, "i"));
   }
   assert.doesNotMatch(combined, /error\.stack/);
@@ -183,6 +201,13 @@ test("does not import local seeds or create credentials, sessions, cases, or evi
   assert.match(seedSource, /ONE_ROLE_BASELINE_DATABASE_URL/);
   assert.match(seedSource, /set_config\('app\.organization_id'/);
   assert.match(seedSource, /set_config\('app\.actor_user_id'/);
+  const packageJson = JSON.parse(packageJsonSource) as {
+    scripts?: Readonly<Record<string, string>>;
+  };
+  assert.equal(
+    packageJson.scripts?.["test:neon-test-seed-postgresql"],
+    "node --test tests/integration/neon-test-seed-postgresql.test.ts",
+  );
 });
 
 test("emits aggregate seed evidence without rows, email, hostname, or secrets", () => {

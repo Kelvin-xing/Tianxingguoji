@@ -27,6 +27,7 @@
     "test:env-01b": "node --test tests/unit/auth/login-page.test.ts",
     "test:neon-test-db-scripts": "node --conditions=react-server --test tests/migration/neon-test-runner.test.ts tests/migration/local-runner.test.ts tests/migration/drift.test.ts tests/unit/runtime/neon-test-seed.test.ts",
     "test:one-role-baseline-postgresql": "node --test tests/integration/one-role-baseline-postgresql.test.ts",
+    "test:neon-test-seed-postgresql": "node --test tests/integration/neon-test-seed-postgresql.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
     "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "pnpm db:baseline:plan",
