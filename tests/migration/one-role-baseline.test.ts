@@ -55,7 +55,7 @@ test("generates a deterministic executable baseline from all 27 frozen sources",
   const second = await buildOneRoleBaseline();
 
   assert.equal(first.manifest.baseline_id, ONE_ROLE_BASELINE_ID);
-  assert.equal(ONE_ROLE_TRANSFORM_VERSION, "one-role-transform-v2");
+  assert.equal(ONE_ROLE_TRANSFORM_VERSION, "one-role-transform-v3");
   assert.equal(first.manifest.status, "executable-unapplied");
   assert.equal(first.manifest.canonical_login_role, ONE_ROLE_CANONICAL_ROLE);
   assert.equal(first.manifest.source_migrations.length, ONE_ROLE_SOURCE_COUNT);
@@ -153,6 +153,8 @@ test("generated SQL contains no legacy database role token and preserves busines
   assert.match(sql, /relrowsecurity/);
   assert.match(sql, /FORCE ROW LEVEL SECURITY/);
   assert.match(sql, /procedure_row\.prosecdef/);
+  assert.match(sql, /ORDER BY function_row\.function_identity COLLATE "C"/);
+  assert.doesNotMatch(sql, /ORDER BY function_identity COLLATE "C"/);
   assert.match(sql, /SET search_path = pg_catalog, public/);
   assert.match(sql, /REVOKE ALL ON FUNCTION %s FROM PUBLIC/);
   assert.match(sql, /GRANT EXECUTE ON FUNCTION %s TO tianxing_app/);
@@ -171,6 +173,7 @@ test("binds canonical targets to the development, test, and production host matr
     ONE_ROLE_BASELINE_DATABASE_URL: LOCAL_URL,
   });
   assert.equal(local.user, "tianxing_app");
+  assert.equal(local.port, 5432);
   assert.equal(local.ssl, false);
   const testTarget = readOneRoleBaselineTarget({
     APP_ENV: "test",
@@ -190,6 +193,9 @@ test("binds canonical targets to the development, test, and production host matr
 
   for (const environment of [
     developmentEnvironment({ MIGRATION_DATABASE_URL: LOCAL_URL }),
+    developmentEnvironment({
+      ONE_ROLE_BASELINE_DATABASE_URL: LOCAL_URL.replace(":5432", ":5433"),
+    }),
     developmentEnvironment({
       ONE_ROLE_BASELINE_DATABASE_URL: LOCAL_URL.replace(
         "tianxing_app",

@@ -18,13 +18,16 @@ BEGIN
   END LOOP;
 
   FOR target_function IN
-    SELECT format('%I.%I(%s)', namespace_row.nspname, procedure_row.proname,
-             pg_get_function_identity_arguments(procedure_row.oid)) AS function_identity
-      FROM pg_proc AS procedure_row
-      JOIN pg_namespace AS namespace_row ON namespace_row.oid = procedure_row.pronamespace
-     WHERE namespace_row.nspname = 'public'
-       AND procedure_row.prosecdef
-     ORDER BY function_identity COLLATE "C"
+    SELECT function_row.function_identity
+      FROM (
+        SELECT format('%I.%I(%s)', namespace_row.nspname, procedure_row.proname,
+                 pg_get_function_identity_arguments(procedure_row.oid)) AS function_identity
+          FROM pg_proc AS procedure_row
+          JOIN pg_namespace AS namespace_row ON namespace_row.oid = procedure_row.pronamespace
+         WHERE namespace_row.nspname = 'public'
+           AND procedure_row.prosecdef
+      ) AS function_row
+     ORDER BY function_row.function_identity COLLATE "C"
   LOOP
     EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, public',
       target_function.function_identity);

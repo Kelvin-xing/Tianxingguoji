@@ -99,7 +99,7 @@ export type OneRoleBaselineSuccessEvidence = Readonly<{
 export type OneRoleBaselineTarget = Readonly<{
   connectionString: string;
   host: string;
-  port: 5432;
+  port: number;
   database: string;
   user: typeof ONE_ROLE_CANONICAL_ROLE;
   ssl: false | Readonly<{ rejectUnauthorized: true }>;
@@ -305,7 +305,7 @@ export function readOneRoleBaselineTarget(
   return Object.freeze({
     connectionString: url.toString(),
     host,
-    port: 5432 as const,
+    port: Number(url.port),
     database,
     user: ONE_ROLE_CANONICAL_ROLE,
     ssl: loopback ? false : Object.freeze({ rejectUnauthorized: true as const }),
