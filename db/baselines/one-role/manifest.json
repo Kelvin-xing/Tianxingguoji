@@ -2,7 +2,7 @@
   "baseline_version": 1,
   "baseline_id": "tianxing-one-role-v1",
   "status": "executable-unapplied",
-  "transform_version": "one-role-transform-v1",
+  "transform_version": "one-role-transform-v2",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
   "source_history_manifest_sha256": "d32d23ef8bde853803a48511226c7bd0215d8cb76fd0795818629aa7ace44587",
@@ -182,8 +182,8 @@
       "name": "202608180090_025_harden_case_stage_transition.sql",
       "source_sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
       "generated_file": "024_202608180090_025_harden_case_stage_transition.sql",
-      "generated_sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
-      "transform": "copy-v1"
+      "generated_sha256": "207df11e9ff729e99b696dda13ed533dee53a9a1069fe9a3001b7b645b704978",
+      "transform": "case-stage-trigger-bootstrap-v1"
     },
     {
       "name": "202608180100_026_fix_case_stage_transition_evidence_binding.sql",
@@ -325,8 +325,8 @@
     },
     {
       "name": "024_202608180090_025_harden_case_stage_transition.sql",
-      "sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
-      "transform": "copy-v1"
+      "sha256": "207df11e9ff729e99b696dda13ed533dee53a9a1069fe9a3001b7b645b704978",
+      "transform": "case-stage-trigger-bootstrap-v1"
     },
     {
       "name": "025_202608180100_026_fix_case_stage_transition_evidence_binding.sql",

@@ -9,7 +9,7 @@ import {
 } from "./migration-manifest.ts";
 
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
-export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v1" as const;
+export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v2" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
 export const ONE_ROLE_SOURCE_COUNT = 27;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
@@ -33,6 +33,8 @@ export const ONE_ROLE_TRANSFORM_SOURCES = Object.freeze({
     "a8c81b0674d5083b558d11aab8f528f486593ce7e125d2e937d61fc5a9727fb2",
   "202608130030_013_expand_case_billing_projection.sql":
     "3eaeb84dfe9a8436e1c98c4cecf49359abf2cd06ebd95ebc765a5e204b41fe76",
+  "202608180090_025_harden_case_stage_transition.sql":
+    "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
   "202608180120_028_expand_database_test_identity.sql":
     "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb",
 } as const);
@@ -53,6 +55,7 @@ export type OneRoleTransformName =
   | "external-portal-v1"
   | "platform-billing-v1"
   | "case-billing-projection-v1"
+  | "case-stage-trigger-bootstrap-v1"
   | "database-test-identity-v1"
   | "hardening-v1";
 
@@ -283,6 +286,11 @@ function transformOneRoleMigrationWithVerifiedHash(
       return Object.freeze({ transform: "platform-billing-v1", sql: transform012(source) });
     case "202608130030_013_expand_case_billing_projection.sql":
       return Object.freeze({ transform: "case-billing-projection-v1", sql: transform013(source) });
+    case "202608180090_025_harden_case_stage_transition.sql":
+      return Object.freeze({
+        transform: "case-stage-trigger-bootstrap-v1",
+        sql: transform025(source),
+      });
     case "202608180120_028_expand_database_test_identity.sql":
       return Object.freeze({ transform: "database-test-identity-v1", sql: transform028(source) });
     default:
@@ -379,6 +387,24 @@ function transform013(source: string): string {
     "013 platform checkpoint grant",
   );
   return sql;
+}
+
+function transform025(source: string): string {
+  const trigger = [
+    "CREATE TRIGGER cases_service_case_transition_facts_insert_guard_trg",
+    "BEFORE INSERT ON cases_service_case_transition_facts",
+    "FOR EACH ROW EXECUTE FUNCTION cases_validate_service_case_transition_fact_insert();",
+  ].join("\n");
+  return replaceExactOnce(
+    source,
+    trigger,
+    [
+      "GRANT TRIGGER ON TABLE public.cases_service_case_transition_facts TO tianxing_app;",
+      trigger,
+      "REVOKE TRIGGER ON TABLE public.cases_service_case_transition_facts FROM tianxing_app;",
+    ].join("\n"),
+    "025 transition fact trigger privilege window",
+  );
 }
 
 function transform028(source: string): string {

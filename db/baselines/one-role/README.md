@@ -5,10 +5,15 @@ test, or AWS bootstrap. It is deliberately separate from
 `db/migrations/manifest.json`; the historical 27 migration files and their
 hashes are immutable.
 
-The generator reads all 27 frozen sources, applies five explicit one-role
-transforms (008, 011, 012, 013, and 028), copies the other 22 files byte-for-byte,
+The generator reads all 27 frozen sources, applies six explicit one-role
+transforms (008, 011, 012, 013, 025, and 028), copies the other 21 files byte-for-byte,
 and emits 28 ordered SQL files plus a manifest. `db:baseline:check` regenerates
 the result in memory and rejects source drift or generated-file drift.
+
+The 025 transform temporarily grants `TRIGGER` on the transition-facts table
+immediately before creating its guard trigger and revokes that privilege
+immediately afterward. Both statements execute inside the baseline's single
+transaction, so the final runtime ACL is not expanded.
 
 `status=executable-unapplied` means the baseline can be run, but has not been
 run against any database. The runner uses one transaction, a transaction-scoped

@@ -124,8 +124,9 @@ URL query、pooler 特例和大于 1 的连接池均延后到 ENV-01B，不在�
 
 `db/baselines/one-role/` 是独立的可执行 baseline/manifest 目录，供空 Neon test、本地数据库和未来 AWS bootstrap 使用。
 它不修改、覆盖或冒充 `db/migrations/manifest.json` 的历史 27 条 migration；生成器固定校验全部来源 SHA-256，并对
-008、011、012、013、028 做明确的单角色变换，其余来源逐字复制。当前 manifest 为 `executable-unapplied`，仅表示
-代码已准备好，尚未对任何数据库执行。
+008、011、012、013、025、028 做六个明确的单角色变换，其余 21 个来源逐字复制。025 变换仅在 baseline 总事务内，
+于创建 transition-facts guard trigger 前临时向 `tianxing_app` 授予 `TRIGGER`，创建后立即撤销；最终 runtime ACL
+不会扩大。当前 manifest 为 `executable-unapplied`，仅表示代码已准备好，尚未对任何数据库执行。
 
 单角色成为表 owner 会绕过普通 owner RLS 检查，因此 baseline 对全部已启用 RLS 的 public 表执行 `FORCE ROW LEVEL
 SECURITY`；`SECURITY DEFINER` 函数固定 `search_path`、撤销 PUBLIC 执行权并只授予 `tianxing_app`。同一角色仍拥有
