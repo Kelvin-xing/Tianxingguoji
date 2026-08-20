@@ -336,6 +336,18 @@ test("returns pass evidence only after an independent clean dry-run postcheck", 
   assert.equal(evidence.status, "pass");
   assert.equal(evidence.postflight_state, "clean");
   assert.equal(evidence.marker, "rolled_back");
+  assert.deepEqual(evidence.verification, {
+    role_contract: "verified",
+    member_of_neon_superuser: false,
+    granted_role_count: 0,
+    marker_ownership: "absent",
+    public_object_count: 0,
+    public_wrong_owner_count: 0,
+    rls_not_forced_count: 0,
+    unsafe_security_definer_count: 0,
+    migration_metadata: "absent",
+    stale_dry_run_schema_count: 0,
+  });
   assert.equal(client.commands.at(-1), "ROLLBACK");
   assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
 });
@@ -351,24 +363,44 @@ test("returns apply pass evidence only after an independent installed marker pos
     target: localTarget(),
     build,
     dependencies: scenarioDependencies(build, client, events, {
-      after: {
-        ...state(),
-        publicObjectCount: 100,
-        marker: {
-          baselineId: ONE_ROLE_BASELINE_ID,
-          transformVersion: ONE_ROLE_TRANSFORM_VERSION,
-          manifestSha256,
-          sourceMigrationCount: ONE_ROLE_SOURCE_COUNT,
-        },
-      },
+      after: installedState(manifestSha256),
     }),
   });
 
   assert.equal(evidence.status, "pass");
   assert.equal(evidence.postflight_state, "installed");
   assert.equal(evidence.marker, "installed");
+  assert.equal(evidence.verification.marker_ownership, "verified");
+  assert.equal(evidence.verification.public_object_count, 100);
   assert.equal(client.commands.at(-1), "COMMIT");
   assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+});
+
+test("freezes a committed apply when independent postflight verification fails", async () => {
+  const build = await buildOneRoleBaseline();
+  const client = new RecordingClient();
+  const manifestSha256 = createHash("sha256").update(build.manifestJson).digest("hex");
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "apply",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, [], {
+      after: {
+        ...installedState(manifestSha256),
+        publicWrongOwnerCount: 1,
+      },
+    }),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as Record<string, unknown>;
+
+  assert.equal(client.commands.at(-1), "COMMIT");
+  assert.equal(evidence.commit_result, "succeeded");
+  assert.equal(evidence.post_failure_state, "installed_but_verification_failed");
+  assert.equal(evidence.retry, "forbidden");
+  assert.equal(evidence.operator_action, "freeze_and_escalate");
+  assert.equal("rollback_state" in evidence, false);
+  assertRedacted(serialized);
 });
 
 test("preserves rollback failure separately when independent state is clean", async () => {
@@ -577,16 +609,7 @@ test("requires an empty hardened owner preflight and verifies rollback or marker
     manifestSha256: "a".repeat(64),
   }));
   assert.doesNotThrow(() => assertOneRoleBaselinePostflight({
-    state: {
-      ...clean,
-      publicObjectCount: 100,
-      marker: {
-        baselineId: ONE_ROLE_BASELINE_ID,
-        transformVersion: ONE_ROLE_TRANSFORM_VERSION,
-        manifestSha256: "a".repeat(64),
-        sourceMigrationCount: 27,
-      },
-    },
+    state: installedState("a".repeat(64)),
     target,
     mode: "apply",
     manifestSha256: "a".repeat(64),
@@ -597,6 +620,25 @@ test("requires an empty hardened owner preflight and verifies rollback or marker
     mode: "dry-run",
     manifestSha256: "a".repeat(64),
   }), OneRoleBaselineRunError);
+  for (const invalid of [
+    { ...installedState("a".repeat(64)), login: false },
+    { ...installedState("a".repeat(64)), memberOfNeonSuperuser: true },
+    { ...installedState("a".repeat(64)), grantedRoleCount: 1 },
+    { ...installedState("a".repeat(64)), markerSchemaOwner: "postgres" },
+    { ...installedState("a".repeat(64)), markerTableOwner: "postgres" },
+    { ...installedState("a".repeat(64)), markerRowCount: 2 },
+    { ...installedState("a".repeat(64)), publicWrongOwnerCount: 1 },
+    { ...installedState("a".repeat(64)), migrationSchemaPresent: true },
+    { ...installedState("a".repeat(64)), migrationLedgerPresent: true },
+    { ...installedState("a".repeat(64)), staleDryRunSchemaCount: 1 },
+  ]) {
+    assert.throws(() => assertOneRoleBaselinePostflight({
+      state: invalid,
+      target,
+      mode: "apply",
+      manifestSha256: "a".repeat(64),
+    }), OneRoleBaselineRunError);
+  }
 });
 
 class RecordingClient implements OneRoleBaselineQueryClient {
@@ -634,10 +676,35 @@ function state(): OneRoleBaselineDatabaseState {
     inherit: false,
     replication: false,
     bypassRls: false,
+    memberOfNeonSuperuser: false,
+    grantedRoleCount: 0,
     publicObjectCount: 0,
+    publicWrongOwnerCount: 0,
+    markerSchemaOwner: null,
+    markerTableOwner: null,
+    markerRowCount: 0,
     marker: null,
     rlsNotForcedCount: 0,
     unsafeSecurityDefinerCount: 0,
+    migrationSchemaPresent: false,
+    migrationLedgerPresent: false,
+    staleDryRunSchemaCount: 0,
+  };
+}
+
+function installedState(manifestSha256: string): OneRoleBaselineDatabaseState {
+  return {
+    ...state(),
+    publicObjectCount: 100,
+    markerSchemaOwner: ONE_ROLE_CANONICAL_ROLE,
+    markerTableOwner: ONE_ROLE_CANONICAL_ROLE,
+    markerRowCount: 1,
+    marker: {
+      baselineId: ONE_ROLE_BASELINE_ID,
+      transformVersion: ONE_ROLE_TRANSFORM_VERSION,
+      manifestSha256,
+      sourceMigrationCount: ONE_ROLE_SOURCE_COUNT,
+    },
   };
 }
 

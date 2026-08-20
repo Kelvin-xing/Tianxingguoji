@@ -39,6 +39,7 @@ const NEON_TEST_DIRECT_HOST =
   /^ep-[a-z0-9-]+(?:\.c-[0-9]+)?\.us-east-1\.aws\.neon\.tech$/;
 const AWS_PRODUCTION_RDS_HOST =
   /^[a-z0-9][a-z0-9.-]*\.ap-east-1\.rds\.amazonaws\.com$/;
+const LEGACY_DRY_RUN_SCHEMA_PREFIX = "migration_dry_run_env01_";
 const POSTGRES_ERROR_SEVERITIES = new Set([
   "ERROR",
   "FATAL",
@@ -82,6 +83,7 @@ export type OneRoleBaselineRollbackState = "clean" | "unknown" | "verification_f
 export type OneRoleBaselinePostFailureState =
   | "clean"
   | "installed"
+  | "installed_but_verification_failed"
   | "unknown"
   | "verification_failed";
 export type OneRoleBaselineSuccessEvidence = Readonly<{
@@ -94,6 +96,18 @@ export type OneRoleBaselineSuccessEvidence = Readonly<{
   generated_files: number;
   postflight_state: "clean" | "installed";
   marker: "rolled_back" | "installed";
+  verification: Readonly<{
+    role_contract: "verified";
+    member_of_neon_superuser: false;
+    granted_role_count: number;
+    marker_ownership: "absent" | "verified";
+    public_object_count: number;
+    public_wrong_owner_count: number;
+    rls_not_forced_count: number;
+    unsafe_security_definer_count: number;
+    migration_metadata: "absent";
+    stale_dry_run_schema_count: number;
+  }>;
 }>;
 
 export type OneRoleBaselineTarget = Readonly<{
@@ -116,7 +130,13 @@ export type OneRoleBaselineDatabaseState = Readonly<{
   inherit: boolean;
   replication: boolean;
   bypassRls: boolean;
+  memberOfNeonSuperuser: boolean;
+  grantedRoleCount: number;
   publicObjectCount: number;
+  publicWrongOwnerCount: number;
+  markerSchemaOwner: string | null;
+  markerTableOwner: string | null;
+  markerRowCount: number;
   marker: null | Readonly<{
     baselineId: string;
     transformVersion: string;
@@ -125,6 +145,9 @@ export type OneRoleBaselineDatabaseState = Readonly<{
   }>;
   rlsNotForcedCount: number;
   unsafeSecurityDefinerCount: number;
+  migrationSchemaPresent: boolean;
+  migrationLedgerPresent: boolean;
+  staleDryRunSchemaCount: number;
 }>;
 
 export interface OneRoleBaselineQueryClient {
@@ -179,6 +202,7 @@ export class OneRoleBaselineOperationError extends OneRoleBaselineRunError {
   readonly postFailureState?: OneRoleBaselinePostFailureState;
   readonly postFailureVerificationFailure?: OneRoleBaselineFailureEvidence;
   readonly commitResultUncertain: boolean;
+  readonly applyCommitted: boolean;
 
   constructor(input: Readonly<{
     mode?: Exclude<OneRoleBaselineMode, "plan">;
@@ -192,6 +216,7 @@ export class OneRoleBaselineOperationError extends OneRoleBaselineRunError {
     postFailureState?: OneRoleBaselinePostFailureState;
     postFailureVerificationFailure?: OneRoleBaselineFailureEvidence;
     commitResultUncertain?: boolean;
+    applyCommitted?: boolean;
   }>) {
     super();
     this.name = "OneRoleBaselineOperationError";
@@ -206,6 +231,7 @@ export class OneRoleBaselineOperationError extends OneRoleBaselineRunError {
     this.postFailureState = input.postFailureState;
     this.postFailureVerificationFailure = input.postFailureVerificationFailure;
     this.commitResultUncertain = input.commitResultUncertain === true;
+    this.applyCommitted = input.applyCommitted === true;
   }
 }
 
@@ -465,6 +491,8 @@ export async function inspectOneRoleBaselineDatabase(
     rolinherit: boolean;
     rolreplication: boolean;
     rolbypassrls: boolean;
+    member_of_neon_superuser: boolean;
+    granted_role_count: string;
   }>(`
     SELECT current_database() AS database_name,
            current_user AS user_name,
@@ -475,23 +503,65 @@ export async function inspectOneRoleBaselineDatabase(
            role_row.rolcreaterole,
            role_row.rolinherit,
            role_row.rolreplication,
-           role_row.rolbypassrls
+           role_row.rolbypassrls,
+           EXISTS (
+             SELECT 1
+               FROM pg_roles AS neon_role
+              WHERE neon_role.rolname = 'neon_superuser'
+                AND pg_has_role(role_row.oid, neon_role.oid, 'MEMBER')
+           ) AS member_of_neon_superuser,
+           (SELECT count(*)::text
+              FROM pg_auth_members AS membership
+             WHERE membership.member = role_row.oid) AS granted_role_count
       FROM pg_database AS database_row
       JOIN pg_roles AS role_row ON role_row.rolname = current_user
      WHERE database_row.datname = current_database()
   `);
-  const objects = await client.query<{ count: string }>(`
-    SELECT (
-      (SELECT count(*) FROM pg_class AS class_row
+  const objects = await client.query<{ count: string; wrong_owner_count: string }>(`
+    WITH recognized_public_object_owners AS (
+      SELECT class_row.relowner AS owner_oid
+        FROM pg_class AS class_row
         JOIN pg_namespace AS namespace_row ON namespace_row.oid = class_row.relnamespace
        WHERE namespace_row.nspname = 'public'
-         AND class_row.relkind IN ('r', 'p', 'v', 'm', 'S', 'f'))
-      +
-      (SELECT count(*) FROM pg_proc AS procedure_row
+         AND class_row.relkind IN ('r', 'p', 'i', 'I', 'v', 'm', 'S', 'c', 'f')
+      UNION ALL
+      SELECT procedure_row.proowner AS owner_oid
+        FROM pg_proc AS procedure_row
         JOIN pg_namespace AS namespace_row ON namespace_row.oid = procedure_row.pronamespace
-       WHERE namespace_row.nspname = 'public')
-    )::text AS count
-  `);
+       WHERE namespace_row.nspname = 'public'
+      UNION ALL
+      SELECT type_row.typowner AS owner_oid
+        FROM pg_type AS type_row
+        JOIN pg_namespace AS namespace_row ON namespace_row.oid = type_row.typnamespace
+       WHERE namespace_row.nspname = 'public'
+         AND type_row.typisdefined
+         AND type_row.typtype <> 'p'
+    )
+    SELECT count(*)::text AS count,
+           count(*) FILTER (
+             WHERE owner_oid <> (SELECT oid FROM pg_roles WHERE rolname = $1)
+           )::text AS wrong_owner_count
+      FROM recognized_public_object_owners
+  `, [ONE_ROLE_CANONICAL_ROLE]);
+  const markerOwnership = await client.query<{
+    schema_owner: string | null;
+    table_owner: string | null;
+  }>(`
+    SELECT (
+             SELECT pg_get_userbyid(namespace_row.nspowner)
+               FROM pg_namespace AS namespace_row
+              WHERE namespace_row.nspname = $1
+           ) AS schema_owner,
+           (
+             SELECT pg_get_userbyid(class_row.relowner)
+               FROM pg_class AS class_row
+               JOIN pg_namespace AS namespace_row
+                 ON namespace_row.oid = class_row.relnamespace
+              WHERE namespace_row.nspname = $1
+                AND class_row.relname = $2
+                AND class_row.relkind IN ('r', 'p')
+           ) AS table_owner
+  `, [ONE_ROLE_MARKER_SCHEMA, ONE_ROLE_MARKER_TABLE]);
   const markerExists = await client.query<{ marker_name: string | null }>(
     "SELECT to_regclass($1)::text AS marker_name",
     [`${ONE_ROLE_MARKER_SCHEMA}.${ONE_ROLE_MARKER_TABLE}`],
@@ -511,8 +581,8 @@ export async function inspectOneRoleBaselineDatabase(
   }>(`
     SELECT baseline_id, transform_version, manifest_sha256, source_migration_count
      FROM ${ONE_ROLE_MARKER_SCHEMA}.${ONE_ROLE_MARKER_TABLE}
-     WHERE baseline_id = $1
-  `, [ONE_ROLE_BASELINE_ID]);
+     ORDER BY baseline_id COLLATE "C"
+  `);
   const rls = await client.query<{ count: string }>(`
     SELECT count(*)::text AS count
       FROM pg_class AS class_row
@@ -542,9 +612,27 @@ export async function inspectOneRoleBaselineDatabase(
          )
        )
   `);
+  const residue = await client.query<{
+    migration_schema_present: boolean;
+    migration_ledger_present: boolean;
+    stale_dry_run_schema_count: string;
+  }>(`
+    SELECT EXISTS (
+             SELECT 1
+               FROM pg_namespace AS namespace_row
+              WHERE namespace_row.nspname = 'migration'
+           ) AS migration_schema_present,
+           to_regclass('migration.schema_migrations') IS NOT NULL
+             AS migration_ledger_present,
+           (SELECT count(*)::text
+              FROM pg_namespace AS namespace_row
+             WHERE left(namespace_row.nspname, $2) = $1) AS stale_dry_run_schema_count
+  `, [LEGACY_DRY_RUN_SCHEMA_PREFIX, LEGACY_DRY_RUN_SCHEMA_PREFIX.length]);
   const current = identity.rows[0];
   if (!current) throw new OneRoleBaselineRunError();
+  const markerOwners = markerOwnership.rows[0];
   const markerRow = marker.rows[0];
+  const residueRow = residue.rows[0];
   return Object.freeze({
     databaseName: current.database_name,
     userName: current.user_name,
@@ -556,7 +644,13 @@ export async function inspectOneRoleBaselineDatabase(
     inherit: current.rolinherit,
     replication: current.rolreplication,
     bypassRls: current.rolbypassrls,
+    memberOfNeonSuperuser: current.member_of_neon_superuser,
+    grantedRoleCount: Number(current.granted_role_count),
     publicObjectCount: Number(objects.rows[0]?.count ?? "0"),
+    publicWrongOwnerCount: Number(objects.rows[0]?.wrong_owner_count ?? "0"),
+    markerSchemaOwner: markerOwners?.schema_owner ?? null,
+    markerTableOwner: markerOwners?.table_owner ?? null,
+    markerRowCount: marker.rows.length,
     marker: markerRow ? Object.freeze({
       baselineId: markerRow.baseline_id,
       transformVersion: markerRow.transform_version,
@@ -565,6 +659,9 @@ export async function inspectOneRoleBaselineDatabase(
     }) : null,
     rlsNotForcedCount: Number(rls.rows[0]?.count ?? "0"),
     unsafeSecurityDefinerCount: Number(functions.rows[0]?.count ?? "0"),
+    migrationSchemaPresent: residueRow?.migration_schema_present === true,
+    migrationLedgerPresent: residueRow?.migration_ledger_present === true,
+    staleDryRunSchemaCount: Number(residueRow?.stale_dry_run_schema_count ?? "0"),
   });
 }
 
@@ -573,20 +670,16 @@ export function assertOneRoleBaselinePreflight(
   target: OneRoleBaselineTarget,
 ): void {
   if (
-    state.databaseName !== target.database ||
-    state.userName !== ONE_ROLE_CANONICAL_ROLE ||
-    state.databaseOwner !== ONE_ROLE_CANONICAL_ROLE ||
-    !state.login ||
-    state.superuser ||
-    state.createDatabase ||
-    state.createRole ||
-    state.inherit ||
-    state.replication ||
-    state.bypassRls ||
+    !hasCanonicalOneRoleAuthority(state, target) ||
     state.publicObjectCount !== 0 ||
+    state.publicWrongOwnerCount !== 0 ||
+    state.markerSchemaOwner !== null ||
+    state.markerTableOwner !== null ||
+    state.markerRowCount !== 0 ||
     state.marker !== null ||
-    state.rlsNotForcedCount !== 0 ||
-    state.unsafeSecurityDefinerCount !== 0
+    state.migrationSchemaPresent ||
+    state.migrationLedgerPresent ||
+    state.staleDryRunSchemaCount !== 0
   ) {
     throw new OneRoleBaselineRunError();
   }
@@ -599,28 +692,47 @@ export function assertOneRoleBaselinePostflight(input: Readonly<{
   manifestSha256: string;
 }>): void {
   const { state, target, mode } = input;
-  if (
-    state.databaseName !== target.database ||
-    state.userName !== ONE_ROLE_CANONICAL_ROLE ||
-    state.databaseOwner !== ONE_ROLE_CANONICAL_ROLE ||
-    state.rlsNotForcedCount !== 0 ||
-    state.unsafeSecurityDefinerCount !== 0
-  ) {
-    throw new OneRoleBaselineRunError();
-  }
   if (mode === "dry-run") {
-    if (state.publicObjectCount !== 0 || state.marker !== null) throw new OneRoleBaselineRunError();
+    assertOneRoleBaselinePreflight(state, target);
     return;
   }
   if (
+    !hasCanonicalOneRoleAuthority(state, target) ||
     state.publicObjectCount === 0 ||
+    state.publicWrongOwnerCount !== 0 ||
+    state.markerSchemaOwner !== ONE_ROLE_CANONICAL_ROLE ||
+    state.markerTableOwner !== ONE_ROLE_CANONICAL_ROLE ||
+    state.markerRowCount !== 1 ||
     state.marker?.baselineId !== ONE_ROLE_BASELINE_ID ||
     state.marker.transformVersion !== ONE_ROLE_TRANSFORM_VERSION ||
     state.marker.manifestSha256 !== input.manifestSha256 ||
-    state.marker.sourceMigrationCount !== ONE_ROLE_SOURCE_COUNT
+    state.marker.sourceMigrationCount !== ONE_ROLE_SOURCE_COUNT ||
+    state.migrationSchemaPresent ||
+    state.migrationLedgerPresent ||
+    state.staleDryRunSchemaCount !== 0
   ) {
     throw new OneRoleBaselineRunError();
   }
+}
+
+function hasCanonicalOneRoleAuthority(
+  state: OneRoleBaselineDatabaseState,
+  target: OneRoleBaselineTarget,
+): boolean {
+  return state.databaseName === target.database &&
+    state.userName === ONE_ROLE_CANONICAL_ROLE &&
+    state.databaseOwner === ONE_ROLE_CANONICAL_ROLE &&
+    state.login &&
+    !state.superuser &&
+    !state.createDatabase &&
+    !state.createRole &&
+    !state.inherit &&
+    !state.replication &&
+    !state.bypassRls &&
+    !state.memberOfNeonSuperuser &&
+    state.grantedRoleCount === 0 &&
+    state.rlsNotForcedCount === 0 &&
+    state.unsafeSecurityDefinerCount === 0;
 }
 
 async function createBaselineMarker(
@@ -812,6 +924,7 @@ export async function executeOneRoleBaselineRun(input: Readonly<{
       executionConnectionCloseFailure:
         attemptFailureResult && closeFailure ? closeFailure : undefined,
       commitResultUncertain: attemptFailureResult?.commitResultUncertain === true,
+      applyCommitted: mode === "apply" && attemptFailureResult === undefined,
     });
     if (!transactionStarted) throw new OneRoleBaselineOperationError(operation);
     await throwAfterIndependentStateVerification(
@@ -835,10 +948,13 @@ export async function executeOneRoleBaselineRun(input: Readonly<{
       rollbackVerificationFailure: mode === "dry-run"
         ? failureEvidence("rollback_database_inspection", undefined, error)
         : undefined,
-      postFailureState: mode === "apply" ? "unknown" : undefined,
+      postFailureState: mode === "apply"
+        ? "installed_but_verification_failed"
+        : undefined,
       postFailureVerificationFailure: mode === "apply"
         ? failureEvidence("postflight_database_inspection", undefined, error)
         : undefined,
+      applyCommitted: mode === "apply",
     });
   }
 
@@ -858,14 +974,17 @@ export async function executeOneRoleBaselineRun(input: Readonly<{
       rollbackVerificationFailure: mode === "dry-run"
         ? failureEvidence("rollback_state_verification", undefined, error)
         : undefined,
-      postFailureState: mode === "apply" ? "verification_failed" : undefined,
+      postFailureState: mode === "apply"
+        ? "installed_but_verification_failed"
+        : undefined,
       postFailureVerificationFailure: mode === "apply"
         ? failureEvidence("postflight_state_verification", undefined, error)
         : undefined,
+      applyCommitted: mode === "apply",
     });
   }
 
-  return createOneRoleBaselineSuccessEvidence(mode, target, build);
+  return createOneRoleBaselineSuccessEvidence(mode, target, build, after);
 }
 
 async function throwAfterIndependentStateVerification(
@@ -877,6 +996,7 @@ async function throwAfterIndependentStateVerification(
     transactionRollbackFailure?: OneRoleBaselineFailureEvidence;
     executionConnectionCloseFailure?: OneRoleBaselineFailureEvidence;
     commitResultUncertain: boolean;
+    applyCommitted: boolean;
   }>,
   target: OneRoleBaselineTarget,
   manifestSha256: string,
@@ -892,7 +1012,11 @@ async function throwAfterIndependentStateVerification(
       rollbackVerificationFailure: operation.mode === "dry-run"
         ? failureEvidence("rollback_database_inspection", undefined, error)
         : undefined,
-      postFailureState: operation.mode === "apply" ? "unknown" : undefined,
+      postFailureState: operation.mode === "apply"
+        ? operation.applyCommitted
+          ? "installed_but_verification_failed"
+          : "unknown"
+        : undefined,
       postFailureVerificationFailure: operation.mode === "apply"
         ? failureEvidence("postflight_database_inspection", undefined, error)
         : undefined,
@@ -934,7 +1058,9 @@ async function throwAfterIndependentStateVerification(
   } catch (error) {
     throw new OneRoleBaselineOperationError({
       ...operation,
-      postFailureState: "verification_failed",
+      postFailureState: operation.applyCommitted
+        ? "installed_but_verification_failed"
+        : "verification_failed",
       postFailureVerificationFailure: failureEvidence(
         "postflight_state_verification",
         undefined,
@@ -949,6 +1075,7 @@ function createOneRoleBaselineSuccessEvidence(
   mode: Exclude<OneRoleBaselineMode, "plan">,
   target: OneRoleBaselineTarget,
   build: OneRoleBaselineBuild,
+  state: OneRoleBaselineDatabaseState,
 ): OneRoleBaselineSuccessEvidence {
   return Object.freeze({
     status: "pass",
@@ -960,6 +1087,18 @@ function createOneRoleBaselineSuccessEvidence(
     generated_files: build.manifest.generated_files.length,
     postflight_state: mode === "apply" ? "installed" : "clean",
     marker: mode === "apply" ? "installed" : "rolled_back",
+    verification: Object.freeze({
+      role_contract: "verified" as const,
+      member_of_neon_superuser: false as const,
+      granted_role_count: state.grantedRoleCount,
+      marker_ownership: mode === "apply" ? "verified" as const : "absent" as const,
+      public_object_count: state.publicObjectCount,
+      public_wrong_owner_count: state.publicWrongOwnerCount,
+      rls_not_forced_count: state.rlsNotForcedCount,
+      unsafe_security_definer_count: state.unsafeSecurityDefinerCount,
+      migration_metadata: "absent" as const,
+      stale_dry_run_schema_count: state.staleDryRunSchemaCount,
+    }),
   });
 }
 
@@ -994,7 +1133,17 @@ export function formatOneRoleBaselineFailure(
     ...(operation.postFailureVerificationFailure
       ? { post_failure_verification_failure: operation.postFailureVerificationFailure }
       : {}),
-    ...(operation.commitResultUncertain ? { commit_result: "uncertain" } : {}),
+    ...(operation.applyCommitted
+      ? { commit_result: "succeeded" }
+      : operation.commitResultUncertain
+        ? { commit_result: "uncertain" }
+        : {}),
+    ...(operation.postFailureState === "installed_but_verification_failed"
+      ? {
+          retry: "forbidden",
+          operator_action: "freeze_and_escalate",
+        }
+      : {}),
   });
 }
 
