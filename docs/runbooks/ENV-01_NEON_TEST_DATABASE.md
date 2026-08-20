@@ -157,6 +157,44 @@ chmod 600 .env.migration.neon-test
 
 该文件不得加载到 Next.js 或 Vercel。不得设置 `DATABASE_URL` 或 `MIGRATION_DATABASE_URL`。
 
+### 5.1 Vercel test Web runtime 变量边界
+
+Vercel test Web runtime 只使用 `TEST_DATABASE_URL` 作为应用数据库入口，并由
+`TEST_DATABASE_EXPECTED_NAME`、`TEST_DATABASE_CONNECTION_TIMEOUT_MS`、
+`TEST_DATABASE_STATEMENT_TIMEOUT_MS` 和 `TEST_DATABASE_POOL_MAX` 完成目标和资源约束校验。普通 Vercel system
+metadata 可以存在，但下列数据库、operator 或 vendor integration 变量只要非空就会在 runtime 配置阶段
+fail closed：
+
+- `DATABASE_URL`
+- `DATABASE_URL_UNPOOLED`
+- `ONE_ROLE_BASELINE_DATABASE_URL`
+- `MIGRATION_DATABASE_URL`
+- `TEST_IDENTITY_DATABASE_URL`
+- `TEST_APPLICATION_DATABASE_URL`
+- `TEST_MIGRATION_DATABASE_URL`
+- `TEST_PROVISION_DATABASE_URL`
+- `NEON_AUTH_BASE_URL`
+- `NEON_PROJECT_ID`
+- `PGDATABASE`
+- `PGHOST`
+- `PGHOST_UNPOOLED`
+- `PGPASSWORD`
+- `PGUSER`
+- `POSTGRES_DATABASE`
+- `POSTGRES_HOST`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_PRISMA_URL`
+- `POSTGRES_URL`
+- `POSTGRES_URL_NON_POOLING`
+- `POSTGRES_USER`
+- `POSTGRES_URL_NO_SSL`
+- `VITE_NEON_AUTH_URL`
+- 任意 `LOCAL_SYNTHETIC_*`
+
+固定清单按上述顺序归因；多个 `LOCAL_SYNTHETIC_*` 同时存在时按变量名排序归因。空字符串或仅空白不视为
+present。该边界不拒绝 `VERCEL_URL`、`VERCEL_PROJECT_PRODUCTION_URL`、`VERCEL_GIT_COMMIT_SHA`、
+`VERCEL_REGION` 或 `VERCEL_TARGET_ENV` 等正常 hosting metadata。
+
 独立 Direct `psql` 登录不是 baseline 的必要 gate；如需单独验证，使用本机 libpq/`psql` 连接
 `tianxing_app`，密码只允许交互式输入，连接参数必须同时保留 `sslmode=verify-full` 和已经验证的系统 CA 路径：
 

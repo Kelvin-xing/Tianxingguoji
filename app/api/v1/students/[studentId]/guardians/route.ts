@@ -1,14 +1,10 @@
 import { cookies } from "next/headers";
 
 import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import {
-  GuardianRelationshipError,
-  GuardianRelationshipRuntimeUnavailable,
-  getGuardianRelationshipRuntime,
-} from "@/modules/crm/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
+import { getGuardianRelationshipRuntime } from "@/modules/crm/server";
+import { getIdentityRuntime } from "@/modules/identity/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import { mapGuardianRelationshipError } from "./handler";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
@@ -110,32 +106,6 @@ function toApiRelationship(relationship: {
     ends_at_ms: relationship.endsAtMs,
     record_version: relationship.recordVersion,
   };
-}
-
-export function mapGuardianRelationshipError(error: unknown) {
-  if (error instanceof IdentityRuntimeUnavailable || error instanceof GuardianRelationshipRuntimeUnavailable) {
-    return createApiError("SERVICE_UNAVAILABLE");
-  }
-  if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
-  if (!(error instanceof GuardianRelationshipError)) return createApiError("SERVICE_UNAVAILABLE");
-
-  switch (error.code) {
-    case "GUARDIAN_RELATIONSHIP_ADVISOR_REQUIRED":
-      return createApiError("FORBIDDEN");
-    case "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND":
-    case "GUARDIAN_RELATIONSHIP_GUARDIAN_NOT_FOUND":
-      return createApiError("NOT_FOUND");
-    case "GUARDIAN_RELATIONSHIP_STALE_VERSION":
-      return createApiError("STALE_VERSION");
-    case "GUARDIAN_RELATIONSHIP_CURRENT_PAIR_EXISTS":
-    case "GUARDIAN_RELATIONSHIP_PRIMARY_CONFLICT":
-    case "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_KEY_REUSED":
-    case "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS":
-      return createApiError("CONFLICT");
-    case "GUARDIAN_RELATIONSHIP_INVALID":
-    case "GUARDIAN_RELATIONSHIP_PRIMARY_REQUIRED":
-      return createApiError("VALIDATION_FAILED");
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

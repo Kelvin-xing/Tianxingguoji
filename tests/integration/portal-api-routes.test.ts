@@ -4,14 +4,14 @@ import test from "node:test";
 import {
   createPortalGrantCollectionHandlers,
   type PortalGrantRouteDependencies,
-} from "../../app/api/v1/cases/[caseId]/portal-grants/route.ts";
-import { createPortalGrantItemHandlers } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/route.ts";
-import { createPortalGrantRotateHandler } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/rotate/route.ts";
+} from "../../app/api/v1/cases/[caseId]/portal-grants/handler.ts";
+import { createPortalGrantItemHandlers } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/handler.ts";
+import { createPortalGrantRotateHandler } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/rotate/handler.ts";
 import {
   PORTAL_SESSION_COOKIE_NAME,
   createPortalSessionHandlers,
-} from "../../app/api/v1/portal/sessions/route.ts";
-import { createPortalWorkspaceGetHandler } from "../../app/api/v1/portal/workspace/route.ts";
+} from "../../app/api/v1/portal/sessions/handler.ts";
+import { createPortalWorkspaceGetHandler } from "../../app/api/v1/portal/workspace/handler.ts";
 import { PortalPolicyError } from "../../modules/external-portal/domain/contract.ts";
 import { PortalRuntimeUnavailable } from "../../modules/external-portal/infrastructure/runtime.ts";
 

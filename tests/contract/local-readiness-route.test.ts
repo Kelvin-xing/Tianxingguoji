@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handleLocalReadinessRequest } from "../../app/api/v1/local/readiness/route.ts";
+import { handleLocalReadinessRequest } from "../../app/api/v1/local/readiness/handler.ts";
 import { API_VERSION } from "../../modules/shared/presentation/api-contract.ts";
 import type { LocalSyntheticReadinessReport } from "../../lib/runtime/local-synthetic-readiness.ts";
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   loadRuntimeEnvironment,
   RuntimeEnvironmentConfigurationError,
+  TEST_WEB_FORBIDDEN_DATABASE_VARIABLES,
 } from "../../../lib/runtime/runtime-environment.ts";
 
 test("freezes the only three legal runtime environment combinations", () => {
@@ -50,7 +51,7 @@ test("rejects every cross-environment mode substitution fail closed", () => {
   }
 });
 
-test("treats Vercel as hosting metadata and rejects privileged URLs in test Web runtime", () => {
+test("treats Vercel as hosting metadata and rejects database integration variables", () => {
   assertConfigurationError(
     () => loadRuntimeEnvironment({ ...testEnvironment(), VERCEL_ENV: "development" }),
     "VERCEL_ENV",
@@ -59,20 +60,100 @@ test("treats Vercel as hosting metadata and rejects privileged URLs in test Web 
     () => loadRuntimeEnvironment({ ...productionEnvironment(), VERCEL: "1" }),
     "VERCEL",
   );
-  for (const variable of [
+  assert.deepEqual(TEST_WEB_FORBIDDEN_DATABASE_VARIABLES, [
     "DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
+    "ONE_ROLE_BASELINE_DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "TEST_IDENTITY_DATABASE_URL",
     "TEST_APPLICATION_DATABASE_URL",
     "TEST_MIGRATION_DATABASE_URL",
     "TEST_PROVISION_DATABASE_URL",
+    "NEON_AUTH_BASE_URL",
+    "NEON_PROJECT_ID",
+    "PGDATABASE",
+    "PGHOST",
+    "PGHOST_UNPOOLED",
+    "PGPASSWORD",
+    "PGUSER",
+    "POSTGRES_DATABASE",
+    "POSTGRES_HOST",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "POSTGRES_USER",
+    "POSTGRES_URL_NO_SSL",
+    "VITE_NEON_AUTH_URL",
+  ]);
+  for (const variable of TEST_WEB_FORBIDDEN_DATABASE_VARIABLES) {
+    assertConfigurationError(
+      () => loadRuntimeEnvironment({ ...testEnvironment(), [variable]: "forbidden" }),
+      variable,
+    );
+  }
+});
+
+test("rejects every non-empty local synthetic variable in test Web runtime", () => {
+  for (const variable of [
     "LOCAL_SYNTHETIC_DATABASE_URL",
+    "LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT",
+    "LOCAL_SYNTHETIC_UNRECOGNIZED_FUTURE_VALUE",
   ]) {
     assertConfigurationError(
       () => loadRuntimeEnvironment({ ...testEnvironment(), [variable]: "forbidden" }),
       variable,
     );
   }
+});
+
+test("allows empty forbidden variables and approved test database and Vercel metadata", () => {
+  const emptyForbidden = Object.fromEntries(
+    TEST_WEB_FORBIDDEN_DATABASE_VARIABLES.map((variable) => [variable, " \t "]),
+  );
+  assert.deepEqual(loadRuntimeEnvironment({
+    ...testEnvironment(),
+    ...emptyForbidden,
+    LOCAL_SYNTHETIC_EMPTY: " \n ",
+    TEST_DATABASE_EXPECTED_NAME: "txgj_env01_test",
+    TEST_DATABASE_URL:
+      "postgresql://tianxing_app:test-secret@db.vendor.example:5432/txgj_env01_test",
+    TEST_DATABASE_CONNECTION_TIMEOUT_MS: "2000",
+    TEST_DATABASE_STATEMENT_TIMEOUT_MS: "5000",
+    TEST_DATABASE_POOL_MAX: "1",
+    VERCEL_URL: "synthetic-preview.vercel.app",
+    VERCEL_PROJECT_PRODUCTION_URL: "synthetic.example.invalid",
+    VERCEL_GIT_COMMIT_SHA: "a".repeat(40),
+    VERCEL_REGION: "iad1",
+    VERCEL_TARGET_ENV: "preview",
+    APP_RELEASE_SHA: "a".repeat(40),
+  }), {
+    appEnvironment: "test",
+    nodeEnvironment: "production",
+    appRuntimeMode: "test-database",
+    authMode: "database-test",
+    vercel: { environment: "preview" },
+  });
+});
+
+test("reports the first forbidden test Web variable in fixed contract order", () => {
+  const reverseOrderedConflicts = Object.fromEntries(
+    [...TEST_WEB_FORBIDDEN_DATABASE_VARIABLES]
+      .reverse()
+      .map((variable) => [variable, "forbidden"]),
+  );
+  assertConfigurationError(
+    () => loadRuntimeEnvironment({ ...testEnvironment(), ...reverseOrderedConflicts }),
+    "DATABASE_URL",
+  );
+  assertConfigurationError(
+    () => loadRuntimeEnvironment({
+      ...testEnvironment(),
+      LOCAL_SYNTHETIC_Z_DATABASE_URL: "forbidden",
+      LOCAL_SYNTHETIC_A_DATABASE_URL: "forbidden",
+    }),
+    "LOCAL_SYNTHETIC_A_DATABASE_URL",
+  );
 });
 
 test("rejects legacy split local database URLs before local runtime startup", () => {
