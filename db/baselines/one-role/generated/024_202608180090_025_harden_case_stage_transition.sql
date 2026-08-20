@@ -20,9 +20,11 @@ BEGIN
 END;
 $$;
 
+GRANT TRIGGER ON TABLE public.cases_service_case_transition_facts TO tianxing_app;
 CREATE TRIGGER cases_service_case_transition_facts_insert_guard_trg
 BEFORE INSERT ON cases_service_case_transition_facts
 FOR EACH ROW EXECUTE FUNCTION cases_validate_service_case_transition_fact_insert();
+REVOKE TRIGGER ON TABLE public.cases_service_case_transition_facts FROM tianxing_app;
 
 CREATE FUNCTION cases_validate_service_case_stage_transition()
 RETURNS trigger

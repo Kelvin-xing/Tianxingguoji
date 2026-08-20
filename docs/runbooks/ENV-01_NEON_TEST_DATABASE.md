@@ -250,7 +250,7 @@ Seed 示例：
   "tls": { "verified": true, "reject_unauthorized": true },
   "baseline": {
     "id": "tianxing-one-role-v1",
-    "transform_version": "one-role-transform-v1",
+    "transform_version": "one-role-transform-v2",
     "source_migration_count": 27,
     "manifest_sha256": "<BASELINE_MANIFEST_SHA256>"
   },

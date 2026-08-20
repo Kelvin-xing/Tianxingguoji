@@ -55,6 +55,7 @@ test("generates a deterministic executable baseline from all 27 frozen sources",
   const second = await buildOneRoleBaseline();
 
   assert.equal(first.manifest.baseline_id, ONE_ROLE_BASELINE_ID);
+  assert.equal(ONE_ROLE_TRANSFORM_VERSION, "one-role-transform-v2");
   assert.equal(first.manifest.status, "executable-unapplied");
   assert.equal(first.manifest.canonical_login_role, ONE_ROLE_CANONICAL_ROLE);
   assert.equal(first.manifest.source_migrations.length, ONE_ROLE_SOURCE_COUNT);
@@ -79,6 +80,46 @@ test("locks every explicit transform to exactly one set of source anchors", asyn
         error.message.includes("anchor count mismatch"),
     );
   }
+});
+
+test("temporarily grants only the fact-table trigger privilege around the first 025 trigger", async () => {
+  assert.equal(
+    ONE_ROLE_TRANSFORM_SOURCES["202608180090_025_harden_case_stage_transition.sql"],
+    "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
+  );
+  const build = await buildOneRoleBaseline();
+  const generated = build.files.find(({ name }) =>
+    name === "024_202608180090_025_harden_case_stage_transition.sql"
+  );
+  assert.ok(generated);
+  const grant =
+    "GRANT TRIGGER ON TABLE public.cases_service_case_transition_facts TO tianxing_app;";
+  const trigger = "CREATE TRIGGER cases_service_case_transition_facts_insert_guard_trg";
+  const revoke =
+    "REVOKE TRIGGER ON TABLE public.cases_service_case_transition_facts FROM tianxing_app;";
+  const grantIndex = generated.contents.indexOf(grant);
+  const triggerIndex = generated.contents.indexOf(trigger);
+  const revokeIndex = generated.contents.indexOf(revoke);
+
+  assert.ok(grantIndex >= 0);
+  assert.ok(grantIndex < triggerIndex);
+  assert.ok(triggerIndex < revokeIndex);
+  assert.equal(occurrenceCount(generated.contents, grant), 1);
+  assert.equal(occurrenceCount(generated.contents, revoke), 1);
+  assert.equal(
+    build.manifest.source_migrations.find(({ name }) =>
+      name === "202608180090_025_harden_case_stage_transition.sql"
+    )?.transform,
+    "case-stage-trigger-bootstrap-v1",
+  );
+  assert.equal(
+    build.files.reduce((count, file) => count + occurrenceCount(file.contents, grant), 0),
+    1,
+  );
+  assert.equal(
+    build.files.reduce((count, file) => count + occurrenceCount(file.contents, revoke), 0),
+    1,
+  );
 });
 
 test("rejects any source drift before generation", async () => {
@@ -535,7 +576,7 @@ test("requires an empty hardened owner preflight and verifies rollback or marker
       publicObjectCount: 100,
       marker: {
         baselineId: ONE_ROLE_BASELINE_ID,
-        transformVersion: "one-role-transform-v1",
+        transformVersion: ONE_ROLE_TRANSFORM_VERSION,
         manifestSha256: "a".repeat(64),
         sourceMigrationCount: 27,
       },
@@ -715,4 +756,14 @@ function assertRedacted(serialized: string): void {
   ]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);
   }
+}
+
+function occurrenceCount(source: string, search: string): number {
+  let count = 0;
+  let offset = 0;
+  while ((offset = source.indexOf(search, offset)) !== -1) {
+    count += 1;
+    offset += search.length;
+  }
+  return count;
 }
