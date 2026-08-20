@@ -38,6 +38,7 @@
     "db:baseline:local:dry-run": "node --env-file=.env.migration.local scripts/db/run-one-role-baseline.ts --dry-run",
     "db:baseline:local": "node --env-file=.env.migration.local scripts/db/run-one-role-baseline.ts --apply",
     "db:baseline:neon-test:dry-run": "node --env-file=.env.migration.neon-test scripts/db/run-one-role-baseline.ts --dry-run",
+    "db:baseline:neon-test:apply": "node --env-file=.env.migration.neon-test scripts/db/run-one-role-baseline.ts --apply",
     "db:baseline:neon-test": "node --env-file=.env.migration.neon-test scripts/db/run-one-role-baseline.ts --apply",
     "db:migrate:local:dry-run": "pnpm db:baseline:local:dry-run",
     "db:migrate:local": "pnpm db:baseline:local",

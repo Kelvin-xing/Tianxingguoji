@@ -539,6 +539,14 @@ test("keeps the legacy runner isolated while active commands use the one-role ba
   );
   assert.equal(packageJson.scripts["db:migrate:neon-test"], "pnpm db:baseline:neon-test");
   assert.match(packageJson.scripts["db:baseline:neon-test:dry-run"], /run-one-role-baseline/);
+  assert.equal(
+    packageJson.scripts["db:baseline:neon-test:apply"],
+    "node --env-file=.env.migration.neon-test scripts/db/run-one-role-baseline.ts --apply",
+  );
+  assert.doesNotMatch(
+    packageJson.scripts["db:baseline:neon-test:apply"],
+    /ONE_ROLE_BASELINE_APPLY_CONFIRM/,
+  );
   assert.match(packageJson.scripts["db:baseline:neon-test"], /--apply$/);
   assert.doesNotMatch(source, /error\.stack/);
 });

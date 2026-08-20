@@ -159,8 +159,11 @@ psql "host=<DIRECT_HOST> port=5432 dbname=txgj_env01_test user=tianxing_app sslm
 
 ```bash
 pnpm db:baseline:neon-test:dry-run
-pnpm db:baseline:neon-test
+ONE_ROLE_BASELINE_APPLY_CONFIRM=tianxing-one-role-v1 pnpm db:baseline:neon-test:apply
 ```
+
+`ONE_ROLE_BASELINE_APPLY_CONFIRM` 只能由本次调用进程显式提供，不写入 `.env.migration.neon-test` 或其他
+secret 文件。缺少或不精确匹配 `tianxing-one-role-v1` 时，apply 在连接数据库前 fail closed。
 
 runner 在连接后强制检查：
 
@@ -173,6 +176,18 @@ runner 在连接后强制检查：
 baseline 执行策略固定为单事务、transaction-scoped advisory lock、每个生成文件的 SHA-256 复核和独立 marker；runner 在执行前后都重新验证 manifest。
 
 baseline dry-run 不使用 `node-pg-migrate dryRun`，因为该模式只打印 SQL，不能证明冻结 SQL 文件可由 PostgreSQL 执行。新 dry-run 使用一个显式事务和 transaction-scoped advisory lock，严格按 baseline manifest 顺序执行 28 个生成文件；每个文件在执行前后都重新读取并校验 SHA-256，并把整个文件作为一次 query 交给 PostgreSQL，不自行拆分 SQL。无论成功或失败都只执行 `ROLLBACK`，不执行 `COMMIT`，也不创建历史 migration ledger。事务结束后使用独立连接复验 public objects、baseline marker、RLS 和 SECURITY DEFINER 状态均与 preflight 空状态一致。
+
+apply 的 `COMMIT` 返回成功后，runner 必须通过新的独立连接同时确认：database、current user、owner 均为
+`tianxing_app`；角色为 LOGIN 且无 superuser/createdb/createrole/inherit/replication/bypassrls、无
+`neon_superuser` 成员关系、无任何被授予角色；marker schema/table owner、marker id、transform version、manifest
+hash 和 source count 全部匹配；public 中可识别 class、procedure 和 user-defined type 全部由 `tianxing_app`
+拥有且对象总数大于 0；全部 RLS 已 FORCE，SECURITY DEFINER 均安全；历史 `migration` schema/ledger 不存在，
+stale dry-run schema 数为 0。成功 evidence 只输出这些合同的布尔值和计数，不输出对象名、数据行或连接信息。
+
+如果 `COMMIT` 已成功但独立 postflight inspection 或状态验证失败，evidence 固定为
+`commit_result=succeeded`、`post_failure_state=installed_but_verification_failed`、`retry=forbidden` 和
+`operator_action=freeze_and_escalate`。此状态表示数据库已经写入但验收不完整，必须冻结并升级架构审核，绝不能
+再次执行 apply。
 
 preflight、rollback verification 和 postflight 的 manifest/database inspection 均使用固定 `failure_stage`，只保留可验证的 migration name（若已确定）和合法 SQLSTATE；PostgreSQL message、detail、query、where、stack、hostname、连接串和 secret 不进入 CLI evidence。
 

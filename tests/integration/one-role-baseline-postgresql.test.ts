@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 
 import { Client } from "pg";
@@ -11,6 +11,7 @@ import {
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
+  assertOneRoleBaselinePostflight,
   assertOneRoleBaselinePreflight,
   createOneRoleBaselineClientConfig,
   executeOneRoleBaselineRun,
@@ -22,7 +23,7 @@ import {
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const POSTGRES_MAJOR = 17;
 
-test("executes all one-role generated SQL on disposable PostgreSQL 17 and rolls back clean", {
+test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
   timeout: 120_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -92,7 +93,7 @@ test("executes all one-role generated SQL on disposable PostgreSQL 17 and rolls 
     assert.equal(Number(postgresVersion.split(".")[0]), POSTGRES_MAJOR);
 
     const build = await verifyCommittedOneRoleBaseline();
-    const evidence = await executeOneRoleBaselineRun({
+    const dryRunEvidence = await executeOneRoleBaselineRun({
       mode: "dry-run",
       target,
       build,
@@ -106,25 +107,69 @@ test("executes all one-role generated SQL on disposable PostgreSQL 17 and rolls 
       },
     });
 
-    assert.equal(evidence.status, "pass");
-    assert.equal(evidence.baseline_id, ONE_ROLE_BASELINE_ID);
-    assert.equal(evidence.generated_files, 28);
-    assert.equal(evidence.postflight_state, "clean");
-    assert.equal(evidence.marker, "rolled_back");
+    assert.equal(dryRunEvidence.status, "pass");
+    assert.equal(dryRunEvidence.baseline_id, ONE_ROLE_BASELINE_ID);
+    assert.equal(dryRunEvidence.generated_files, 28);
+    assert.equal(dryRunEvidence.postflight_state, "clean");
+    assert.equal(dryRunEvidence.marker, "rolled_back");
 
-    const independentlyVerified = await inspectWithNewClient(target);
-    assertOneRoleBaselinePreflight(independentlyVerified, target);
-    assert.equal(independentlyVerified.publicObjectCount, 0);
-    assert.equal(independentlyVerified.marker, null);
+    const independentlyVerifiedDryRun = await inspectWithNewClient(target);
+    assertOneRoleBaselinePreflight(independentlyVerifiedDryRun, target);
+    assert.equal(independentlyVerifiedDryRun.publicObjectCount, 0);
+    assert.equal(independentlyVerifiedDryRun.marker, null);
+
+    const applyEvidence = await executeOneRoleBaselineRun({
+      mode: "apply",
+      target,
+      build,
+      dependencies: {
+        inspect: () => inspectWithNewClient(target),
+        openExecutionConnection: async () => {
+          const client = new Client(clientConfig);
+          await client.connect();
+          return Object.freeze({ client, close: () => client.end() });
+        },
+      },
+    });
+    assert.equal(applyEvidence.status, "pass");
+    assert.equal(applyEvidence.postflight_state, "installed");
+    assert.equal(applyEvidence.marker, "installed");
+    assert.equal(applyEvidence.verification.role_contract, "verified");
+    assert.equal(applyEvidence.verification.member_of_neon_superuser, false);
+    assert.equal(applyEvidence.verification.granted_role_count, 0);
+    assert.equal(applyEvidence.verification.marker_ownership, "verified");
+    assert.ok(applyEvidence.verification.public_object_count > 0);
+    assert.equal(applyEvidence.verification.public_wrong_owner_count, 0);
+    assert.equal(applyEvidence.verification.rls_not_forced_count, 0);
+    assert.equal(applyEvidence.verification.unsafe_security_definer_count, 0);
+    assert.equal(applyEvidence.verification.migration_metadata, "absent");
+    assert.equal(applyEvidence.verification.stale_dry_run_schema_count, 0);
+
+    const manifestSha256 = createHash("sha256").update(build.manifestJson).digest("hex");
+    const independentlyVerifiedApply = await inspectWithNewClient(target);
+    assertOneRoleBaselinePostflight({
+      state: independentlyVerifiedApply,
+      target,
+      mode: "apply",
+      manifestSha256,
+    });
 
     process.stdout.write(`${JSON.stringify({
       status: "pass",
       postgres_version: postgresVersion,
       target_port: target.port,
-      generated_files: evidence.generated_files,
-      postflight_state: evidence.postflight_state,
-      marker: evidence.marker,
-      independent_postflight: "clean",
+      generated_files: dryRunEvidence.generated_files,
+      dry_run: {
+        postflight_state: dryRunEvidence.postflight_state,
+        marker: dryRunEvidence.marker,
+        independent_postflight: "clean",
+      },
+      apply: {
+        postflight_state: applyEvidence.postflight_state,
+        marker: applyEvidence.marker,
+        independent_postflight: "verified",
+        verification: applyEvidence.verification,
+      },
     })}\n`);
   } finally {
     if (started) {
