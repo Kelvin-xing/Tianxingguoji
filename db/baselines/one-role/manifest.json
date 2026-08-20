@@ -2,7 +2,7 @@
   "baseline_version": 1,
   "baseline_id": "tianxing-one-role-v1",
   "status": "executable-unapplied",
-  "transform_version": "one-role-transform-v2",
+  "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
   "source_history_manifest_sha256": "d32d23ef8bde853803a48511226c7bd0215d8cb76fd0795818629aa7ace44587",
@@ -345,8 +345,8 @@
     },
     {
       "name": "999_one_role_hardening.sql",
-      "sha256": "4b68379039eb19dcfe6529763d74b59e4081e99dac45c51ac8b933f1e039a2a3",
-      "transform": "hardening-v1"
+      "sha256": "4d940c1d800b11ac60fdc0ffbdafba33930ec4222c47ec6a161f9384e10704e4",
+      "transform": "hardening-v2"
     }
   ]
 }

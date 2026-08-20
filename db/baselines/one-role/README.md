@@ -15,10 +15,21 @@ immediately before creating its guard trigger and revokes that privilege
 immediately afterward. Both statements execute inside the baseline's single
 transaction, so the final runtime ACL is not expanded.
 
-`status=executable-unapplied` means the baseline can be run, but has not been
-run against any database. The runner uses one transaction, a transaction-scoped
+`status=executable-unapplied` means the baseline can be dry-run, but has not been
+applied to any database. The runner uses one transaction, a transaction-scoped
 advisory lock, SHA-256 checks before and after every file, and a separate marker
 (`tianxing_baseline.installations`) instead of the historical migration ledger.
+
+Any baseline SQL change must pass the real PostgreSQL 17 gate before review:
+
+```bash
+pnpm test:one-role-baseline-postgresql
+```
+
+The gate uses the pinned PostgreSQL 17 image, an isolated `tmpfs` data directory,
+a random loopback port, and the real 28-file runner. It requires a dry-run
+`ROLLBACK` plus a clean independent-connection postflight and removes only its
+own temporary container.
 
 The baseline uses `tianxing_app` as the only PostgreSQL login role. It removes
 legacy database roles, preserves the business role

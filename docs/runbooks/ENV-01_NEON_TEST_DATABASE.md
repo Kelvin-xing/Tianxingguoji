@@ -5,7 +5,7 @@
 > **单角色裁决（2026-08-20）**：local、Vercel test 和 AWS production 的唯一 runtime login
 > role 为 `tianxing_app`。本手册中 `env01_migration_login`、`rds_iam` 及其他 operator/group role
 > 只代表历史 ENV-01C migration 运行记录，不得作为新的运行时或 one-role baseline 依据。新的独立合同见
-> `db/baselines/one-role/manifest.json`，当前状态为 `executable-unapplied`：代码已生成并验算，但尚未执行。
+> `db/baselines/one-role/manifest.json`，当前状态为 `executable-unapplied`：代码已生成并验算，但尚未正式 apply。
 
 本手册记录 `txgj_env01_test` 的 bootstrap 状态，以及后续 migration 和纯合成 seed 顺序。bootstrap 已按独立审批完成；当前仍未授权执行 migration/seed、修改 Vercel 或部署。
 
@@ -21,15 +21,21 @@
 
 `neondb` 保留，不删除、不清理。所有数据必须为合成数据。
 
-当前状态（截至 2026-08-19）：
+当前状态（截至 2026-08-21）：
 
 - 历史 bootstrap 已确认 `txgj_env01_test` 和旧 operator 角色曾存在；这些角色不属于当前单角色合同；
-- 当前 baseline runner 只接受 `tianxing_app` 的 Direct endpoint；没有执行 baseline、migration 或 seed；
+- 当前 baseline runner 只接受 `tianxing_app` 的 Direct endpoint；one-role baseline 尚未 apply，seed 尚未执行；
 - 上一次 apply 已获批准并执行，但业务 SQL 失败；只读证据为 0 ledger rows、0 public tables、0 migration roles、0 stale dry-run schemas；
 - 上一次失败留下的 exact empty tool metadata 已按独立审批完成受控 cleanup；
 - cleanup 后由独立新连接确认 `migration` schema/ledger 均不存在、public tables 为 0、migration roles 为 0、stale dry-run schemas 为 0；
-- 最近一次真实事务 dry-run 在事务开始前的 preflight inspection 因 metadata SQL 使用 PostgreSQL 保留字别名而停止，未执行 27 个 SQL、DDL 或 DML；现已改用安全别名，并将 preflight/postflight inspection 异常固定为脱敏结构化 evidence；
-- 单角色 baseline 的离线生成、manifest 哈希和事务模拟已通过；真实数据库 dry-run、apply、seed dry-run/apply 均未执行。
+- PR #13 合并后，Neon one-role baseline 真实 dry-run 仅执行一次：前 27 个 generated SQL 通过，最终
+  `999_one_role_hardening.sql` 因 `ORDER BY function_identity COLLATE "C"` 将输出别名误解析为输入列而以
+  SQLSTATE `42703` 停止；runner 回滚成功，独立连接确认 `rollback_state=clean`，未重跑 Neon；
+- hardening 已改为先生成派生表，再按 `function_row.function_identity COLLATE "C"` 排序；transform contract
+  更新为 `one-role-transform-v3` / `hardening-v2`；
+- 修复后的全部 28 个 generated SQL 已在一次性 PostgreSQL `17.10` 容器中通过真实 runner dry-run，结果为
+  `status=pass`、`postflight_state=clean`、`marker=rolled_back`，额外独立连接再次确认空库；该本地证据不代表
+  Neon 已重跑或 apply/seed 已获批准。
 
 ## 2. 审批门
 
@@ -62,6 +68,17 @@ pnpm db:plan:neon-test
 ```
 
 预期：JSON 只包含 baseline id、源/生成文件数量、manifest SHA-256、事务合同、独立 marker 和 `status`。
+
+任何 baseline SQL 变更在提交架构复审前还必须运行真实 PostgreSQL 17 gate：
+
+```bash
+pnpm test:one-role-baseline-postgresql
+```
+
+该命令使用固定 PostgreSQL 17 镜像、随机容器名、随机 loopback 端口和 `tmpfs` 数据目录，不挂载或清理现有
+`tianxing-local` volume。它以非特权 `tianxing_app` 作为空数据库 owner，通过真实 runner 按 manifest 执行全部
+28 个 generated SQL，dry-run 后只接受 `ROLLBACK`、`postflight_state=clean`、`marker=rolled_back`，并由新的
+独立连接再次确认 public objects 为 0 且 marker 不存在。
 
 ## 4. 已验收的 Bootstrap 操作
 
@@ -250,7 +267,7 @@ Seed 示例：
   "tls": { "verified": true, "reject_unauthorized": true },
   "baseline": {
     "id": "tianxing-one-role-v1",
-    "transform_version": "one-role-transform-v2",
+    "transform_version": "one-role-transform-v3",
     "source_migration_count": 27,
     "manifest_sha256": "<BASELINE_MANIFEST_SHA256>"
   },

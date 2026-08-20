@@ -9,7 +9,7 @@ import {
 } from "./migration-manifest.ts";
 
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
-export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v2" as const;
+export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v3" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
 export const ONE_ROLE_SOURCE_COUNT = 27;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
@@ -57,7 +57,7 @@ export type OneRoleTransformName =
   | "case-billing-projection-v1"
   | "case-stage-trigger-bootstrap-v1"
   | "database-test-identity-v1"
-  | "hardening-v1";
+  | "hardening-v2";
 
 export type OneRoleGeneratedFile = Readonly<{
   name: string;
@@ -156,7 +156,7 @@ export async function buildOneRoleBaseline(input: Readonly<{
   generatedManifestFiles.push(Object.freeze({
     name: HARDENING_FILE,
     sha256: hardeningSha256,
-    transform: "hardening-v1",
+    transform: "hardening-v2",
   }));
 
   const manifest = Object.freeze({
@@ -521,13 +521,16 @@ function createHardeningSql(): string {
     "  END LOOP;",
     "",
     "  FOR target_function IN",
-    "    SELECT format('%I.%I(%s)', namespace_row.nspname, procedure_row.proname,",
-    "             pg_get_function_identity_arguments(procedure_row.oid)) AS function_identity",
-    "      FROM pg_proc AS procedure_row",
-    "      JOIN pg_namespace AS namespace_row ON namespace_row.oid = procedure_row.pronamespace",
-    "     WHERE namespace_row.nspname = 'public'",
-    "       AND procedure_row.prosecdef",
-    "     ORDER BY function_identity COLLATE \"C\"",
+    "    SELECT function_row.function_identity",
+    "      FROM (",
+    "        SELECT format('%I.%I(%s)', namespace_row.nspname, procedure_row.proname,",
+    "                 pg_get_function_identity_arguments(procedure_row.oid)) AS function_identity",
+    "          FROM pg_proc AS procedure_row",
+    "          JOIN pg_namespace AS namespace_row ON namespace_row.oid = procedure_row.pronamespace",
+    "         WHERE namespace_row.nspname = 'public'",
+    "           AND procedure_row.prosecdef",
+    "      ) AS function_row",
+    "     ORDER BY function_row.function_identity COLLATE \"C\"",
     "  LOOP",
     "    EXECUTE format('ALTER FUNCTION %s SET search_path = pg_catalog, public',",
     "      target_function.function_identity);",
