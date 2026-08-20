@@ -1,15 +1,18 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 import { Client } from "pg";
 
 import {
-  EXPECTED_MIGRATION_COUNT,
-  NEON_TEST_DATABASE,
-  NEON_TEST_MIGRATION_LOGIN,
-  assertNeonTestManifest,
-  verifyOrderedMigrationManifest,
-} from "./migration-manifest.ts";
+  ONE_ROLE_BASELINE_ID,
+  ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_MARKER_SCHEMA,
+  ONE_ROLE_MARKER_TABLE,
+  ONE_ROLE_SOURCE_COUNT,
+  ONE_ROLE_TRANSFORM_VERSION,
+  verifyCommittedOneRoleBaseline,
+} from "./generate-one-role-baseline.ts";
 import {
   NEON_TEST_MANIFEST_COMPOSITION_VERSION,
   NEON_TEST_MANIFEST_ID,
@@ -25,11 +28,10 @@ import {
   type NeonTestManifestFixture,
 } from "./neon-test-synthetic-fixture.ts";
 import {
-  readNeonTestMigrationTarget,
-  type NeonTestMigrationTarget,
-} from "./run-neon-test-migrations.ts";
+  readOneRoleBaselineTarget,
+  type OneRoleBaselineTarget,
+} from "./run-one-role-baseline.ts";
 
-const EXPECTED_PUBLIC_TABLES = 63;
 const PROHIBITED_SEED_TABLES = Object.freeze([
   "identity_database_test_credentials",
   "identity_sessions",
@@ -45,6 +47,8 @@ const REDACTED_ENVIRONMENT_VARIABLES = Object.freeze([
   "APP_RUNTIME_MODE",
   "AUTH_MODE",
   "TEST_DATABASE_EXPECTED_NAME",
+  "ONE_ROLE_BASELINE_EXPECTED_DATABASE",
+  "ONE_ROLE_BASELINE_DATABASE_URL",
   "TEST_MIGRATION_DATABASE_URL",
   "DATABASE_URL",
   "MIGRATION_DATABASE_URL",
@@ -73,19 +77,16 @@ export const NEON_TEST_SEED_COUNTS = Object.freeze({
 export type NeonTestSeedMode = "dry-run" | "apply";
 export type NeonTestSeedPopulation = "empty" | "existing";
 export type NeonTestRuntimeBoundaryObservation = Readonly<{
-  identity: Readonly<{
-    memberOfExpectedGroup: boolean;
-    canReadCredentials: boolean;
-    canWriteBusinessData: boolean;
-    canRunDdl: boolean;
-  }>;
-  application: Readonly<{
-    memberOfExpectedGroup: boolean;
-    canReadBusinessData: boolean;
-    canWriteBusinessData: boolean;
-    canReadCredentials: boolean;
-    canRunDdl: boolean;
-  }>;
+  userName: string;
+  databaseOwner: string;
+  login: boolean;
+  superuser: boolean;
+  createDatabase: boolean;
+  createRole: boolean;
+  inherit: boolean;
+  replication: boolean;
+  bypassRls: boolean;
+  credentialTableOwner: string;
 }>;
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -107,9 +108,16 @@ export function readNeonTestSeedMode(arguments_: readonly string[]): NeonTestSee
 
 export function readNeonTestSeedTarget(
   environment: RuntimeEnvironment = process.env,
-): NeonTestMigrationTarget {
+): OneRoleBaselineTarget {
   try {
-    return readNeonTestMigrationTarget(environment);
+    if (environment.VERCEL?.trim() || environment.VERCEL_ENV?.trim()) {
+      throw new NeonTestSeedSafetyError("Neon seed cannot run inside Vercel.");
+    }
+    const target = readOneRoleBaselineTarget(environment);
+    if (environment.APP_ENV?.trim() !== "test" || target.ssl === false) {
+      throw new NeonTestSeedSafetyError("Neon seed requires the test direct target.");
+    }
+    return target;
   } catch {
     throw new NeonTestSeedSafetyError("Neon seed target is invalid.");
   }
@@ -117,7 +125,8 @@ export function readNeonTestSeedTarget(
 
 export function createNeonTestSeedEvidence(
   mode: NeonTestSeedMode,
-  migrationManifestSha256: string,
+  baselineManifestSha256: string,
+  publicTableCount: number,
   fixtureHashes: Readonly<{
     manifestContentSha256: string;
     schoolSnapshotManifestSha256: string;
@@ -126,16 +135,20 @@ export function createNeonTestSeedEvidence(
   return Object.freeze({
     mode,
     endpoint_kind: "neon-direct",
-    target_database: NEON_TEST_DATABASE,
-    migration_login: NEON_TEST_MIGRATION_LOGIN,
+    canonical_login_role: ONE_ROLE_CANONICAL_ROLE,
     tls: Object.freeze({ verified: true, reject_unauthorized: true }),
-    manifest: Object.freeze({
-      version: 1,
-      count: EXPECTED_MIGRATION_COUNT,
-      sha256: migrationManifestSha256,
+    baseline: Object.freeze({
+      id: ONE_ROLE_BASELINE_ID,
+      transform_version: ONE_ROLE_TRANSFORM_VERSION,
+      source_migration_count: ONE_ROLE_SOURCE_COUNT,
+      manifest_sha256: baselineManifestSha256,
     }),
-    ledger: Object.freeze({ before: EXPECTED_MIGRATION_COUNT, after: EXPECTED_MIGRATION_COUNT }),
-    public_table_count: Object.freeze({ before: EXPECTED_PUBLIC_TABLES, after: EXPECTED_PUBLIC_TABLES }),
+    marker: Object.freeze({ before: "verified", after: "verified" }),
+    public_table_count: publicTableCount,
+    database_isolation: Object.freeze({
+      model: "single-owner-role",
+      credential_table_owner_access_is_residual_risk: true,
+    }),
     seed: Object.freeze({
       version: NEON_TEST_SEED_VERSION,
       synthetic_only: true,
@@ -148,25 +161,27 @@ export function createNeonTestSeedEvidence(
 }
 
 export async function seedNeonTestRelease1(
-  target: NeonTestMigrationTarget,
+  target: OneRoleBaselineTarget,
   mode: NeonTestSeedMode,
 ) {
-  const manifest = await verifyOrderedMigrationManifest();
-  assertNeonTestManifest(manifest);
+  const baseline = await verifyCommittedOneRoleBaseline();
+  const baselineManifestSha256 = sha256(baseline.manifestJson);
   const fixture = await loadNeonTestManifestFixture();
   const client = new Client({
     connectionString: target.connectionString,
     application_name: "tianxing-neon-test-release1-seed",
     connectionTimeoutMillis: 5_000,
     query_timeout: 10_000,
-    ssl: { rejectUnauthorized: true },
+    ssl: target.ssl,
   });
   await client.connect();
   try {
-    await assertSeedPreflight(client, target, manifest.migrations.map(({ name }) => name.replace(/\.sql$/, "")));
+    await setSeedContext(client);
+    const publicTableCount = await assertSeedPreflight(client, target, baselineManifestSha256);
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     let populationBefore: NeonTestSeedPopulation | undefined;
     try {
+      await setSeedTenantContext(client);
       await lockSeedTables(client);
       populationBefore = await inspectSeedPopulation(client);
       if (populationBefore === "empty") {
@@ -187,16 +202,24 @@ export async function seedNeonTestRelease1(
       throw error;
     }
 
-    const populationAfter = await inspectSeedPopulation(client);
-    if (mode === "dry-run" && populationAfter !== populationBefore) {
-      throw new NeonTestSeedSafetyError("Neon seed dry-run changed the pre-existing seed state.");
+    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY");
+    try {
+      await setSeedTenantContext(client);
+      const populationAfter = await inspectSeedPopulation(client);
+      if (mode === "dry-run" && populationAfter !== populationBefore) {
+        throw new NeonTestSeedSafetyError("Neon seed dry-run changed the pre-existing seed state.");
+      }
+      if (mode === "apply" && populationAfter !== "existing") {
+        throw new NeonTestSeedSafetyError("Neon seed apply did not produce the complete fixed fixture.");
+      }
+      if (populationAfter === "existing") await assertExactSeedContent(client, fixture);
+      await client.query("ROLLBACK");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
     }
-    if (mode === "apply" && populationAfter !== "existing") {
-      throw new NeonTestSeedSafetyError("Neon seed apply did not produce the complete fixed fixture.");
-    }
-    if (populationAfter === "existing") await assertExactSeedContent(client, fixture);
 
-    return createNeonTestSeedEvidence(mode, manifest.manifestSha256, {
+    return createNeonTestSeedEvidence(mode, baselineManifestSha256, publicTableCount, {
       manifestContentSha256: fixture.contentSha256,
       schoolSnapshotManifestSha256: neonTestSchoolSnapshotManifestSha256(),
     });
@@ -205,32 +228,49 @@ export async function seedNeonTestRelease1(
   }
 }
 
+async function setSeedContext(client: Client): Promise<void> {
+  await client.query("SELECT set_config('app.organization_id', $1, false)", [
+    NEON_TEST_ORGANIZATION.id,
+  ]);
+  await client.query("SELECT set_config('app.actor_user_id', $1, false)", [
+    NEON_TEST_PRINCIPALS[0]!.userId,
+  ]);
+}
+
+async function setSeedTenantContext(client: Client): Promise<void> {
+  await client.query("SELECT set_config('app.organization_id', $1, true)", [
+    NEON_TEST_ORGANIZATION.id,
+  ]);
+  await client.query("SELECT set_config('app.actor_user_id', $1, true)", [
+    NEON_TEST_PRINCIPALS[0]!.userId,
+  ]);
+}
+
 async function assertSeedPreflight(
   client: Client,
-  target: NeonTestMigrationTarget,
-  expectedLedger: readonly string[],
-): Promise<void> {
+  target: OneRoleBaselineTarget,
+  baselineManifestSha256: string,
+): Promise<number> {
   const identity = await client.query<{
     database_name: string;
     user_name: string;
     database_owner: string;
+    rolcanlogin: boolean;
     rolsuper: boolean;
     rolcreaterole: boolean;
     rolcreatedb: boolean;
     rolreplication: boolean;
     rolbypassrls: boolean;
-    member_of_neon_superuser: boolean;
   }>(`
     SELECT current_database() AS database_name,
            current_user AS user_name,
            pg_get_userbyid(database.datdba) AS database_owner,
+           role.rolcanlogin,
            role.rolsuper,
            role.rolcreaterole,
            role.rolcreatedb,
            role.rolreplication,
-           role.rolbypassrls,
-           pg_has_role(role.rolname, 'neon_superuser', 'member')
-             AS member_of_neon_superuser
+           role.rolbypassrls
       FROM pg_database AS database
       JOIN pg_roles AS role ON role.rolname = current_user
      WHERE database.datname = current_database()
@@ -241,33 +281,52 @@ async function assertSeedPreflight(
     current.database_name !== target.database ||
     current.user_name !== target.user ||
     current.database_owner !== target.user ||
+    !current.rolcanlogin ||
     current.rolsuper ||
-    !current.rolcreaterole ||
+    current.rolcreaterole ||
     current.rolcreatedb ||
     current.rolreplication ||
-    current.rolbypassrls ||
-    current.member_of_neon_superuser
+    current.rolbypassrls
   ) {
     throw new NeonTestSeedSafetyError("Connected seed identity is not the approved database owner.");
   }
 
-  const ledger = await client.query<{ name: string }>(
-    "SELECT name FROM migration.schema_migrations ORDER BY run_on, id",
-  );
-  const applied = ledger.rows.map(({ name }) => name);
+  const marker = await client.query<{
+    baseline_id: string;
+    transform_version: string;
+    manifest_sha256: string;
+    source_migration_count: number;
+  }>(`
+    SELECT baseline_id, transform_version, manifest_sha256, source_migration_count
+      FROM ${ONE_ROLE_MARKER_SCHEMA}.${ONE_ROLE_MARKER_TABLE}
+     WHERE baseline_id = $1
+  `, [ONE_ROLE_BASELINE_ID]);
+  const installed = marker.rows[0];
   if (
-    applied.length !== EXPECTED_MIGRATION_COUNT ||
-    applied.some((name, index) => name !== expectedLedger[index])
+    !installed ||
+    installed.baseline_id !== ONE_ROLE_BASELINE_ID ||
+    installed.transform_version !== ONE_ROLE_TRANSFORM_VERSION ||
+    installed.manifest_sha256 !== baselineManifestSha256 ||
+    installed.source_migration_count !== ONE_ROLE_SOURCE_COUNT
   ) {
-    throw new NeonTestSeedSafetyError("Neon seed requires the complete ordered migration ledger.");
+    throw new NeonTestSeedSafetyError("Neon seed requires the exact one-role baseline marker.");
   }
 
-  const publicTables = await client.query<{ count: string }>(`
-    SELECT count(*)::text AS count FROM pg_tables WHERE schemaname = 'public'
-  `);
-  if (Number(publicTables.rows[0]?.count ?? "0") !== EXPECTED_PUBLIC_TABLES) {
-    throw new NeonTestSeedSafetyError("Neon seed requires the expected migrated public schema.");
+  const requiredTables = [...seedTableRules().keys(), ...PROHIBITED_SEED_TABLES];
+  const publicTables = await client.query<{ total_count: string; required_count: string }>(`
+    SELECT count(*)::text AS total_count,
+           count(*) FILTER (WHERE tablename = ANY($1::text[]))::text AS required_count
+      FROM pg_tables
+     WHERE schemaname = 'public'
+  `, [requiredTables]);
+  const totalCount = Number(publicTables.rows[0]?.total_count ?? "0");
+  if (
+    Number(publicTables.rows[0]?.required_count ?? "0") !== new Set(requiredTables).size ||
+    totalCount < seedTableRules().size
+  ) {
+    throw new NeonTestSeedSafetyError("Neon seed requires all baseline seed tables.");
   }
+  return totalCount;
 }
 
 export function classifyNeonTestSeedPopulation(
@@ -286,17 +345,18 @@ export function validateNeonTestRuntimeBoundary(
   observation: NeonTestRuntimeBoundaryObservation,
 ): void {
   if (
-    !observation.identity.memberOfExpectedGroup ||
-    !observation.identity.canReadCredentials ||
-    observation.identity.canWriteBusinessData ||
-    observation.identity.canRunDdl ||
-    !observation.application.memberOfExpectedGroup ||
-    !observation.application.canReadBusinessData ||
-    !observation.application.canWriteBusinessData ||
-    observation.application.canReadCredentials ||
-    observation.application.canRunDdl
+    observation.userName !== ONE_ROLE_CANONICAL_ROLE ||
+    observation.databaseOwner !== ONE_ROLE_CANONICAL_ROLE ||
+    !observation.login ||
+    observation.superuser ||
+    observation.createDatabase ||
+    observation.createRole ||
+    observation.inherit ||
+    observation.replication ||
+    observation.bypassRls ||
+    observation.credentialTableOwner !== ONE_ROLE_CANONICAL_ROLE
   ) {
-    throw new NeonTestSeedSafetyError("Neon runtime database role boundary is inconsistent.");
+    throw new NeonTestSeedSafetyError("Neon one-role database boundary is inconsistent.");
   }
 }
 
@@ -668,9 +728,13 @@ function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function redactError(error: unknown, environment: RuntimeEnvironment): string {
   let message = error instanceof Error ? error.message : "Neon seed failed.";
-  const url = environment.TEST_MIGRATION_DATABASE_URL?.trim();
+  const url = environment.ONE_ROLE_BASELINE_DATABASE_URL?.trim();
   const secrets = new Set<string>();
   for (const name of REDACTED_ENVIRONMENT_VARIABLES) {
     const value = environment[name]?.trim();

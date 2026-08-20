@@ -83,8 +83,10 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
     try {
       await client.connect();
       connected = true;
-      const result = await client.query<{ ready: number }>("SELECT 1 AS ready");
-      if (result.rows[0]?.ready !== 1) {
+      const result = await client.query<{ ready: number; current_user: string }>(
+        "SELECT 1 AS ready, current_user",
+      );
+      if (result.rows[0]?.ready !== 1 || result.rows[0]?.current_user !== "tianxing_app") {
         throw new Error("PostgreSQL readiness result was invalid.");
       }
     } finally {
@@ -94,7 +96,7 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
 
   async identityPostgresql(config: LocalSyntheticConfig): Promise<void> {
     const client = new Client({
-      connectionString: config.database.identityConnectionString,
+      connectionString: config.database.connectionString,
       application_name: "tianxing-local-identity-readiness",
       connectionTimeoutMillis: config.dependencyTimeoutMs,
       query_timeout: config.dependencyTimeoutMs,
@@ -107,9 +109,10 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
       connected = true;
       await client.query("BEGIN");
       transaction = true;
-      await client.query("SELECT set_config('app.organization_id', $1, true)", [
+      await client.query("SELECT current_user, set_config('app.organization_id', $1, true)", [
         "10000000-0000-4000-8000-000000000001",
       ]);
+      const identity = await client.query<{ current_user: string }>("SELECT current_user");
       const result = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count
            FROM identity_users AS identity_user
@@ -127,7 +130,10 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
         ["10000000-0000-4000-8000-000000000001"],
       );
       await client.query("SELECT session_kind FROM identity_sessions LIMIT 0");
-      if (Number(result.rows[0]?.count) !== 5) {
+      if (
+        identity.rows[0]?.current_user !== "tianxing_app" ||
+        Number(result.rows[0]?.count) !== 5
+      ) {
         throw new Error("Local identity readiness result was invalid.");
       }
       await client.query("ROLLBACK");
@@ -146,7 +152,7 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
 
   async applicationPostgresql(config: LocalSyntheticConfig): Promise<void> {
     const client = new Client({
-      connectionString: config.database.applicationConnectionString,
+      connectionString: config.database.connectionString,
       application_name: "tianxing-local-application-readiness",
       connectionTimeoutMillis: config.dependencyTimeoutMs,
       query_timeout: config.dependencyTimeoutMs,
@@ -159,22 +165,26 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
       connected = true;
       await client.query("BEGIN");
       transaction = true;
-      await client.query("SELECT set_config('app.organization_id', $1, true)", [
+      await client.query("SELECT current_user, set_config('app.organization_id', $1, true)", [
         "10000000-0000-4000-8000-000000000001",
       ]);
       await client.query("SELECT set_config('app.actor_user_id', $1, true)", [
-        "10000000-0000-4000-8000-000000000101",
+        "20000000-0000-4000-8000-000000000101",
       ]);
-      const result = await client.query<{ students: number; manifests: number }>(
-        `SELECT
-           (SELECT count(*)::int
-              FROM crm_students
-             WHERE id = ANY($1::uuid[])
-               AND status = 'active') AS students,
-           (SELECT count(*)::int FROM cases_list_approved_manifests()) AS manifests`,
+      const identity = await client.query<{ current_user: string }>("SELECT current_user");
+      const result = await client.query<{
+        students: number;
+        manifests: number;
+      }>(
+        `SELECT (SELECT count(*)::int
+                   FROM crm_students
+                  WHERE id = ANY($1::uuid[])
+                    AND status = 'active') AS students,
+                (SELECT count(*)::int FROM cases_list_approved_manifests()) AS manifests`,
         [LOCAL_RELEASE1_STUDENT_IDS],
       );
       if (
+        identity.rows[0]?.current_user !== "tianxing_app" ||
         result.rows[0]?.students !== LOCAL_RELEASE1_STUDENT_IDS.length ||
         result.rows[0]?.manifests !== 1
       ) {

@@ -50,15 +50,20 @@ pnpm local:up
 pnpm local:ps
 ```
 
-`local:up` 使用 `docker compose ... up -d --wait`，只有 Compose 认为依赖已就绪
+示例文件使用明确的本地占位密码 `not-a-secret`。如需替换，请同时更新
+`.env.local` 中的 `LOCAL_SYNTHETIC_POSTGRES_PASSWORD`、数据库 URL，以及
+`.env.migration.local` 中的 operator URL；这些本机文件均被 Git 忽略。
+
+`local:up` 使用 `.env.local` 向 Compose secret 提供密码，PostgreSQL 容器只通过
+`POSTGRES_PASSWORD_FILE` 读取它。命令随后执行 `docker compose ... up -d --wait`；只有 Compose 认为依赖已就绪
 后才返回成功。ClamAV 首次加载特征库通常比另外两个服务慢。
 
 然后启动 Next.js：
 
 ```sh
 pnpm db:plan:local
-pnpm db:migrate:local:dry-run
-pnpm db:migrate:local
+pnpm db:baseline:local:dry-run
+pnpm db:baseline:local
 pnpm db:seed:local-identity
 pnpm dev
 ```
@@ -80,9 +85,10 @@ curl --fail http://127.0.0.1:3000/api/v1/local/readiness
 ```
 
 全部可用时，第二个接口返回 `status: ready`，并将 `postgresql`、
-`postgresql_identity`、`localstack_s3`、`localstack_sqs` 和 `clamav` 标为 `ready`。
-其中 `postgresql` 只检查健康账号连通性，`postgresql_identity` 还会检查受限身份账号、
-五个合成角色和 Session schema。任一依赖不可用时
+`postgresql_identity`、`postgresql_application`、`localstack_s3`、`localstack_sqs` 和
+`clamav` 标为 `ready`。三个 PostgreSQL 检查都使用同一个 `tianxing_app` 连接：基础检查
+验证连接身份，`postgresql_identity` 检查 identity seed 和 Session schema，
+`postgresql_application` 检查学生和 approved manifest 数据。任一依赖不可用时
 返回 HTTP 503 和经过白名单过滤的状态；响应不会包含连接串、端点或原始错误。
 非本地模式访问该路径返回 HTTP 404。
 
@@ -101,38 +107,40 @@ docker compose -f compose.local.yml exec localstack \
   awslocal sqs get-queue-url --queue-name tianxing-local-document-scan-dlq
 ```
 
-PostgreSQL 的 Compose 健康检查执行 `pg_isready`；应用 readiness 另外使用
-`tianxing_health` 执行 `SELECT 1`。LocalStack 的 Compose 健康检查要求桶、主队列
+PostgreSQL 的 Compose 健康检查执行 `pg_isready`；应用 readiness 使用同一个
+`tianxing_app` 连接执行身份和数据检查。LocalStack 的 Compose 健康检查要求桶、主队列
 和死信队列都已存在。应用通过 LocalStack 健康 API 检查 S3/SQS 服务状态。
 ClamAV 应用探测发送官方 `zPING\0` 命令并要求 `PONG`。
 
 ## 数据库迁移
 
-启动 Compose 不会自动执行 `db/migrations`。首次创建空库后，按顺序执行：
+启动 Compose 不会自动执行数据库 baseline。当前仓库已经生成独立的单角色 baseline；它不修改历史
+`db/migrations`，也不会自动连接数据库：
 
 ```sh
-pnpm db:plan:local
-pnpm db:migrate:local:dry-run
-pnpm db:migrate:local
+pnpm db:baseline:plan
+pnpm db:baseline:local:dry-run
+pnpm db:baseline:local
 pnpm db:seed:local-identity
+pnpm db:seed:local-release1
 ```
 
-迁移进程只读取被 Git 忽略的 `.env.migration.local`，Next.js 继续只读取
-`.env.local`，因此应用进程不持有迁移 owner 凭据。runner 只接受非生产
-`local-synthetic` 模式、回环端点、`tianxing` 数据库和 `tianxing_migration` 用户，
-并在连接前验证 `db/migrations/manifest.json` 的有序 SHA-256 清单。
+baseline runner 只接受被 Git 忽略的 `.env.migration.local`，并要求 URL、数据库和
+`tianxing_app` 完全匹配；Next.js 只读取 `.env.local`，应用进程不持有 operator 文件。
+历史 runner 使用过的 `tianxing_migration` 仅作为旧实机记录，不能作为新合同。
 
-`dry-run` 会创建空的 `migration.schema_migrations` 跟踪表，但不执行业务 SQL。
-`apply` 使用 advisory lock、5 秒 statement/lock timeout 和单事务；重复执行在完整
-ledger 上安全返回 no-op。历史迁移一旦应用便不得修改，修复必须新增迁移。
+baseline `dry-run` 在单事务中执行 28 个生成文件并回滚；它不会留下历史
+`migration.schema_migrations`，只在 apply 时写入独立的 `tianxing_baseline.installations` marker。
+apply 使用 advisory lock、超时和单事务；已安装 marker 与 manifest 不匹配时会拒绝重复安装。
+历史迁移一旦应用便不得修改，修复必须新增迁移或重新生成经过审查的 baseline。
 
-2026-08-17 已从空库应用最初 15 份迁移；2026-08-18 再追加应用两份身份迁移，当前
-ledger 为 17，public schema 仍有 61 张表。尚未重新执行“17 份迁移从空库完整重放”，
-因此不能把增量应用记录描述成新的空库恢复证据。
+旧本地数据库曾按历史 migration ledger 应用过结构；该状态不等于当前 one-role baseline
+已安装。单角色 baseline 目标要求空的 public schema 和不存在的 baseline marker，必须在
+明确批准后针对目标库重新验收。
 
-`db:seed:local-identity` 同时读取 `.env.local` 和 `.env.migration.local`，只接受固定回环
-数据库、`local-synthetic` 非生产模式和本地专用账号。它可以重复执行，不会重置数据库
-或删除 Session；发现固定身份资料漂移时会失败，而不是静默覆盖。
+两个 local seed 都先验证 baseline marker、owner 属性和固定合成数据，再在同一 `tianxing_app` 连接内写入；
+它们会显式设置 `app.organization_id`/`app.actor_user_id`，以适配 FORCE RLS。seed 仍是独立操作，未因
+baseline 代码生成而自动执行。
 
 ## 停止与重置
 
@@ -150,17 +158,16 @@ LocalStack 在当前免费本地配置中不启用授权版持久化；容器重
 ## 当前验证状态
 
 2026-08-17 已安装 Colima、Docker CLI 和 Docker Compose，并启动名为 `tianxing`
-的 Colima profile（4 CPU、8 GiB 内存、40 GiB 磁盘）。PostgreSQL、LocalStack 和
-ClamAV 容器均为 `healthy`，以下实机检查通过：
+的 Colima profile（4 CPU、8 GiB 内存、40 GiB 磁盘）。以下是历史实机记录；单角色改造后
+需要重新执行本地 baseline 验收：
 
-- `tianxing_health` 执行 `SELECT 1`；
+- 旧 `tianxing_health` 检查仅属于历史记录，不再作为运行时账号；新检查统一使用 `tianxing_app`；
 - S3 桶版本控制状态为 `Enabled`，主队列和死信队列可读取；
 - ClamAV `zPING\0` 返回 `PONG`；
-- `/api/v1/health` 与 `/api/v1/local/readiness` 返回 HTTP 200，后者将四项依赖标为
+- `/api/v1/health` 与 `/api/v1/local/readiness` 返回 HTTP 200，后者将六项依赖标为
   `ready`；
 - 首页返回 HTTP 200，12 项本地底座聚焦测试通过。
 
-本地底座状态为 `local_identity_postgresql_validated`。本地角色登录、HttpOnly opaque
-session、`/api/v1/auth/me`、Next.js 重启后复用同一 Session 和登出撤销已经端到端通过；
-readiness 的五项依赖均为 `ready`。其他领域 runtime 和 Worker 尚未接通，因此这不代表
-Release 1 的业务 API 已经端到端可用。
+当前源码状态为 `one_role_baseline_unapplied`。本轮只做了离线生成、哈希、事务模拟和聚焦测试；没有连接
+数据库，也没有执行 baseline 或 seed，因此不能把历史实机记录当作当前单角色状态。其他领域 runtime 和
+Worker 尚未接通，因此这不代表 Release 1 的业务 API 已经端到端可用。

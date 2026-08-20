@@ -15,7 +15,7 @@ function environment(overrides: Record<string, string | undefined> = {}): Record
     COGNITO_DOMAIN: 'example.auth.ap-east-1.amazoncognito.com',
     COGNITO_REDIRECT_URI: 'https://erp.example.com/api/auth/callback',
     COGNITO_LOGOUT_URI: 'https://erp.example.com/login',
-    DATABASE_URL: 'postgresql://example.invalid/db',
+    DATABASE_URL: 'postgresql://tianxing_app:secret@example.invalid/db',
     SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
     ...overrides,
   }
@@ -33,6 +33,13 @@ test('auth config rejects missing server variables without exposing values', () 
   assert.throws(
     () => getAuthConfig(environment({ SESSION_ENCRYPTION_KEY: 'not-a-key' })),
     (error: unknown) => error instanceof AuthConfigurationError && error.variable === 'SESSION_ENCRYPTION_KEY',
+  )
+})
+
+test('production session database URL uses only the canonical login role', () => {
+  assert.throws(
+    () => getAuthConfig(environment({ DATABASE_URL: 'postgresql://legacy:secret@example.invalid/db' })),
+    (error: unknown) => error instanceof AuthConfigurationError && error.variable === 'DATABASE_URL',
   )
 })
 

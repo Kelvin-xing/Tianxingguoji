@@ -1,17 +1,24 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
 import { Client } from "pg";
 
+import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-config.ts";
 import {
   LOCAL_SYNTHETIC_ORGANIZATION,
   LOCAL_SYNTHETIC_PRINCIPALS,
 } from "../../modules/identity/server.ts";
-import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-config.ts";
-import { readLocalMigrationTarget } from "./run-local-migrations.ts";
-
-const LOCAL_IDENTITY_USER = "tianxing_local_identity";
-const LOCAL_IDENTITY_PASSWORD = "tianxing-local-identity-only";
+import {
+  ONE_ROLE_BASELINE_ID,
+  ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_MARKER_SCHEMA,
+  ONE_ROLE_MARKER_TABLE,
+  ONE_ROLE_SOURCE_COUNT,
+  ONE_ROLE_TRANSFORM_VERSION,
+  verifyCommittedOneRoleBaseline,
+} from "./generate-one-role-baseline.ts";
+import { readOneRoleBaselineTarget } from "./run-one-role-baseline.ts";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -21,7 +28,7 @@ export interface LocalIdentitySeedTarget {
 }
 
 export class LocalIdentitySeedSafetyError extends Error {
-  constructor(message: string) {
+  constructor(message = "Local identity seed was rejected.") {
     super(message);
     this.name = "LocalIdentitySeedSafetyError";
   }
@@ -30,332 +37,181 @@ export class LocalIdentitySeedSafetyError extends Error {
 export function readLocalIdentitySeedTarget(
   environment: RuntimeEnvironment = process.env,
 ): LocalIdentitySeedTarget {
-  const owner = readLocalMigrationTarget(environment);
-  const runtime = loadLocalSyntheticConfig(environment).database.identityConnectionString;
-  const runtimeUrl = new URL(runtime);
-  if (
-    runtimeUrl.username !== LOCAL_IDENTITY_USER ||
-    runtimeUrl.password !== LOCAL_IDENTITY_PASSWORD ||
-    runtimeUrl.host !== `${owner.host}:${owner.port}` ||
-    runtimeUrl.pathname !== `/${owner.database}`
-  ) {
-    throw new LocalIdentitySeedSafetyError(
-      "Local identity seed requires the fixed loopback runtime identity target.",
-    );
+  try {
+    const baseline = readOneRoleBaselineTarget(environment);
+    const runtime = loadLocalSyntheticConfig(environment).database.connectionString;
+    if (baseline.ssl !== false || new URL(runtime).toString() !== baseline.connectionString) {
+      throw new LocalIdentitySeedSafetyError();
+    }
+    return Object.freeze({
+      ownerConnectionString: baseline.connectionString,
+      runtimeConnectionString: runtime,
+    });
+  } catch {
+    throw new LocalIdentitySeedSafetyError();
   }
-  return Object.freeze({
-    ownerConnectionString: owner.connectionString,
-    runtimeConnectionString: runtime,
-  });
 }
 
 export async function seedLocalSyntheticIdentity(
   target: LocalIdentitySeedTarget,
 ): Promise<Readonly<{ users: number; memberships: number; roles: number }>> {
-  const owner = new Client({
+  const baseline = await verifyCommittedOneRoleBaseline();
+  const client = new Client({
     connectionString: target.ownerConnectionString,
     application_name: "tianxing-local-identity-seed",
     connectionTimeoutMillis: 3_000,
-    query_timeout: 5_000,
+    statement_timeout: 5_000,
     ssl: false,
   });
-  await owner.connect();
+  await client.connect();
   try {
-    await assertOwnerConnection(owner);
-    await owner.query("BEGIN");
-    let counts: Readonly<{ users: number; memberships: number; roles: number }>;
+    await assertOneRoleSeedPreflight(client, sha256(baseline.manifestJson));
+    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     try {
-      await provisionRuntimeRole(owner);
-      await seedPrincipals(owner);
-      counts = await verifySeedAsOwner(owner);
-      await owner.query("COMMIT");
+      await client.query("SELECT set_config('app.organization_id', $1, true)", [
+        LOCAL_SYNTHETIC_ORGANIZATION.id,
+      ]);
+      await seedPrincipals(client);
+      const counts = await verifySeed(client);
+      await client.query("COMMIT");
+      return counts;
     } catch (error) {
-      await owner.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
     }
-    await verifyRuntimeBoundary(target.runtimeConnectionString);
-    return counts;
   } finally {
-    await owner.end();
+    await client.end();
   }
 }
 
-async function assertOwnerConnection(client: Client): Promise<void> {
-  const result = await client.query<{
+async function assertOneRoleSeedPreflight(client: Client, manifestSha256: string): Promise<void> {
+  const identity = await client.query<{
     database_name: string;
     user_name: string;
+    database_owner: string;
+    rolcanlogin: boolean;
     rolsuper: boolean;
+    rolcreatedb: boolean;
     rolcreaterole: boolean;
-  }>(
-    `SELECT current_database() AS database_name,
-            current_user AS user_name,
-            role.rolsuper,
-            role.rolcreaterole
-       FROM pg_roles AS role
-      WHERE role.rolname = current_user`,
-  );
-  const row = result.rows[0];
+    rolinherit: boolean;
+    rolreplication: boolean;
+    rolbypassrls: boolean;
+  }>(`
+    SELECT current_database() AS database_name,
+           current_user AS user_name,
+           pg_get_userbyid(database_row.datdba) AS database_owner,
+           role_row.rolcanlogin, role_row.rolsuper, role_row.rolcreatedb,
+           role_row.rolcreaterole, role_row.rolinherit, role_row.rolreplication,
+           role_row.rolbypassrls
+      FROM pg_database AS database_row
+      JOIN pg_roles AS role_row ON role_row.rolname = current_user
+     WHERE database_row.datname = current_database()
+  `);
+  const row = identity.rows[0];
   if (
     row?.database_name !== "tianxing" ||
-    row.user_name !== "tianxing_migration" ||
-    !row.rolsuper ||
-    !row.rolcreaterole
+    row.user_name !== ONE_ROLE_CANONICAL_ROLE ||
+    row.database_owner !== ONE_ROLE_CANONICAL_ROLE ||
+    !row.rolcanlogin || row.rolsuper || row.rolcreatedb || row.rolcreaterole ||
+    row.rolinherit || row.rolreplication || row.rolbypassrls
   ) {
-    throw new LocalIdentitySeedSafetyError(
-      "Connected database identity is not the approved local owner.",
-    );
+    throw new LocalIdentitySeedSafetyError();
   }
-}
-
-async function provisionRuntimeRole(client: Client): Promise<void> {
-  const role = await client.query<{ exists: boolean }>(
-    "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1) AS exists",
-    [LOCAL_IDENTITY_USER],
-  );
-  if (role.rows[0]?.exists) {
-    await client.query(
-      `ALTER ROLE tianxing_local_identity WITH
-         LOGIN PASSWORD 'tianxing-local-identity-only'
-         NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`,
-    );
-  } else {
-    await client.query(
-      `CREATE ROLE tianxing_local_identity WITH
-         LOGIN PASSWORD 'tianxing-local-identity-only'
-         NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`,
-    );
-  }
-
-  await client.query("REVOKE ALL ON DATABASE tianxing FROM tianxing_local_identity");
-  await client.query("GRANT CONNECT ON DATABASE tianxing TO tianxing_local_identity");
-  await client.query("REVOKE ALL ON SCHEMA public FROM tianxing_local_identity");
-  await client.query("GRANT USAGE ON SCHEMA public TO tianxing_local_identity");
-  await client.query(
-    "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM tianxing_local_identity",
-  );
-  await client.query(
-    `GRANT SELECT ON TABLE
-       identity_users,
-       access_organizations,
-       access_organization_memberships,
-       access_role_bindings
-     TO tianxing_local_identity`,
-  );
-  await client.query(
-    `GRANT SELECT, INSERT, UPDATE ON TABLE identity_sessions
-     TO tianxing_local_identity`,
-  );
-
-  for (const table of [
-    "access_organization_memberships",
-    "access_role_bindings",
-    "identity_sessions",
-  ]) {
-    await client.query(`DROP POLICY IF EXISTS tianxing_local_identity_boundary ON ${table}`);
-    await client.query(
-      `CREATE POLICY tianxing_local_identity_boundary ON ${table}
-         FOR ALL TO tianxing_local_identity
-         USING (organization_id::text = current_setting('app.organization_id', true))
-         WITH CHECK (organization_id::text = current_setting('app.organization_id', true))`,
-    );
+  const marker = await client.query<{
+    baseline_id: string;
+    transform_version: string;
+    manifest_sha256: string;
+    source_migration_count: number;
+  }>(`
+    SELECT baseline_id, transform_version, manifest_sha256, source_migration_count
+      FROM ${ONE_ROLE_MARKER_SCHEMA}.${ONE_ROLE_MARKER_TABLE}
+     WHERE baseline_id = $1
+  `, [ONE_ROLE_BASELINE_ID]);
+  const installed = marker.rows[0];
+  if (
+    installed?.transform_version !== ONE_ROLE_TRANSFORM_VERSION ||
+    installed.manifest_sha256 !== manifestSha256 ||
+    installed.source_migration_count !== ONE_ROLE_SOURCE_COUNT
+  ) {
+    throw new LocalIdentitySeedSafetyError();
   }
 }
 
 async function seedPrincipals(client: Client): Promise<void> {
+  const founder = LOCAL_SYNTHETIC_PRINCIPALS[0]!;
   for (const principal of LOCAL_SYNTHETIC_PRINCIPALS) {
     await client.query(
-      `INSERT INTO identity_users (id, normalized_email, status)
-       VALUES ($1, $2, 'active')
+      `INSERT INTO identity_users (id, normalized_email, status, created_by_user_id)
+       VALUES ($1, $2, 'active', $3)
        ON CONFLICT (id) DO NOTHING`,
-      [principal.userId, principal.normalizedEmail],
+      [principal.userId, principal.normalizedEmail,
+        principal.userId === founder.userId ? null : founder.userId],
     );
   }
-
-  const founder = LOCAL_SYNTHETIC_PRINCIPALS[0];
   await client.query(
-    `INSERT INTO access_organizations (
-       id, display_name, status, created_by_user_id
-     ) VALUES ($1, $2, 'active', $3)
+    `INSERT INTO access_organizations (id, display_name, status, created_by_user_id)
+     VALUES ($1, $2, 'active', $3)
      ON CONFLICT (id) DO NOTHING`,
-    [
-      LOCAL_SYNTHETIC_ORGANIZATION.id,
-      LOCAL_SYNTHETIC_ORGANIZATION.displayName,
-      founder.userId,
-    ],
+    [LOCAL_SYNTHETIC_ORGANIZATION.id, LOCAL_SYNTHETIC_ORGANIZATION.displayName, founder.userId],
   );
-
   for (const principal of LOCAL_SYNTHETIC_PRINCIPALS) {
     await client.query(
-      `INSERT INTO access_organization_memberships (
-         id, organization_id, user_id, status, created_by_user_id
-       ) VALUES ($1, $2, $3, 'active', $4)
+      `INSERT INTO access_organization_memberships
+        (id, organization_id, user_id, status, created_by_user_id)
+       VALUES ($1, $2, $3, 'active', $4)
        ON CONFLICT (id) DO NOTHING`,
-      [
-        principal.membershipId,
-        LOCAL_SYNTHETIC_ORGANIZATION.id,
-        principal.userId,
-        founder.userId,
-      ],
+      [principal.membershipId, LOCAL_SYNTHETIC_ORGANIZATION.id, principal.userId, founder.userId],
     );
     await client.query(
-      `INSERT INTO access_role_bindings (
-         id, organization_id, membership_id, user_id, role, status, created_by_user_id
-       ) VALUES ($1, $2, $3, $4, $5, 'active', $6)
+      `INSERT INTO access_role_bindings
+        (id, organization_id, membership_id, user_id, role, status, created_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6)
        ON CONFLICT (id) DO NOTHING`,
-      [
-        principal.roleBindingId,
-        LOCAL_SYNTHETIC_ORGANIZATION.id,
-        principal.membershipId,
-        principal.userId,
-        principal.role,
-        founder.userId,
-      ],
+      [principal.roleBindingId, LOCAL_SYNTHETIC_ORGANIZATION.id, principal.membershipId,
+        principal.userId, principal.role, founder.userId],
     );
   }
 }
 
-async function verifySeedAsOwner(
+async function verifySeed(
   client: Client,
 ): Promise<Readonly<{ users: number; memberships: number; roles: number }>> {
-  const result = await client.query<{
-    user_id: string;
-    normalized_email: string;
-    user_status: string;
-    session_version: string | number;
-    organization_id: string;
-    display_name: string;
-    organization_status: string;
-    membership_id: string;
-    membership_status: string;
-    role_binding_id: string;
-    role: string;
-    role_status: string;
-  }>(
-    `SELECT identity_user.id AS user_id,
-            identity_user.normalized_email,
-            identity_user.status AS user_status,
-            identity_user.session_version,
-            organization.id AS organization_id,
-            organization.display_name,
-            organization.status AS organization_status,
-            membership.id AS membership_id,
-            membership.status AS membership_status,
-            role_binding.id AS role_binding_id,
-            role_binding.role,
-            role_binding.status AS role_status
-       FROM identity_users AS identity_user
-       JOIN access_organization_memberships AS membership
-         ON membership.user_id = identity_user.id
-       JOIN access_organizations AS organization
-         ON organization.id = membership.organization_id
-       JOIN access_role_bindings AS role_binding
-         ON role_binding.membership_id = membership.id
-        AND role_binding.organization_id = membership.organization_id
-        AND role_binding.user_id = membership.user_id
-      WHERE organization.id = $1
-      ORDER BY role_binding.role`,
-    [LOCAL_SYNTHETIC_ORGANIZATION.id],
-  );
-
-  if (result.rows.length !== LOCAL_SYNTHETIC_PRINCIPALS.length) {
-    throw new LocalIdentitySeedSafetyError("Local identity seed row count is inconsistent.");
+  const result = await client.query<{ users: number; memberships: number; roles: number }>(`
+    SELECT
+      (SELECT count(*)::int FROM identity_users WHERE id = ANY($1::uuid[])) AS users,
+      (SELECT count(*)::int FROM access_organization_memberships
+        WHERE id = ANY($2::uuid[]) AND organization_id = $4) AS memberships,
+      (SELECT count(*)::int FROM access_role_bindings
+        WHERE id = ANY($3::uuid[]) AND organization_id = $4 AND status = 'active') AS roles
+  `, [
+    LOCAL_SYNTHETIC_PRINCIPALS.map(({ userId }) => userId),
+    LOCAL_SYNTHETIC_PRINCIPALS.map(({ membershipId }) => membershipId),
+    LOCAL_SYNTHETIC_PRINCIPALS.map(({ roleBindingId }) => roleBindingId),
+    LOCAL_SYNTHETIC_ORGANIZATION.id,
+  ]);
+  const counts = result.rows[0];
+  if (
+    counts?.users !== LOCAL_SYNTHETIC_PRINCIPALS.length ||
+    counts.memberships !== LOCAL_SYNTHETIC_PRINCIPALS.length ||
+    counts.roles !== LOCAL_SYNTHETIC_PRINCIPALS.length
+  ) {
+    throw new LocalIdentitySeedSafetyError();
   }
-  for (const principal of LOCAL_SYNTHETIC_PRINCIPALS) {
-    const row = result.rows.find(({ role }) => role === principal.role);
-    if (
-      !row ||
-      row.user_id !== principal.userId ||
-      row.normalized_email !== principal.normalizedEmail ||
-      row.user_status !== "active" ||
-      Number(row.session_version) !== 1 ||
-      row.organization_id !== LOCAL_SYNTHETIC_ORGANIZATION.id ||
-      row.display_name !== LOCAL_SYNTHETIC_ORGANIZATION.displayName ||
-      row.organization_status !== "active" ||
-      row.membership_id !== principal.membershipId ||
-      row.membership_status !== "active" ||
-      row.role_binding_id !== principal.roleBindingId ||
-      row.role_status !== "active"
-    ) {
-      throw new LocalIdentitySeedSafetyError("Local identity seed is inconsistent.");
-    }
-  }
-  return Object.freeze({ users: 5, memberships: 5, roles: 5 });
+  return Object.freeze(counts);
 }
 
-async function verifyRuntimeBoundary(connectionString: string): Promise<void> {
-  const runtime = new Client({
-    connectionString,
-    application_name: "tianxing-local-identity-seed-verifier",
-    connectionTimeoutMillis: 3_000,
-    query_timeout: 5_000,
-    ssl: false,
-  });
-  await runtime.connect();
-  try {
-    const privileges = await runtime.query<{
-      can_read_users: boolean;
-      can_write_users: boolean;
-      can_read_sessions: boolean;
-      can_write_sessions: boolean;
-    }>(
-      `SELECT
-         has_table_privilege(current_user, 'identity_users', 'SELECT') AS can_read_users,
-         has_table_privilege(current_user, 'identity_users', 'INSERT,UPDATE,DELETE') AS can_write_users,
-         has_table_privilege(current_user, 'identity_sessions', 'SELECT') AS can_read_sessions,
-         has_table_privilege(current_user, 'identity_sessions', 'INSERT,UPDATE') AS can_write_sessions`,
-    );
-    const grant = privileges.rows[0];
-    if (
-      !grant?.can_read_users ||
-      grant.can_write_users ||
-      !grant.can_read_sessions ||
-      !grant.can_write_sessions
-    ) {
-      throw new LocalIdentitySeedSafetyError("Local identity runtime privileges are inconsistent.");
-    }
-
-    await runtime.query("BEGIN");
-    await runtime.query("SELECT set_config('app.organization_id', $1, true)", [
-      LOCAL_SYNTHETIC_ORGANIZATION.id,
-    ]);
-    const visible = await runtime.query<{ count: string }>(
-      `SELECT count(*)::text AS count
-         FROM access_organization_memberships
-        WHERE organization_id = $1`,
-      [LOCAL_SYNTHETIC_ORGANIZATION.id],
-    );
-    await runtime.query("ROLLBACK");
-    if (Number(visible.rows[0]?.count) !== LOCAL_SYNTHETIC_PRINCIPALS.length) {
-      throw new LocalIdentitySeedSafetyError("Local identity runtime RLS boundary is inconsistent.");
-    }
-  } finally {
-    await runtime.end();
-  }
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function runCli(environment: RuntimeEnvironment): Promise<void> {
-  const target = readLocalIdentitySeedTarget(environment);
-  const result = await seedLocalSyntheticIdentity(target);
-  process.stdout.write(
-    `${JSON.stringify({ ...result, organization: 1, status: "pass" }, null, 2)}\n`,
-  );
+  const result = await seedLocalSyntheticIdentity(readLocalIdentitySeedTarget(environment));
+  process.stdout.write(`${JSON.stringify({ ...result, status: "pass" })}\n`);
 }
 
-const isMainModule =
-  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-
-if (isMainModule) {
-  runCli(process.env).catch((error: unknown) => {
-    const unsafeMessage = error instanceof Error ? error.message : "Unknown local identity seed failure.";
-    const secrets = [
-      process.env.MIGRATION_DATABASE_URL ?? "",
-      process.env.LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL ?? "",
-    ].filter(Boolean);
-    const safeMessage = secrets.reduce(
-      (message, secret) => message.replaceAll(secret, "[redacted]"),
-      unsafeMessage,
-    );
-    process.stderr.write(`${safeMessage}\n`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli(process.env).catch(() => {
+    process.stderr.write("Local identity seed failed safely.\n");
     process.exitCode = 1;
   });
 }

@@ -3,24 +3,25 @@
 | Control | Value |
 |---|---|
 | Date | 2026-08-17 |
-| Status | `local_schema_runtime_validated` |
-| Scope | Release 1 的 15 份 PostgreSQL 迁移、本地 runner、ledger 和权限验证 |
+| Status | `historical_record_superseded_by_one_role_baseline` |
+| Scope | 历史 Release 1 migration/ledger 记录；当前空库安装合同见 `db/baselines/one-role/` |
 | Data | 空库结构与事务内合成测试；没有业务数据 |
 | External action | 无 Neon、AWS、Vercel、Cloudflare 或部署操作；代码提交与推送按用户确认另行执行 |
 
 ## 结果
 
-新增有序迁移 SHA-256 清单 `db/migrations/manifest.json`、空库 planner snapshot、独立
+历史实现新增有序迁移 SHA-256 清单 `db/migrations/manifest.json`、空库 planner snapshot、独立
 迁移环境示例和 `scripts/db/run-local-migrations.ts`。Next.js 的 `.env.local` 不含迁移
 owner 凭据；迁移命令只读取被 Git 忽略的 `.env.migration.local`。
 
-本地 runner 在连接前和连接后双重 fail closed：只允许非生产 `local-synthetic`、
-回环端点、数据库 `tianxing`、用户 `tianxing_migration`，并验证 SQL 文件集合、顺序、
+该历史 runner 在连接前和连接后双重 fail closed：只允许非生产 `local-synthetic`、
+回环端点、数据库 `tianxing`、用户 `tianxing_app`，并验证 SQL 文件集合、顺序、
 SHA-256、数据库身份、ledger 前缀及空库条件。node-pg-migrate 只通过 `*.sql` glob 加载
 迁移，使用 advisory lock、5 秒 statement/lock timeout 和单事务。
 
-15 份迁移已应用到本地 PostgreSQL 17.10。`migration.schema_migrations` 有 15 条记录，
-public schema 有 61 张表。重复 apply 选择 0 个迁移并安全 no-op。
+历史实机曾应用 15 份迁移到本地 PostgreSQL 17.10。该 `migration.schema_migrations` 和
+61 张 public 表不构成当前 one-role baseline 的安装证据；baseline 要求独立空目标和
+`tianxing_baseline.installations` marker。
 
 ## 权限证据
 
@@ -29,7 +30,8 @@ public schema 有 61 张表。重复 apply 选择 0 个迁移并安全 no-op。
 - `tianxing_app` 可以连接数据库，但不能在 public schema 建表。
 - `tianxing_health` 不能读取 `identity_users`。
 - membership、role binding、session、CRM、Case 和 Document 等租户表已启用 RLS。
-- `tianxing_migration` 是本地容器专用 owner；它的凭据不进入应用环境。
+- 旧 `tianxing_migration` 是历史本地容器 owner；它的凭据不进入应用环境，也不属于当前
+  one-role baseline。当前本地 bootstrap 只保留 `tianxing_app`。
 
 ## 已执行验证
 

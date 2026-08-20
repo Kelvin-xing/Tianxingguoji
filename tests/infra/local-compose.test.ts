@@ -32,16 +32,29 @@ test("local compose initializes versioned S3 and a scan queue with a DLQ", async
   assert.match(init, /maxReceiveCount/);
 });
 
-test("local database bootstrap creates compatibility, health, and restricted identity roles", async () => {
+test("local database bootstrap uses and hardens only the canonical application role", async () => {
+  const compose = await source("compose.local.yml");
   const roles = await source("infra/local/postgres/init/001-local-roles.sql");
+  const packageJson = JSON.parse(await source("package.json"));
 
-  assert.match(roles, /CREATE ROLE rds_iam NOLOGIN/);
-  assert.match(roles, /CREATE ROLE tianxing_health/);
-  assert.match(roles, /CREATE ROLE tianxing_local_identity/);
-  assert.match(roles, /PASSWORD 'tianxing-local-identity-only'/);
+  assert.match(compose, /POSTGRES_USER:\s*tianxing_app/);
+  assert.match(compose, /POSTGRES_PASSWORD_FILE:\s*\/run\/secrets\/local_postgres_password/);
+  assert.match(compose, /local_postgres_password:\s*\n\s+environment:\s*LOCAL_SYNTHETIC_POSTGRES_PASSWORD/);
+  assert.doesNotMatch(compose, /POSTGRES_PASSWORD:/);
+  assert.match(compose, /pg_isready -U tianxing_app -d tianxing/);
+  assert.doesNotMatch(compose, /tianxing_migration|tianxing-local-migration-only/);
+  assert.match(packageJson.scripts["local:up"], /--env-file \.env\.local/);
+  assert.match(packageJson.scripts["local:ps"], /--env-file \.env\.local/);
+  assert.match(packageJson.scripts["local:down"], /--env-file \.env\.local/);
+  assert.match(roles, /ALTER ROLE tianxing_app WITH\s+LOGIN/);
   assert.match(roles, /NOSUPERUSER/);
   assert.match(roles, /NOCREATEDB/);
+  assert.match(roles, /NOCREATEROLE/);
+  assert.match(roles, /NOINHERIT/);
+  assert.match(roles, /NOREPLICATION/);
   assert.match(roles, /NOBYPASSRLS/);
+  assert.doesNotMatch(roles, /CREATE ROLE/);
+  assert.doesNotMatch(roles, /PASSWORD|tianxing_migration|tianxing_test_/);
   assert.doesNotMatch(roles, /INSERT\s+INTO/i);
 });
 
@@ -52,7 +65,9 @@ test("the committed environment example is explicit and local-only", async () =>
 
   assert.match(example, /^APP_RUNTIME_MODE=local-synthetic$/m);
   assert.match(example, /127\.0\.0\.1/);
-  assert.match(example, /^LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL=postgresql:\/\//m);
+  assert.match(example, /^LOCAL_SYNTHETIC_POSTGRES_PASSWORD=not-a-secret$/m);
+  assert.match(example, /^LOCAL_SYNTHETIC_DATABASE_URL=postgresql:\/\/tianxing_app:/m);
+  assert.doesNotMatch(example, /^LOCAL_SYNTHETIC_(IDENTITY|APPLICATION)_DATABASE_URL=/m);
   assert.doesNotMatch(example, /\.rds\.amazonaws\.com/);
   assert.match(ignore, /^!\/\.env\.local\.example$/m);
   assert.equal(packageJson.dependencies.pg, "8.20.0");

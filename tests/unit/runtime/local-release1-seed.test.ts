@@ -8,28 +8,20 @@ import {
 } from "../../../scripts/db/seed-local-release1.ts";
 import { sha256SchoolValue } from "../../../modules/schools/public.ts";
 
-const ownerUrl = "postgresql://tianxing_migration:owner@127.0.0.1:5432/tianxing";
+const ownerUrl = "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing";
 const applicationUrl = "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing";
 
-test("accepts only the fixed local Release 1 application role", () => {
+test("uses the same canonical one-role URL for baseline owner and runtime", () => {
   assert.deepEqual(readLocalRelease1SeedTarget(environment()), {
     ownerConnectionString: ownerUrl,
     runtimeConnectionString: applicationUrl,
   });
+});
 
-  for (const invalid of [
-    applicationUrl.replace("127.0.0.1", "database.example.test"),
-    applicationUrl.replace("tianxing_app", "postgres"),
-    applicationUrl.replace("tianxing-local-app-only", "other"),
-  ]) {
-    assert.throws(
-      () => readLocalRelease1SeedTarget({
-        ...environment(),
-        LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL: invalid,
-      }),
-      Error,
-    );
-  }
+test("requires the one-role baseline marker and never alters a database role", async () => {
+  const source = await readFile("scripts/db/seed-local-release1.ts", "utf8");
+  assert.match(source, /ONE_ROLE_MARKER_SCHEMA/);
+  assert.doesNotMatch(source, /CREATE\s+ROLE|ALTER\s+ROLE|pg_has_role/i);
 });
 
 test("defines exactly three deterministic synthetic schools without crawler input", () => {
@@ -62,12 +54,10 @@ function environment(): Record<string, string> {
     APP_RUNTIME_MODE: "local-synthetic",
     AUTH_MODE: "local-synthetic",
     NODE_ENV: "development",
-    MIGRATION_DATABASE_URL: ownerUrl,
+    ONE_ROLE_BASELINE_EXPECTED_DATABASE: "tianxing",
+    ONE_ROLE_BASELINE_DATABASE_URL: ownerUrl,
     LOCAL_SYNTHETIC_DATABASE_URL:
-      "postgresql://tianxing_health:health@127.0.0.1:5432/tianxing",
-    LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL:
-      "postgresql://tianxing_local_identity:identity@127.0.0.1:5432/tianxing",
-    LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL: applicationUrl,
+      applicationUrl,
     LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
     LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
     LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",

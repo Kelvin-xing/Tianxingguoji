@@ -11,11 +11,10 @@ import {
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const USER_ID = "10000000-0000-4000-8000-000000000002";
 
-test("preflights the URL login and inherited application group inside every transaction", async () => {
-  const client = new FakeClient("env01_application_login", true);
+test("preflights the canonical URL login inside every transaction", async () => {
+  const client = new FakeClient("tianxing_app");
   const runner = createTenantTransactionRunner({ connect: async () => client }, {
-    expectedLoginUser: "env01_application_login",
-    requiredGroupRole: "tianxing_test_application",
+    expectedLoginUser: "tianxing_app",
   });
 
   const result = await runner.run(
@@ -29,7 +28,7 @@ test("preflights the URL login and inherited application group inside every tran
   assert.equal(result, "ok");
   assert.deepEqual(client.queries.map(({ text }) => text.trim().split("\n")[0]), [
     "BEGIN",
-    "SELECT current_user,",
+    "SELECT current_user",
     "SELECT set_config('app.organization_id', $1, true)",
     "SELECT set_config('app.actor_user_id', $1, true)",
     "SELECT 1",
@@ -38,11 +37,10 @@ test("preflights the URL login and inherited application group inside every tran
   assert.equal(client.released, true);
 });
 
-test("rolls back before tenant context when the login is not a member of the group", async () => {
-  const client = new FakeClient("wrong_login", false);
+test("rolls back before tenant context when the login is not canonical", async () => {
+  const client = new FakeClient("wrong_login");
   const runner = createTenantTransactionRunner({ connect: async () => client }, {
-    expectedLoginUser: "env01_application_login",
-    requiredGroupRole: "tianxing_test_application",
+    expectedLoginUser: "tianxing_app",
   });
 
   await assert.rejects(
@@ -54,7 +52,7 @@ test("rolls back before tenant context when the login is not a member of the gro
   );
   assert.deepEqual(client.queries.map(({ text }) => text.trim().split("\n")[0]), [
     "BEGIN",
-    "SELECT current_user,",
+    "SELECT current_user",
     "ROLLBACK",
   ]);
 });
@@ -63,19 +61,15 @@ class FakeClient implements DatabaseClient {
   readonly queries: DatabaseQuery[] = [];
   released = false;
   private readonly currentUser: string;
-  private readonly hasRole: boolean;
 
-  constructor(currentUser: string, hasRole: boolean) {
+  constructor(currentUser: string) {
     this.currentUser = currentUser;
-    this.hasRole = hasRole;
   }
 
   async query<Row>(query: DatabaseQuery) {
     this.queries.push(query);
-    if (query.text.includes("pg_has_role")) {
-      return {
-        rows: [{ current_user: this.currentUser, has_required_role: this.hasRole }] as Row[],
-      };
+    if (query.text.includes("SELECT current_user")) {
+      return { rows: [{ current_user: this.currentUser }] as Row[] };
     }
     return { rows: [] as Row[] };
   }

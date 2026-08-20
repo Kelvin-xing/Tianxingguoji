@@ -66,7 +66,6 @@ export interface TenantTransactionRunner {
 
 export interface TenantTransactionRunnerOptions {
   readonly expectedLoginUser: string;
-  readonly requiredGroupRole: string;
 }
 
 export class ApplicationDatabaseRoleError extends Error {
@@ -151,16 +150,11 @@ async function assertDatabaseRole(
   client: DatabaseClient,
   options: TenantTransactionRunnerOptions,
 ): Promise<void> {
-  const result = await client.query<{
-    current_user: string;
-    has_required_role: boolean;
-  }>({
-    text: `SELECT current_user,
-                  pg_has_role(current_user, $1, 'member') AS has_required_role`,
-    values: [options.requiredGroupRole],
+  const result = await client.query<{ current_user: string }>({
+    text: "SELECT current_user",
   });
   const row = result.rows[0];
-  if (row?.current_user !== options.expectedLoginUser || row.has_required_role !== true) {
+  if (row?.current_user !== options.expectedLoginUser) {
     throw new ApplicationDatabaseRoleError();
   }
 }

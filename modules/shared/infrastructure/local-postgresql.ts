@@ -3,7 +3,11 @@ import "server-only";
 import { Pool } from "pg";
 
 import { loadLocalSyntheticConfig } from "../../../lib/runtime/local-synthetic-config.ts";
-import { createTenantTransactionRunner, type DatabasePool } from "./db.ts";
+import {
+  APPLICATION_DATABASE_ROLE,
+  createTenantTransactionRunner,
+  type DatabasePool,
+} from "./db.ts";
 
 const globalForLocalPostgresql = globalThis as typeof globalThis & {
   __txLocalApplicationPool?: Pool;
@@ -13,7 +17,7 @@ export function getLocalApplicationTenantRunner() {
   const config = loadLocalSyntheticConfig();
   if (!globalForLocalPostgresql.__txLocalApplicationPool) {
     globalForLocalPostgresql.__txLocalApplicationPool = new Pool({
-      connectionString: config.database.applicationConnectionString,
+      connectionString: config.database.connectionString,
       application_name: "tianxing-local-application",
       max: 5,
       connectionTimeoutMillis: config.dependencyTimeoutMs,
@@ -23,5 +27,6 @@ export function getLocalApplicationTenantRunner() {
   }
   return createTenantTransactionRunner(
     globalForLocalPostgresql.__txLocalApplicationPool as unknown as DatabasePool,
+    { expectedLoginUser: APPLICATION_DATABASE_ROLE },
   );
 }

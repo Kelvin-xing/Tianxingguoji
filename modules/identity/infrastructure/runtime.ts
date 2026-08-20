@@ -69,7 +69,7 @@ function getLocalSyntheticRuntime(): IdentityRuntime {
   if (!globalForIdentity.__txLocalSyntheticIdentityRuntime) {
     const config = loadLocalSyntheticConfig();
     const repository = getPostgresqlLocalSyntheticSessionRepository(
-      config.database.identityConnectionString,
+      config.database.connectionString,
       config.dependencyTimeoutMs,
     );
     const unavailable = async (): Promise<never> => {
@@ -131,8 +131,8 @@ function getDatabaseTestRuntime(): IdentityRuntime {
   if (!globalForIdentity.__txDatabaseTestIdentityRuntime) {
     const config = loadTestDatabaseConfiguration();
     const repository = getPostgresqlDatabaseTestSessionRepository({
-      connectionString: config.identity.connectionString,
-      loginUser: config.identity.loginUser,
+      connectionString: config.database.connectionString,
+      loginUser: config.database.loginUser,
       connectionTimeoutMs: config.connectionTimeoutMs,
       statementTimeoutMs: config.statementTimeoutMs,
       poolMax: config.poolMax,

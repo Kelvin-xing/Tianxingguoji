@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 
 import {
@@ -11,19 +10,7 @@ import {
 
 const DATABASE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 const FORBIDDEN_DATABASES = new Set(["postgres", "template0", "template1", "tianxing"]);
-const FORBIDDEN_LOGIN_ROLES = new Set([
-  "postgres",
-  "tianxing_app",
-  "tianxing_test_application",
-  "tianxing_test_identity",
-  "tianxing_migration",
-  "tianxing_test_migration",
-  "tianxing_test_provisioner",
-]);
-const PRIVILEGED_LOGIN_PURPOSE = /(?:^|_)(?:migration|provision|provisioner)(?:_|$)/;
-
-export const TEST_IDENTITY_GROUP_ROLE = "tianxing_test_identity" as const;
-export const TEST_APPLICATION_GROUP_ROLE = "tianxing_test_application" as const;
+export const TEST_DATABASE_LOGIN_ROLE = "tianxing_app" as const;
 export const TEST_DATABASE_TIMEOUT_LIMITS = Object.freeze({
   connection: Object.freeze({ minimumMs: 250, maximumMs: 5_000 }),
   statement: Object.freeze({ minimumMs: 1_000, maximumMs: 10_000 }),
@@ -36,14 +23,8 @@ export interface TestDatabaseEndpoint {
   readonly host: string;
 }
 
-interface ParsedTestDatabaseEndpoint {
-  readonly endpoint: TestDatabaseEndpoint;
-  readonly passwordDigest: Buffer;
-}
-
 export interface TestDatabaseConfiguration {
-  readonly identity: TestDatabaseEndpoint;
-  readonly application: TestDatabaseEndpoint;
+  readonly database: TestDatabaseEndpoint;
   readonly connectionTimeoutMs: number;
   readonly statementTimeoutMs: number;
   readonly poolMax: 1;
@@ -63,49 +44,31 @@ export function loadTestDatabaseConfiguration(
     throw new RuntimeEnvironmentConfigurationError("TEST_DATABASE_EXPECTED_NAME");
   }
 
-  const identity = endpoint(environment, "TEST_IDENTITY_DATABASE_URL", expectedName);
-  let application: ParsedTestDatabaseEndpoint | undefined;
-  try {
-    application = endpoint(environment, "TEST_APPLICATION_DATABASE_URL", expectedName);
-    if (identity.endpoint.host !== application.endpoint.host) {
-      throw new RuntimeEnvironmentConfigurationError("TEST_APPLICATION_DATABASE_URL");
-    }
-    if (identity.endpoint.loginUser === application.endpoint.loginUser) {
-      throw new RuntimeEnvironmentConfigurationError("TEST_APPLICATION_DATABASE_URL");
-    }
-    if (timingSafeEqual(identity.passwordDigest, application.passwordDigest)) {
-      throw new RuntimeEnvironmentConfigurationError("TEST_APPLICATION_DATABASE_URL");
-    }
-
-    return Object.freeze({
-      identity: identity.endpoint,
-      application: application.endpoint,
-      connectionTimeoutMs: integer(
-        environment,
-        "TEST_DATABASE_CONNECTION_TIMEOUT_MS",
-        TEST_DATABASE_TIMEOUT_LIMITS.connection.minimumMs,
-        TEST_DATABASE_TIMEOUT_LIMITS.connection.maximumMs,
-      ),
-      statementTimeoutMs: integer(
-        environment,
-        "TEST_DATABASE_STATEMENT_TIMEOUT_MS",
-        TEST_DATABASE_TIMEOUT_LIMITS.statement.minimumMs,
-        TEST_DATABASE_TIMEOUT_LIMITS.statement.maximumMs,
-      ),
-      poolMax: exactOne(environment, "TEST_DATABASE_POOL_MAX"),
-      ssl: Object.freeze({ rejectUnauthorized: true }),
-    });
-  } finally {
-    identity.passwordDigest.fill(0);
-    application?.passwordDigest.fill(0);
-  }
+  const database = endpoint(environment, "TEST_DATABASE_URL", expectedName);
+  return Object.freeze({
+    database,
+    connectionTimeoutMs: integer(
+      environment,
+      "TEST_DATABASE_CONNECTION_TIMEOUT_MS",
+      TEST_DATABASE_TIMEOUT_LIMITS.connection.minimumMs,
+      TEST_DATABASE_TIMEOUT_LIMITS.connection.maximumMs,
+    ),
+    statementTimeoutMs: integer(
+      environment,
+      "TEST_DATABASE_STATEMENT_TIMEOUT_MS",
+      TEST_DATABASE_TIMEOUT_LIMITS.statement.minimumMs,
+      TEST_DATABASE_TIMEOUT_LIMITS.statement.maximumMs,
+    ),
+    poolMax: exactOne(environment, "TEST_DATABASE_POOL_MAX"),
+    ssl: Object.freeze({ rejectUnauthorized: true }),
+  });
 }
 
 function endpoint(
   environment: RuntimeEnvironment,
   variable: string,
   expectedName: string,
-): ParsedTestDatabaseEndpoint {
+): TestDatabaseEndpoint {
   let url: URL;
   try {
     url = new URL(required(environment, variable));
@@ -125,20 +88,15 @@ function endpoint(
     databaseName !== expectedName ||
     host.length === 0 ||
     isLoopbackOrIp(host) ||
-    loginUser.length === 0 ||
-    FORBIDDEN_LOGIN_ROLES.has(loginUser) ||
-    PRIVILEGED_LOGIN_PURPOSE.test(loginUser)
+    loginUser !== TEST_DATABASE_LOGIN_ROLE
   ) {
     throw new RuntimeEnvironmentConfigurationError(variable);
   }
   return Object.freeze({
-    endpoint: Object.freeze({
-      connectionString: url.toString(),
-      loginUser,
-      databaseName,
-      host,
-    }),
-    passwordDigest: createHash("sha256").update(password, "utf8").digest(),
+    connectionString: url.toString(),
+    loginUser,
+    databaseName,
+    host,
   });
 }
 

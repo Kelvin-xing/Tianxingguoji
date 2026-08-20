@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -15,9 +16,17 @@ import {
 } from "../../modules/identity/server.ts";
 import { sha256SchoolValue } from "../../modules/schools/public.ts";
 import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-config.ts";
-import { readLocalMigrationTarget } from "./run-local-migrations.ts";
+import {
+  ONE_ROLE_BASELINE_ID,
+  ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_MARKER_SCHEMA,
+  ONE_ROLE_MARKER_TABLE,
+  ONE_ROLE_SOURCE_COUNT,
+  ONE_ROLE_TRANSFORM_VERSION,
+  verifyCommittedOneRoleBaseline,
+} from "./generate-one-role-baseline.ts";
+import { readOneRoleBaselineTarget } from "./run-one-role-baseline.ts";
 
-const LOCAL_APPLICATION_PASSWORD = "tianxing-local-app-only";
 const MANIFEST_ID = "30000000-0000-4000-8000-000000000002";
 const MANIFEST_COMPOSITION_VERSION = "local-release1-v2";
 const SCHOOL_SNAPSHOT_ID = "40000000-0000-4000-8000-000000000001";
@@ -83,23 +92,19 @@ export class LocalRelease1SeedSafetyError extends Error {
 export function readLocalRelease1SeedTarget(
   environment: RuntimeEnvironment = process.env,
 ): LocalRelease1SeedTarget {
-  const owner = readLocalMigrationTarget(environment);
-  const runtime = loadLocalSyntheticConfig(environment).database.applicationConnectionString;
-  const runtimeUrl = new URL(runtime);
-  if (
-    runtimeUrl.username !== "tianxing_app" ||
-    runtimeUrl.password !== LOCAL_APPLICATION_PASSWORD ||
-    runtimeUrl.host !== `${owner.host}:${owner.port}` ||
-    runtimeUrl.pathname !== `/${owner.database}`
-  ) {
-    throw new LocalRelease1SeedSafetyError(
-      "Local Release 1 seed requires the fixed loopback application target.",
-    );
+  try {
+    const baseline = readOneRoleBaselineTarget(environment);
+    const runtime = loadLocalSyntheticConfig(environment).database.connectionString;
+    if (baseline.ssl !== false || new URL(runtime).toString() !== baseline.connectionString) {
+      throw new LocalRelease1SeedSafetyError("Local Release 1 seed target is inconsistent.");
+    }
+    return Object.freeze({
+      ownerConnectionString: baseline.connectionString,
+      runtimeConnectionString: runtime,
+    });
+  } catch {
+    throw new LocalRelease1SeedSafetyError("Local Release 1 seed target is invalid.");
   }
-  return Object.freeze({
-    ownerConnectionString: owner.connectionString,
-    runtimeConnectionString: runtime,
-  });
 }
 
 export async function seedLocalRelease1(
@@ -114,6 +119,7 @@ export async function seedLocalRelease1(
   schoolSnapshots: number;
   schoolRecords: number;
 }>> {
+  const baseline = await verifyCommittedOneRoleBaseline();
   const modules = await loadSchemaModules();
   const owner = new Client({
     connectionString: target.ownerConnectionString,
@@ -124,10 +130,15 @@ export async function seedLocalRelease1(
   });
   await owner.connect();
   try {
-    await assertOwnerConnection(owner);
+    await assertOwnerConnection(owner, sha256(baseline.manifestJson));
     await owner.query("BEGIN");
     try {
-      await provisionApplicationRole(owner);
+      await owner.query("SELECT set_config('app.organization_id', $1, true)", [
+        LOCAL_SYNTHETIC_ORGANIZATION.id,
+      ]);
+      await owner.query("SELECT set_config('app.actor_user_id', $1, true)", [
+        getLocalSyntheticPrincipal("founder").userId,
+      ]);
       await seedStudentsAndGuardians(owner);
       await seedManifest(owner, modules);
       await seedSchools(owner);
@@ -159,23 +170,55 @@ async function loadSchemaModules(): Promise<readonly K12Module[]> {
   return Object.freeze(modules);
 }
 
-async function assertOwnerConnection(client: Client): Promise<void> {
-  const result = await client.query<{ database_name: string; user_name: string; rolsuper: boolean }>(
-    `SELECT current_database() AS database_name, current_user AS user_name, role.rolsuper
-       FROM pg_roles AS role WHERE role.rolname = current_user`,
+async function assertOwnerConnection(client: Client, manifestSha256: string): Promise<void> {
+  const result = await client.query<{
+    database_name: string;
+    user_name: string;
+    database_owner: string;
+    rolcanlogin: boolean;
+    rolsuper: boolean;
+    rolcreatedb: boolean;
+    rolcreaterole: boolean;
+    rolinherit: boolean;
+    rolreplication: boolean;
+    rolbypassrls: boolean;
+  }>(
+    `SELECT current_database() AS database_name, current_user AS user_name,
+            pg_get_userbyid(database_row.datdba) AS database_owner,
+            role_row.rolcanlogin, role_row.rolsuper, role_row.rolcreatedb,
+            role_row.rolcreaterole, role_row.rolinherit, role_row.rolreplication,
+            role_row.rolbypassrls
+       FROM pg_database AS database_row
+       JOIN pg_roles AS role_row ON role_row.rolname = current_user
+      WHERE database_row.datname = current_database()`,
   );
   const row = result.rows[0];
-  if (row?.database_name !== "tianxing" || row.user_name !== "tianxing_migration" || !row.rolsuper) {
+  if (
+    row?.database_name !== "tianxing" || row.user_name !== ONE_ROLE_CANONICAL_ROLE ||
+    row.database_owner !== ONE_ROLE_CANONICAL_ROLE || !row.rolcanlogin || row.rolsuper ||
+    row.rolcreatedb || row.rolcreaterole || row.rolinherit || row.rolreplication ||
+    row.rolbypassrls
+  ) {
     throw new LocalRelease1SeedSafetyError("Connected database identity is not the local owner.");
   }
-}
-
-async function provisionApplicationRole(client: Client): Promise<void> {
-  await client.query(
-    `ALTER ROLE tianxing_app WITH
-       LOGIN PASSWORD 'tianxing-local-app-only'
-       NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`,
-  );
+  const marker = await client.query<{
+    baseline_id: string;
+    transform_version: string;
+    manifest_sha256: string;
+    source_migration_count: number;
+  }>(`
+    SELECT baseline_id, transform_version, manifest_sha256, source_migration_count
+      FROM ${ONE_ROLE_MARKER_SCHEMA}.${ONE_ROLE_MARKER_TABLE}
+     WHERE baseline_id = $1
+  `, [ONE_ROLE_BASELINE_ID]);
+  const installed = marker.rows[0];
+  if (
+    installed?.transform_version !== ONE_ROLE_TRANSFORM_VERSION ||
+    installed.manifest_sha256 !== manifestSha256 ||
+    installed.source_migration_count !== ONE_ROLE_SOURCE_COUNT
+  ) {
+    throw new LocalRelease1SeedSafetyError("Local one-role baseline marker is inconsistent.");
+  }
 }
 
 async function seedStudentsAndGuardians(client: Client): Promise<void> {
@@ -234,15 +277,15 @@ async function seedManifest(client: Client, modules: readonly K12Module[]): Prom
       byLayer.get("admission_route")!.moduleId, byLayer.get("admission_route")!.version,
       hash, MANIFEST_COMPOSITION_VERSION],
   );
-  for (const module of modules) {
-    for (const field of module.fields) {
+  for (const schemaModule of modules) {
+    for (const field of schemaModule.fields) {
       await client.query(
         `INSERT INTO cases_schema_manifest_fields
           (manifest_id, module_layer, module_id, module_version, field_id,
            value_type, visibility, blocking_stages)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
          ON CONFLICT (manifest_id, module_layer, module_id, module_version, field_id) DO NOTHING`,
-        [MANIFEST_ID, module.layer, module.moduleId, module.version, field.fieldId,
+        [MANIFEST_ID, schemaModule.layer, schemaModule.moduleId, schemaModule.version, field.fieldId,
           field.valueType, field.visibility,
           JSON.stringify(field.blockingStages.map(toStoredBlockerStage))],
       );
@@ -483,6 +526,10 @@ function schoolSnapshotManifestSha256(): string {
   });
 }
 
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function toStoredBlockerStage(stage: string): string {
   if (stage === "background_collection") return "background_complete";
   if (stage === "school_selection_confirmed") return "selection_ready";
@@ -501,8 +548,8 @@ if (isMainModule) {
   runCli(process.env).catch((error: unknown) => {
     const unsafeMessage = error instanceof Error ? error.message : "Unknown local Release 1 seed failure.";
     const secrets = [
-      process.env.MIGRATION_DATABASE_URL ?? "",
-      process.env.LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL ?? "",
+      process.env.ONE_ROLE_BASELINE_DATABASE_URL ?? "",
+      process.env.LOCAL_SYNTHETIC_DATABASE_URL ?? "",
     ].filter(Boolean);
     process.stderr.write(`${secrets.reduce((message, secret) => message.replaceAll(secret, "[redacted]"), unsafeMessage)}\n`);
     process.exitCode = 1;

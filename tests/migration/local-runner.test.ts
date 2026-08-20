@@ -14,7 +14,7 @@ import {
 } from "../../scripts/db/run-local-migrations.ts";
 
 const MIGRATION_URL =
-  "postgresql://tianxing_migration:local-only@127.0.0.1:5432/tianxing";
+  "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing";
 
 test("requires one explicit local migration mode", () => {
   assert.equal(readLocalMigrationMode(["--dry-run"]), "dry-run");
@@ -23,38 +23,25 @@ test("requires one explicit local migration mode", () => {
   assert.throws(() => readLocalMigrationMode(["--apply", "--dry-run"]), LocalMigrationSafetyError);
 });
 
-test("accepts only the fixed loopback local migration target", () => {
-  const target = readLocalMigrationTarget({
-    APP_RUNTIME_MODE: "local-synthetic",
-    MIGRATION_DATABASE_URL: MIGRATION_URL,
-  });
+test("fails closed until the independent one-role baseline exists", () => {
+  assert.throws(
+    () => readLocalMigrationTarget({
+      APP_RUNTIME_MODE: "local-synthetic",
+      MIGRATION_DATABASE_URL: MIGRATION_URL,
+    }),
+    (error: unknown) => error instanceof LocalMigrationSafetyError &&
+      error.message.includes("one-role baseline"),
+  );
+});
 
-  assert.deepEqual(target, {
+test("keeps dry-run and apply options explicit while preserving migration safety policy", () => {
+  const target = {
     connectionString: MIGRATION_URL,
     host: "127.0.0.1",
     port: 5432,
     database: "tianxing",
-    user: "tianxing_migration",
-  });
-
-  const invalidEnvironments = [
-    {},
-    { APP_RUNTIME_MODE: "local-synthetic", NODE_ENV: "production", MIGRATION_DATABASE_URL: MIGRATION_URL },
-    { APP_RUNTIME_MODE: "local-synthetic", MIGRATION_DATABASE_URL: MIGRATION_URL.replace("127.0.0.1", "db.example.com") },
-    { APP_RUNTIME_MODE: "local-synthetic", MIGRATION_DATABASE_URL: MIGRATION_URL.replace("tianxing_migration", "tianxing_app") },
-    { APP_RUNTIME_MODE: "local-synthetic", MIGRATION_DATABASE_URL: MIGRATION_URL.replace("/tianxing", "/postgres") },
-    { APP_RUNTIME_MODE: "local-synthetic", MIGRATION_DATABASE_URL: `${MIGRATION_URL}?sslmode=disable` },
-  ];
-  for (const environment of invalidEnvironments) {
-    assert.throws(() => readLocalMigrationTarget(environment), LocalMigrationSafetyError);
-  }
-});
-
-test("keeps dry-run and apply options explicit while preserving migration safety policy", () => {
-  const target = readLocalMigrationTarget({
-    APP_RUNTIME_MODE: "local-synthetic",
-    MIGRATION_DATABASE_URL: MIGRATION_URL,
-  });
+    user: "tianxing_app",
+  } as const;
   const dryRun = createLocalMigrationOptions(target, "dry-run");
   const apply = createLocalMigrationOptions(target, "apply");
 
@@ -120,9 +107,15 @@ test("keeps migration-owner credentials out of the application environment examp
   const packageJson = JSON.parse(packageJsonText) as { scripts: Record<string, string> };
 
   assert.doesNotMatch(appEnvironment, /MIGRATION_DATABASE_URL/);
-  assert.match(migrationEnvironment, /^APP_RUNTIME_MODE=local-synthetic$/m);
-  assert.match(migrationEnvironment, /^MIGRATION_DATABASE_URL=postgresql:\/\//m);
+  assert.match(migrationEnvironment, /^APP_ENV=development$/m);
+  assert.match(migrationEnvironment, /^NODE_ENV=development$/m);
+  assert.match(migrationEnvironment, /^ONE_ROLE_BASELINE_EXPECTED_DATABASE=tianxing$/m);
+  assert.match(migrationEnvironment, /^ONE_ROLE_BASELINE_DATABASE_URL=postgresql:\/\/tianxing_app:/m);
+  assert.doesNotMatch(migrationEnvironment, /MIGRATION_DATABASE_URL/);
+  assert.doesNotMatch(migrationEnvironment, /tianxing_migration|tianxing-local-migration-only/);
   assert.match(ignore, /^!\/\.env\.migration\.local\.example$/m);
-  assert.match(packageJson.scripts["db:migrate:local"], /--env-file=\.env\.migration\.local/);
-  assert.match(packageJson.scripts["db:migrate:local"], /--apply$/);
+  assert.equal(packageJson.scripts["db:migrate:local"], "pnpm db:baseline:local");
+  assert.equal(packageJson.scripts["db:migrate:local:dry-run"], "pnpm db:baseline:local:dry-run");
+  assert.match(packageJson.scripts["db:baseline:local"], /--env-file=\.env\.migration\.local/);
+  assert.match(packageJson.scripts["db:baseline:local"], /--apply$/);
 });

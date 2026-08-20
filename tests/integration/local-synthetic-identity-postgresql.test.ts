@@ -13,7 +13,7 @@ import {
 import { loadLocalSyntheticConfig } from "../../lib/runtime/local-synthetic-config.ts";
 
 test("persists all local roles across repository restarts and revokes them", async () => {
-  const connectionString = loadLocalSyntheticConfig().database.identityConnectionString;
+  const connectionString = loadLocalSyntheticConfig().database.connectionString;
   const firstPool = pool(connectionString, "local-identity-integration-first");
   const sessions: Array<{
     cookieSecret: string;

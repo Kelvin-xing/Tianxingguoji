@@ -62,6 +62,8 @@ test("treats Vercel as hosting metadata and rejects privileged URLs in test Web 
   for (const variable of [
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",
+    "TEST_IDENTITY_DATABASE_URL",
+    "TEST_APPLICATION_DATABASE_URL",
     "TEST_MIGRATION_DATABASE_URL",
     "TEST_PROVISION_DATABASE_URL",
     "LOCAL_SYNTHETIC_DATABASE_URL",
@@ -73,8 +75,21 @@ test("treats Vercel as hosting metadata and rejects privileged URLs in test Web 
   }
 });
 
+test("rejects legacy split local database URLs before local runtime startup", () => {
+  for (const variable of [
+    "LOCAL_SYNTHETIC_IDENTITY_DATABASE_URL",
+    "LOCAL_SYNTHETIC_APPLICATION_DATABASE_URL",
+  ]) {
+    assertConfigurationError(
+      () => loadRuntimeEnvironment({ ...developmentEnvironment(), [variable]: "forbidden" }),
+      variable,
+    );
+  }
+});
+
 test("rejects test database URLs in production with deterministic variable attribution", () => {
   const variables = [
+    "TEST_DATABASE_URL",
     "TEST_IDENTITY_DATABASE_URL",
     "TEST_APPLICATION_DATABASE_URL",
     "TEST_PROVISION_DATABASE_URL",
@@ -91,7 +106,7 @@ test("rejects test database URLs in production with deterministic variable attri
       ...productionEnvironment(),
       ...Object.fromEntries(variables.map((variable) => [variable, "forbidden"])),
     }),
-    "TEST_IDENTITY_DATABASE_URL",
+    "TEST_DATABASE_URL",
   );
 });
 

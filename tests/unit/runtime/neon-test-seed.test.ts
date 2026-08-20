@@ -20,19 +20,20 @@ import {
   validateNeonTestRuntimeBoundary,
 } from "../../../scripts/db/seed-neon-test-release1.ts";
 
-const MIGRATION_URL =
-  "postgresql://env01_migration_login:synthetic-secret@ep-synthetic-123.us-east-1.aws.neon.tech:5432/txgj_env01_test";
+const BASELINE_URL =
+  "postgresql://tianxing_app:synthetic-secret@ep-synthetic-123.c-2.us-east-1.aws.neon.tech:5432/txgj_env01_test";
 
-test("requires one explicit Neon seed mode and the migration owner target", () => {
+test("requires one explicit Neon seed mode and the canonical baseline target", () => {
   assert.equal(readNeonTestSeedMode(["--dry-run"]), "dry-run");
   assert.equal(readNeonTestSeedMode(["--apply"]), "apply");
   assert.throws(() => readNeonTestSeedMode([]), NeonTestSeedSafetyError);
   assert.deepEqual(readNeonTestSeedTarget(validEnvironment()), {
-    connectionString: MIGRATION_URL,
-    host: "ep-synthetic-123.us-east-1.aws.neon.tech",
+    connectionString: BASELINE_URL,
+    host: "ep-synthetic-123.c-2.us-east-1.aws.neon.tech",
     port: 5432,
     database: "txgj_env01_test",
-    user: "env01_migration_login",
+    user: "tianxing_app",
+    ssl: { rejectUnauthorized: true },
   });
   assert.throws(
     () => readNeonTestSeedTarget({ ...validEnvironment(), VERCEL: "1" }),
@@ -132,27 +133,24 @@ test("accepts only an empty or complete fixed seed population", () => {
   );
 });
 
-test("defines the future identity and application runtime privilege verifier", () => {
+test("validates the single owner role and preserves the credential owner residual risk", () => {
   const valid = {
-    identity: {
-      memberOfExpectedGroup: true,
-      canReadCredentials: true,
-      canWriteBusinessData: false,
-      canRunDdl: false,
-    },
-    application: {
-      memberOfExpectedGroup: true,
-      canReadBusinessData: true,
-      canWriteBusinessData: true,
-      canReadCredentials: false,
-      canRunDdl: false,
-    },
+    userName: "tianxing_app",
+    databaseOwner: "tianxing_app",
+    login: true,
+    superuser: false,
+    createDatabase: false,
+    createRole: false,
+    inherit: false,
+    replication: false,
+    bypassRls: false,
+    credentialTableOwner: "tianxing_app",
   } as const;
   assert.doesNotThrow(() => validateNeonTestRuntimeBoundary(valid));
   assert.throws(
     () => validateNeonTestRuntimeBoundary({
       ...valid,
-      application: { ...valid.application, canReadCredentials: true },
+      createRole: true,
     }),
     NeonTestSeedSafetyError,
   );
@@ -179,16 +177,24 @@ test("does not import local seeds or create credentials, sessions, cases, or evi
     assert.doesNotMatch(combined, new RegExp(`INSERT\\s+INTO\\s+${table}`, "i"));
   }
   assert.doesNotMatch(combined, /error\.stack/);
+  assert.doesNotMatch(seedSource, /migration\.schema_migrations|EXPECTED_PUBLIC_TABLES/);
+  assert.match(seedSource, /ONE_ROLE_MARKER_SCHEMA/);
+  assert.match(seedSource, /ONE_ROLE_MARKER_TABLE/);
+  assert.match(seedSource, /ONE_ROLE_BASELINE_DATABASE_URL/);
+  assert.match(seedSource, /set_config\('app\.organization_id'/);
+  assert.match(seedSource, /set_config\('app\.actor_user_id'/);
 });
 
 test("emits aggregate seed evidence without rows, email, hostname, or secrets", () => {
-  const output = JSON.stringify(createNeonTestSeedEvidence("apply", "a".repeat(64), {
+  const output = JSON.stringify(createNeonTestSeedEvidence("apply", "a".repeat(64), 63, {
     manifestContentSha256: "b".repeat(64),
     schoolSnapshotManifestSha256: "c".repeat(64),
   }));
   assert.match(output, /"version":"env01-neon-release1-v1"/);
   assert.match(output, /"users":5/);
   assert.match(output, /"synthetic_only":true/);
+  assert.match(output, /"canonical_login_role":"tianxing_app"/);
+  assert.match(output, /"credential_table_owner_access_is_residual_risk":true/);
   assert.match(output, new RegExp(`"manifest_content_sha256":"${"b".repeat(64)}"`));
   assert.match(output, new RegExp(`"school_snapshot_manifest_sha256":"${"c".repeat(64)}"`));
   assert.doesNotMatch(output, /@|email|ep-synthetic|synthetic-secret|postgresql:\/\//i);
@@ -199,10 +205,8 @@ function validEnvironment(): Record<string, string | undefined> {
   return {
     APP_ENV: "test",
     NODE_ENV: "production",
-    APP_RUNTIME_MODE: "test-database",
-    AUTH_MODE: "database-test",
-    TEST_DATABASE_EXPECTED_NAME: "txgj_env01_test",
-    TEST_MIGRATION_DATABASE_URL: MIGRATION_URL,
+    ONE_ROLE_BASELINE_EXPECTED_DATABASE: "txgj_env01_test",
+    ONE_ROLE_BASELINE_DATABASE_URL: BASELINE_URL,
   };
 }
 
