@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,22 +10,28 @@ import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
   ONE_ROLE_SOURCE_COUNT,
+  ONE_ROLE_TRANSFORM_VERSION,
   ONE_ROLE_TRANSFORM_SOURCES,
   OneRoleBaselineGenerationError,
   assertOneRoleTransformAnchors,
   buildOneRoleBaseline,
   verifyCommittedOneRoleBaseline,
+  type OneRoleBaselineBuild,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
+  OneRoleBaselineOperationError,
   OneRoleBaselineRunError,
   assertOneRoleBaselinePostflight,
   assertOneRoleBaselinePreflight,
   createOneRoleBaselineClientConfig,
+  executeOneRoleBaselineRun,
   executeOneRoleBaselineTransaction,
+  formatOneRoleBaselineFailure,
   readOneRoleBaselineMode,
   readOneRoleBaselineTarget,
   type OneRoleBaselineDatabaseState,
   type OneRoleBaselineQueryClient,
+  type OneRoleBaselineRunDependencies,
 } from "../../scripts/db/run-one-role-baseline.ts";
 
 const LOCAL_URL =
@@ -237,6 +245,271 @@ test("commits apply once and rolls a failed generated hash back without executin
   assert.equal(driftClient.commands.includes("SELECT 'drift';"), false);
 });
 
+test("reports generated SQL failure, successful rollback, and independent clean verification", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const rawFailure = postgresError("42501", "super-secret generated SQL failure");
+  const client = new RecordingClient((text) => text === first.contents ? rawFailure : undefined);
+  const events: string[] = [];
+  const dependencies = scenarioDependencies(build, client, events);
+
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies,
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as Record<string, unknown>;
+
+  assert.deepEqual(evidence.original_failure, {
+    failure_stage: "generated_sql",
+    migration_name: build.manifest.generated_files[0]?.name,
+    postgres_code: "42501",
+  });
+  assert.equal(evidence.rollback_attempt, "succeeded");
+  assert.equal(evidence.rollback_state, "clean");
+  assert.equal(client.commands.at(-1), "ROLLBACK");
+  assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+  assertRedacted(serialized);
+});
+
+test("returns pass evidence only after an independent clean dry-run postcheck", async () => {
+  const build = await buildOneRoleBaseline();
+  const client = new RecordingClient();
+  const events: string[] = [];
+
+  const evidence = await executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, events),
+  });
+
+  assert.equal(evidence.status, "pass");
+  assert.equal(evidence.postflight_state, "clean");
+  assert.equal(evidence.marker, "rolled_back");
+  assert.equal(client.commands.at(-1), "ROLLBACK");
+  assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+});
+
+test("returns apply pass evidence only after an independent installed marker postcheck", async () => {
+  const build = await buildOneRoleBaseline();
+  const client = new RecordingClient();
+  const events: string[] = [];
+  const manifestSha256 = createHash("sha256").update(build.manifestJson).digest("hex");
+
+  const evidence = await executeOneRoleBaselineRun({
+    mode: "apply",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, events, {
+      after: {
+        ...state(),
+        publicObjectCount: 100,
+        marker: {
+          baselineId: ONE_ROLE_BASELINE_ID,
+          transformVersion: ONE_ROLE_TRANSFORM_VERSION,
+          manifestSha256,
+          sourceMigrationCount: ONE_ROLE_SOURCE_COUNT,
+        },
+      },
+    }),
+  });
+
+  assert.equal(evidence.status, "pass");
+  assert.equal(evidence.postflight_state, "installed");
+  assert.equal(evidence.marker, "installed");
+  assert.equal(client.commands.at(-1), "COMMIT");
+  assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+});
+
+test("preserves rollback failure separately when independent state is clean", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const client = new RecordingClient((text) => {
+    if (text === first.contents) return postgresError("42501", "super-secret SQL failure");
+    if (text === "ROLLBACK") return postgresError("08006", "super-secret rollback failure");
+    return undefined;
+  });
+  const events: string[] = [];
+
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, events),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as Record<string, unknown>;
+
+  assert.equal(evidence.rollback_attempt, "failed");
+  assert.equal(evidence.rollback_state, "clean");
+  assert.deepEqual(evidence.transaction_rollback_failure, {
+    failure_stage: "transaction_rollback",
+    postgres_code: "08006",
+  });
+  assert.equal(client.commands.filter((command) => command === "ROLLBACK").length, 1);
+  assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+  assertRedacted(serialized);
+});
+
+test("marks rollback verification failed when rollback fails and independent state is dirty", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const client = new RecordingClient((text) => {
+    if (text === first.contents) return postgresError("42501", "super-secret SQL failure");
+    if (text === "ROLLBACK") return postgresError("08006", "super-secret rollback failure");
+    return undefined;
+  });
+
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, [], {
+      after: { ...state(), publicObjectCount: 1 },
+    }),
+  }));
+  const evidence = JSON.parse(formatOneRoleBaselineFailure(error)) as Record<string, unknown>;
+
+  assert.equal(evidence.rollback_attempt, "failed");
+  assert.equal(evidence.rollback_state, "verification_failed");
+  assert.deepEqual(evidence.rollback_verification_failure, {
+    failure_stage: "rollback_state_verification",
+  });
+  assert.equal(client.commands.filter((command) => command === "ROLLBACK").length, 1);
+});
+
+test("does not report a code without PostgreSQL error severity", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const notDatabaseError = Object.assign(new Error("super-secret Node failure"), {
+    code: "42501",
+    detail: "detail-secret",
+  });
+  const client = new RecordingClient((text) => text === first.contents
+    ? notDatabaseError
+    : undefined);
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, []),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as {
+    original_failure: Record<string, unknown>;
+  };
+
+  assert.equal("postgres_code" in evidence.original_failure, false);
+  assertRedacted(serialized);
+});
+
+test("reports an independent postcheck failure after a successful dry-run rollback", async () => {
+  const build = await buildOneRoleBaseline();
+  const client = new RecordingClient();
+  const events: string[] = [];
+
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, events, {
+      afterError: postgresError("08006", "super-secret postcheck failure"),
+    }),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as Record<string, unknown>;
+
+  assert.deepEqual(evidence.original_failure, {
+    failure_stage: "postflight_database_inspection",
+    postgres_code: "08006",
+  });
+  assert.equal(evidence.rollback_attempt, "succeeded");
+  assert.equal(evidence.rollback_state, "unknown");
+  assert.deepEqual(evidence.rollback_verification_failure, {
+    failure_stage: "rollback_database_inspection",
+    postgres_code: "08006",
+  });
+  assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+  assertRedacted(serialized);
+});
+
+test("rejects a dirty preflight before opening an execution transaction", async () => {
+  const build = await buildOneRoleBaseline();
+  let opens = 0;
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: {
+      inspect: async () => ({ ...state(), publicObjectCount: 1 }),
+      openExecutionConnection: async () => {
+        opens += 1;
+        throw new Error("must not open");
+      },
+    },
+  }));
+  const evidence = JSON.parse(formatOneRoleBaselineFailure(error)) as Record<string, unknown>;
+
+  assert.equal(opens, 0);
+  assert.equal(evidence.transaction_started, false);
+  assert.equal(evidence.rollback_attempt, "not_attempted");
+  assert.deepEqual(evidence.original_failure, {
+    failure_stage: "preflight_database_inspection",
+  });
+  assert.equal("rollback_state" in evidence, false);
+});
+
+test("marks an uncertain COMMIT without claiming rollback state", async () => {
+  const build = await buildOneRoleBaseline();
+  const client = new RecordingClient((text) =>
+    text === "COMMIT" ? postgresError("08006", "super-secret commit failure") : undefined
+  );
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "apply",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, []),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as Record<string, unknown>;
+
+  assert.deepEqual(evidence.original_failure, {
+    failure_stage: "transaction_commit",
+    postgres_code: "08006",
+  });
+  assert.equal(evidence.commit_result, "uncertain");
+  assert.equal(evidence.post_failure_state, "clean");
+  assert.equal("rollback_state" in evidence, false);
+  assertRedacted(serialized);
+});
+
+test("CLI returns structured JSON and the correct exit code without database access", () => {
+  const plan = spawnSync(process.execPath, ["scripts/db/run-one-role-baseline.ts", "--plan"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(plan.status, 0, plan.stderr);
+  assert.equal(plan.stderr, "");
+  assert.equal((JSON.parse(plan.stdout) as Record<string, unknown>).status, "pass");
+
+  const rejected = spawnSync(process.execPath, ["scripts/db/run-one-role-baseline.ts", "--invalid"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+  assert.equal(rejected.status, 1);
+  assert.equal(rejected.stdout, "");
+  assert.deepEqual(JSON.parse(rejected.stderr), {
+    status: "failed",
+    baseline_id: ONE_ROLE_BASELINE_ID,
+    original_failure: { failure_stage: "cli" },
+    transaction_started: false,
+    rollback_attempt: "not_attempted",
+  });
+});
+
 test("requires an empty hardened owner preflight and verifies rollback or marker postflight", () => {
   const target = readOneRoleBaselineTarget({
     APP_ENV: "development",
@@ -281,6 +554,11 @@ test("requires an empty hardened owner preflight and verifies rollback or marker
 
 class RecordingClient implements OneRoleBaselineQueryClient {
   readonly commands: string[] = [];
+  private readonly failureFor?: (text: string) => Error | undefined;
+
+  constructor(failureFor?: (text: string) => Error | undefined) {
+    this.failureFor = failureFor;
+  }
 
   async query<Row extends Record<string, unknown> = Record<string, unknown>>(
     text: string,
@@ -288,6 +566,8 @@ class RecordingClient implements OneRoleBaselineQueryClient {
   ): Promise<{ rows: Row[] }> {
     void values;
     this.commands.push(text);
+    const failure = this.failureFor?.(text);
+    if (failure) throw failure;
     if (text.includes("pg_try_advisory_xact_lock")) {
       return { rows: [{ acquired: true } as unknown as Row] };
     }
@@ -359,4 +639,80 @@ function lockedPreflight(client: RecordingClient) {
     await client.query("INSPECT LOCKED PREFLIGHT");
     return state();
   };
+}
+
+function scenarioDependencies(
+  build: OneRoleBaselineBuild,
+  client: RecordingClient,
+  events: string[],
+  options: Readonly<{
+    before?: OneRoleBaselineDatabaseState;
+    after?: OneRoleBaselineDatabaseState;
+    afterError?: Error;
+    closeError?: Error;
+  }> = {},
+): OneRoleBaselineRunDependencies {
+  const files = new Map(build.files.map(({ name, contents }) => [name, contents]));
+  let inspections = 0;
+  return {
+    inspect: async () => {
+      inspections += 1;
+      events.push(`inspect:${inspections}`);
+      if (inspections === 1) return options.before ?? state();
+      if (options.afterError) throw options.afterError;
+      return options.after ?? state();
+    },
+    openExecutionConnection: async () => {
+      events.push("open");
+      return {
+        client,
+        close: async () => {
+          events.push("close");
+          if (options.closeError) throw options.closeError;
+        },
+      };
+    },
+    readGeneratedFile: async (name) => files.get(name) ?? "",
+    inspectLockedPreflight: lockedPreflight(client),
+  };
+}
+
+async function captureOperationFailure(
+  operation: Promise<unknown>,
+): Promise<OneRoleBaselineOperationError> {
+  try {
+    await operation;
+  } catch (error) {
+    assert.ok(error instanceof OneRoleBaselineOperationError);
+    return error;
+  }
+  assert.fail("Expected one-role baseline operation to fail.");
+}
+
+function postgresError(code: string, message: string): Error {
+  return Object.assign(new Error(message), {
+    severity: "ERROR",
+    code,
+    detail: "detail-secret",
+    query: "SELECT 'query-secret'",
+    host: "host-secret.example",
+    connectionString: "postgresql://tianxing_app:url-secret@host-secret.example/db",
+  });
+}
+
+function assertRedacted(serialized: string): void {
+  for (const forbidden of [
+    "super-secret",
+    "detail-secret",
+    "query-secret",
+    "host-secret",
+    "url-secret",
+    "postgresql://",
+    "stack",
+    "message",
+    "detail",
+    "query",
+  ]) {
+    assert.equal(serialized.includes(forbidden), false, forbidden);
+  }
 }
