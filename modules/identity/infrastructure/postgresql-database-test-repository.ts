@@ -44,6 +44,19 @@ interface ActorRow {
   reauthenticated_at: Date | string | null;
 }
 
+interface ActiveOrganizationRow {
+  organization_id: string;
+}
+
+interface EligibleIdentityRow {
+  membership_id: string;
+  role_binding_id: string;
+}
+
+interface SessionIdentityRow {
+  user_id: string;
+}
+
 export interface DatabaseTestSessionActor extends IdentitySessionActor {
   readonly normalizedEmail: string;
   readonly membershipId: string;
@@ -107,6 +120,13 @@ export class PostgresqlDatabaseTestSessionRepository implements DatabaseTestLogi
     nowMs: number;
   }>): Promise<IdentitySessionActor | null> {
     return this.transaction(async (client) => {
+      if (
+        input.passwordMatched &&
+        input.userId !== null &&
+        !(await establishVerifiedUserContext(client, input.userId))
+      ) {
+        return null;
+      }
       const result = await client.query<ActorRow>(
         `SELECT * FROM identity_database_test_complete_login(
            $1, $2, $3, $4, $5, $6
@@ -130,9 +150,11 @@ export class PostgresqlDatabaseTestSessionRepository implements DatabaseTestLogi
     sensitiveAction: boolean;
   }>): Promise<DatabaseTestSessionActor> {
     const actor = await this.transaction(async (client) => {
+      const secretHash = hashBuffer(input.secretHash);
+      if (!(await establishSessionContext(client, secretHash))) return null;
       const result = await client.query<ActorRow>(
         "SELECT * FROM identity_database_test_resolve_session($1, $2, $3)",
-        [hashBuffer(input.secretHash), new Date(input.nowMs), input.sensitiveAction],
+        [secretHash, new Date(input.nowMs), input.sensitiveAction],
       );
       return actorFromRow(result.rows[0]);
     });
@@ -153,9 +175,11 @@ export class PostgresqlDatabaseTestSessionRepository implements DatabaseTestLogi
     reason: string;
   }>): Promise<void> {
     await this.transaction(async (client) => {
+      const secretHash = hashBuffer(input.secretHash);
+      if (!(await establishSessionContext(client, secretHash))) return;
       await client.query(
         "SELECT identity_database_test_revoke_session($1, $2)",
-        [hashBuffer(input.secretHash), safeReason(input.reason)],
+        [secretHash, safeReason(input.reason)],
       );
     });
   }
@@ -195,6 +219,88 @@ export class PostgresqlDatabaseTestSessionRepository implements DatabaseTestLogi
   }
 }
 
+async function establishVerifiedUserContext(
+  client: DatabaseTestIdentityClient,
+  userId: string,
+): Promise<boolean> {
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+    [`database-test-login:${userId}`],
+  );
+  const organizationId = await establishOrganizationContext(client);
+  if (!organizationId) return false;
+  const eligibility = await client.query<EligibleIdentityRow>(
+    `SELECT membership.id AS membership_id,
+            role_binding.id AS role_binding_id
+       FROM public.identity_users AS identity_user
+       JOIN public.access_organization_memberships AS membership
+         ON membership.user_id = identity_user.id
+        AND membership.organization_id = $1
+        AND membership.status = 'active'
+       JOIN public.access_role_bindings AS role_binding
+         ON role_binding.membership_id = membership.id
+        AND role_binding.organization_id = membership.organization_id
+        AND role_binding.user_id = membership.user_id
+        AND role_binding.status = 'active'
+      WHERE identity_user.id = $2
+        AND identity_user.status = 'active'
+      ORDER BY role_binding.id
+      FOR SHARE OF identity_user, membership, role_binding`,
+    [organizationId, userId],
+  );
+  if (eligibility.rows.length !== 1) return false;
+  await setActorContext(client, userId);
+  return true;
+}
+
+async function establishSessionContext(
+  client: DatabaseTestIdentityClient,
+  secretHash: Buffer,
+): Promise<boolean> {
+  const organizationId = await establishOrganizationContext(client);
+  if (!organizationId) return false;
+  const session = await client.query<SessionIdentityRow>(
+    `SELECT session.user_id
+       FROM public.identity_sessions AS session
+      WHERE session.secret_hash = $1
+        AND session.session_kind = 'database_test'
+      FOR UPDATE`,
+    [secretHash],
+  );
+  const userId = session.rows[0]?.user_id;
+  if (!userId) return false;
+  await setActorContext(client, userId);
+  return true;
+}
+
+async function establishOrganizationContext(
+  client: DatabaseTestIdentityClient,
+): Promise<string | null> {
+  const organization = await client.query<ActiveOrganizationRow>(
+    `SELECT organization.id AS organization_id
+       FROM public.access_organizations AS organization
+      WHERE organization.status = 'active'
+      FOR SHARE`,
+  );
+  const organizationId = organization.rows[0]?.organization_id;
+  if (!organizationId || organization.rows.length !== 1) return null;
+  await client.query(
+    "SELECT set_config('app.organization_id', $1, true)",
+    [organizationId],
+  );
+  return organizationId;
+}
+
+async function setActorContext(
+  client: DatabaseTestIdentityClient,
+  userId: string,
+): Promise<void> {
+  await client.query(
+    "SELECT set_config('app.actor_user_id', $1, true)",
+    [userId],
+  );
+}
+
 const globalForDatabaseTestIdentity = globalThis as typeof globalThis & {
   __txDatabaseTestIdentityPools?: Map<string, Pool>;
 };
@@ -205,7 +311,7 @@ export function getPostgresqlDatabaseTestSessionRepository(config: Readonly<{
   connectionTimeoutMs: number;
   statementTimeoutMs: number;
   poolMax: 1;
-  ssl: Readonly<{ rejectUnauthorized: true }>;
+  ssl: false | Readonly<{ rejectUnauthorized: true }>;
 }>): PostgresqlDatabaseTestSessionRepository {
   const pools = globalForDatabaseTestIdentity.__txDatabaseTestIdentityPools ?? new Map<string, Pool>();
   globalForDatabaseTestIdentity.__txDatabaseTestIdentityPools = pools;

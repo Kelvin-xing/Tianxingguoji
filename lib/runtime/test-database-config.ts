@@ -10,6 +10,8 @@ import {
 
 const DATABASE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 const FORBIDDEN_DATABASES = new Set(["postgres", "template0", "template1", "tianxing"]);
+const LOCAL_DATABASE_NAME = "tianxing" as const;
+const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 export const TEST_DATABASE_LOGIN_ROLE = "tianxing_app" as const;
 export const TEST_DATABASE_TIMEOUT_LIMITS = Object.freeze({
   connection: Object.freeze({ minimumMs: 250, maximumMs: 5_000 }),
@@ -28,13 +30,28 @@ export interface TestDatabaseConfiguration {
   readonly connectionTimeoutMs: number;
   readonly statementTimeoutMs: number;
   readonly poolMax: 1;
-  readonly ssl: Readonly<{ rejectUnauthorized: true }>;
+  readonly ssl: false | Readonly<{ rejectUnauthorized: true }>;
 }
 
 export function loadTestDatabaseConfiguration(
   environment: RuntimeEnvironment = process.env,
 ): TestDatabaseConfiguration {
   const runtime = loadRuntimeEnvironment(environment);
+  if (runtime.appEnvironment === "development") {
+    const timeoutMs = integer(
+      environment,
+      "LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS",
+      TEST_DATABASE_TIMEOUT_LIMITS.connection.minimumMs,
+      TEST_DATABASE_TIMEOUT_LIMITS.connection.maximumMs,
+    );
+    return Object.freeze({
+      database: localEndpoint(environment),
+      connectionTimeoutMs: timeoutMs,
+      statementTimeoutMs: timeoutMs,
+      poolMax: 1,
+      ssl: false,
+    });
+  }
   if (runtime.appRuntimeMode !== "test-database") {
     throw new RuntimeEnvironmentConfigurationError("APP_RUNTIME_MODE");
   }
@@ -61,6 +78,43 @@ export function loadTestDatabaseConfiguration(
     ),
     poolMax: exactOne(environment, "TEST_DATABASE_POOL_MAX"),
     ssl: Object.freeze({ rejectUnauthorized: true }),
+  });
+}
+
+function localEndpoint(environment: RuntimeEnvironment): TestDatabaseEndpoint {
+  const variable = "LOCAL_SYNTHETIC_DATABASE_URL";
+  let url: URL;
+  try {
+    url = new URL(required(environment, variable));
+  } catch {
+    throw new RuntimeEnvironmentConfigurationError(variable);
+  }
+  const host = url.hostname.toLowerCase();
+  const databaseName = decodePathname(url, variable);
+  const loginUser = decodeComponent(url.username, variable);
+  const password = decodeComponent(url.password, variable);
+  const port = Number(url.port);
+  if (
+    url.protocol !== "postgresql:" ||
+    password.length === 0 ||
+    url.search.length > 0 ||
+    url.hash.length > 0 ||
+    url.pathname.split("/").length !== 2 ||
+    databaseName !== LOCAL_DATABASE_NAME ||
+    !LOCAL_DATABASE_HOSTS.has(host) ||
+    url.port.length === 0 ||
+    !Number.isSafeInteger(port) ||
+    port < 1 ||
+    port > 65_535 ||
+    loginUser !== TEST_DATABASE_LOGIN_ROLE
+  ) {
+    throw new RuntimeEnvironmentConfigurationError(variable);
+  }
+  return Object.freeze({
+    connectionString: url.toString(),
+    loginUser,
+    databaseName,
+    host,
   });
 }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -66,6 +67,19 @@ test("rejects remote database, LocalStack, and ClamAV endpoints", () => {
   }
 });
 
+test("derives PostgreSQL readiness identities from the shared Release 1 fixture", async () => {
+  const source = await readFile("lib/runtime/local-synthetic-readiness.ts", "utf8");
+
+  assert.match(source, /from "\.\.\/\.\.\/scripts\/db\/neon-test-synthetic-fixture\.ts"/);
+  assert.match(source, /NEON_TEST_ORGANIZATION/);
+  assert.match(source, /NEON_TEST_PRINCIPALS/);
+  assert.match(source, /NEON_TEST_STUDENTS/);
+  assert.match(source, /RELEASE1_FOUNDER\.userId/);
+  assert.doesNotMatch(source, /10000000-0000-4000-8000-000000000001/);
+  assert.doesNotMatch(source, /20000000-0000-4000-8000-00000000010[12]/);
+  assert.doesNotMatch(source, /@local\.invalid/);
+});
+
 test("reports all dependencies ready without exposing connection values", async () => {
   const report = await checkLocalSyntheticReadiness({
     environment: validEnvironment(),
@@ -128,7 +142,7 @@ function validEnvironment(): Record<string, string | undefined> {
   return {
     APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
-    AUTH_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
     NODE_ENV: "development",
     LOCAL_SYNTHETIC_DATABASE_URL:
       "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",

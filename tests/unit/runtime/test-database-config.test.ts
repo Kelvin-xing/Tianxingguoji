@@ -21,6 +21,41 @@ test("loads one TLS test database endpoint for the canonical application role", 
   });
 });
 
+test("loads the local database-test endpoint only from an explicit loopback URL", () => {
+  assert.deepEqual(loadTestDatabaseConfiguration(localEnvironment()), {
+    database: {
+      connectionString:
+        "postgresql://tianxing_app:local-secret@127.0.0.1:55432/tianxing",
+      loginUser: "tianxing_app",
+      databaseName: "tianxing",
+      host: "127.0.0.1",
+    },
+    connectionTimeoutMs: 2000,
+    statementTimeoutMs: 2000,
+    poolMax: 1,
+    ssl: false,
+  });
+});
+
+test("rejects remote, implicit-port, alternate-role, query, and alternate database local URLs", () => {
+  for (const value of [
+    "postgresql://tianxing_app:secret@db.vendor.example:5432/tianxing",
+    "postgresql://tianxing_app:secret@127.0.0.1/tianxing",
+    "postgresql://other_role:secret@127.0.0.1:5432/tianxing",
+    "postgresql://tianxing_app:secret@127.0.0.1:5432/other",
+    "postgresql://tianxing_app:secret@127.0.0.1:5432/tianxing?sslmode=require",
+  ]) {
+    assert.throws(
+      () => loadTestDatabaseConfiguration({
+        ...localEnvironment(),
+        LOCAL_SYNTHETIC_DATABASE_URL: value,
+      }),
+      (error: unknown) => error instanceof RuntimeEnvironmentConfigurationError &&
+        error.variable === "LOCAL_SYNTHETIC_DATABASE_URL",
+    );
+  }
+});
+
 test("rejects old multi-account variables and unsafe canonical endpoints", () => {
   for (const variable of [
     "TEST_IDENTITY_DATABASE_URL",
@@ -96,5 +131,17 @@ function validEnvironment(): Record<string, string | undefined> {
     TEST_DATABASE_CONNECTION_TIMEOUT_MS: "2000",
     TEST_DATABASE_STATEMENT_TIMEOUT_MS: "5000",
     TEST_DATABASE_POOL_MAX: "1",
+  };
+}
+
+function localEnvironment(): Record<string, string | undefined> {
+  return {
+    APP_ENV: "development",
+    NODE_ENV: "development",
+    APP_RUNTIME_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
+    LOCAL_SYNTHETIC_DATABASE_URL:
+      "postgresql://tianxing_app:local-secret@127.0.0.1:55432/tianxing",
+    LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS: "2000",
   };
 }

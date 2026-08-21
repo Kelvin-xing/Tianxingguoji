@@ -13,7 +13,7 @@
 建立三个互斥环境组合，并使 Vercel 在 `NODE_ENV=production` 下作为测试环境运行：
 
 ```text
-development / local-synthetic / local-synthetic
+development / local-synthetic / database-test
 test        / test-database   / database-test
 production  / production-aws  / cognito
 ```
@@ -34,7 +34,7 @@ local、Vercel test 与 AWS production 使用同一个 canonical PostgreSQL logi
    constant-shape denial、事务锁定失败计数和 opaque session。
 5. 新增独立 test provision CLI。明文密码只从一次性进程输入读取；只接受 synthetic `.invalid` 邮箱；
    migration owner 不进入 Web runtime。
-6. 更新 `/api/v1/auth/login` POST：local 仍接 role，database-test 只接 email/password，Cognito 仍走 PKCE。
+6. 更新 `/api/v1/auth/login` POST：development 与 test 的 database-test 只接 email/password，Cognito 仍走 PKCE。
 7. 增加配置、service、repository、route、migration、provision 和 session 聚焦测试。
 
 后端不得修改登录页面、通用表单样式、Sidebar 或其他前端消费者。
@@ -46,7 +46,7 @@ local、Vercel test 与 AWS production 使用同一个 canonical PostgreSQL logi
 1. 登录页按 `AUTH_MODE` 渲染三种互斥入口。
 2. `database-test` 只显示 email/password；使用正确 autocomplete，提交期间禁用并保持稳定布局。
 3. 所有无效凭据显示同一用户文案，不展示异常、SQL、配置名、账号存在性或 lockout 内部状态。
-4. local role selector 继续只在本机开发模式出现；Cognito 生产文案和入口保持不变。
+4. 本地和 Vercel test 复用 database-test 表单，不显示 role selector；Cognito 生产文案和入口保持不变。
 5. 覆盖 keyboard、screen reader label、mobile、loading、invalid/session-expired/configuration 状态。
 
 前端不得增加 role 参数、在 localStorage/sessionStorage 保存密码、绕过 `/api/v1/auth/login`、读取数据库
@@ -60,7 +60,7 @@ ENV-01A 已冻结以下三组合法组合，任何交叉组合均抛出统一的
 
 | APP_ENV | NODE_ENV | APP_RUNTIME_MODE | AUTH_MODE | VERCEL | VERCEL_ENV |
 | --- | --- | --- | --- | --- | --- |
-| `development` | `development` | `local-synthetic` | `local-synthetic` | 不得存在 | 不得存在 |
+| `development` | `development` | `local-synthetic` | `database-test` | 不得存在 | 不得存在 |
 | `test` | `production` | `test-database` | `database-test` | `1` | `preview` 或 `production` |
 | `production` | `production` | `production-aws` | `cognito` | 不得存在 | 不得存在 |
 
@@ -82,6 +82,11 @@ Vercel test Web runtime 的变量合同为：
 `TEST_DATABASE_EXPECTED_NAME`，且不能是 `postgres`、`template0`、`template1` 或 `tianxing`。URL 不得带
 query/hash，解码后的 login user 必须严格为 `tianxing_app`，不能使用 migration、provision 或 NOLOGIN group
 role。TLS 始终使用 `rejectUnauthorized=true`，不提供关闭开关。
+
+development Web runtime 从 `LOCAL_SYNTHETIC_DATABASE_URL` 读取同一个 database-test repository endpoint；
+URL 必须使用显式端口、database=`tianxing`、login user=`tianxing_app`、无 query/hash，并且 host 只能是
+`127.0.0.1`、`localhost` 或 `[::1]`。本地固定 `ssl=false`，不能读取 `TEST_DATABASE_URL` 作为 fallback。
+本地 schema 必须由与 Vercel test 相同的 approved one-role baseline 和 Release 1 synthetic seed 定义安装。
 
 `TEST_DATABASE_CONNECTION_TIMEOUT_MS` 允许 `250..5000`，
 `TEST_DATABASE_STATEMENT_TIMEOUT_MS` 允许 `1000..10000`；Web runtime 与 provision CLI 共用该边界。
@@ -116,7 +121,7 @@ URL query、pooler 特例和大于 1 的连接池均延后到 ENV-01B，不在�
 - `POST /api/v1/auth/login` 的 database-test 模式只接受
   `application/x-www-form-urlencoded` 的唯一 `email`/`password` 字段，流式正文上限 4 KiB；成功 303 到
   `/today`。配置错误映射 `configuration`，数据库断连、timeout 和意外 Repository 错误映射
-  `service_unavailable`。local role 和 Cognito 分支保持原有输入语义。
+  `service_unavailable`。development 复用该分支，Cognito 分支保持原有输入语义。
 - provision CLI 已切换到 `tianxing_app`，只调用 baseline 安装的受保护 verifier 函数；它不会创建 User、Membership、Role
   或业务数据。密码只从标准输入读取，并在使用后清零。
 

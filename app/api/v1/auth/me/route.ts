@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import { handleApiRequest } from "@/modules/shared/public";
 import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
+import { isIdentityServiceError } from "@/modules/identity/server";
 import { createApiError } from "@/modules/shared/public";
 import { workspaceCapabilitiesForRole } from "@/modules/access/public";
 
@@ -26,7 +26,9 @@ export async function GET(request: Request): Promise<Response> {
         capabilities: workspaceCapabilitiesForRole(actor.role),
       };
     } catch (error) {
-      if (error instanceof IdentityServiceError) throw createApiError("UNAUTHENTICATED");
+      if (isIdentityServiceError(error, "SESSION_NOT_FOUND")) {
+        throw createApiError("UNAUTHENTICATED");
+      }
       if (error instanceof IdentityRuntimeUnavailable) throw createApiError("SERVICE_UNAVAILABLE");
       throw createApiError("SERVICE_UNAVAILABLE");
     }

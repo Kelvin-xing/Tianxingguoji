@@ -9,8 +9,8 @@ import {
 import { LocalSyntheticLoginService } from "../../../modules/identity/infrastructure/local-synthetic-login.ts";
 import { InMemoryIdentitySessionRepository } from "../../../modules/identity/infrastructure/in-memory-session-repository.ts";
 
-test("selects authentication adapters explicitly and blocks local auth in production", () => {
-  assert.equal(loadAuthMode(localEnvironment()), "local-synthetic");
+test("selects database-test locally and blocks unsupported environment combinations", () => {
+  assert.equal(loadAuthMode(localEnvironment()), "database-test");
   assert.equal(loadAuthMode({
     APP_ENV: "production",
     APP_RUNTIME_MODE: "production-aws",
@@ -72,7 +72,7 @@ function localEnvironment(): Record<string, string | undefined> {
   return {
     APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
-    AUTH_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
     NODE_ENV: "development",
   };
 }

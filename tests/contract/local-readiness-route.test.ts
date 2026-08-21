@@ -91,7 +91,7 @@ function localEnvironment(): Record<string, string | undefined> {
   return {
     APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
-    AUTH_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
     NODE_ENV: "development",
   };
 }

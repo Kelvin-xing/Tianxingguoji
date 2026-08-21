@@ -34,28 +34,42 @@ test("local compose initializes versioned S3 and a scan queue with a DLQ", async
 
 test("local database bootstrap uses and hardens only the canonical application role", async () => {
   const compose = await source("compose.local.yml");
-  const roles = await source("infra/local/postgres/init/001-local-roles.sql");
+  const roles = await source("infra/local/postgres/init/001-local-roles.sh");
+  const healthcheck = await source("infra/local/postgres/healthcheck.sh");
   const packageJson = JSON.parse(await source("package.json"));
 
-  assert.match(compose, /POSTGRES_USER:\s*tianxing_app/);
+  assert.match(compose, /POSTGRES_USER:\s*postgres/);
   assert.match(compose, /POSTGRES_PASSWORD_FILE:\s*\/run\/secrets\/local_postgres_password/);
   assert.match(compose, /local_postgres_password:\s*\n\s+environment:\s*LOCAL_SYNTHETIC_POSTGRES_PASSWORD/);
   assert.doesNotMatch(compose, /POSTGRES_PASSWORD:/);
-  assert.match(compose, /pg_isready -U tianxing_app -d tianxing/);
+  assert.match(compose, /tianxing-postgres-healthcheck/);
+  assert.doesNotMatch(compose, /pg_isready/);
   assert.doesNotMatch(compose, /tianxing_migration|tianxing-local-migration-only/);
   assert.match(packageJson.scripts["local:up"], /--env-file \.env\.local/);
   assert.match(packageJson.scripts["local:ps"], /--env-file \.env\.local/);
   assert.match(packageJson.scripts["local:down"], /--env-file \.env\.local/);
-  assert.match(roles, /ALTER ROLE tianxing_app WITH\s+LOGIN/);
+  assert.match(roles, /CREATE ROLE tianxing_app WITH\s+LOGIN/);
+  assert.match(roles, /set -eu/);
+  assert.match(roles, /--set=ON_ERROR_STOP=1/);
+  assert.match(roles, /PASSWORD :'app_password'/);
   assert.match(roles, /NOSUPERUSER/);
   assert.match(roles, /NOCREATEDB/);
   assert.match(roles, /NOCREATEROLE/);
   assert.match(roles, /NOINHERIT/);
   assert.match(roles, /NOREPLICATION/);
   assert.match(roles, /NOBYPASSRLS/);
-  assert.doesNotMatch(roles, /CREATE ROLE/);
-  assert.doesNotMatch(roles, /PASSWORD|tianxing_migration|tianxing_test_/);
+  assert.match(roles, /ALTER DATABASE tianxing OWNER TO tianxing_app/);
+  assert.match(roles, /ALTER ROLE postgres NOLOGIN/);
+  assert.match(roles, /POSTGRES_PASSWORD_FILE/);
+  assert.doesNotMatch(roles, /tianxing_migration|tianxing_test_|not-a-secret/);
   assert.doesNotMatch(roles, /INSERT\s+INTO/i);
+  assert.match(healthcheck, /--username=tianxing_app/);
+  assert.match(healthcheck, /NOT application_role\.rolsuper/);
+  assert.match(healthcheck, /NOT application_role\.rolinherit/);
+  assert.match(healthcheck, /owner_role\.rolname = 'tianxing_app'/);
+  assert.match(healthcheck, /bootstrap_role\.rolname = 'postgres'/);
+  assert.match(healthcheck, /NOT bootstrap_role\.rolcanlogin/);
+  assert.match(healthcheck, /count\(\*\).*rolcanlogin\) = 1/);
 });
 
 test("the committed environment example is explicit and local-only", async () => {

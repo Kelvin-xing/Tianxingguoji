@@ -33,6 +33,17 @@ test("uses the canonical one-role Neon target", () => {
   assert.deepEqual(readDatabaseTestProvisionTarget(validEnvironment()), TARGET);
 });
 
+test("uses the same provision contract for the canonical loopback development target", () => {
+  assert.deepEqual(readDatabaseTestProvisionTarget(localEnvironment()), {
+    connectionString: LOCAL_BASELINE_URL,
+    loginUser: "tianxing_app",
+    databaseName: "tianxing",
+    connectionTimeoutMs: 5_000,
+    statementTimeoutMs: 10_000,
+    ssl: false,
+  });
+});
+
 test("rejects legacy, Vercel, and non-test provision targets", () => {
   for (const environment of [
     { ...validEnvironment(), TEST_PROVISION_DATABASE_URL: BASELINE_URL },
@@ -252,6 +263,11 @@ test("package alias owns exactly one password-stdin flag", async () => {
   assert.ok(command);
   assert.equal(command.match(/--password-stdin/g)?.length, 1);
   assert.doesNotMatch(command, /\s--\s/);
+  const localCommand = packageJson.scripts["db:provision:local-identity"];
+  assert.ok(localCommand);
+  assert.equal(localCommand.match(/--password-stdin/g)?.length, 1);
+  assert.match(localCommand, /--env-file=\.env\.migration\.local/);
+  assert.doesNotMatch(localCommand, /\.env\.migration\.neon-test|\s--\s/);
 });
 
 test("pnpm 10 forwards the supported email argument without a bare separator", async () => {
@@ -345,6 +361,8 @@ test("provision CLI requires the baseline marker and never recreates identities 
 
 const BASELINE_URL =
   "postgresql://tianxing_app:synthetic-secret@ep-synthetic-123.c-2.us-east-1.aws.neon.tech:5432/txgj_env01_test";
+const LOCAL_BASELINE_URL =
+  "postgresql://tianxing_app:synthetic-secret@127.0.0.1:5432/tianxing";
 const TARGET: DatabaseTestProvisionTarget = Object.freeze({
   connectionString: BASELINE_URL,
   loginUser: "tianxing_app",
@@ -486,6 +504,15 @@ function validEnvironment(): Record<string, string | undefined> {
     NODE_ENV: "production",
     ONE_ROLE_BASELINE_EXPECTED_DATABASE: "txgj_env01_test",
     ONE_ROLE_BASELINE_DATABASE_URL: BASELINE_URL,
+  };
+}
+
+function localEnvironment(): Record<string, string | undefined> {
+  return {
+    APP_ENV: "development",
+    NODE_ENV: "development",
+    ONE_ROLE_BASELINE_EXPECTED_DATABASE: "tianxing",
+    ONE_ROLE_BASELINE_DATABASE_URL: LOCAL_BASELINE_URL,
   };
 }
 
