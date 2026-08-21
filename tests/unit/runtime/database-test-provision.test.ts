@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -248,6 +251,63 @@ test("package alias owns exactly one password-stdin flag", async () => {
   const command = packageJson.scripts["db:provision:test-identity"];
   assert.ok(command);
   assert.equal(command.match(/--password-stdin/g)?.length, 1);
+  assert.doesNotMatch(command, /\s--\s/);
+});
+
+test("pnpm 10 forwards the supported email argument without a bare separator", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "tianxing-pnpm-argv-"));
+  try {
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      packageManager: "pnpm@10.34.4",
+      scripts: { capture: "node capture.mjs --password-stdin" },
+    }));
+    await writeFile(join(directory, "capture.mjs"), [
+      'import { writeFileSync } from "node:fs";',
+      'writeFileSync(new URL("argv.json", import.meta.url), JSON.stringify(process.argv.slice(2)));',
+      "",
+    ].join("\n"));
+
+    assert.equal((await runPnpm(["--version"], directory)).trim(), "10.34.4");
+    await runPnpm([
+      "run",
+      "capture",
+      "--email=founder@env01.test.invalid",
+    ], directory);
+    const supportedArguments = JSON.parse(
+      await readFile(join(directory, "argv.json"), "utf8"),
+    ) as string[];
+    assert.deepEqual(supportedArguments, [
+      "--password-stdin",
+      "--email=founder@env01.test.invalid",
+    ]);
+    assert.deepEqual(readDatabaseTestProvisionArguments(supportedArguments), {
+      normalizedEmail: "founder@env01.test.invalid",
+      rotate: false,
+    });
+
+    await unlink(join(directory, "argv.json"));
+    await runPnpm([
+      "run",
+      "capture",
+      "--",
+      "--email=founder@env01.test.invalid",
+    ], directory);
+    const rejectedArguments = JSON.parse(
+      await readFile(join(directory, "argv.json"), "utf8"),
+    ) as string[];
+    assert.deepEqual(rejectedArguments, [
+      "--password-stdin",
+      "--",
+      "--email=founder@env01.test.invalid",
+    ]);
+    assert.throws(
+      () => readDatabaseTestProvisionArguments(rejectedArguments),
+      DatabaseTestProvisionOperationError,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("runbook reads the provision password silently without an inline secret", async () => {
@@ -263,10 +323,11 @@ test("runbook reads the provision password silently without an inline secret", a
   assert.match(code, /printf '%s\\n' "\$ENV01_TEST_PASSWORD"/);
   assert.match(
     code,
-    /pnpm db:provision:test-identity -- --email=founder@env01\.test\.invalid/,
+    /pnpm db:provision:test-identity --email=founder@env01\.test\.invalid/,
   );
   assert.match(code, /ENV01_TEST_PASSWORD=''\nunset ENV01_TEST_PASSWORD/);
   assert.doesNotMatch(code, /--password-stdin|echo\s|<一次性|<password|['"]password['"]/i);
+  assert.doesNotMatch(code, /db:provision:test-identity\s+--\s+/);
 });
 
 test("provision CLI requires the baseline marker and never recreates identities or database roles", async () => {
@@ -430,4 +491,29 @@ function validEnvironment(): Record<string, string | undefined> {
 
 async function* streamOf(chunk: Buffer): AsyncIterable<Buffer> {
   yield chunk;
+}
+
+async function runPnpm(arguments_: readonly string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("pnpm", arguments_, {
+      cwd,
+      env: {
+        HOME: cwd,
+        PATH: process.env.PATH,
+        CI: "1",
+        NODE_ENV: "test",
+      },
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (code: number | null) => {
+      if (code === 0) resolve(stdout);
+      else reject(new Error("Offline pnpm argv contract failed."));
+    });
+  });
 }
