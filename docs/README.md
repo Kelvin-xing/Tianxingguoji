@@ -34,7 +34,7 @@
 [`implementation/LOCAL-01_SYNTHETIC_FOUNDATION.md`](implementation/LOCAL-01_SYNTHETIC_FOUNDATION.md)。
 本地空库迁移执行与权限证据见
 [`implementation/LOCAL-02_DATABASE_MIGRATION.md`](implementation/LOCAL-02_DATABASE_MIGRATION.md)。
-身份模式开关、本地角色登录和 Cognito 回访登录边界见
+身份模式开关、本地 database-test 登录和 Cognito 回访登录边界见
 [`implementation/LOCAL-03_IDENTITY_MODE.md`](implementation/LOCAL-03_IDENTITY_MODE.md)。
 本地合成身份、最小权限数据库账号和持久化 Session 见
 [`implementation/LOCAL-04_IDENTITY_POSTGRESQL.md`](implementation/LOCAL-04_IDENTITY_POSTGRESQL.md)。

@@ -52,7 +52,7 @@ function environment(): Record<string, string> {
   return {
     APP_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
-    AUTH_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
     NODE_ENV: "development",
     ONE_ROLE_BASELINE_EXPECTED_DATABASE: "tianxing",
     ONE_ROLE_BASELINE_DATABASE_URL: ownerUrl,

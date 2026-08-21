@@ -5,15 +5,19 @@ import { createConnection } from "node:net";
 import { Client } from "pg";
 
 import {
+  NEON_TEST_ORGANIZATION,
+  NEON_TEST_PRINCIPALS,
+  NEON_TEST_STUDENTS,
+} from "../../scripts/db/neon-test-synthetic-fixture.ts";
+
+import {
   loadLocalSyntheticConfig,
   type LocalSyntheticConfig,
 } from "./local-synthetic-config.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
-const LOCAL_RELEASE1_STUDENT_IDS = Object.freeze([
-  "20000000-0000-4000-8000-000000000101",
-  "20000000-0000-4000-8000-000000000102",
-]);
+const RELEASE1_FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder");
+if (!RELEASE1_FOUNDER) throw new Error("Release 1 synthetic founder is required.");
 export type LocalDependencyState = "ready" | "unavailable";
 
 export interface LocalSyntheticReadinessReport {
@@ -40,11 +44,14 @@ export interface LocalSyntheticReadinessProbes {
 export async function checkLocalSyntheticReadiness(
   options: Readonly<{
     environment?: Environment;
-    probes?: LocalSyntheticReadinessProbes;
+    probes?: Partial<LocalSyntheticReadinessProbes>;
   }> = {},
 ): Promise<LocalSyntheticReadinessReport> {
   const config = loadLocalSyntheticConfig(options.environment);
-  const probes = options.probes ?? DEFAULT_PROBES;
+  const probes: LocalSyntheticReadinessProbes = Object.freeze({
+    ...DEFAULT_PROBES,
+    ...options.probes,
+  });
   const [postgresql, postgresqlIdentity, postgresqlApplication, localstack, clamav] = await Promise.allSettled([
     probes.postgresql(config),
     probes.identityPostgresql(config),
@@ -109,13 +116,23 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
       connected = true;
       await client.query("BEGIN");
       transaction = true;
-      await client.query("SELECT current_user, set_config('app.organization_id', $1, true)", [
-        "10000000-0000-4000-8000-000000000001",
-      ]);
+      await client.query(
+        `SELECT current_user,
+                set_config('app.organization_id', $1, true),
+                set_config('app.actor_user_id', $2, true)`,
+        [NEON_TEST_ORGANIZATION.id, RELEASE1_FOUNDER.userId],
+      );
       const identity = await client.query<{ current_user: string }>("SELECT current_user");
       const result = await client.query<{ count: string }>(
-        `SELECT count(*)::text AS count
-           FROM identity_users AS identity_user
+        `WITH expected_principals(user_id, normalized_email, organization_role) AS (
+           SELECT *
+             FROM unnest($2::uuid[], $3::text[], $4::text[])
+         )
+         SELECT count(*)::text AS count
+           FROM expected_principals AS expected
+           JOIN identity_users AS identity_user
+             ON identity_user.id = expected.user_id
+            AND identity_user.normalized_email = expected.normalized_email
            JOIN access_organization_memberships AS membership
              ON membership.user_id = identity_user.id
             AND membership.status = 'active'
@@ -124,15 +141,20 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
             AND role_binding.organization_id = membership.organization_id
             AND role_binding.user_id = membership.user_id
             AND role_binding.status = 'active'
+            AND role_binding.role = expected.organization_role
           WHERE membership.organization_id = $1
-            AND identity_user.status = 'active'
-            AND identity_user.normalized_email LIKE '%@local.invalid'`,
-        ["10000000-0000-4000-8000-000000000001"],
+            AND identity_user.status = 'active'`,
+        [
+          NEON_TEST_ORGANIZATION.id,
+          NEON_TEST_PRINCIPALS.map(({ userId }) => userId),
+          NEON_TEST_PRINCIPALS.map(({ email }) => email),
+          NEON_TEST_PRINCIPALS.map(({ role }) => role),
+        ],
       );
       await client.query("SELECT session_kind FROM identity_sessions LIMIT 0");
       if (
         identity.rows[0]?.current_user !== "tianxing_app" ||
-        Number(result.rows[0]?.count) !== 5
+        Number(result.rows[0]?.count) !== NEON_TEST_PRINCIPALS.length
       ) {
         throw new Error("Local identity readiness result was invalid.");
       }
@@ -165,12 +187,12 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
       connected = true;
       await client.query("BEGIN");
       transaction = true;
-      await client.query("SELECT current_user, set_config('app.organization_id', $1, true)", [
-        "10000000-0000-4000-8000-000000000001",
-      ]);
-      await client.query("SELECT set_config('app.actor_user_id', $1, true)", [
-        "20000000-0000-4000-8000-000000000101",
-      ]);
+      await client.query(
+        `SELECT current_user,
+                set_config('app.organization_id', $1, true),
+                set_config('app.actor_user_id', $2, true)`,
+        [NEON_TEST_ORGANIZATION.id, RELEASE1_FOUNDER.userId],
+      );
       const identity = await client.query<{ current_user: string }>("SELECT current_user");
       const result = await client.query<{
         students: number;
@@ -181,11 +203,11 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
                   WHERE id = ANY($1::uuid[])
                     AND status = 'active') AS students,
                 (SELECT count(*)::int FROM cases_list_approved_manifests()) AS manifests`,
-        [LOCAL_RELEASE1_STUDENT_IDS],
+        [NEON_TEST_STUDENTS.map(({ id }) => id)],
       );
       if (
         identity.rows[0]?.current_user !== "tianxing_app" ||
-        result.rows[0]?.students !== LOCAL_RELEASE1_STUDENT_IDS.length ||
+        result.rows[0]?.students !== NEON_TEST_STUDENTS.length ||
         result.rows[0]?.manifests !== 1
       ) {
         throw new Error("Local application readiness result was invalid.");

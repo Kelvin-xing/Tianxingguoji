@@ -164,7 +164,10 @@ export function readDatabaseTestProvisionTarget(
       throw new DatabaseTestProvisionError();
     }
     const target = readOneRoleBaselineTarget(environment);
-    if (environment.APP_ENV?.trim() !== "test" || target.ssl === false) {
+    const appEnvironment = environment.APP_ENV?.trim();
+    const validTestTarget = appEnvironment === "test" && target.ssl !== false;
+    const validLocalTarget = appEnvironment === "development" && target.ssl === false;
+    if (!validTestTarget && !validLocalTarget) {
       throw new DatabaseTestProvisionError();
     }
     return Object.freeze({

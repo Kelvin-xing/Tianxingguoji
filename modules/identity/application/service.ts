@@ -89,6 +89,36 @@ export class IdentityServiceError extends Error {
   }
 }
 
+export function isIdentityServiceError(
+  error: unknown,
+  code?: IdentityServiceErrorCode,
+): error is IdentityServiceError {
+  if (!(error instanceof Error) || error.name !== "IdentityServiceError") return false;
+  const candidate = (error as Error & { readonly code?: unknown }).code;
+  if (
+    typeof candidate !== "string" ||
+    !IDENTITY_SERVICE_ERROR_CODES.has(candidate as IdentityServiceErrorCode)
+  ) {
+    return false;
+  }
+  return code === undefined || candidate === code;
+}
+
+const IDENTITY_SERVICE_ERROR_CODES = new Set<IdentityServiceErrorCode>([
+  "FOUNDER_REQUIRED",
+  "INVITE_INVALID",
+  "INVITE_ALREADY_EXISTS",
+  "INVITE_NOT_FOUND",
+  "INVITE_NOT_REDEEMABLE",
+  "INVITE_EXPIRED",
+  "IDENTITY_MISMATCH",
+  "TOTP_REQUIRED",
+  "SESSION_LIMIT_REACHED",
+  "SESSION_NOT_FOUND",
+  "COGNITO_PROVISION_FAILED",
+  "INVITE_DELIVERY_FAILED",
+]);
+
 export interface CreatedFounderInvite {
   readonly inviteId: string;
   readonly targetUserId: string;

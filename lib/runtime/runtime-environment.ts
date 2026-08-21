@@ -71,7 +71,7 @@ export function loadRuntimeEnvironment(
   if (appEnvironment === "development") {
     requireValue(nodeEnvironment, "development", "NODE_ENV");
     requireValue(appRuntimeMode, "local-synthetic", "APP_RUNTIME_MODE");
-    requireValue(authMode, "local-synthetic", "AUTH_MODE");
+    requireValue(authMode, "database-test", "AUTH_MODE");
     rejectPresent(environment, "VERCEL");
     rejectPresent(environment, "VERCEL_ENV");
     rejectLegacyLocalDatabaseUrls(environment);

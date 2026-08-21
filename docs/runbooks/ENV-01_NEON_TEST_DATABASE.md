@@ -327,6 +327,14 @@ pnpm test:database-test-provision-postgresql
 
 该测试使用一次性 `postgres:17.10-alpine3.24`、tmpfs 和随机 loopback 端口，真实安装 one-role baseline、写入纯合成 seed、创建 founder verifier、验证失败回滚无额外 credential 残留，并验证重复 `--password-stdin` 兼容路径。测试结束无论成功失败都删除临时容器。
 
+database-test 登录或 session repository 发生变化时，还必须运行：
+
+```bash
+pnpm test:database-test-login-postgresql
+```
+
+该测试在另一套一次性 PostgreSQL 17.10 环境中真实覆盖：repository 从唯一 active Organization 和已验证 User/Membership/RoleBinding 内部建立 transaction-local tenant/actor context；正确口令创建并解析 opaque session；同一 User 的成功登录由 transaction advisory lock 串行化，并发重登只保留一个 active session；第 4 次失败仍未锁定、第 5 次锁定；中途 session 写入失败完整回滚；外部传入或不匹配的 Organization 不能构造登录上下文。测试及输出只报告聚合状态，不输出密码、verifier、session secret 或数据库业务行。
+
 ## 8. 安全证据模板
 
 Migration 示例（所有值均为非秘密元数据）：

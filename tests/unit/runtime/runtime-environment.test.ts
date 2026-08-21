@@ -12,7 +12,7 @@ test("freezes the only three legal runtime environment combinations", () => {
     appEnvironment: "development",
     nodeEnvironment: "development",
     appRuntimeMode: "local-synthetic",
-    authMode: "local-synthetic",
+    authMode: "database-test",
     vercel: false,
   });
   assert.deepEqual(loadRuntimeEnvironment(testEnvironment()), {
@@ -36,7 +36,7 @@ test("rejects every cross-environment mode substitution fail closed", () => {
     [developmentEnvironment(), "APP_ENV", "test", "NODE_ENV"],
     [developmentEnvironment(), "NODE_ENV", "production", "NODE_ENV"],
     [developmentEnvironment(), "APP_RUNTIME_MODE", "test-database", "APP_RUNTIME_MODE"],
-    [developmentEnvironment(), "AUTH_MODE", "database-test", "AUTH_MODE"],
+    [developmentEnvironment(), "AUTH_MODE", "local-synthetic", "AUTH_MODE"],
     [testEnvironment(), "NODE_ENV", "development", "NODE_ENV"],
     [testEnvironment(), "APP_RUNTIME_MODE", "production-aws", "APP_RUNTIME_MODE"],
     [testEnvironment(), "AUTH_MODE", "local-synthetic", "AUTH_MODE"],
@@ -196,7 +196,7 @@ function developmentEnvironment(): Record<string, string | undefined> {
     APP_ENV: "development",
     NODE_ENV: "development",
     APP_RUNTIME_MODE: "local-synthetic",
-    AUTH_MODE: "local-synthetic",
+    AUTH_MODE: "database-test",
   };
 }
 

@@ -19,6 +19,7 @@ import {
   createNeonTestSeedEvidence,
   readNeonTestSeedMode,
   readNeonTestSeedTarget,
+  readRelease1SyntheticSeedTarget,
   validateNeonTestRuntimeBoundary,
 } from "../../../scripts/db/seed-neon-test-release1.ts";
 
@@ -39,6 +40,22 @@ test("requires one explicit Neon seed mode and the canonical baseline target", (
   });
   assert.throws(
     () => readNeonTestSeedTarget({ ...validEnvironment(), VERCEL: "1" }),
+    NeonTestSeedSafetyError,
+  );
+});
+
+test("uses the same Release 1 synthetic seed definition on the loopback local baseline", () => {
+  assert.deepEqual(readRelease1SyntheticSeedTarget(localEnvironment()), {
+    connectionString:
+      "postgresql://tianxing_app:synthetic-secret@127.0.0.1:5432/tianxing",
+    host: "127.0.0.1",
+    port: 5432,
+    database: "tianxing",
+    user: "tianxing_app",
+    ssl: false,
+  });
+  assert.throws(
+    () => readNeonTestSeedTarget(localEnvironment()),
     NeonTestSeedSafetyError,
   );
 });
@@ -208,6 +225,11 @@ test("does not import local seeds or create credentials, sessions, cases, or evi
     packageJson.scripts?.["test:neon-test-seed-postgresql"],
     "node --test tests/integration/neon-test-seed-postgresql.test.ts",
   );
+  assert.equal(
+    packageJson.scripts?.["db:seed:local-release1"],
+    "node --env-file=.env.migration.local scripts/db/seed-neon-test-release1.ts --apply",
+  );
+  assert.equal(packageJson.scripts?.["db:seed:local-identity"], "pnpm db:seed:local-release1");
 });
 
 test("emits aggregate seed evidence without rows, email, hostname, or secrets", () => {
@@ -232,6 +254,16 @@ function validEnvironment(): Record<string, string | undefined> {
     NODE_ENV: "production",
     ONE_ROLE_BASELINE_EXPECTED_DATABASE: "txgj_env01_test",
     ONE_ROLE_BASELINE_DATABASE_URL: BASELINE_URL,
+  };
+}
+
+function localEnvironment(): Record<string, string | undefined> {
+  return {
+    APP_ENV: "development",
+    NODE_ENV: "development",
+    ONE_ROLE_BASELINE_EXPECTED_DATABASE: "tianxing",
+    ONE_ROLE_BASELINE_DATABASE_URL:
+      "postgresql://tianxing_app:synthetic-secret@127.0.0.1:5432/tianxing",
   };
 }
 

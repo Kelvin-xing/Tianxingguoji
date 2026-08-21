@@ -7,25 +7,28 @@ LocalStack S3/SQS 和 ClamAV。环境只允许确定性合成数据，不连接 
 AWS、Vercel 或其他外部业务系统。
 
 本地模式必须显式设置 `APP_RUNTIME_MODE=local-synthetic` 和
-`AUTH_MODE=local-synthetic`。应用在
+`AUTH_MODE=database-test`。`local-synthetic` 在这里表示本机回环依赖和纯合成数据，
+不再表示角色选择登录。应用在
 `NODE_ENV=production`、模式缺失或端点不是回环地址时拒绝加载本地配置。
 生产 RDS 配置和现有 `/api/v1/health` 契约不受本手册影响。
 
-`AUTH_MODE` 是服务端身份适配器开关：`local-synthetic` 显示本地角色登录，
-`cognito` 关闭本地角色入口并使用 Cognito Managed Login。切换后必须重启 Next.js；
-浏览器不能修改该值。生产环境使用 `local-synthetic` 会 fail closed。
+本地与 Vercel test 复用 `database-test` 邮箱、密码 verifier 和 opaque database Session，
+但数据库端点严格隔离：本地只能连接 PostgreSQL loopback 且 `ssl=false`；Vercel test
+只能连接独立远端测试库且强制 TLS。生产继续只允许 Cognito。浏览器不能提交 role、
+organization_id 或跳转地址，组织和角色由服务端在验证 credential 后推导。
 
 ## 运行资源
 
 | 服务 | 本机端口 | 本地用途 |
 |---|---:|---|
-| PostgreSQL 17.10 | `127.0.0.1:5432` | 已重放 Release 1 迁移，后续保存合成业务数据 |
+| PostgreSQL 17.10 | `127.0.0.1:5432` | 由与 Vercel test 相同的 one-role baseline 安装，保存合成业务数据 |
 | LocalStack S3/SQS | `127.0.0.1:4566` | 模拟私有文档对象存储、扫描队列和死信队列 |
 | ClamAV 1.4.5 | `127.0.0.1:3310` | 为后续扫描 Worker 提供 `clamd` 协议 |
 
 Compose 首次创建以下本地资源：
 
-- PostgreSQL 数据库 `tianxing`、迁移账号和无表权限的健康探测账号；
+- PostgreSQL 数据库 `tianxing` 和唯一 login/owner `tianxing_app`；
+- PostgreSQL 镜像的 `postgres` 角色只在首次初始化时充当 bootstrap superuser，初始化完成后固定为 `NOLOGIN`，不能作为应用或日常 operator 账号；
 - 启用版本控制的 S3 桶 `tianxing-local-documents`；
 - SQS 队列 `tianxing-local-document-scan`；
 - 死信队列 `tianxing-local-document-scan-dlq`，主队列在三次失败后转入；
@@ -63,13 +66,23 @@ pnpm local:ps
 ```sh
 pnpm db:plan:local
 pnpm db:baseline:local:dry-run
-pnpm db:baseline:local
-pnpm db:seed:local-identity
+ONE_ROLE_BASELINE_APPLY_CONFIRM=tianxing-one-role-v1 pnpm db:baseline:local
+pnpm db:seed:local-release1
+read -r -s 'LOCAL_DATABASE_TEST_PASSWORD?Local database-test password: '
+printf '\n'
+printf '%s\n' "$LOCAL_DATABASE_TEST_PASSWORD" \
+  | pnpm db:provision:local-identity --email=founder@env01.test.invalid
+LOCAL_DATABASE_TEST_PASSWORD=''
+unset LOCAL_DATABASE_TEST_PASSWORD
 pnpm dev
 ```
 
-打开 `http://localhost:3000/login`，选择 Founder、Admin、Advisor、Data reviewer
-或 Contractor，再点击“使用本地角色登入”。本地身份和会话保存在 PostgreSQL；
+密码由操作员隐藏输入，只通过标准输入传入，不得写入 Git、环境模板或命令参数。
+`founder@env01.test.invalid` 是本地与 Vercel test 共用的固定纯合成 founder 标识；两个环境
+使用不同的数据库 URL 和密码。
+
+打开 `http://localhost:3000/login`，使用该邮箱和刚 provision 的本机密码登录。
+本地身份、verifier 和会话保存在 PostgreSQL；
 只要数据库卷仍存在且 Session 未过期或撤销，重启开发服务器不会使它失效。
 
 检查原有存活接口：
@@ -107,8 +120,9 @@ docker compose -f compose.local.yml exec localstack \
   awslocal sqs get-queue-url --queue-name tianxing-local-document-scan-dlq
 ```
 
-PostgreSQL 的 Compose 健康检查执行 `pg_isready`；应用 readiness 使用同一个
-`tianxing_app` 连接执行身份和数据检查。LocalStack 的 Compose 健康检查要求桶、主队列
+PostgreSQL 的 Compose 健康检查使用密码以 `tianxing_app` 建立真实 SQL 连接，并同时验证
+唯一 login、精确角色属性、数据库 owner 和 `postgres NOLOGIN` bootstrap 合同；因此初始化 SQL
+失败不会再被单纯的端口存活检查掩盖。应用 readiness 使用同一个 `tianxing_app` 连接执行身份和数据检查。LocalStack 的 Compose 健康检查要求桶、主队列
 和死信队列都已存在。应用通过 LocalStack 健康 API 检查 S3/SQS 服务状态。
 ClamAV 应用探测发送官方 `zPING\0` 命令并要求 `PONG`。
 
@@ -120,8 +134,7 @@ ClamAV 应用探测发送官方 `zPING\0` 命令并要求 `PONG`。
 ```sh
 pnpm db:baseline:plan
 pnpm db:baseline:local:dry-run
-pnpm db:baseline:local
-pnpm db:seed:local-identity
+ONE_ROLE_BASELINE_APPLY_CONFIRM=tianxing-one-role-v1 pnpm db:baseline:local
 pnpm db:seed:local-release1
 ```
 
@@ -138,9 +151,10 @@ apply 使用 advisory lock、超时和单事务；已安装 marker 与 manifest 
 已安装。单角色 baseline 目标要求空的 public schema 和不存在的 baseline marker，必须在
 明确批准后针对目标库重新验收。
 
-两个 local seed 都先验证 baseline marker、owner 属性和固定合成数据，再在同一 `tianxing_app` 连接内写入；
-它们会显式设置 `app.organization_id`/`app.actor_user_id`，以适配 FORCE RLS。seed 仍是独立操作，未因
-baseline 代码生成而自动执行。
+`db:seed:local-release1` 直接运行与 Vercel test 相同的 Release 1 seed 定义；
+`db:seed:local-identity` 仅作为兼容 alias 指向同一命令。seed 先验证 baseline marker、owner 属性和固定合成数据，
+再在同一 `tianxing_app` 连接内写入，并显式设置 `app.organization_id`/`app.actor_user_id` 以适配 FORCE RLS。
+seed 仍是独立操作，未因 baseline 代码生成而自动执行。
 
 ## 停止与重置
 
@@ -168,6 +182,14 @@ LocalStack 在当前免费本地配置中不启用授权版持久化；容器重
   `ready`；
 - 首页返回 HTTP 200，12 项本地底座聚焦测试通过。
 
-当前源码状态为 `one_role_baseline_unapplied`。本轮只做了离线生成、哈希、事务模拟和聚焦测试；没有连接
-数据库，也没有执行 baseline 或 seed，因此不能把历史实机记录当作当前单角色状态。其他领域 runtime 和
-Worker 尚未接通，因此这不代表 Release 1 的业务 API 已经端到端可用。
+2026-08-21 已通过 `pnpm test:database-test-login-dev-http` 在一次性 PostgreSQL 17.10 容器中完成本地等价验收：
+真实执行当前 one-role baseline 的 28 个 generated SQL、应用与 Vercel test 相同的 Release 1 seed 定义、
+provision 合成 founder credential，并由隔离 Next Dev 通过真实 HTTP 入口验证登录、session、错误口令、
+未知字段、跨租户拒绝、故障回滚和登出。测试使用随机 loopback 端口和 tmpfs，结束后删除容器与临时应用目录。
+
+同日已在用户批准后重建持久化的 `tianxing-local` PostgreSQL 卷：新的合同型健康检查验证
+`tianxing_app` 是唯一 login 和数据库 owner、角色属性均已降权，bootstrap `postgres` 保留
+SUPERUSER 但固定为 `NOLOGIN`。随后 baseline plan、真实 dry-run clean、apply installed 和同源
+Release 1 seed 均通过。founder 密码不属于版本化环境状态；每次重建数据卷后，操作员仍须按上方隐藏输入流程
+重新 provision，并完成一次本地手工登录验收。其他领域 runtime 和 Worker 尚未接通，因此这不代表
+Release 1 的全部业务 API 已端到端可用。

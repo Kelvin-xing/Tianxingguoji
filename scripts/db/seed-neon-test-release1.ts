@@ -124,17 +124,33 @@ export function readNeonTestSeedMode(arguments_: readonly string[]): NeonTestSee
 export function readNeonTestSeedTarget(
   environment: RuntimeEnvironment = process.env,
 ): OneRoleBaselineTarget {
+  const target = readRelease1SyntheticSeedTarget(environment);
+  if (environment.APP_ENV?.trim() !== "test" || target.ssl === false) {
+    throw new NeonTestSeedSafetyError("Neon seed requires the test direct target.");
+  }
+  return target;
+}
+
+export function readRelease1SyntheticSeedTarget(
+  environment: RuntimeEnvironment = process.env,
+): OneRoleBaselineTarget {
   try {
     if (environment.VERCEL?.trim() || environment.VERCEL_ENV?.trim()) {
       throw new NeonTestSeedSafetyError("Neon seed cannot run inside Vercel.");
     }
     const target = readOneRoleBaselineTarget(environment);
-    if (environment.APP_ENV?.trim() !== "test" || target.ssl === false) {
-      throw new NeonTestSeedSafetyError("Neon seed requires the test direct target.");
+    const appEnvironment = environment.APP_ENV?.trim();
+    if (
+      !(
+        (appEnvironment === "development" && target.ssl === false) ||
+        (appEnvironment === "test" && target.ssl !== false)
+      )
+    ) {
+      throw new NeonTestSeedSafetyError("Release 1 synthetic seed target is invalid.");
     }
     return target;
   } catch {
-    throw new NeonTestSeedSafetyError("Neon seed target is invalid.");
+    throw new NeonTestSeedSafetyError("Release 1 synthetic seed target is invalid.");
   }
 }
 
@@ -146,12 +162,15 @@ export function createNeonTestSeedEvidence(
     manifestContentSha256: string;
     schoolSnapshotManifestSha256: string;
   }>,
+  targetKind: "neon-direct" | "local-loopback" = "neon-direct",
 ) {
   return Object.freeze({
     mode,
-    endpoint_kind: "neon-direct",
+    endpoint_kind: targetKind,
     canonical_login_role: ONE_ROLE_CANONICAL_ROLE,
-    tls: Object.freeze({ verified: true, reject_unauthorized: true }),
+    tls: targetKind === "neon-direct"
+      ? Object.freeze({ verified: true, reject_unauthorized: true })
+      : Object.freeze({ verified: false, reject_unauthorized: false }),
     baseline: Object.freeze({
       id: ONE_ROLE_BASELINE_ID,
       transform_version: ONE_ROLE_TRANSFORM_VERSION,
@@ -237,7 +256,7 @@ export async function seedNeonTestRelease1(
     return createNeonTestSeedEvidence(mode, baselineManifestSha256, publicTableCount, {
       manifestContentSha256: fixture.contentSha256,
       schoolSnapshotManifestSha256: neonTestSchoolSnapshotManifestSha256(),
-    });
+    }, target.ssl === false ? "local-loopback" : "neon-direct");
   } finally {
     await client.end();
   }
@@ -775,7 +794,10 @@ async function runCli(
   environment: RuntimeEnvironment,
 ): Promise<void> {
   const mode = readNeonTestSeedMode(arguments_);
-  const evidence = await seedNeonTestRelease1(readNeonTestSeedTarget(environment), mode);
+  const evidence = await seedNeonTestRelease1(
+    readRelease1SyntheticSeedTarget(environment),
+    mode,
+  );
   process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 }
 

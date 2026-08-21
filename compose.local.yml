@@ -5,7 +5,7 @@ services:
     image: postgres:17.10-alpine3.24
     environment:
       POSTGRES_DB: tianxing
-      POSTGRES_USER: tianxing_app
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/local_postgres_password
     secrets:
       - local_postgres_password
@@ -14,11 +14,13 @@ services:
     volumes:
       - tianxing_postgres_data:/var/lib/postgresql/data
       - ./infra/local/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/local/postgres/healthcheck.sh:/usr/local/bin/tianxing-postgres-healthcheck:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tianxing_app -d tianxing"]
+      test: ["CMD", "/bin/sh", "/usr/local/bin/tianxing-postgres-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   localstack:
