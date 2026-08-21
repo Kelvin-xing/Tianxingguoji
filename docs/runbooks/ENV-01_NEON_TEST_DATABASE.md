@@ -300,6 +300,33 @@ seed 只在 one-role marker 的 id、transform version、baseline manifest SHA-2
 
 seed 不创建密码、verifier、`identity_database_test_credentials`、Session、Case、Document、Portal key、Audit 或 Outbox 证据。Case 留给浏览器端到端验收创建。
 
+## 7.1 Database-test 身份凭据 Provision
+
+`db:provision:test-identity` 已在 package alias 内固定包含 `--password-stdin`。操作员只需追加 synthetic email，不需要再写一次该 flag：
+
+```zsh
+read -r -s 'ENV01_TEST_PASSWORD?Database-test password: '
+printf '\n'
+printf '%s\n' "$ENV01_TEST_PASSWORD" \
+  | pnpm db:provision:test-identity -- --email=founder@env01.test.invalid
+ENV01_TEST_PASSWORD=''
+unset ENV01_TEST_PASSWORD
+```
+
+为兼容既有操作命令，重复传入 `--password-stdin` 仍会被接受，但不推荐。`--rotate` 只用于明确批准的 verifier 轮换；未显式提供时不得覆盖既有凭据。脚本只处理 seed 已创建且处于 active 的 `.invalid` synthetic identity，不创建 User、Membership、业务数据或数据库角色。
+
+失败输出是单行结构化 JSON，只允许以下固定阶段：`configuration`、`baseline_manifest`、`password_input`、`connection`、`transaction_begin`、`preflight_identity`、`preflight_marker`、`credential_lookup`、`password_derivation`、`provision_function`、`transaction_commit`、`transaction_rollback`、`connection_close`。只有同时具有 PostgreSQL 固定 severity 和合法 5 位 SQLSTATE 的异常才可输出 `postgres_code`；message、detail、query、where、stack、email、hostname、URL 和 secret 均不得出现。
+
+失败证据同时报告 `transaction_started`、`commit_result`、`rollback_attempt` 和 `rollback_state`。普通事务失败且 `ROLLBACK` 成功才可报告 `clean`；commit 返回不确定或 rollback 失败必须报告 `unknown`、禁止自动重试并升级。commit 已成功但连接关闭失败同样不得直接重试。
+
+提交前的本地真实数据库验收命令：
+
+```bash
+pnpm test:database-test-provision-postgresql
+```
+
+该测试使用一次性 `postgres:17.10-alpine3.24`、tmpfs 和随机 loopback 端口，真实安装 one-role baseline、写入纯合成 seed、创建 founder verifier、验证失败回滚无额外 credential 残留，并验证重复 `--password-stdin` 兼容路径。测试结束无论成功失败都删除临时容器。
+
 ## 8. 安全证据模板
 
 Migration 示例（所有值均为非秘密元数据）：
