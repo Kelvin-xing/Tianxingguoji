@@ -308,7 +308,7 @@ seed 不创建密码、verifier、`identity_database_test_credentials`、Session
 read -r -s 'ENV01_TEST_PASSWORD?Database-test password: '
 printf '\n'
 printf '%s\n' "$ENV01_TEST_PASSWORD" \
-  | pnpm db:provision:test-identity -- --email=founder@env01.test.invalid
+  | pnpm db:provision:test-identity --email=founder@env01.test.invalid
 ENV01_TEST_PASSWORD=''
 unset ENV01_TEST_PASSWORD
 ```
