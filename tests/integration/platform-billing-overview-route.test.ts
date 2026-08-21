@@ -5,7 +5,7 @@ import {
   createPlatformBillingOverviewGetHandler,
   PlatformBillingOverviewRuntimeUnavailable,
   type PlatformBillingOverview,
-} from "../../app/api/v1/platform/billing/overview/route.ts";
+} from "../../app/api/v1/platform/billing/overview/handler.ts";
 
 const ACTOR_ID = "11111111-1111-4111-8111-111111111111";
 

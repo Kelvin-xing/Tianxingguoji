@@ -6,7 +6,7 @@ import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identi
 import { IdentityServiceError } from "@/modules/identity/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
-import { mapGuardianRelationshipError } from "../route";
+import { mapGuardianRelationshipError } from "../handler";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;

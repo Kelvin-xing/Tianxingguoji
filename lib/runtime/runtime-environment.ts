@@ -3,6 +3,32 @@ import "server-only";
 export const APP_ENVIRONMENTS = ["development", "test", "production"] as const;
 export const APP_RUNTIME_MODES = ["local-synthetic", "test-database", "production-aws"] as const;
 export const AUTH_MODES = ["local-synthetic", "database-test", "cognito"] as const;
+export const TEST_WEB_FORBIDDEN_DATABASE_VARIABLES = Object.freeze([
+  "DATABASE_URL",
+  "DATABASE_URL_UNPOOLED",
+  "ONE_ROLE_BASELINE_DATABASE_URL",
+  "MIGRATION_DATABASE_URL",
+  "TEST_IDENTITY_DATABASE_URL",
+  "TEST_APPLICATION_DATABASE_URL",
+  "TEST_MIGRATION_DATABASE_URL",
+  "TEST_PROVISION_DATABASE_URL",
+  "NEON_AUTH_BASE_URL",
+  "NEON_PROJECT_ID",
+  "PGDATABASE",
+  "PGHOST",
+  "PGHOST_UNPOOLED",
+  "PGPASSWORD",
+  "PGUSER",
+  "POSTGRES_DATABASE",
+  "POSTGRES_HOST",
+  "POSTGRES_PASSWORD",
+  "POSTGRES_PRISMA_URL",
+  "POSTGRES_URL",
+  "POSTGRES_URL_NON_POOLING",
+  "POSTGRES_USER",
+  "POSTGRES_URL_NO_SSL",
+  "VITE_NEON_AUTH_URL",
+] as const);
 
 export type AppEnvironment = (typeof APP_ENVIRONMENTS)[number];
 export type AppRuntimeMode = (typeof APP_RUNTIME_MODES)[number];
@@ -106,14 +132,7 @@ function rejectProductionTestDatabaseUrls(environment: RuntimeEnvironment): void
 }
 
 function rejectTestWebSecrets(environment: RuntimeEnvironment): void {
-  for (const variable of [
-    "DATABASE_URL",
-    "MIGRATION_DATABASE_URL",
-    "TEST_IDENTITY_DATABASE_URL",
-    "TEST_APPLICATION_DATABASE_URL",
-    "TEST_MIGRATION_DATABASE_URL",
-    "TEST_PROVISION_DATABASE_URL",
-  ]) {
+  for (const variable of TEST_WEB_FORBIDDEN_DATABASE_VARIABLES) {
     rejectPresent(environment, variable);
   }
   const localVariable = Object.keys(environment)
