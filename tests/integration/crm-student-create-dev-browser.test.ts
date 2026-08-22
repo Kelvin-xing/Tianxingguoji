@@ -1,0 +1,1681 @@
+import assert from "node:assert/strict";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { constants } from "node:fs";
+import { access, cp, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import test from "node:test";
+
+import {
+  chromium,
+  type BrowserContext,
+  type Page,
+  type Request as PlaywrightRequest,
+  type Response as PlaywrightResponse,
+  type Route,
+} from "playwright-core";
+import { Client } from "pg";
+
+import {
+  ONE_ROLE_BASELINE_ID,
+  ONE_ROLE_CANONICAL_ROLE,
+  verifyCommittedOneRoleBaseline,
+} from "../../scripts/db/generate-one-role-baseline.ts";
+import {
+  NEON_TEST_PRINCIPALS,
+} from "../../scripts/db/neon-test-synthetic-fixture.ts";
+import {
+  runDatabaseTestProvisionCli,
+  type DatabaseTestProvisionTarget,
+} from "../../scripts/db/provision-database-test-identity.ts";
+import { seedNeonTestRelease1 } from "../../scripts/db/seed-neon-test-release1.ts";
+import {
+  createOneRoleBaselineClientConfig,
+  executeOneRoleBaselineRun,
+  inspectOneRoleBaselineDatabase,
+  type OneRoleBaselineDatabaseState,
+  type OneRoleBaselineTarget,
+} from "../../scripts/db/run-one-role-baseline.ts";
+
+const DOCKER = "/opt/homebrew/bin/docker";
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
+const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+const ADMIN = NEON_TEST_PRINCIPALS.find(({ role }) => role === "admin")!;
+
+const BROWSER_STAGES = Object.freeze([
+  "runtime_preflight",
+  "postgres_setup",
+  "baseline_seed",
+  "identity_provision",
+  "next_dev",
+  "canonical_origin_discovery",
+  "chrome_launch",
+  "login_server_render",
+  "login_browser_render",
+  "login_field_fill",
+  "login_submit_response",
+  "login_redirect",
+  "login_session_response",
+  "login_workspace_render",
+  "login_workspace_settled",
+  "advisor_list_navigation",
+  "advisor_list_shell",
+  "advisor_list_data",
+  "advisor_create_entry",
+  "create_form_navigation",
+  "create_form_shell",
+  "create_form_access",
+  "create_form_ready",
+  "client_validation_fill",
+  "client_validation_submit",
+  "client_validation_feedback",
+  "client_validation_no_post",
+  "idempotency_retry",
+  "advisor_create",
+  "detail_persistence",
+  "logout_session",
+  "relogin_persistence",
+  "admin_login",
+  "admin_hidden_entry",
+  "admin_direct_transport",
+  "admin_direct_status",
+  "admin_direct_privacy",
+  "desktop_viewport",
+  "mobile_viewport",
+  "browser_log_safety",
+  "cleanup",
+  "complete",
+] as const);
+
+type BrowserStage = (typeof BROWSER_STAGES)[number];
+type LoginErrorEnum =
+  | "none"
+  | "server_render_failed"
+  | "browser_render_failed"
+  | "field_fill_failed"
+  | "submit_response_failed"
+  | "redirect_failed"
+  | "session_response_failed"
+  | "workspace_render_failed"
+  | "workspace_settled_failed";
+
+interface LoginEvidence {
+  status: number | null;
+  location_pathname: string | null;
+  final_pathname: string | null;
+  error_enum: LoginErrorEnum;
+  cookie_present: boolean;
+  auth_me_status: number | null;
+}
+
+interface LoginRenderEvidence {
+  readonly server: {
+    status: number | null;
+    content_type_html: boolean;
+    database_test_presentation: boolean;
+    configuration_unavailable_absent: boolean;
+  };
+  readonly browser: {
+    navigation_status: number | null;
+    final_pathname: string | null;
+    email_label_count: number | null;
+    password_label_count: number | null;
+    submit_button_count: number | null;
+    role_select_count: number | null;
+    workspace_heading_count: number | null;
+    session_checking_count: number | null;
+    returning_to_login_count: number | null;
+    workspace_settled: boolean;
+  };
+}
+
+interface AdvisorEntryEvidence {
+  navigation_status: number | null;
+  final_pathname: string | null;
+  students_request_started: boolean;
+  students_response_received: boolean;
+  students_response_status: number | null;
+  access_request_started: boolean;
+  access_response_received: boolean;
+  access_response_status: number | null;
+  heading_count: number | null;
+  create_link_count: number | null;
+  loading_state_count: number | null;
+  unauthenticated_state_count: number | null;
+  denied_state_count: number | null;
+  unavailable_state_count: number | null;
+}
+
+interface ClientValidationEvidence {
+  pathname_is_students_new: boolean;
+  shell_heading_count: number | null;
+  capability_request_started: boolean;
+  capability_response_received: boolean;
+  capability_response_status: number | null;
+  loading_state_count: number | null;
+  unauthenticated_state_count: number | null;
+  denied_state_count: number | null;
+  error_state_count: number | null;
+  student_input_count: number | null;
+  guardian_input_count: number | null;
+  submit_button_count: number | null;
+  student_value_nonempty: boolean;
+  guardian_value_nonempty: boolean;
+  validation_alert_count: number | null;
+  validation_alert_visible: boolean;
+  validation_post_count: number | null;
+  posts_zero: boolean;
+}
+
+interface AdminDirectEvidence {
+  fetch_completed: boolean;
+  json_parseable: boolean;
+  status: number | null;
+  code: "FORBIDDEN" | "OTHER" | null;
+  student_echoed: boolean | null;
+  guardian_email_echoed: boolean | null;
+}
+
+interface SessionDiagnosticEvidence {
+  cookie_stored: boolean;
+  value_nonempty: boolean;
+  value_length_valid: boolean;
+  http_only: boolean;
+  secure_false: boolean;
+  same_site_lax: boolean;
+  path_root: boolean;
+  cookie_header_present: boolean;
+  session_cookie_name_present: boolean;
+  login_location_origin_matches_base: boolean;
+  final_page_origin_matches_base: boolean;
+  auth_request_origin_matches_base: boolean;
+  final_page_origin_matches_auth_request: boolean;
+  session_cookie_applicable_to_auth_request_url: boolean;
+  stored_cookie_domain_matches_auth_request_hostname: boolean;
+  auth_request_resource_type_fetch: boolean;
+}
+
+interface CanonicalOriginEvidence {
+  response_status_307: boolean;
+  location_present: boolean;
+  location_parseable: boolean;
+  pathname_exact: boolean;
+  protocol_http: boolean;
+  hostname_loopback: boolean;
+  port_matches: boolean;
+  credentials_absent: boolean;
+  search_absent: boolean;
+  hash_absent: boolean;
+}
+
+type StoredSessionCookieEvidence = Pick<SessionDiagnosticEvidence,
+  | "cookie_stored"
+  | "value_nonempty"
+  | "value_length_valid"
+  | "http_only"
+  | "secure_false"
+  | "same_site_lax"
+  | "path_root">;
+
+type SessionRequestCookieEvidence = Pick<SessionDiagnosticEvidence,
+  "cookie_header_present" | "session_cookie_name_present">;
+
+type SessionUrlDiagnosticEvidence = Pick<SessionDiagnosticEvidence,
+  | "auth_request_origin_matches_base"
+  | "final_page_origin_matches_auth_request"
+  | "session_cookie_applicable_to_auth_request_url"
+  | "stored_cookie_domain_matches_auth_request_hostname"
+  | "auth_request_resource_type_fetch">;
+
+interface CleanupEvidence {
+  context_closed: boolean;
+  dev_stopped: boolean;
+  app_directory_removed: boolean;
+  profile_removed: boolean;
+  container_removed: boolean;
+  volume_removed: boolean;
+}
+
+interface ViewportEvidence {
+  readonly label: string;
+  readonly page_horizontal_overflow: number;
+  readonly out_of_bounds_controls: number;
+  readonly overlapping_controls: number;
+  readonly clipped_text: number;
+}
+
+interface GateFailureEvidence {
+  readonly status: "failed";
+  readonly stage: BrowserStage;
+  readonly login: Readonly<LoginEvidence> | null;
+  readonly login_render: Readonly<LoginRenderEvidence> | null;
+  readonly canonical_origin: Readonly<CanonicalOriginEvidence>;
+  readonly session_diagnostic: Readonly<SessionDiagnosticEvidence>;
+  readonly advisor_entry: Readonly<AdvisorEntryEvidence> | null;
+  readonly client_validation: Readonly<ClientValidationEvidence> | null;
+  readonly admin_direct: Readonly<AdminDirectEvidence> | null;
+  readonly cleanup: Readonly<CleanupEvidence>;
+}
+
+class SafeBrowserGateFailure extends Error {
+  constructor(evidence: GateFailureEvidence) {
+    super(JSON.stringify(evidence));
+    this.name = "SafeBrowserGateFailure";
+    this.stack = this.message;
+  }
+}
+
+test("CRM-01 works through the real local browser and disposable PostgreSQL 17", {
+  timeout: 300_000,
+}, async () => {
+  const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
+  const containerName = `tianxing-crm01-browser-pg17-${suffix}`;
+  const secretVolumeName = `tianxing-crm01-browser-secret-${suffix}`;
+  const applicationPassword = randomBytes(32).toString("hex");
+  const advisorPassword = randomBytes(32).toString("base64url");
+  const adminPassword = randomBytes(32).toString("base64url");
+  const appDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm01-browser-app-"));
+  const profileDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm01-browser-profile-"));
+  const loginEvidence: LoginEvidence = {
+    status: null,
+    location_pathname: null,
+    final_pathname: null,
+    error_enum: "none",
+    cookie_present: false,
+    auth_me_status: null,
+  };
+  const loginRenderEvidence: LoginRenderEvidence = {
+    server: {
+      status: null,
+      content_type_html: false,
+      database_test_presentation: false,
+      configuration_unavailable_absent: false,
+    },
+    browser: {
+      navigation_status: null,
+      final_pathname: null,
+      email_label_count: null,
+      password_label_count: null,
+      submit_button_count: null,
+      role_select_count: null,
+      workspace_heading_count: null,
+      session_checking_count: null,
+      returning_to_login_count: null,
+      workspace_settled: false,
+    },
+  };
+  const advisorEntryEvidence: AdvisorEntryEvidence = {
+    navigation_status: null,
+    final_pathname: null,
+    students_request_started: false,
+    students_response_received: false,
+    students_response_status: null,
+    access_request_started: false,
+    access_response_received: false,
+    access_response_status: null,
+    heading_count: null,
+    create_link_count: null,
+    loading_state_count: null,
+    unauthenticated_state_count: null,
+    denied_state_count: null,
+    unavailable_state_count: null,
+  };
+  const clientValidationEvidence: ClientValidationEvidence = {
+    pathname_is_students_new: false,
+    shell_heading_count: null,
+    capability_request_started: false,
+    capability_response_received: false,
+    capability_response_status: null,
+    loading_state_count: null,
+    unauthenticated_state_count: null,
+    denied_state_count: null,
+    error_state_count: null,
+    student_input_count: null,
+    guardian_input_count: null,
+    submit_button_count: null,
+    student_value_nonempty: false,
+    guardian_value_nonempty: false,
+    validation_alert_count: null,
+    validation_alert_visible: false,
+    validation_post_count: null,
+    posts_zero: false,
+  };
+  const adminDirectEvidence: AdminDirectEvidence = {
+    fetch_completed: false,
+    json_parseable: false,
+    status: null,
+    code: null,
+    student_echoed: null,
+    guardian_email_echoed: null,
+  };
+  const sessionDiagnosticEvidence: SessionDiagnosticEvidence = {
+    cookie_stored: false,
+    value_nonempty: false,
+    value_length_valid: false,
+    http_only: false,
+    secure_false: false,
+    same_site_lax: false,
+    path_root: false,
+    cookie_header_present: false,
+    session_cookie_name_present: false,
+    login_location_origin_matches_base: false,
+    final_page_origin_matches_base: false,
+    auth_request_origin_matches_base: false,
+    final_page_origin_matches_auth_request: false,
+    session_cookie_applicable_to_auth_request_url: false,
+    stored_cookie_domain_matches_auth_request_hostname: false,
+    auth_request_resource_type_fetch: false,
+  };
+  const canonicalOriginEvidence: CanonicalOriginEvidence = {
+    response_status_307: false,
+    location_present: false,
+    location_parseable: false,
+    pathname_exact: false,
+    protocol_http: false,
+    hostname_loopback: false,
+    port_matches: false,
+    credentials_absent: false,
+    search_absent: false,
+    hash_absent: false,
+  };
+  const cleanupEvidence: CleanupEvidence = {
+    context_closed: false,
+    dev_stopped: false,
+    app_directory_removed: false,
+    profile_removed: false,
+    container_removed: false,
+    volume_removed: false,
+  };
+
+  let stage: BrowserStage = "runtime_preflight";
+  let containerStarted = false;
+  let secretVolumeCreated = false;
+  let devServer: ChildProcess | undefined;
+  let context: BrowserContext | undefined;
+  let failure: GateFailureEvidence | undefined;
+  let safeSuccessEvidence: Readonly<Record<string, unknown>> | undefined;
+
+  try {
+    await access(DOCKER, constants.X_OK);
+    await access(CHROME, constants.X_OK);
+
+    stage = "postgres_setup";
+    await runDocker(["image", "inspect", POSTGRES_IMAGE]);
+    await runDocker(["volume", "create", secretVolumeName]);
+    secretVolumeCreated = true;
+    await runDocker([
+      "run", "--rm", "--interactive", "--pull=never",
+      "--volume", `${secretVolumeName}:/run/secrets`,
+      POSTGRES_IMAGE, "/bin/sh", "-c",
+      "umask 022; cat > /run/secrets/local_postgres_password; chmod 0444 /run/secrets/local_postgres_password",
+    ], applicationPassword);
+    await runDocker([
+      "run", "--rm", "--detach", "--pull=never", "--name", containerName,
+      "--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=512m",
+      "--env", "POSTGRES_DB=tianxing",
+      "--env", "POSTGRES_USER=postgres",
+      "--env", "POSTGRES_PASSWORD_FILE=/run/secrets/local_postgres_password",
+      "--volume", `${secretVolumeName}:/run/secrets:ro`,
+      "--volume", `${resolve("infra/local/postgres/init")}:/docker-entrypoint-initdb.d:ro`,
+      "--volume", `${resolve("infra/local/postgres/healthcheck.sh")}:/usr/local/bin/tianxing-postgres-healthcheck:ro`,
+      "--publish", "127.0.0.1::5432",
+      POSTGRES_IMAGE,
+    ]);
+    containerStarted = true;
+    await waitForPostgres(containerName);
+    const databasePort = readLoopbackPort((await runDocker(
+      ["port", containerName, "5432/tcp"],
+    )).stdout);
+    const target = localTarget(databasePort, applicationPassword);
+
+    stage = "baseline_seed";
+    const build = await verifyCommittedOneRoleBaseline();
+    const baseline = await executeOneRoleBaselineRun({
+      mode: "apply",
+      target,
+      build,
+      dependencies: baselineDependencies(target),
+    });
+    assert.equal(baseline.status, "pass");
+    assert.equal(baseline.generated_files, 28);
+    const seed = await seedNeonTestRelease1(target, "apply");
+    assert.equal(seed.status, "pass");
+    assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
+
+    stage = "identity_provision";
+    assert.equal(await provision(target, ADVISOR.email, advisorPassword), "created");
+    assert.equal(await provision(target, ADMIN.email, adminPassword), "created");
+
+    stage = "next_dev";
+    await populateIsolatedApp(appDirectory);
+    const nextPort = await reserveLoopbackPort();
+    devServer = startNextDev(appDirectory, nextPort, target.connectionString);
+    const listenUrl = `http://127.0.0.1:${nextPort}`;
+    await waitForNextDev(listenUrl, devServer);
+
+    stage = "canonical_origin_discovery";
+    const canonicalBaseUrl = await discoverCanonicalBaseUrl(
+      listenUrl,
+      nextPort,
+      canonicalOriginEvidence,
+    );
+
+    stage = "chrome_launch";
+    context = await chromium.launchPersistentContext(profileDirectory, {
+      executablePath: CHROME,
+      headless: true,
+      viewport: { width: 1440, height: 900 },
+      locale: "zh-HK",
+      args: ["--disable-background-networking", "--no-first-run", "--no-default-browser-check"],
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    page.setDefaultTimeout(15_000);
+    const consoleMessages: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (message) => consoleMessages.push(`${message.type()}:${message.text()}`));
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await loginAdvisor({
+      page,
+      context,
+      baseUrl: canonicalBaseUrl,
+      email: ADVISOR.email,
+      password: advisorPassword,
+      evidence: loginEvidence,
+      renderEvidence: loginRenderEvidence,
+      sessionDiagnosticEvidence,
+      setStage: (nextStage) => { stage = nextStage; },
+    });
+
+    stage = "advisor_list_navigation";
+    const observeAdvisorRequest = (request: PlaywrightRequest) => {
+      if (request.method() !== "GET") return;
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/v1/students") {
+        advisorEntryEvidence.students_request_started = true;
+      }
+      if (pathname === "/api/v1/auth/me") {
+        advisorEntryEvidence.access_request_started = true;
+      }
+    };
+    const observeAdvisorResponse = (response: PlaywrightResponse) => {
+      if (response.request().method() !== "GET") return;
+      const pathname = new URL(response.url()).pathname;
+      if (pathname === "/api/v1/students") {
+        advisorEntryEvidence.students_response_received = true;
+        advisorEntryEvidence.students_response_status = response.status();
+      }
+      if (pathname === "/api/v1/auth/me") {
+        advisorEntryEvidence.access_response_received = true;
+        advisorEntryEvidence.access_response_status = response.status();
+      }
+    };
+    page.on("request", observeAdvisorRequest);
+    page.on("response", observeAdvisorResponse);
+    const studentsNavigation = await page.goto(`${canonicalBaseUrl}/students`, {
+      waitUntil: "domcontentloaded",
+    });
+    advisorEntryEvidence.navigation_status = studentsNavigation?.status() ?? null;
+    advisorEntryEvidence.final_pathname = new URL(page.url()).pathname;
+    assert.equal(advisorEntryEvidence.navigation_status, 200);
+    assert.equal(advisorEntryEvidence.final_pathname, "/students");
+
+    stage = "advisor_list_shell";
+    const heading = page.getByRole("heading", { name: "學生名單", exact: true });
+    advisorEntryEvidence.heading_count = await heading.count();
+    await heading.waitFor({ state: "visible" });
+    advisorEntryEvidence.heading_count = await heading.count();
+    assert.equal(advisorEntryEvidence.heading_count, 1);
+
+    stage = "advisor_list_data";
+    const loadingState = page.getByText("正在載入學生", { exact: true });
+    const unauthenticatedState = page.getByText("工作階段已失效", { exact: true });
+    const deniedState = page.getByText("無法查看學生資料", { exact: true });
+    const unavailableState = page.getByText("學生服務暫時不可用", { exact: true });
+    advisorEntryEvidence.loading_state_count = await loadingState.count();
+    await loadingState.waitFor({ state: "hidden" });
+    advisorEntryEvidence.loading_state_count = await loadingState.count();
+    advisorEntryEvidence.unauthenticated_state_count = await unauthenticatedState.count();
+    advisorEntryEvidence.denied_state_count = await deniedState.count();
+    advisorEntryEvidence.unavailable_state_count = await unavailableState.count();
+    assert.equal(advisorEntryEvidence.students_request_started, true);
+    assert.equal(advisorEntryEvidence.students_response_received, true);
+    assert.equal(advisorEntryEvidence.students_response_status, 200);
+    assert.equal(advisorEntryEvidence.access_request_started, true);
+    assert.equal(advisorEntryEvidence.access_response_received, true);
+    assert.equal(advisorEntryEvidence.access_response_status, 200);
+    assert.equal(advisorEntryEvidence.loading_state_count, 0);
+    assert.equal(advisorEntryEvidence.unauthenticated_state_count, 0);
+    assert.equal(advisorEntryEvidence.denied_state_count, 0);
+    assert.equal(advisorEntryEvidence.unavailable_state_count, 0);
+
+    stage = "advisor_create_entry";
+    const createLink = page.getByRole("link", { name: "新增學生", exact: true });
+    advisorEntryEvidence.create_link_count = await createLink.count();
+    await createLink.waitFor({ state: "visible" });
+    advisorEntryEvidence.create_link_count = await createLink.count();
+    assert.equal(advisorEntryEvidence.create_link_count, 1);
+    page.off("request", observeAdvisorRequest);
+    page.off("response", observeAdvisorResponse);
+
+    stage = "desktop_viewport";
+    const desktopList = await assertViewport(page, "advisor-list-desktop");
+
+    const observeCreateFormAccessRequest = (request: PlaywrightRequest) => {
+      if (request.method() === "GET" &&
+          new URL(request.url()).pathname === "/api/v1/auth/me") {
+        clientValidationEvidence.capability_request_started = true;
+      }
+    };
+    const observeCreateFormAccessResponse = (response: PlaywrightResponse) => {
+      if (response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/v1/auth/me") {
+        clientValidationEvidence.capability_response_received = true;
+        clientValidationEvidence.capability_response_status = response.status();
+      }
+    };
+    page.on("request", observeCreateFormAccessRequest);
+    page.on("response", observeCreateFormAccessResponse);
+
+    stage = "create_form_navigation";
+    await Promise.all([
+      page.waitForURL((url) => url.pathname === "/students/new"),
+      page.getByRole("link", { name: "新增學生", exact: true }).click(),
+    ]);
+    clientValidationEvidence.pathname_is_students_new =
+      new URL(page.url()).pathname === "/students/new";
+    assert.equal(clientValidationEvidence.pathname_is_students_new, true);
+
+    stage = "create_form_shell";
+    const createFormHeading = page.getByRole("heading", {
+      name: "新增學生與主要監護人",
+      exact: true,
+      level: 2,
+    });
+    await createFormHeading.waitFor({ state: "visible" });
+    clientValidationEvidence.shell_heading_count = await createFormHeading.count();
+    assert.equal(clientValidationEvidence.shell_heading_count, 1);
+
+    stage = "create_form_access";
+    const accessLoadingState = page.getByText("正在確認建立權限", { exact: true });
+    const accessUnauthenticatedState = page.getByText("工作階段已失效", {
+      exact: true,
+    });
+    const accessDeniedState = page.getByText("無法建立學生資料", { exact: true });
+    const accessErrorState = page.getByText("暫時無法確認權限", { exact: true });
+    await accessLoadingState.waitFor({ state: "hidden" });
+    clientValidationEvidence.loading_state_count = await accessLoadingState.count();
+    clientValidationEvidence.unauthenticated_state_count =
+      await accessUnauthenticatedState.count();
+    clientValidationEvidence.denied_state_count = await accessDeniedState.count();
+    clientValidationEvidence.error_state_count = await accessErrorState.count();
+    assert.equal(clientValidationEvidence.capability_request_started, true);
+    assert.equal(clientValidationEvidence.capability_response_received, true);
+    assert.equal(clientValidationEvidence.capability_response_status, 200);
+    assert.equal(clientValidationEvidence.loading_state_count, 0);
+    assert.equal(clientValidationEvidence.unauthenticated_state_count, 0);
+    assert.equal(clientValidationEvidence.denied_state_count, 0);
+    assert.equal(clientValidationEvidence.error_state_count, 0);
+    page.off("request", observeCreateFormAccessRequest);
+    page.off("response", observeCreateFormAccessResponse);
+
+    stage = "create_form_ready";
+    const studentInput = page.getByRole("textbox", {
+      name: "學生姓名",
+      exact: true,
+    });
+    const guardianInput = page.getByRole("textbox", {
+      name: "監護人姓名",
+      exact: true,
+    });
+    const createStudentButton = page.getByRole("button", {
+      name: "建立學生",
+      exact: true,
+    });
+    clientValidationEvidence.student_input_count = await studentInput.count();
+    clientValidationEvidence.guardian_input_count = await guardianInput.count();
+    clientValidationEvidence.submit_button_count = await createStudentButton.count();
+    assert.equal(clientValidationEvidence.student_input_count, 1);
+    assert.equal(clientValidationEvidence.guardian_input_count, 1);
+    assert.equal(clientValidationEvidence.submit_button_count, 1);
+    await studentInput.waitFor({ state: "visible" });
+    await guardianInput.waitFor({ state: "visible" });
+    await createStudentButton.waitFor({ state: "visible" });
+
+    stage = "client_validation_fill";
+    await studentInput.fill("CRM01 Validation Student");
+    await guardianInput.fill("CRM01 Validation Guardian");
+    clientValidationEvidence.student_value_nonempty =
+      (await studentInput.inputValue()).length > 0;
+    clientValidationEvidence.guardian_value_nonempty =
+      (await guardianInput.inputValue()).length > 0;
+    assert.equal(clientValidationEvidence.student_value_nonempty, true);
+    assert.equal(clientValidationEvidence.guardian_value_nonempty, true);
+
+    let validationPosts = 0;
+    const validationObserver = async (route: Route) => {
+      if (route.request().method() === "POST") validationPosts += 1;
+      await route.continue();
+    };
+
+    stage = "client_validation_submit";
+    await page.route("**/api/v1/students", validationObserver);
+    await createStudentButton.click();
+
+    stage = "client_validation_feedback";
+    const validationAlert = page.getByRole("alert")
+      .filter({ hasText: "監護人 Email 和電話至少填寫一項" });
+    await validationAlert.waitFor({ state: "visible" });
+    clientValidationEvidence.validation_alert_count = await validationAlert.count();
+    clientValidationEvidence.validation_alert_visible = await validationAlert.isVisible();
+    assert.equal(clientValidationEvidence.validation_alert_count, 1);
+    assert.equal(clientValidationEvidence.validation_alert_visible, true);
+
+    stage = "client_validation_no_post";
+    clientValidationEvidence.validation_post_count = validationPosts;
+    clientValidationEvidence.posts_zero = validationPosts === 0;
+    try {
+      assert.equal(clientValidationEvidence.validation_post_count, 0);
+      assert.equal(clientValidationEvidence.posts_zero, true);
+    } finally {
+      await page.unroute("**/api/v1/students", validationObserver);
+    }
+
+    stage = "idempotency_retry";
+    await page.reload();
+    await page.getByRole("button", { name: "建立學生", exact: true }).waitFor();
+    await fillValidDraft(page, {
+      studentName: "CRM01 Retry Probe Student",
+      guardianName: "CRM01 Retry Probe Guardian",
+      guardianEmail: "crm01-retry-probe@example.invalid",
+    });
+    const observedKeys: string[] = [];
+    const retryInterceptor = async (route: Route) => {
+      const request = route.request();
+      if (request.method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      observedKeys.push(request.headers()["idempotency-key"] ?? "");
+      await route.abort("failed");
+    };
+    await page.route("**/api/v1/students", retryInterceptor);
+    await submitAndWaitUnavailable(page, 1, observedKeys);
+    await submitAndWaitUnavailable(page, 2, observedKeys);
+    assert.match(observedKeys[0] ?? "", /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+    assert.equal(observedKeys[0], observedKeys[1]);
+    await page.getByRole("textbox", { name: "學生姓名", exact: true })
+      .fill("CRM01 Retry Probe Student Changed");
+    await submitAndWaitUnavailable(page, 3, observedKeys);
+    assert.notEqual(observedKeys[1], observedKeys[2]);
+    await page.unroute("**/api/v1/students", retryInterceptor);
+    observedKeys.fill("[redacted]");
+
+    await page.reload();
+    await page.getByRole("button", { name: "建立學生", exact: true }).waitFor();
+    const runToken = randomBytes(5).toString("hex");
+    const studentName = `CRM01 Browser Student ${runToken}`;
+    const guardianName = `CRM01 Browser Guardian ${runToken}`;
+    const guardianEmail = `crm01-browser-${runToken}@example.invalid`;
+    await fillValidDraft(page, { studentName, guardianName, guardianEmail });
+
+    stage = "desktop_viewport";
+    const desktopForm = await assertViewport(page, "advisor-create-desktop");
+
+    stage = "advisor_create";
+    await Promise.all([
+      page.waitForURL(/\/students\/[0-9a-f-]{36}$/i),
+      page.getByRole("button", { name: "建立學生", exact: true }).click(),
+    ]);
+    const detailUrl = page.url();
+    const studentId = new URL(detailUrl).pathname.split("/").at(-1);
+    assert.match(studentId ?? "", /^[0-9a-f-]{36}$/i);
+    await page.getByRole("heading", { name: studentName, exact: true }).waitFor();
+    await page.getByText(guardianName, { exact: true }).waitFor();
+
+    stage = "desktop_viewport";
+    const desktopDetail = await assertViewport(page, "advisor-detail-desktop");
+
+    stage = "detail_persistence";
+    await page.reload();
+    await page.getByRole("heading", { name: studentName, exact: true }).waitFor();
+    await page.getByText(guardianName, { exact: true }).waitFor();
+    await page.goto(`${canonicalBaseUrl}/students`);
+    await page.getByText(studentName, { exact: true }).waitFor();
+
+    stage = "mobile_viewport";
+    const mobileList = await withViewport(page, { width: 390, height: 844 }, () =>
+      assertViewport(page, "advisor-list-mobile"));
+    await page.goto(detailUrl);
+    await page.getByRole("heading", { name: studentName, exact: true }).waitFor();
+    const mobileDetail = await withViewport(page, { width: 390, height: 844 }, () =>
+      assertViewport(page, "advisor-detail-mobile"));
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    stage = "logout_session";
+    await logout(page);
+    const expired = await context.request.get(`${canonicalBaseUrl}/api/v1/auth/me`);
+    assert.equal(expired.status(), 401);
+
+    stage = "relogin_persistence";
+    await loginWithoutEvidence(page, canonicalBaseUrl, ADVISOR.email, advisorPassword);
+    await page.goto(detailUrl);
+    await page.getByRole("heading", { name: studentName, exact: true }).waitFor();
+    await page.getByText(guardianName, { exact: true }).waitFor();
+
+    stage = "admin_login";
+    await logout(page);
+    await loginWithoutEvidence(page, canonicalBaseUrl, ADMIN.email, adminPassword);
+
+    stage = "admin_hidden_entry";
+    await page.goto(`${canonicalBaseUrl}/students`);
+    await page.getByRole("heading", { name: "學生名單", exact: true }).waitFor();
+    await page.getByText(studentName, { exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "新增學生", exact: true }).count(), 0);
+    await page.goto(`${canonicalBaseUrl}/students/new`);
+    await page.getByText("無法建立學生資料", { exact: true }).waitFor();
+
+    stage = "admin_direct_transport";
+    const adminPayload = {
+      student: {
+        display_name: "CRM01 Admin Forbidden Student",
+        date_of_birth: null,
+        contact_email: null,
+        contact_phone: null,
+      },
+      primary_guardian: {
+        display_name: "CRM01 Admin Forbidden Guardian",
+        email: "crm01-admin-forbidden@example.invalid",
+        phone: null,
+        relationship_type: "father",
+        is_legal_guardian: true,
+      },
+    };
+    const adminDirectResult: AdminDirectEvidence = await page.evaluate(async ({
+      payload,
+      idempotencyKey,
+    }) => {
+      let response: Response;
+      try {
+        response = await fetch("/api/v1/students", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": idempotencyKey,
+          },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        return {
+          fetch_completed: false,
+          json_parseable: false,
+          status: null,
+          code: null,
+          student_echoed: null,
+          guardian_email_echoed: null,
+        };
+      }
+
+      let body: unknown;
+      try {
+        body = await response.json() as unknown;
+      } catch {
+        return {
+          fetch_completed: true,
+          json_parseable: false,
+          status: response.status,
+          code: null,
+          student_echoed: null,
+          guardian_email_echoed: null,
+        };
+      }
+
+      const error = body !== null && typeof body === "object" && "error" in body
+        ? (body as { readonly error?: unknown }).error
+        : undefined;
+      const rawCode = error !== null && typeof error === "object" && "code" in error
+        ? (error as { readonly code?: unknown }).code
+        : undefined;
+      const code: AdminDirectEvidence["code"] = rawCode === "FORBIDDEN"
+        ? "FORBIDDEN"
+        : typeof rawCode === "string" ? "OTHER" : null;
+      const serialized = JSON.stringify(body) ?? "";
+      return {
+        fetch_completed: true,
+        json_parseable: true,
+        status: response.status,
+        code,
+        student_echoed: serialized.includes(payload.student.display_name),
+        guardian_email_echoed: serialized.includes(payload.primary_guardian.email),
+      };
+    }, {
+      payload: adminPayload,
+      idempotencyKey: `crm01-admin-${randomBytes(8).toString("hex")}`,
+    });
+    Object.assign(adminDirectEvidence, adminDirectResult);
+    assert.equal(adminDirectEvidence.fetch_completed, true);
+    assert.equal(adminDirectEvidence.json_parseable, true);
+
+    stage = "admin_direct_status";
+    assert.equal(adminDirectEvidence.status, 403);
+    assert.equal(adminDirectEvidence.code, "FORBIDDEN");
+
+    stage = "admin_direct_privacy";
+    assert.equal(adminDirectEvidence.student_echoed, false);
+    assert.equal(adminDirectEvidence.guardian_email_echoed, false);
+
+    stage = "browser_log_safety";
+    const sensitiveMarkers = [
+      applicationPassword,
+      advisorPassword,
+      adminPassword,
+      ADVISOR.email,
+      ADMIN.email,
+      studentName,
+      guardianName,
+      guardianEmail,
+      target.connectionString,
+    ];
+    const fixedSensitiveMarkers = [
+      "postgresql://",
+      "database_url",
+      "tx_session=",
+      "set-cookie",
+    ];
+    const browserLogs = [...consoleMessages, ...pageErrors];
+    const sensitiveLogMatches = browserLogs.filter((entry) => {
+      const normalized = entry.toLowerCase();
+      return sensitiveMarkers.some((marker) => entry.includes(marker)) ||
+        fixedSensitiveMarkers.some((marker) => normalized.includes(marker));
+    }).length;
+    assert.equal(sensitiveLogMatches, 0);
+    assert.equal(pageErrors.length, 0);
+
+    stage = "complete";
+    safeSuccessEvidence = Object.freeze({
+      status: "pass",
+      stage,
+      runtime: Object.freeze({
+        postgres_major: 17,
+        baseline_generated_files: baseline.generated_files,
+        seed: "release1_synthetic",
+        browser_driver: "playwright-core-1.55.0",
+        browser_binary: "system_chrome",
+      }),
+      login: Object.freeze({ ...loginEvidence }),
+      login_render: freezeLoginRenderEvidence(loginRenderEvidence),
+      canonical_origin: Object.freeze({ ...canonicalOriginEvidence }),
+      session_diagnostic: Object.freeze({ ...sessionDiagnosticEvidence }),
+      advisor_entry: Object.freeze({ ...advisorEntryEvidence }),
+      client_validation: Object.freeze({ ...clientValidationEvidence }),
+      admin_direct: Object.freeze({ ...adminDirectEvidence }),
+      advisor: Object.freeze({
+        capability_entry_visible: true,
+        client_validation_blocked_request: clientValidationEvidence.posts_zero,
+        created: true,
+        list_detail_refresh_persisted: true,
+        logout_invalidated_session: true,
+        relogin_persisted: true,
+      }),
+      admin: Object.freeze({
+        capability_entry_hidden: true,
+        direct_post_status: adminDirectEvidence.status,
+      }),
+      idempotency: Object.freeze({
+        same_retry_key: true,
+        changed_field_rotated_key: true,
+      }),
+      viewport: Object.freeze({
+        desktop: Object.freeze([desktopList, desktopForm, desktopDetail]),
+        mobile: Object.freeze([mobileList, mobileDetail]),
+      }),
+      browser_safety: Object.freeze({
+        console_messages: consoleMessages.length,
+        page_errors: pageErrors.length,
+        sensitive_log_matches: sensitiveLogMatches,
+      }),
+    });
+  } catch {
+    failure = Object.freeze({
+      status: "failed",
+      stage: safeStage(stage),
+      login: isLoginStage(stage) ? Object.freeze({ ...loginEvidence }) : null,
+      login_render: isLoginStage(stage)
+        ? freezeLoginRenderEvidence(loginRenderEvidence)
+        : null,
+      canonical_origin: Object.freeze({ ...canonicalOriginEvidence }),
+      session_diagnostic: Object.freeze({ ...sessionDiagnosticEvidence }),
+      advisor_entry: isAdvisorEntryStage(stage)
+        ? Object.freeze({ ...advisorEntryEvidence })
+        : null,
+      client_validation: isClientValidationStage(stage)
+        ? Object.freeze({ ...clientValidationEvidence })
+        : null,
+      admin_direct: isAdminDirectStage(stage)
+        ? Object.freeze({ ...adminDirectEvidence })
+        : null,
+      cleanup: Object.freeze({ ...cleanupEvidence }),
+    });
+  } finally {
+    stage = "cleanup";
+    cleanupEvidence.context_closed = await closeBrowser(context);
+    cleanupEvidence.dev_stopped = await stopNextDev(devServer);
+    cleanupEvidence.app_directory_removed = await removeDirectory(appDirectory);
+    cleanupEvidence.profile_removed = await removeDirectory(profileDirectory);
+    cleanupEvidence.container_removed = containerStarted
+      ? await removeDockerResource(["rm", "--force", containerName])
+      : true;
+    cleanupEvidence.volume_removed = secretVolumeCreated
+      ? await removeDockerResource(["volume", "rm", "--force", secretVolumeName])
+      : true;
+  }
+
+  const cleanupPassed = Object.values(cleanupEvidence).every(Boolean);
+  if (!cleanupPassed) {
+    failure = Object.freeze({
+      status: "failed",
+      stage: "cleanup",
+      login: null,
+      login_render: null,
+      canonical_origin: Object.freeze({ ...canonicalOriginEvidence }),
+      session_diagnostic: Object.freeze({ ...sessionDiagnosticEvidence }),
+      advisor_entry: null,
+      client_validation: null,
+      admin_direct: null,
+      cleanup: Object.freeze({ ...cleanupEvidence }),
+    });
+  }
+  if (failure) {
+    throw new SafeBrowserGateFailure(Object.freeze({
+      ...failure,
+      cleanup: Object.freeze({ ...cleanupEvidence }),
+    }));
+  }
+
+  process.stdout.write(`${JSON.stringify(Object.freeze({
+    ...safeSuccessEvidence,
+    cleanup: Object.freeze({ ...cleanupEvidence }),
+  }))}\n`);
+});
+
+async function loginAdvisor(input: {
+  readonly page: Page;
+  readonly context: BrowserContext;
+  readonly baseUrl: string;
+  readonly email: string;
+  readonly password: string;
+  readonly evidence: LoginEvidence;
+  readonly renderEvidence: LoginRenderEvidence;
+  readonly sessionDiagnosticEvidence: SessionDiagnosticEvidence;
+  readonly setStage: (stage: BrowserStage) => void;
+}): Promise<void> {
+  const {
+    page,
+    context,
+    baseUrl,
+    email,
+    password,
+    evidence,
+    renderEvidence,
+    sessionDiagnosticEvidence,
+    setStage,
+  } = input;
+
+  setStage("login_server_render");
+  evidence.error_enum = "server_render_failed";
+  const serverResponse = await fetch(`${baseUrl}/login`);
+  renderEvidence.server.status = serverResponse.status;
+  renderEvidence.server.content_type_html =
+    serverResponse.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ===
+      "text/html";
+  {
+    const serverHtml = await serverResponse.text();
+    renderEvidence.server.database_test_presentation = serverHtml.includes(
+      "使用獲提供的合成測試帳號登入測試工作台。本環境只包含合成測試資料。",
+    );
+    renderEvidence.server.configuration_unavailable_absent = [
+      "登入服務尚未完成部署設定，請聯絡管理員。",
+      "登入服務暫時不可用，請聯絡系統管理員。",
+      "登入服務目前不可使用，請聯絡系統管理員確認設定。",
+    ].every((message) => !serverHtml.includes(message));
+  }
+  assert.equal(renderEvidence.server.status, 200);
+  assert.equal(renderEvidence.server.content_type_html, true);
+  assert.equal(renderEvidence.server.database_test_presentation, true);
+  assert.equal(renderEvidence.server.configuration_unavailable_absent, true);
+
+  setStage("login_browser_render");
+  evidence.error_enum = "browser_render_failed";
+  const navigationResponse = await page.goto(`${baseUrl}/login`, {
+    waitUntil: "domcontentloaded",
+  });
+  const emailInput = page.getByLabel("測試帳號電郵", { exact: true });
+  const passwordInput = page.getByLabel("密碼", { exact: true });
+  const submitButton = page.getByRole("button", {
+    name: "登入測試工作台",
+    exact: true,
+  });
+  await Promise.all([
+    emailInput.waitFor({ state: "visible" }),
+    passwordInput.waitFor({ state: "visible" }),
+    submitButton.waitFor({ state: "visible" }),
+  ]);
+  renderEvidence.browser.navigation_status = navigationResponse?.status() ?? null;
+  renderEvidence.browser.final_pathname = new URL(page.url()).pathname;
+  renderEvidence.browser.email_label_count = await emailInput.count();
+  renderEvidence.browser.password_label_count = await passwordInput.count();
+  renderEvidence.browser.submit_button_count = await submitButton.count();
+  renderEvidence.browser.role_select_count = await page.locator('select[name="role"]').count();
+  assert.equal(renderEvidence.browser.navigation_status, 200);
+  assert.equal(renderEvidence.browser.final_pathname, "/login");
+  assert.equal(renderEvidence.browser.email_label_count, 1);
+  assert.equal(renderEvidence.browser.password_label_count, 1);
+  assert.equal(renderEvidence.browser.submit_button_count, 1);
+  assert.equal(renderEvidence.browser.role_select_count, 0);
+
+  setStage("login_field_fill");
+  evidence.error_enum = "field_fill_failed";
+  await emailInput.fill(email);
+  await passwordInput.fill(password);
+  assert.equal((await emailInput.inputValue()).length > 0, true);
+  assert.equal((await passwordInput.inputValue()).length > 0, true);
+
+  setStage("login_submit_response");
+  evidence.error_enum = "submit_response_failed";
+  const loginResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/v1/auth/login");
+  const browserAuthResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname === "/api/v1/auth/me");
+  await submitButton.click();
+  const response = await loginResponsePromise;
+  const headers = await response.allHeaders();
+  evidence.status = response.status();
+  evidence.location_pathname = safePathname(headers.location);
+  evidence.cookie_present = typeof headers["set-cookie"] === "string";
+  sessionDiagnosticEvidence.login_location_origin_matches_base =
+    locationOriginMatchesBase(headers.location, baseUrl);
+  assert.equal(evidence.status, 303);
+  assert.equal(evidence.location_pathname, "/today");
+  assert.equal(evidence.cookie_present, true);
+
+  setStage("login_redirect");
+  evidence.error_enum = "redirect_failed";
+  await page.waitForURL("**/today");
+  evidence.final_pathname = new URL(page.url()).pathname;
+  sessionDiagnosticEvidence.final_page_origin_matches_base =
+    urlsShareOrigin(page.url(), baseUrl);
+  assert.equal(evidence.final_pathname, "/today");
+
+  setStage("login_session_response");
+  evidence.error_enum = "session_response_failed";
+  const browserAuthResponse = await browserAuthResponsePromise;
+  evidence.auth_me_status = browserAuthResponse.status();
+  Object.assign(
+    sessionDiagnosticEvidence,
+    await inspectStoredSessionCookie(context, baseUrl),
+    await inspectSessionRequestHeader(browserAuthResponse.request()),
+    await inspectSessionRequestUrlApplicability(
+      context,
+      baseUrl,
+      page.url(),
+      browserAuthResponse.request(),
+    ),
+  );
+  assert.equal(evidence.auth_me_status, 200);
+
+  setStage("login_workspace_render");
+  evidence.error_enum = "workspace_render_failed";
+  const workspaceHeading = page.getByRole("heading", {
+    name: "今日工作",
+    exact: true,
+    level: 2,
+  });
+  await workspaceHeading.waitFor({ state: "visible" });
+  renderEvidence.browser.workspace_heading_count = await workspaceHeading.count();
+  assert.equal(renderEvidence.browser.workspace_heading_count, 1);
+
+  setStage("login_workspace_settled");
+  evidence.error_enum = "workspace_settled_failed";
+  evidence.final_pathname = new URL(page.url()).pathname;
+  assert.equal(evidence.final_pathname, "/today");
+  assert.equal(evidence.auth_me_status, 200);
+  await workspaceHeading.waitFor({ state: "visible" });
+  renderEvidence.browser.workspace_heading_count = await workspaceHeading.count();
+  assert.equal(renderEvidence.browser.workspace_heading_count, 1);
+  renderEvidence.browser.session_checking_count = await page
+    .getByText("正在確認工作階段…", { exact: true })
+    .count();
+  renderEvidence.browser.returning_to_login_count = await page
+    .getByText("正在返回登入頁…", { exact: true })
+    .count();
+  assert.equal(renderEvidence.browser.session_checking_count, 0);
+  assert.equal(renderEvidence.browser.returning_to_login_count, 0);
+  renderEvidence.browser.workspace_settled = true;
+  evidence.error_enum = "none";
+}
+
+async function inspectStoredSessionCookie(
+  context: BrowserContext,
+  baseUrl: string,
+): Promise<StoredSessionCookieEvidence> {
+  const sessionCookie = (await context.cookies(baseUrl))
+    .find((cookie) => cookie.name === "tx_session");
+  return Object.freeze({
+    cookie_stored: sessionCookie !== undefined,
+    value_nonempty: (sessionCookie?.value.length ?? 0) > 0,
+    value_length_valid: sessionCookie?.value.length === 43,
+    http_only: sessionCookie?.httpOnly === true,
+    secure_false: sessionCookie?.secure === false,
+    same_site_lax: sessionCookie?.sameSite === "Lax",
+    path_root: sessionCookie?.path === "/",
+  });
+}
+
+async function inspectSessionRequestHeader(
+  request: PlaywrightRequest,
+): Promise<SessionRequestCookieEvidence> {
+  const cookieHeader = Object.entries(await request.allHeaders())
+    .find(([name]) => name.toLowerCase() === "cookie")?.[1];
+  return Object.freeze({
+    cookie_header_present: typeof cookieHeader === "string" && cookieHeader.length > 0,
+    session_cookie_name_present: typeof cookieHeader === "string" && cookieHeader
+      .split(";")
+      .some((entry) => entry.trim().split("=", 1)[0] === "tx_session"),
+  });
+}
+
+async function inspectSessionRequestUrlApplicability(
+  context: BrowserContext,
+  baseUrl: string,
+  finalPageUrl: string,
+  request: PlaywrightRequest,
+): Promise<SessionUrlDiagnosticEvidence> {
+  const authRequestUrl = request.url();
+  const authRequestResourceTypeFetch = request.resourceType() === "fetch";
+  try {
+    const authUrl = new URL(authRequestUrl);
+    const storedCookie = (await context.cookies(baseUrl))
+      .find((cookie) => cookie.name === "tx_session");
+    const applicableCookieExists = (await context.cookies(authRequestUrl))
+      .some((cookie) => cookie.name === "tx_session");
+    const cookieDomain = storedCookie?.domain.replace(/^\./, "").toLowerCase();
+    const authHostname = authUrl.hostname.toLowerCase();
+    return Object.freeze({
+      auth_request_origin_matches_base: urlsShareOrigin(authRequestUrl, baseUrl),
+      final_page_origin_matches_auth_request: urlsShareOrigin(finalPageUrl, authRequestUrl),
+      session_cookie_applicable_to_auth_request_url: applicableCookieExists,
+      stored_cookie_domain_matches_auth_request_hostname: cookieDomain !== undefined &&
+        (authHostname === cookieDomain || authHostname.endsWith(`.${cookieDomain}`)),
+      auth_request_resource_type_fetch: authRequestResourceTypeFetch,
+    });
+  } catch {
+    return Object.freeze({
+      auth_request_origin_matches_base: false,
+      final_page_origin_matches_auth_request: false,
+      session_cookie_applicable_to_auth_request_url: false,
+      stored_cookie_domain_matches_auth_request_hostname: false,
+      auth_request_resource_type_fetch: authRequestResourceTypeFetch,
+    });
+  }
+}
+
+function locationOriginMatchesBase(
+  location: string | undefined,
+  baseUrl: string,
+): boolean {
+  if (!location) return false;
+  try {
+    const base = new URL(baseUrl);
+    return new URL(location, base).origin === base.origin;
+  } catch {
+    return false;
+  }
+}
+
+function urlsShareOrigin(left: string, right: string): boolean {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function loginWithoutEvidence(
+  page: Page,
+  baseUrl: string,
+  email: string,
+  password: string,
+): Promise<void> {
+  await page.goto(`${baseUrl}/login`);
+  await page.getByLabel("測試帳號電郵", { exact: true }).fill(email);
+  await page.getByLabel("密碼", { exact: true }).fill(password);
+  await Promise.all([
+    page.waitForURL("**/today"),
+    page.getByRole("button", { name: "登入測試工作台", exact: true }).click(),
+  ]);
+}
+
+async function logout(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await Promise.all([
+    page.waitForURL("**/login**"),
+    page.getByRole("link", { name: "登出", exact: true }).click(),
+  ]);
+  assert.equal(new URL(page.url()).pathname, "/login");
+}
+
+async function fillValidDraft(
+  page: Page,
+  draft: Readonly<{
+    studentName: string;
+    guardianName: string;
+    guardianEmail: string;
+  }>,
+): Promise<void> {
+  await page.getByRole("textbox", { name: "學生姓名", exact: true })
+    .fill(draft.studentName);
+  await page.getByLabel("出生日期", { exact: true }).fill("2013-06-18");
+  await page.getByRole("textbox", { name: "監護人姓名", exact: true })
+    .fill(draft.guardianName);
+  await page.getByRole("combobox", { name: "與學生關係", exact: true })
+    .selectOption("father");
+  await page.getByLabel("監護人 Email", { exact: true }).fill(draft.guardianEmail);
+}
+
+async function submitAndWaitUnavailable(
+  page: Page,
+  expectedCount: number,
+  observedKeys: readonly string[],
+): Promise<void> {
+  await page.getByRole("button", { name: "建立學生", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "學生服務暫時不可用" }).waitFor();
+  await waitUntil(() => observedKeys.length === expectedCount);
+}
+
+async function withViewport<T>(
+  page: Page,
+  viewport: Readonly<{ width: number; height: number }>,
+  action: () => Promise<T>,
+): Promise<T> {
+  await page.setViewportSize(viewport);
+  try {
+    return await action();
+  } finally {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+}
+
+async function assertViewport(page: Page, label: string): Promise<ViewportEvidence> {
+  const result = await page.evaluate(() => {
+    const root = document.documentElement;
+    const main = document.querySelector("main") ?? document.body;
+    const visible = (element: Element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" &&
+        rect.width > 0 && rect.height > 0;
+    };
+    const inHorizontalScroller = (element: Element) =>
+      Boolean(element.closest(".overflow-x-auto"));
+    const controls = [...main.querySelectorAll("a,button,input,select")]
+      .filter((element) => visible(element) && !inHorizontalScroller(element));
+    const outOfBoundsControls = controls.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left < -1 || rect.right > window.innerWidth + 1;
+    }).length;
+    let overlappingControls = 0;
+    for (let left = 0; left < controls.length; left += 1) {
+      const a = controls[left]!.getBoundingClientRect();
+      for (let right = left + 1; right < controls.length; right += 1) {
+        const b = controls[right]!.getBoundingClientRect();
+        const overlapWidth = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const overlapHeight = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (overlapWidth > 2 && overlapHeight > 2) overlappingControls += 1;
+      }
+    }
+    const clippedText = [...main.querySelectorAll("h1,h2,h3,p,label,button,a,strong,small")]
+      .filter((element) => visible(element) && !inHorizontalScroller(element))
+      .filter((element) => !element.classList.contains("truncate"))
+      .filter((element) => {
+        const htmlElement = element as HTMLElement;
+        const style = getComputedStyle(element);
+        return htmlElement.scrollWidth > htmlElement.clientWidth + 1 &&
+          style.overflowX === "hidden";
+      }).length;
+    return {
+      page_horizontal_overflow: Math.max(0, root.scrollWidth - window.innerWidth),
+      out_of_bounds_controls: outOfBoundsControls,
+      overlapping_controls: overlappingControls,
+      clipped_text: clippedText,
+    };
+  });
+  assert.deepEqual(result, {
+    page_horizontal_overflow: 0,
+    out_of_bounds_controls: 0,
+    overlapping_controls: 0,
+    clipped_text: 0,
+  }, label);
+  return Object.freeze({ label, ...result });
+}
+
+function isLoginStage(stage: BrowserStage): boolean {
+  return stage === "login_server_render" || stage === "login_browser_render" ||
+    stage === "login_field_fill" ||
+    stage === "login_submit_response" || stage === "login_redirect" ||
+    stage === "login_session_response" || stage === "login_workspace_render" ||
+    stage === "login_workspace_settled";
+}
+
+function isAdvisorEntryStage(stage: BrowserStage): boolean {
+  return stage === "advisor_list_navigation" || stage === "advisor_list_shell" ||
+    stage === "advisor_list_data" || stage === "advisor_create_entry";
+}
+
+function isClientValidationStage(stage: BrowserStage): boolean {
+  return stage === "create_form_navigation" || stage === "create_form_shell" ||
+    stage === "create_form_access" || stage === "create_form_ready" ||
+    stage === "client_validation_fill" || stage === "client_validation_submit" ||
+    stage === "client_validation_feedback" || stage === "client_validation_no_post";
+}
+
+function isAdminDirectStage(stage: BrowserStage): boolean {
+  return stage === "admin_direct_transport" || stage === "admin_direct_status" ||
+    stage === "admin_direct_privacy";
+}
+
+function freezeLoginRenderEvidence(
+  evidence: LoginRenderEvidence,
+): Readonly<LoginRenderEvidence> {
+  return Object.freeze({
+    server: Object.freeze({ ...evidence.server }),
+    browser: Object.freeze({ ...evidence.browser }),
+  });
+}
+
+function safeStage(stage: BrowserStage): BrowserStage {
+  return BROWSER_STAGES.includes(stage) ? stage : "runtime_preflight";
+}
+
+function safePathname(location: string | undefined): string | null {
+  if (!location) return null;
+  try {
+    return new URL(location, "http://local.invalid").pathname;
+  } catch {
+    return null;
+  }
+}
+
+async function populateIsolatedApp(directory: string): Promise<void> {
+  const excluded = new Set([".git", ".next", "node_modules"]);
+  for (const entry of await readdir(process.cwd())) {
+    if (excluded.has(entry) || entry.startsWith(".env") || [
+      ".DS_Store", ".idea", ".kition", ".pnpm-store",
+    ].includes(entry)) continue;
+    await cp(resolve(entry), join(directory, entry), { recursive: true });
+  }
+  await symlink(resolve("node_modules"), join(directory, "node_modules"), "dir");
+}
+
+async function discoverCanonicalBaseUrl(
+  listenUrl: string,
+  expectedPort: number,
+  evidence: CanonicalOriginEvidence,
+): Promise<string> {
+  const response = await fetch(`${listenUrl}/api/auth/login`, {
+    method: "GET",
+    redirect: "manual",
+  });
+  evidence.response_status_307 = response.status === 307;
+  const location = response.headers.get("location");
+  evidence.location_present = typeof location === "string" && location.length > 0;
+  assert.equal(evidence.response_status_307, true);
+  assert.equal(evidence.location_present, true);
+  if (!location) throw new Error("canonical_location_missing");
+
+  let canonicalUrl: URL;
+  try {
+    canonicalUrl = new URL(location, listenUrl);
+    evidence.location_parseable = true;
+  } catch {
+    throw new Error("canonical_location_invalid");
+  }
+  evidence.pathname_exact = canonicalUrl.pathname === "/api/v1/auth/login";
+  evidence.protocol_http = canonicalUrl.protocol === "http:";
+  evidence.hostname_loopback = ["localhost", "127.0.0.1", "::1", "[::1]"]
+    .includes(canonicalUrl.hostname.toLowerCase());
+  evidence.port_matches = canonicalUrl.port === String(expectedPort);
+  evidence.credentials_absent = canonicalUrl.username === "" && canonicalUrl.password === "";
+  evidence.search_absent = canonicalUrl.search === "";
+  evidence.hash_absent = canonicalUrl.hash === "";
+
+  assert.equal(evidence.location_parseable, true);
+  assert.equal(evidence.pathname_exact, true);
+  assert.equal(evidence.protocol_http, true);
+  assert.equal(evidence.hostname_loopback, true);
+  assert.equal(evidence.port_matches, true);
+  assert.equal(evidence.credentials_absent, true);
+  assert.equal(evidence.search_absent, true);
+  assert.equal(evidence.hash_absent, true);
+  return canonicalUrl.origin;
+}
+
+function startNextDev(directory: string, port: number, connectionString: string): ChildProcess {
+  return spawn(process.execPath, [
+    resolve("node_modules/next/dist/bin/next"),
+    "dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(port),
+  ], {
+    cwd: directory,
+    env: {
+      PATH: `/opt/homebrew/opt/node@22/bin:${process.env.PATH ?? ""}`,
+      HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
+      LANG: process.env.LANG,
+      NEXT_TELEMETRY_DISABLED: "1",
+      APP_ENV: "development",
+      NODE_ENV: "development",
+      APP_RUNTIME_MODE: "local-synthetic",
+      AUTH_MODE: "database-test",
+      LOCAL_SYNTHETIC_DATABASE_URL: connectionString,
+      LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
+      LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
+      LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",
+      LOCAL_SYNTHETIC_SQS_QUEUE: "tianxing-local-document-scan",
+      LOCAL_SYNTHETIC_SQS_DLQ: "tianxing-local-document-scan-dlq",
+      LOCAL_SYNTHETIC_CLAMAV_HOST: "127.0.0.1",
+      LOCAL_SYNTHETIC_CLAMAV_PORT: "3310",
+      LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS: "2000",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
+  child.stdout?.resume();
+  child.stderr?.resume();
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    if (child.exitCode !== null) throw new Error("next_dev_early_exit");
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/auth/me`);
+      if (response.status === 401) return;
+    } catch {}
+    await delay(500);
+  }
+  throw new Error("next_dev_readiness_timeout");
+}
+
+async function stopNextDev(child: ChildProcess | undefined): Promise<boolean> {
+  if (!child || child.exitCode !== null) return true;
+  child.kill("SIGTERM");
+  const stopped = await Promise.race([
+    new Promise<boolean>((resolveStopped) => child.once("close", () => resolveStopped(true))),
+    delay(10_000).then(() => false),
+  ]);
+  if (!stopped && child.exitCode === null) {
+    child.kill("SIGKILL");
+    await new Promise<void>((resolveStopped) => child.once("close", () => resolveStopped()));
+  }
+  return child.exitCode !== null;
+}
+
+async function closeBrowser(context: BrowserContext | undefined): Promise<boolean> {
+  if (!context) return true;
+  try {
+    await context.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeDirectory(directory: string): Promise<boolean> {
+  try {
+    await rm(directory, { recursive: true, force: true });
+    await access(directory);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+async function removeDockerResource(arguments_: readonly string[]): Promise<boolean> {
+  const result = await runDocker(arguments_, undefined, true);
+  return result.exitCode === 0;
+}
+
+async function provision(
+  target: OneRoleBaselineTarget,
+  email: string,
+  password: string,
+): Promise<string> {
+  return runDatabaseTestProvisionCli({
+    arguments: ["--password-stdin", `--email=${email}`],
+    inputStream: streamOf(Buffer.from(`${password}\n`)),
+    readTarget: () => localProvisionTarget(target),
+  });
+}
+
+async function* streamOf(chunk: Buffer): AsyncIterable<Buffer> {
+  yield chunk;
+}
+
+function localProvisionTarget(target: OneRoleBaselineTarget): DatabaseTestProvisionTarget {
+  return Object.freeze({
+    connectionString: target.connectionString,
+    loginUser: target.user,
+    databaseName: target.database,
+    connectionTimeoutMs: 5_000,
+    statementTimeoutMs: 10_000,
+    ssl: false,
+  });
+}
+
+function baselineDependencies(target: OneRoleBaselineTarget) {
+  return {
+    inspect: () => inspectBaselineWithNewClient(target),
+    openExecutionConnection: async () => {
+      const client = new Client(createOneRoleBaselineClientConfig(target));
+      await client.connect();
+      return Object.freeze({ client, close: () => client.end() });
+    },
+  };
+}
+
+async function inspectBaselineWithNewClient(
+  target: OneRoleBaselineTarget,
+): Promise<OneRoleBaselineDatabaseState> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    return await inspectOneRoleBaselineDatabase(client);
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+function localTarget(port: number, password: string): OneRoleBaselineTarget {
+  return Object.freeze({
+    connectionString: `postgresql://${ONE_ROLE_CANONICAL_ROLE}:${password}@127.0.0.1:${port}/tianxing`,
+    host: "127.0.0.1",
+    port,
+    database: "tianxing",
+    user: ONE_ROLE_CANONICAL_ROLE,
+    ssl: false,
+  });
+}
+
+async function waitForPostgres(containerName: string): Promise<void> {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const probe = await runDocker([
+      "exec", containerName, "/bin/sh", "/usr/local/bin/tianxing-postgres-healthcheck",
+    ], undefined, true);
+    if (probe.exitCode === 0) return;
+    await delay(250);
+  }
+  throw new Error("postgres_readiness_timeout");
+}
+
+async function reserveLoopbackPort(): Promise<number> {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close((error) => error ? reject(error) : resolvePort(port));
+    });
+  });
+}
+
+function readLoopbackPort(output: string): number {
+  const match = /^127\.0\.0\.1:([0-9]+)\s*$/.exec(output);
+  const port = Number(match?.[1]);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("postgres_port_inspection");
+  }
+  return port;
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await delay(50);
+  }
+  throw new Error("observation_timeout");
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+}
+
+async function runDocker(
+  arguments_: readonly string[],
+  input?: string,
+  allowFailure = false,
+): Promise<Readonly<{ exitCode: number; stdout: string }>> {
+  return new Promise((resolveRun, reject) => {
+    const child = spawn(DOCKER, arguments_, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.resume();
+    child.once("error", reject);
+    child.once("close", (code) => {
+      const exitCode = code ?? 1;
+      if (exitCode !== 0 && !allowFailure) reject(new Error("docker_command_failed"));
+      else resolveRun(Object.freeze({ exitCode, stdout }));
+    });
+    child.stdin.end(input);
+  });
+}
