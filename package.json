@@ -31,6 +31,8 @@
     "test:database-test-provision-postgresql": "node --conditions=react-server --test tests/integration/database-test-provision-postgresql.test.ts",
     "test:database-test-login-postgresql": "node --conditions=react-server --test tests/integration/database-test-login-postgresql.test.ts",
     "test:database-test-login-dev-http": "node --conditions=react-server --test tests/integration/database-test-login-dev-http.test.ts",
+    "test:crm-01-dev-http": "node --conditions=react-server --test tests/integration/crm-student-create-dev-http.test.ts",
+    "test:crm-01-dev-browser": "node --conditions=react-server --test tests/integration/crm-student-create-dev-browser.test.ts",
     "test:p0-12": "node --test tests/unit/release1/harness.test.ts",
     "evidence:p3-07:source": "node scripts/infra/generate-p3-07-source-manifest.ts",
     "db:plan": "pnpm db:baseline:plan",
@@ -77,6 +79,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "node-pg-migrate": "9.0.0",
+    "playwright-core": "1.55.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

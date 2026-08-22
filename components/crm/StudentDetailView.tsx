@@ -1,0 +1,89 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+
+import { Icon } from '@/components/workspace/Icon'
+import {
+  classifyStudentRequestFailure,
+  getStudent,
+  type StudentDetail,
+} from '@/modules/crm/client'
+
+type DetailState =
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'ready'; readonly student: StudentDetail }
+  | { readonly kind: 'unauthenticated' | 'forbidden' | 'not_found' | 'error' }
+
+export function StudentDetailView({ studentId }: { readonly studentId: string }) {
+  const [state, setState] = useState<DetailState>({ kind: 'loading' })
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getStudent(studentId, controller.signal)
+      .then((student) => setState({ kind: 'ready', student }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        const failure = classifyStudentRequestFailure(error)
+        if (failure === 'unauthenticated' || failure === 'forbidden' || failure === 'not_found') {
+          setState({ kind: failure })
+          return
+        }
+        setState({ kind: 'error' })
+      })
+    return () => controller.abort()
+  }, [reloadToken, studentId])
+
+  if (state.kind === 'loading') return <DetailMessage icon="clock" title="正在載入學生資料" detail="請稍候。" />
+  if (state.kind === 'unauthenticated') return <DetailMessage icon="lock" title="工作階段已失效" detail="請重新登入後再查看學生資料。" href="/login" action="重新登入" />
+  if (state.kind === 'forbidden') return <DetailMessage icon="shield" title="無法查看學生資料" detail="你的帳號目前沒有查看此學生的權限。" href="/students" action="返回學生名單" />
+  if (state.kind === 'not_found') return <DetailMessage icon="users" title="找不到學生資料" detail="這筆學生資料不存在或已無法查看。" href="/students" action="返回學生名單" />
+  if (state.kind === 'error') return <DetailMessage icon="x" title="學生服務暫時不可用" detail="請稍後重試。" onRetry={() => { setState({ kind: 'loading' }); setReloadToken((value) => value + 1) }} />
+  if (state.kind !== 'ready') return null
+
+  const { student } = state
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <Link href="/students" className="quiet-link">學生與監護人</Link>
+        <Icon name="chevron-right" size={14} />
+        <span className="truncate">{student.displayName}</span>
+      </div>
+      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        <div><div className="eyebrow">學生資料</div><h2 className="page-title">{student.displayName}</h2><p className="page-subtitle">查看學生與目前有效的監護人聯絡資料。</p></div>
+        <div className="flex flex-wrap items-center gap-2"><Link href={`/cases/new?student=${student.id}`} className="primary-button"><Icon name="plus" size={15} />建立案件</Link><span className={`status-pill ${student.status === 'active' ? 'status-success' : 'status-warning'}`}>{student.status === 'active' ? '有效' : '待刪除'}</span></div>
+      </section>
+
+      <section className="workspace-section">
+        <div className="mb-4"><h3 className="section-title">學生基本資料</h3><p className="section-detail">此處顯示學生本人的身份與聯絡資料。</p></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Info label="出生日期" value={student.dateOfBirth ?? '未提供'} /><Info label="聯絡 Email" value={student.contactEmail ?? '未提供'} /><Info label="聯絡電話" value={student.contactPhone ?? '未提供'} /><Info label="更新時間" value={formatDate(student.updatedAt)} /></div>
+      </section>
+
+      <section className="workspace-section">
+        <div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="section-title">監護人與聯絡關係</h3><p className="section-detail">顯示目前有效的監護人與主要聯絡設定。</p></div><span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>{student.guardians.length} 筆</span></div>
+        {student.guardians.length === 0 ? <div className="empty-state">目前沒有有效監護人關係。</div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{student.guardians.map((guardian) => <div key={guardian.id} className="selection-card selected"><span className="work-icon blue"><Icon name="user" size={15} /></span><span className="min-w-0 flex-1"><strong className="break-words">{guardian.displayName}</strong><small className="break-words">{relationshipLabel(guardian.relationshipType)} · {guardian.email ?? '未提供 Email'} · {guardian.phone ?? '未提供電話'}</small><small>{[guardian.isPrimaryContact && '主要聯絡', guardian.isLegalGuardian && '法定監護'].filter(Boolean).join(' · ')}</small></span>{guardian.isPrimaryContact ? <span className="status-pill status-success shrink-0">主要聯絡</span> : null}</div>)}</div>}
+      </section>
+    </div>
+  )
+}
+
+function DetailMessage({ icon, title, detail, href, action, onRetry }: { readonly icon: 'clock' | 'lock' | 'shield' | 'users' | 'x'; readonly title: string; readonly detail: string; readonly href?: string; readonly action?: string; readonly onRetry?: () => void }) {
+  return <div className="max-w-3xl mx-auto"><section className="workspace-section"><div className="empty-state"><Icon name={icon} size={20} /><strong>{title}</strong><span>{detail}</span>{href && action ? <Link href={href} className="primary-button mt-3">{action}</Link> : null}{onRetry ? <button type="button" className="secondary-button mt-3" onClick={onRetry}>重新載入</button> : null}</div></section></div>
+}
+
+function Info({ label, value }: { readonly label: string; readonly value: string }) {
+  return <div><div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</div><div className="mt-1 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{value}</div></div>
+}
+
+function relationshipLabel(value: string): string {
+  if (value === 'father') return '父親'
+  if (value === 'mother') return '母親'
+  if (value === 'other_guardian') return '其他監護人'
+  return '監護人'
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '未提供' : date.toLocaleDateString('zh-HK')
+}

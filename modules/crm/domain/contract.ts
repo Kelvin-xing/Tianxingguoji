@@ -6,6 +6,22 @@ export const CRM_FORBIDDEN_LEGAL_ID_FIELDS = Object.freeze([
   "government_id",
 ] as const);
 
+export const PRIMARY_GUARDIAN_RELATIONSHIP_TYPES = Object.freeze([
+  "father",
+  "mother",
+  "other_guardian",
+] as const);
+
+export type PrimaryGuardianRelationshipType =
+  (typeof PRIMARY_GUARDIAN_RELATIONSHIP_TYPES)[number];
+
+export function isPrimaryGuardianRelationshipType(
+  value: unknown,
+): value is PrimaryGuardianRelationshipType {
+  return typeof value === "string" &&
+    (PRIMARY_GUARDIAN_RELATIONSHIP_TYPES as readonly string[]).includes(value);
+}
+
 export type CrmLifecycleStatus = "active" | "pending_delete" | "purged";
 export type GuardianStatus = CrmLifecycleStatus;
 export type CrmActorRole = "founder" | "admin" | "advisor" | "data_reviewer";

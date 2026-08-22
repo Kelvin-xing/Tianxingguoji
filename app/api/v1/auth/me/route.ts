@@ -5,7 +5,10 @@ import { handleApiRequest } from "@/modules/shared/public";
 import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
 import { isIdentityServiceError } from "@/modules/identity/server";
 import { createApiError } from "@/modules/shared/public";
-import { workspaceCapabilitiesForRole } from "@/modules/access/public";
+import {
+  BOOTSTRAP_ACCESS_POLICY_VERSION,
+  workspaceCapabilitiesForRole,
+} from "@/modules/access/public";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +26,7 @@ export async function GET(request: Request): Promise<Response> {
         user_id: actor.userId,
         organization_id: actor.organizationId,
         role: actor.role,
+        policy_version: BOOTSTRAP_ACCESS_POLICY_VERSION,
         capabilities: workspaceCapabilitiesForRole(actor.role),
       };
     } catch (error) {
