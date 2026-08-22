@@ -26,6 +26,7 @@ import {
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
+  NEON_TEST_MANIFEST_ID,
   NEON_TEST_ORGANIZATION,
   NEON_TEST_PRINCIPALS,
   NEON_TEST_STUDENTS,
@@ -370,6 +371,166 @@ class SafeCrm02BrowserGateFailure extends Error {
   }) {
     super(JSON.stringify(Object.freeze({ status: "failed", ...input })));
     this.name = "SafeCrm02BrowserGateFailure";
+    this.stack = this.message;
+  }
+}
+
+const CRM03_BROWSER_STAGES = Object.freeze([
+  "runtime_preflight",
+  "postgres_setup",
+  "baseline_seed",
+  "identity_provision",
+  "next_dev",
+  "canonical_origin_discovery",
+  "chrome_launch",
+  "advisor_login",
+  "crm01_student_create",
+  "advisor_assignment",
+  "profile_entries",
+  "keyboard_focus",
+  "student_validation",
+  "student_idempotency",
+  "student_conflict_seed",
+  "student_conflict_submit",
+  "student_conflict_feedback",
+  "student_update",
+  "student_refresh",
+  "guardian_validation",
+  "guardian_stale_setup",
+  "guardian_stale_feedback",
+  "guardian_stale_recovery",
+  "guardian_update",
+  "relogin_persistence",
+  "founder_allowed",
+  "admin_login_contract",
+  "admin_detail_requests",
+  "admin_detail_ready",
+  "admin_entries_hidden",
+  "admin_direct_denied",
+  "desktop_viewport",
+  "mobile_editor_ready",
+  "mobile_viewport_measurement",
+  "mobile_viewport_assertion",
+  "browser_log_safety",
+  "cleanup",
+  "complete",
+] as const);
+
+type Crm03BrowserStage = (typeof CRM03_BROWSER_STAGES)[number];
+
+interface Crm03ViewportCategoryCounts {
+  readonly input_count: number;
+  readonly button_count: number;
+  readonly link_count: number;
+  readonly select_count: number;
+}
+
+interface Crm03ClippedCategoryCounts {
+  readonly heading_count: number;
+  readonly paragraph_count: number;
+  readonly label_count: number;
+  readonly button_count: number;
+  readonly link_count: number;
+  readonly strong_count: number;
+  readonly small_count: number;
+}
+
+interface Crm03FixedControlMatches {
+  readonly cancel: boolean;
+  readonly save_guardian_profile: boolean;
+  readonly edit_guardian_profile: boolean;
+  readonly create_case: boolean;
+  readonly manage_guardian_relationships: boolean;
+}
+
+interface Crm03FixedTitleMatches {
+  readonly student_profile: boolean;
+  readonly guardian_relationships: boolean;
+  readonly edit_guardian_profile: boolean;
+}
+
+interface Crm03MobileViewportEvidence {
+  readonly page_horizontal_overflow: number | null;
+  readonly out_of_bounds_controls: number | null;
+  readonly overlapping_controls: number | null;
+  readonly clipped_text: number | null;
+  readonly out_of_bounds_categories: Crm03ViewportCategoryCounts;
+  readonly out_of_bounds_fixed_controls: Crm03FixedControlMatches;
+  readonly overlapping_categories: Crm03ViewportCategoryCounts;
+  readonly overlapping_fixed_controls: Crm03FixedControlMatches;
+  readonly clipped_categories: Crm03ClippedCategoryCounts;
+  readonly clipped_fixed_controls: Crm03FixedControlMatches;
+  readonly clipped_fixed_titles: Crm03FixedTitleMatches;
+}
+
+interface Crm03BrowserEvidence {
+  advisor_entries_visible: boolean;
+  advisor_assignment_fetch_completed: boolean;
+  advisor_assignment_json_parseable: boolean;
+  advisor_assignment_status: number | null;
+  advisor_assignment_exact_case_dto: boolean;
+  founder_entries_visible: boolean;
+  admin_entries_hidden: boolean;
+  admin_auth_status: number | null;
+  admin_auth_json_parseable: boolean;
+  admin_auth_role_exact_admin: boolean;
+  admin_auth_profiles_manage_capability_present: boolean | null;
+  admin_student_request_started: boolean;
+  admin_student_response_received: boolean;
+  admin_student_response_status: number | null;
+  admin_guardian_request_started: boolean;
+  admin_guardian_response_received: boolean;
+  admin_guardian_response_status: number | null;
+  admin_detail_student_heading_count: number | null;
+  admin_detail_denied_count: number | null;
+  admin_student_edit_button_count: number | null;
+  admin_student_edit_button_visible_count: number | null;
+  admin_guardian_edit_button_count: number | null;
+  admin_guardian_edit_button_visible_count: number | null;
+  keyboard_cancel_restores_focus: boolean;
+  student_validation_zero_patch: boolean;
+  guardian_validation_zero_patch: boolean;
+  synchronous_double_patch_count: number | null;
+  uncertain_retry_same_key: boolean;
+  changed_field_rotated_key: boolean;
+  student_conflict_seed_fetch_completed: boolean;
+  student_conflict_seed_json_parseable: boolean;
+  student_conflict_seed_status: number | null;
+  student_conflict_seed_ack_exact: boolean;
+  student_conflict_submit_status: number | null;
+  student_conflict_submit_code: "CONFLICT" | "STALE_VERSION" | "OTHER" | null;
+  student_conflict_alert_count: number | null;
+  student_conflict_alert_visible: boolean;
+  student_patch_status: number | null;
+  student_ack_exact: boolean;
+  student_authoritative_get_status: number | null;
+  student_refresh_persisted: boolean;
+  guardian_stale_status: number | null;
+  guardian_stale_visible: boolean;
+  guardian_stale_recovered: boolean;
+  guardian_patch_status: number | null;
+  guardian_ack_exact: boolean;
+  guardian_authoritative_get_status: number | null;
+  relogin_persisted: boolean;
+  admin_student_status: number | null;
+  admin_guardian_status: number | null;
+  admin_forbidden_codes: boolean;
+  admin_private_echo: boolean | null;
+  desktop_viewport_passed: boolean;
+  mobile_viewport_passed: boolean;
+  mobile_viewport: Crm03MobileViewportEvidence;
+  page_errors: number;
+  sensitive_log_matches: number;
+}
+
+class SafeCrm03BrowserGateFailure extends Error {
+  constructor(input: {
+    readonly stage: Crm03BrowserStage;
+    readonly evidence: Readonly<Crm03BrowserEvidence>;
+    readonly cleanup: Readonly<CleanupEvidence>;
+  }) {
+    super(JSON.stringify(Object.freeze({ status: "failed", ...input })));
+    this.name = "SafeCrm03BrowserGateFailure";
     this.stack = this.message;
   }
 }
@@ -1751,6 +1912,1051 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
   }))}\n`);
 });
 
+test("CRM-03 maintains Student and Guardian profiles through a real local browser", {
+  timeout: 300_000,
+}, async () => {
+  const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
+  const containerName = `tianxing-crm03-browser-pg17-${suffix}`;
+  const secretVolumeName = `tianxing-crm03-browser-secret-${suffix}`;
+  const applicationPassword = randomBytes(32).toString("hex");
+  const advisorPassword = randomBytes(32).toString("base64url");
+  const founderPassword = randomBytes(32).toString("base64url");
+  const adminPassword = randomBytes(32).toString("base64url");
+  const appDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm03-browser-app-"));
+  const profileDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm03-browser-profile-"));
+  const evidence: Crm03BrowserEvidence = {
+    advisor_entries_visible: false,
+    advisor_assignment_fetch_completed: false,
+    advisor_assignment_json_parseable: false,
+    advisor_assignment_status: null,
+    advisor_assignment_exact_case_dto: false,
+    founder_entries_visible: false,
+    admin_entries_hidden: false,
+    admin_auth_status: null,
+    admin_auth_json_parseable: false,
+    admin_auth_role_exact_admin: false,
+    admin_auth_profiles_manage_capability_present: null,
+    admin_student_request_started: false,
+    admin_student_response_received: false,
+    admin_student_response_status: null,
+    admin_guardian_request_started: false,
+    admin_guardian_response_received: false,
+    admin_guardian_response_status: null,
+    admin_detail_student_heading_count: null,
+    admin_detail_denied_count: null,
+    admin_student_edit_button_count: null,
+    admin_student_edit_button_visible_count: null,
+    admin_guardian_edit_button_count: null,
+    admin_guardian_edit_button_visible_count: null,
+    keyboard_cancel_restores_focus: false,
+    student_validation_zero_patch: false,
+    guardian_validation_zero_patch: false,
+    synchronous_double_patch_count: null,
+    uncertain_retry_same_key: false,
+    changed_field_rotated_key: false,
+    student_conflict_seed_fetch_completed: false,
+    student_conflict_seed_json_parseable: false,
+    student_conflict_seed_status: null,
+    student_conflict_seed_ack_exact: false,
+    student_conflict_submit_status: null,
+    student_conflict_submit_code: null,
+    student_conflict_alert_count: null,
+    student_conflict_alert_visible: false,
+    student_patch_status: null,
+    student_ack_exact: false,
+    student_authoritative_get_status: null,
+    student_refresh_persisted: false,
+    guardian_stale_status: null,
+    guardian_stale_visible: false,
+    guardian_stale_recovered: false,
+    guardian_patch_status: null,
+    guardian_ack_exact: false,
+    guardian_authoritative_get_status: null,
+    relogin_persisted: false,
+    admin_student_status: null,
+    admin_guardian_status: null,
+    admin_forbidden_codes: false,
+    admin_private_echo: null,
+    desktop_viewport_passed: false,
+    mobile_viewport_passed: false,
+    mobile_viewport: emptyCrm03MobileViewportEvidence(),
+    page_errors: 0,
+    sensitive_log_matches: 0,
+  };
+  const cleanupEvidence: CleanupEvidence = {
+    context_closed: false,
+    dev_stopped: false,
+    app_directory_removed: false,
+    profile_removed: false,
+    container_removed: false,
+    volume_removed: false,
+  };
+  const canonicalOriginEvidence: CanonicalOriginEvidence = {
+    response_status_307: false,
+    location_present: false,
+    location_parseable: false,
+    pathname_exact: false,
+    protocol_http: false,
+    hostname_loopback: false,
+    port_matches: false,
+    credentials_absent: false,
+    search_absent: false,
+    hash_absent: false,
+  };
+
+  let stage: Crm03BrowserStage = "runtime_preflight";
+  let containerStarted = false;
+  let secretVolumeCreated = false;
+  let devServer: ChildProcess | undefined;
+  let context: BrowserContext | undefined;
+  let failureStage: Crm03BrowserStage | undefined;
+  let baselineGeneratedFiles = 0;
+
+  try {
+    await access(DOCKER, constants.X_OK);
+    await access(CHROME, constants.X_OK);
+
+    stage = "postgres_setup";
+    await runDocker(["image", "inspect", POSTGRES_IMAGE]);
+    await runDocker(["volume", "create", secretVolumeName]);
+    secretVolumeCreated = true;
+    await runDocker([
+      "run", "--rm", "--interactive", "--pull=never",
+      "--volume", `${secretVolumeName}:/run/secrets`,
+      POSTGRES_IMAGE, "/bin/sh", "-c",
+      "umask 022; cat > /run/secrets/local_postgres_password; chmod 0444 /run/secrets/local_postgres_password",
+    ], applicationPassword);
+    await runDocker([
+      "run", "--rm", "--detach", "--pull=never", "--name", containerName,
+      "--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=512m",
+      "--env", "POSTGRES_DB=tianxing",
+      "--env", "POSTGRES_USER=postgres",
+      "--env", "POSTGRES_PASSWORD_FILE=/run/secrets/local_postgres_password",
+      "--volume", `${secretVolumeName}:/run/secrets:ro`,
+      "--volume", `${resolve("infra/local/postgres/init")}:/docker-entrypoint-initdb.d:ro`,
+      "--volume", `${resolve("infra/local/postgres/healthcheck.sh")}:/usr/local/bin/tianxing-postgres-healthcheck:ro`,
+      "--publish", "127.0.0.1::5432",
+      POSTGRES_IMAGE,
+    ]);
+    containerStarted = true;
+    await waitForPostgres(containerName);
+    const databasePort = readLoopbackPort((await runDocker(["port", containerName, "5432/tcp"])).stdout);
+    const target = localTarget(databasePort, applicationPassword);
+
+    stage = "baseline_seed";
+    const build = await verifyCommittedOneRoleBaseline();
+    const baseline = await executeOneRoleBaselineRun({
+      mode: "apply",
+      target,
+      build,
+      dependencies: baselineDependencies(target),
+    });
+    assert.equal(baseline.status, "pass");
+    assert.equal(baseline.generated_files, 29);
+    baselineGeneratedFiles = baseline.generated_files;
+    const seed = await seedNeonTestRelease1(target, "apply");
+    assert.equal(seed.status, "pass");
+    assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
+
+    stage = "identity_provision";
+    assert.equal(await provision(target, ADVISOR.email, advisorPassword), "created");
+    assert.equal(await provision(target, FOUNDER.email, founderPassword), "created");
+    assert.equal(await provision(target, ADMIN.email, adminPassword), "created");
+
+    stage = "next_dev";
+    await populateIsolatedApp(appDirectory);
+    const nextPort = await reserveLoopbackPort();
+    devServer = startNextDev(appDirectory, nextPort, target.connectionString);
+    const listenUrl = `http://127.0.0.1:${nextPort}`;
+    await waitForNextDev(listenUrl, devServer);
+
+    stage = "canonical_origin_discovery";
+    const canonicalBaseUrl = await discoverCanonicalBaseUrl(
+      listenUrl,
+      nextPort,
+      canonicalOriginEvidence,
+    );
+
+    stage = "chrome_launch";
+    context = await chromium.launchPersistentContext(profileDirectory, {
+      executablePath: CHROME,
+      headless: true,
+      viewport: { width: 1440, height: 900 },
+      locale: "zh-HK",
+      args: ["--disable-background-networking", "--no-first-run", "--no-default-browser-check"],
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    page.setDefaultTimeout(30_000);
+    const consoleMessages: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (message) => consoleMessages.push(`${message.type()}:${message.text()}`));
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    stage = "advisor_login";
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADVISOR.email, advisorPassword);
+
+    stage = "crm01_student_create";
+    await page.goto(`${canonicalBaseUrl}/students/new`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "建立學生", exact: true }).waitFor({ state: "visible" });
+    const token = randomBytes(5).toString("hex");
+    const studentName = `CRM03 Student ${token}`;
+    const guardianName = `CRM03 Guardian ${token}`;
+    const guardianEmail = `crm03-guardian-${token}@example.invalid`;
+    const updatedStudentName = `CRM03 Updated Student ${token}`;
+    const updatedStudentEmail = `crm03-student-${token}@example.invalid`;
+    const conflictStudentName = `CRM03 Conflict Student ${token}`;
+    const concurrentGuardianName = `CRM03 Concurrent Guardian ${token}`;
+    const updatedGuardianName = `CRM03 Updated Guardian ${token}`;
+    const updatedGuardianEmail = `crm03-updated-${token}@example.invalid`;
+    await fillValidDraft(page, { studentName, guardianName, guardianEmail });
+    await Promise.all([
+      page.waitForURL(/\/students\/[0-9a-f-]{36}$/i),
+      page.getByRole("button", { name: "建立學生", exact: true }).click(),
+    ]);
+    const detailUrl = page.url();
+    const studentId = new URL(detailUrl).pathname.split("/").at(-1) ?? "";
+    assert.match(studentId, /^[0-9a-f-]{36}$/i);
+
+    stage = "advisor_assignment";
+    const assignment = await createAdvisorAssignment(page, {
+      studentId,
+      intakeYear: 2037,
+      admissionType: "transfer",
+      primaryRoleBindingId: ADVISOR.roleBindingId,
+      manifestId: NEON_TEST_MANIFEST_ID,
+      idempotencyKey: `crm03-advisor-assignment:${randomBytes(12).toString("hex")}`,
+    });
+    evidence.advisor_assignment_fetch_completed = assignment.fetch_completed;
+    evidence.advisor_assignment_json_parseable = assignment.json_parseable;
+    evidence.advisor_assignment_status = assignment.status;
+    evidence.advisor_assignment_exact_case_dto = assignment.exact_case_dto;
+    assert.equal(evidence.advisor_assignment_fetch_completed, true);
+    assert.equal(evidence.advisor_assignment_json_parseable, true);
+    assert.equal(evidence.advisor_assignment_status, 200);
+    assert.equal(evidence.advisor_assignment_exact_case_dto, true);
+
+    let snapshot = await readBrowserProfileSnapshot(page, studentId);
+
+    stage = "profile_entries";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const studentEditButton = page.getByRole("button", { name: "編輯學生資料", exact: true });
+    await studentEditButton.waitFor({ state: "visible" });
+    const initialGuardianCard = relationshipArticle(
+      page,
+      page.locator('section[aria-labelledby="student-guardian-heading"]'),
+      guardianName,
+    );
+    await initialGuardianCard.waitFor({ state: "visible" });
+    const initialGuardianEditButton = initialGuardianCard.getByRole("button", {
+      name: "編輯監護人資料",
+      exact: true,
+    });
+    await initialGuardianEditButton.waitFor({ state: "visible" });
+    evidence.advisor_entries_visible =
+      await studentEditButton.count() === 1 && await initialGuardianEditButton.count() === 1;
+    assert.equal(evidence.advisor_entries_visible, true);
+
+    stage = "keyboard_focus";
+    await studentEditButton.focus();
+    await page.keyboard.press("Enter");
+    const studentForm = page.locator('form[aria-label="編輯學生基本資料"]');
+    await studentForm.waitFor({ state: "visible" });
+    await studentForm.getByRole("button", { name: "取消", exact: true }).click();
+    await studentForm.waitFor({ state: "hidden" });
+    evidence.keyboard_cancel_restores_focus = await studentEditButton.evaluate(
+      (element) => element === document.activeElement,
+    );
+    assert.equal(evidence.keyboard_cancel_restores_focus, true);
+
+    stage = "desktop_viewport";
+    await assertViewport(page, "crm03-detail-desktop");
+    evidence.desktop_viewport_passed = true;
+
+    stage = "student_validation";
+    await studentEditButton.click();
+    await studentForm.waitFor({ state: "visible" });
+    let studentValidationPatches = 0;
+    const studentPath = `/api/v1/students/${studentId}`;
+    const studentValidationObserver = async (route: Route) => {
+      if (route.request().method() === "PATCH" &&
+          new URL(route.request().url()).pathname === studentPath) studentValidationPatches += 1;
+      await route.continue();
+    };
+    await page.route("**/api/v1/students/*", studentValidationObserver);
+    const studentNameInput = studentForm.getByRole("textbox", { name: "學生姓名", exact: true });
+    await studentNameInput.fill("");
+    await studentForm.getByRole("button", { name: "保存學生資料", exact: true }).click();
+    await studentForm.getByRole("alert").filter({ hasText: "學生姓名必須為 1 至 512 個字元。" })
+      .waitFor({ state: "visible" });
+    evidence.student_validation_zero_patch = studentValidationPatches === 0;
+    assert.equal(evidence.student_validation_zero_patch, true);
+    await page.unroute("**/api/v1/students/*", studentValidationObserver);
+
+    stage = "student_idempotency";
+    await studentNameInput.fill(updatedStudentName);
+    await studentForm.getByLabel("學生 Email", { exact: true }).fill(updatedStudentEmail);
+    const studentSave = studentForm.getByRole("button", { name: "保存學生資料", exact: true });
+    const observedKeys: string[] = [];
+    const studentRetryInterceptor = async (route: Route) => {
+      const request = route.request();
+      if (request.method() === "PATCH" && new URL(request.url()).pathname === studentPath) {
+        observedKeys.push(request.headers()["idempotency-key"] ?? "");
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    };
+    await page.route("**/api/v1/students/*", studentRetryInterceptor);
+    await studentSave.evaluate((element) => {
+      const button = element as HTMLButtonElement;
+      button.click();
+      button.click();
+    });
+    await waitUntil(() => observedKeys.length === 1);
+    await studentForm.getByRole("alert").filter({ hasText: "資料服務暫時不可用" })
+      .waitFor({ state: "visible" });
+    evidence.synchronous_double_patch_count = observedKeys.length;
+    await studentSave.click();
+    await waitUntil(() => observedKeys.length === 2);
+    await studentForm.getByRole("alert").filter({ hasText: "資料服務暫時不可用" })
+      .waitFor({ state: "visible" });
+    evidence.uncertain_retry_same_key = observedKeys[0] !== "" && observedKeys[0] === observedKeys[1];
+    await studentForm.getByLabel("學生電話", { exact: true }).fill("+852 5555 0103");
+    await studentSave.click();
+    await waitUntil(() => observedKeys.length === 3);
+    await studentForm.getByRole("alert").filter({ hasText: "資料服務暫時不可用" })
+      .waitFor({ state: "visible" });
+    evidence.changed_field_rotated_key = observedKeys[2] !== "" && observedKeys[2] !== observedKeys[1];
+    assert.equal(evidence.synchronous_double_patch_count, 1);
+    assert.equal(evidence.uncertain_retry_same_key, true);
+    assert.equal(evidence.changed_field_rotated_key, true);
+    await page.unroute("**/api/v1/students/*", studentRetryInterceptor);
+
+    stage = "student_conflict_seed";
+    const conflictSeed = await performProfilePatch(page, {
+      path: studentPath,
+      idempotencyKey: observedKeys[2]!,
+      body: {
+        display_name: conflictStudentName,
+        date_of_birth: "2013-06-18",
+        contact_email: updatedStudentEmail,
+        contact_phone: null,
+        expected_record_version: snapshot.studentVersion,
+      },
+      acknowledgement: "student",
+      expectedId: studentId,
+    });
+    evidence.student_conflict_seed_fetch_completed = conflictSeed.fetch_completed;
+    evidence.student_conflict_seed_json_parseable = conflictSeed.json_parseable;
+    evidence.student_conflict_seed_status = conflictSeed.status;
+    evidence.student_conflict_seed_ack_exact = conflictSeed.ack_exact;
+    assert.equal(evidence.student_conflict_seed_fetch_completed, true);
+    assert.equal(evidence.student_conflict_seed_json_parseable, true);
+    assert.equal(evidence.student_conflict_seed_status, 200);
+    assert.equal(evidence.student_conflict_seed_ack_exact, true);
+
+    stage = "student_conflict_submit";
+    const conflictResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === studentPath);
+    await studentSave.click();
+    const conflictResponse = await conflictResponsePromise;
+    evidence.student_conflict_submit_status = conflictResponse.status();
+    try {
+      const payload = await conflictResponse.json() as {
+        readonly error?: { readonly code?: unknown };
+      };
+      evidence.student_conflict_submit_code = payload.error?.code === "CONFLICT"
+        ? "CONFLICT"
+        : payload.error?.code === "STALE_VERSION"
+          ? "STALE_VERSION"
+          : typeof payload.error?.code === "string" ? "OTHER" : null;
+    } catch {
+      evidence.student_conflict_submit_code = null;
+    }
+    assert.equal(evidence.student_conflict_submit_status, 409);
+    assert.equal(evidence.student_conflict_submit_code, "CONFLICT");
+
+    stage = "student_conflict_feedback";
+    const conflictAlert = studentForm.getByRole("alert")
+      .filter({ hasText: "這次保存與先前操作衝突，請修改資料後再提交。" });
+    await conflictAlert.waitFor({ state: "visible" });
+    evidence.student_conflict_alert_count = await conflictAlert.count();
+    evidence.student_conflict_alert_visible = await conflictAlert.isVisible();
+    assert.equal(evidence.student_conflict_alert_count, 1);
+    assert.equal(evidence.student_conflict_alert_visible, true);
+    observedKeys.fill("[redacted]");
+
+    stage = "student_update";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    snapshot = await readBrowserProfileSnapshot(page, studentId);
+    await page.getByRole("button", { name: "編輯學生資料", exact: true }).click();
+    const refreshedStudentForm = page.locator('form[aria-label="編輯學生基本資料"]');
+    await refreshedStudentForm.waitFor({ state: "visible" });
+    await refreshedStudentForm.getByRole("textbox", { name: "學生姓名", exact: true })
+      .fill(updatedStudentName);
+    await refreshedStudentForm.getByLabel("學生 Email", { exact: true }).fill(updatedStudentEmail);
+    const studentPatchPromise = page.waitForResponse((response) =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === studentPath);
+    const studentRefreshPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === studentPath);
+    await refreshedStudentForm.getByRole("button", { name: "保存學生資料", exact: true }).click();
+    const studentPatch = await studentPatchPromise;
+    evidence.student_patch_status = studentPatch.status();
+    evidence.student_ack_exact = isExactProfileAcknowledgement(
+      await studentPatch.json(),
+      "student",
+      studentId,
+    );
+    const studentRefresh = await studentRefreshPromise;
+    evidence.student_authoritative_get_status = studentRefresh.status();
+    assert.equal(evidence.student_patch_status, 200);
+    assert.equal(evidence.student_ack_exact, true);
+    assert.equal(evidence.student_authoritative_get_status, 200);
+    await page.getByRole("status").getByText("學生資料已保存。", { exact: true })
+      .waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: updatedStudentName, exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+
+    stage = "student_refresh";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: updatedStudentName, exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    evidence.student_refresh_persisted = true;
+    snapshot = await readBrowserProfileSnapshot(page, studentId);
+
+    stage = "guardian_validation";
+    const guardianSection = page.locator('section[aria-labelledby="student-guardian-heading"]');
+    let guardianCard = relationshipArticle(page, guardianSection, guardianName);
+    await guardianCard.waitFor({ state: "visible" });
+    await guardianCard.getByRole("button", { name: "編輯監護人資料", exact: true }).click();
+    let guardianForm = guardianCard.locator('form[aria-label="編輯監護人基本資料"]');
+    await guardianForm.waitFor({ state: "visible" });
+    let guardianValidationPatches = 0;
+    const guardianPath = `/api/v1/guardians/${snapshot.guardianId}`;
+    const guardianValidationObserver = async (route: Route) => {
+      if (route.request().method() === "PATCH" &&
+          new URL(route.request().url()).pathname === guardianPath) guardianValidationPatches += 1;
+      await route.continue();
+    };
+    await page.route("**/api/v1/guardians/*", guardianValidationObserver);
+    await guardianForm.getByLabel("監護人 Email", { exact: true }).fill("");
+    await guardianForm.getByLabel("監護人電話", { exact: true }).fill("");
+    await guardianForm.getByRole("button", { name: "保存監護人資料", exact: true }).click();
+    const contactAlert = guardianForm.getByRole("alert")
+      .filter({ hasText: "監護人 Email 和電話至少填寫一項。" });
+    await contactAlert.waitFor({ state: "visible" });
+    assert.equal(await contactAlert.count(), 1);
+    evidence.guardian_validation_zero_patch = guardianValidationPatches === 0;
+    assert.equal(evidence.guardian_validation_zero_patch, true);
+    await page.unroute("**/api/v1/guardians/*", guardianValidationObserver);
+
+    await guardianForm.getByRole("textbox", { name: "監護人姓名", exact: true })
+      .fill(updatedGuardianName);
+    await guardianForm.getByLabel("監護人 Email", { exact: true }).fill(updatedGuardianEmail);
+
+    stage = "guardian_stale_setup";
+    const staleSeed = await performProfilePatch(page, {
+      path: guardianPath,
+      idempotencyKey: `crm03-stale-seed:${randomBytes(12).toString("hex")}`,
+      body: {
+        display_name: concurrentGuardianName,
+        email: guardianEmail,
+        phone: null,
+        expected_record_version: snapshot.guardianVersion,
+      },
+      acknowledgement: "guardian",
+      expectedId: snapshot.guardianId,
+    });
+    assert.equal(staleSeed.status, 200);
+    assert.equal(staleSeed.ack_exact, true);
+
+    stage = "guardian_stale_feedback";
+    const staleResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === guardianPath);
+    await guardianForm.getByRole("button", { name: "保存監護人資料", exact: true }).click();
+    const staleResponse = await staleResponsePromise;
+    evidence.guardian_stale_status = staleResponse.status();
+    assert.equal(evidence.guardian_stale_status, 409);
+    const staleAlert = guardianForm.getByRole("alert")
+      .filter({ hasText: "這筆資料已被更新。請重新載入最新資料後再編輯。" });
+    await staleAlert.waitFor({ state: "visible" });
+    evidence.guardian_stale_visible = true;
+
+    stage = "guardian_stale_recovery";
+    const staleRefreshPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === studentPath);
+    await staleAlert.getByRole("button", { name: "重新載入最新資料", exact: true }).click();
+    assert.equal((await staleRefreshPromise).status(), 200);
+    guardianCard = relationshipArticle(page, guardianSection, concurrentGuardianName);
+    await guardianCard.waitFor({ state: "visible" });
+    evidence.guardian_stale_recovered = true;
+
+    stage = "guardian_update";
+    await guardianCard.getByRole("button", { name: "編輯監護人資料", exact: true }).click();
+    guardianForm = guardianCard.locator('form[aria-label="編輯監護人基本資料"]');
+    await guardianForm.waitFor({ state: "visible" });
+    await guardianForm.getByRole("textbox", { name: "監護人姓名", exact: true })
+      .fill(updatedGuardianName);
+    await guardianForm.getByLabel("監護人 Email", { exact: true }).fill(updatedGuardianEmail);
+    const guardianPatchPromise = page.waitForResponse((response) =>
+      response.request().method() === "PATCH" && new URL(response.url()).pathname === guardianPath);
+    const guardianRefreshPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === studentPath);
+    await guardianForm.getByRole("button", { name: "保存監護人資料", exact: true }).click();
+    const guardianPatch = await guardianPatchPromise;
+    evidence.guardian_patch_status = guardianPatch.status();
+    evidence.guardian_ack_exact = isExactProfileAcknowledgement(
+      await guardianPatch.json(),
+      "guardian",
+      snapshot.guardianId,
+    );
+    evidence.guardian_authoritative_get_status = (await guardianRefreshPromise).status();
+    assert.equal(evidence.guardian_patch_status, 200);
+    assert.equal(evidence.guardian_ack_exact, true);
+    assert.equal(evidence.guardian_authoritative_get_status, 200);
+    await page.getByRole("status").getByText("監護人資料已保存。", { exact: true })
+      .waitFor({ state: "visible" });
+    await relationshipArticle(page, guardianSection, updatedGuardianName).waitFor({ state: "visible" });
+
+    stage = "relogin_persistence";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADVISOR.email, advisorPassword);
+    await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: updatedStudentName, exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    await relationshipArticle(page, guardianSection, updatedGuardianName).waitFor({ state: "visible" });
+    evidence.relogin_persisted = true;
+    snapshot = await readBrowserProfileSnapshot(page, studentId);
+
+    stage = "founder_allowed";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, FOUNDER.email, founderPassword);
+    await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
+    const founderGuardianCard = relationshipArticle(page, guardianSection, updatedGuardianName);
+    await founderGuardianCard.waitFor({ state: "visible" });
+    evidence.founder_entries_visible =
+      await page.getByRole("button", { name: "編輯學生資料", exact: true }).count() === 1 &&
+      await founderGuardianCard.getByRole("button", { name: "編輯監護人資料", exact: true }).count() === 1;
+    assert.equal(evidence.founder_entries_visible, true);
+
+    stage = "admin_login_contract";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADMIN.email, adminPassword);
+    const adminAccess = await readAdminAccessContract(page);
+    evidence.admin_auth_status = adminAccess.status;
+    evidence.admin_auth_json_parseable = adminAccess.json_parseable;
+    evidence.admin_auth_role_exact_admin = adminAccess.role_exact_admin;
+    evidence.admin_auth_profiles_manage_capability_present =
+      adminAccess.profiles_manage_capability_present;
+    assert.equal(evidence.admin_auth_status, 200);
+    assert.equal(evidence.admin_auth_json_parseable, true);
+    assert.equal(evidence.admin_auth_role_exact_admin, true);
+    assert.equal(evidence.admin_auth_profiles_manage_capability_present, false);
+
+    stage = "admin_detail_requests";
+    const guardianRelationshipsPath = `/api/v1/students/${studentId}/guardians`;
+    const observeAdminDetailRequest = (request: PlaywrightRequest) => {
+      if (request.method() !== "GET") return;
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === studentPath) evidence.admin_student_request_started = true;
+      if (pathname === guardianRelationshipsPath) evidence.admin_guardian_request_started = true;
+    };
+    const observeAdminDetailResponse = (response: PlaywrightResponse) => {
+      if (response.request().method() !== "GET") return;
+      const pathname = new URL(response.url()).pathname;
+      if (pathname === studentPath) {
+        evidence.admin_student_response_received = true;
+        evidence.admin_student_response_status = response.status();
+      }
+      if (pathname === guardianRelationshipsPath) {
+        evidence.admin_guardian_response_received = true;
+        evidence.admin_guardian_response_status = response.status();
+      }
+    };
+    page.on("request", observeAdminDetailRequest);
+    page.on("response", observeAdminDetailResponse);
+    await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
+    const adminStudentHeading = page.getByRole("heading", {
+      name: updatedStudentName,
+      exact: true,
+      level: 2,
+    });
+    const adminDeniedState = page.getByText("無法查看學生資料", { exact: true });
+    await Promise.race([
+      adminStudentHeading.waitFor({ state: "visible" }),
+      adminDeniedState.waitFor({ state: "visible" }),
+    ]);
+    page.off("request", observeAdminDetailRequest);
+    page.off("response", observeAdminDetailResponse);
+    evidence.admin_detail_student_heading_count = await adminStudentHeading.count();
+    evidence.admin_detail_denied_count = await adminDeniedState.count();
+    assert.equal(evidence.admin_student_request_started, true);
+    assert.equal(evidence.admin_student_response_received, true);
+    assert.equal(evidence.admin_student_response_status, 200);
+    assert.equal(evidence.admin_guardian_request_started, true);
+    assert.equal(evidence.admin_guardian_response_received, true);
+    assert.equal(evidence.admin_guardian_response_status, 200);
+
+    stage = "admin_detail_ready";
+    assert.equal(evidence.admin_detail_student_heading_count, 1);
+    assert.equal(evidence.admin_detail_denied_count, 0);
+
+    stage = "admin_entries_hidden";
+    const adminStudentEditButton = page.getByRole("button", {
+      name: "編輯學生資料",
+      exact: true,
+    });
+    const adminGuardianEditButton = page.getByRole("button", {
+      name: "編輯監護人資料",
+      exact: true,
+    });
+    evidence.admin_student_edit_button_count = await adminStudentEditButton.count();
+    evidence.admin_student_edit_button_visible_count =
+      await visibleLocatorCount(adminStudentEditButton);
+    evidence.admin_guardian_edit_button_count = await adminGuardianEditButton.count();
+    evidence.admin_guardian_edit_button_visible_count =
+      await visibleLocatorCount(adminGuardianEditButton);
+    evidence.admin_entries_hidden =
+      evidence.admin_student_edit_button_count === 0 &&
+      evidence.admin_student_edit_button_visible_count === 0 &&
+      evidence.admin_guardian_edit_button_count === 0 &&
+      evidence.admin_guardian_edit_button_visible_count === 0;
+    assert.equal(evidence.admin_entries_hidden, true);
+
+    stage = "admin_direct_denied";
+    const denied = await performDeniedProfilePatches(page, {
+      studentId,
+      guardianId: snapshot.guardianId,
+      studentVersion: snapshot.studentVersion,
+      guardianVersion: snapshot.guardianVersion,
+      studentMarker: updatedStudentName,
+      guardianMarker: updatedGuardianEmail,
+    });
+    evidence.admin_student_status = denied.student_status;
+    evidence.admin_guardian_status = denied.guardian_status;
+    evidence.admin_forbidden_codes = denied.forbidden_codes;
+    evidence.admin_private_echo = denied.private_echo;
+    assert.equal(evidence.admin_student_status, 403);
+    assert.equal(evidence.admin_guardian_status, 403);
+    assert.equal(evidence.admin_forbidden_codes, true);
+    assert.equal(evidence.admin_private_echo, false);
+
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADVISOR.email, advisorPassword);
+    await page.goto(detailUrl, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: updatedStudentName, exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+
+    stage = "mobile_editor_ready";
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileGuardianCard = relationshipArticle(page, guardianSection, updatedGuardianName);
+    await mobileGuardianCard.waitFor({ state: "visible" });
+    await mobileGuardianCard.getByRole("button", { name: "編輯監護人資料", exact: true }).click();
+    await mobileGuardianCard.locator('form[aria-label="編輯監護人基本資料"]')
+      .waitFor({ state: "visible" });
+
+    stage = "mobile_viewport_measurement";
+    evidence.mobile_viewport = await measureCrm03MobileViewport(page);
+
+    stage = "mobile_viewport_assertion";
+    assert.equal(evidence.mobile_viewport.page_horizontal_overflow, 0);
+    assert.equal(evidence.mobile_viewport.out_of_bounds_controls, 0);
+    assert.equal(evidence.mobile_viewport.overlapping_controls, 0);
+    assert.equal(evidence.mobile_viewport.clipped_text, 0);
+    evidence.mobile_viewport_passed = true;
+
+    stage = "browser_log_safety";
+    const sensitiveMarkers = [
+      applicationPassword,
+      advisorPassword,
+      founderPassword,
+      adminPassword,
+      ADVISOR.email,
+      FOUNDER.email,
+      ADMIN.email,
+      studentName,
+      guardianName,
+      guardianEmail,
+      updatedStudentName,
+      updatedStudentEmail,
+      conflictStudentName,
+      concurrentGuardianName,
+      updatedGuardianName,
+      updatedGuardianEmail,
+      target.connectionString,
+    ];
+    const fixedSensitiveMarkers = ["postgresql://", "database_url", "tx_session=", "set-cookie"];
+    const browserLogs = [...consoleMessages, ...pageErrors];
+    evidence.sensitive_log_matches = browserLogs.filter((entry) => {
+      const normalized = entry.toLowerCase();
+      return sensitiveMarkers.some((marker) => entry.includes(marker)) ||
+        fixedSensitiveMarkers.some((marker) => normalized.includes(marker));
+    }).length;
+    evidence.page_errors = pageErrors.length;
+    assert.equal(evidence.sensitive_log_matches, 0);
+    assert.equal(evidence.page_errors, 0);
+
+    stage = "complete";
+  } catch {
+    failureStage = stage;
+  } finally {
+    stage = "cleanup";
+    cleanupEvidence.context_closed = await closeBrowser(context);
+    cleanupEvidence.dev_stopped = await stopNextDev(devServer);
+    cleanupEvidence.app_directory_removed = await removeDirectory(appDirectory);
+    cleanupEvidence.profile_removed = await removeDirectory(profileDirectory);
+    cleanupEvidence.container_removed = containerStarted
+      ? await removeDockerResource(["rm", "--force", containerName])
+      : true;
+    cleanupEvidence.volume_removed = secretVolumeCreated
+      ? await removeDockerResource(["volume", "rm", "--force", secretVolumeName])
+      : true;
+  }
+
+  if (!Object.values(cleanupEvidence).every(Boolean)) failureStage = "cleanup";
+  if (failureStage) {
+    throw new SafeCrm03BrowserGateFailure({
+      stage: CRM03_BROWSER_STAGES.includes(failureStage) ? failureStage : "runtime_preflight",
+      evidence: Object.freeze({ ...evidence }),
+      cleanup: Object.freeze({ ...cleanupEvidence }),
+    });
+  }
+  process.stdout.write(`${JSON.stringify(Object.freeze({
+    status: "pass",
+    stage: "complete",
+    runtime: Object.freeze({
+      postgres_major: 17,
+      baseline_generated_files: baselineGeneratedFiles,
+      seed: "release1_synthetic",
+      browser_driver: "playwright-core-1.55.0",
+      browser_binary: "system_chrome",
+    }),
+    evidence: Object.freeze({ ...evidence }),
+    cleanup: Object.freeze({ ...cleanupEvidence }),
+  }))}\n`);
+});
+
+interface BrowserProfileSnapshot {
+  readonly studentVersion: number;
+  readonly guardianId: string;
+  readonly guardianVersion: number;
+}
+
+async function readAdminAccessContract(page: Page): Promise<Readonly<{
+  status: number | null;
+  json_parseable: boolean;
+  role_exact_admin: boolean;
+  profiles_manage_capability_present: boolean | null;
+}>> {
+  return page.evaluate(async () => {
+    let response: Response;
+    try {
+      response = await fetch("/api/v1/auth/me", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } catch {
+      return {
+        status: null,
+        json_parseable: false,
+        role_exact_admin: false,
+        profiles_manage_capability_present: null,
+      };
+    }
+    try {
+      const payload = await response.json() as {
+        readonly data?: {
+          readonly role?: unknown;
+          readonly capabilities?: unknown;
+        };
+      };
+      const capabilities = payload.data?.capabilities;
+      return {
+        status: response.status,
+        json_parseable: true,
+        role_exact_admin: payload.data?.role === "admin",
+        profiles_manage_capability_present: Array.isArray(capabilities)
+          ? capabilities.includes("students.profiles.manage")
+          : null,
+      };
+    } catch {
+      return {
+        status: response.status,
+        json_parseable: false,
+        role_exact_admin: false,
+        profiles_manage_capability_present: null,
+      };
+    }
+  });
+}
+
+async function visibleLocatorCount(locator: Locator): Promise<number> {
+  let visible = 0;
+  for (let index = 0; index < await locator.count(); index += 1) {
+    if (await locator.nth(index).isVisible()) visible += 1;
+  }
+  return visible;
+}
+
+async function createAdvisorAssignment(page: Page, input: {
+  readonly studentId: string;
+  readonly intakeYear: number;
+  readonly admissionType: "transfer" | "s1_admission";
+  readonly primaryRoleBindingId: string;
+  readonly manifestId: string;
+  readonly idempotencyKey: string;
+}): Promise<Readonly<{
+  fetch_completed: boolean;
+  json_parseable: boolean;
+  status: number | null;
+  exact_case_dto: boolean;
+}>> {
+  return page.evaluate(async (value) => {
+    let response: Response;
+    try {
+      response = await fetch("/api/v1/cases", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": value.idempotencyKey,
+        },
+        body: JSON.stringify({
+          student_id: value.studentId,
+          intake_year: value.intakeYear,
+          admission_type: value.admissionType,
+          primary_role_binding_id: value.primaryRoleBindingId,
+          manifest_id: value.manifestId,
+        }),
+      });
+    } catch {
+      return {
+        fetch_completed: false,
+        json_parseable: false,
+        status: null,
+        exact_case_dto: false,
+      };
+    }
+    let jsonParseable = false;
+    let exactCaseDto = false;
+    try {
+      const payload = await response.json() as {
+        readonly data?: Readonly<Record<string, unknown>>;
+      };
+      jsonParseable = true;
+      const data = payload.data;
+      const candidate = data?.case;
+      if (data && Object.keys(data).length === 1 && candidate &&
+          typeof candidate === "object" && !Array.isArray(candidate)) {
+        const record = candidate as Readonly<Record<string, unknown>>;
+        const keys = Object.keys(record).sort();
+        const expectedKeys = [
+          "admissionType",
+          "assessmentId",
+          "caseNumber",
+          "id",
+          "intakeYear",
+          "manifestId",
+          "recordVersion",
+          "stage",
+          "studentId",
+        ];
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        exactCaseDto = keys.length === expectedKeys.length &&
+          keys.every((key, index) => key === expectedKeys[index]) &&
+          typeof record.id === "string" && uuid.test(record.id) &&
+          typeof record.assessmentId === "string" && uuid.test(record.assessmentId) &&
+          typeof record.caseNumber === "string" && record.caseNumber.trim().length > 0 &&
+          record.studentId === value.studentId &&
+          record.intakeYear === value.intakeYear &&
+          record.admissionType === value.admissionType &&
+          record.stage === "signed" &&
+          record.manifestId === value.manifestId &&
+          record.recordVersion === 1;
+      }
+    } catch {}
+    return {
+      fetch_completed: true,
+      json_parseable: jsonParseable,
+      status: response.status,
+      exact_case_dto: exactCaseDto,
+    };
+  }, input);
+}
+
+async function readBrowserProfileSnapshot(
+  page: Page,
+  studentId: string,
+): Promise<BrowserProfileSnapshot> {
+  const result = await page.evaluate(async (path) => {
+    const response = await fetch(path, { credentials: "same-origin" });
+    const payload = await response.json() as unknown;
+    return { status: response.status, payload };
+  }, `/api/v1/students/${studentId}`);
+  assert.equal(result.status, 200);
+  const root = requiredBrowserRecord(result.payload);
+  const data = requiredBrowserRecord(root.data);
+  const student = requiredBrowserRecord(data.student);
+  assert.equal(student.id, studentId);
+  assert.equal(Number.isSafeInteger(student.recordVersion), true);
+  assert.equal(Array.isArray(student.guardians), true);
+  const guardians = student.guardians as readonly unknown[];
+  assert.equal(guardians.length, 1);
+  const guardian = requiredBrowserRecord(guardians[0]);
+  assert.equal(typeof guardian.id, "string");
+  assert.equal(Number.isSafeInteger(guardian.recordVersion), true);
+  return Object.freeze({
+    studentVersion: student.recordVersion as number,
+    guardianId: guardian.id as string,
+    guardianVersion: guardian.recordVersion as number,
+  });
+}
+
+async function performProfilePatch(page: Page, input: {
+  readonly path: string;
+  readonly idempotencyKey: string;
+  readonly body: Readonly<Record<string, string | number | null>>;
+  readonly acknowledgement: "student" | "guardian";
+  readonly expectedId: string;
+}): Promise<Readonly<{
+  fetch_completed: boolean;
+  json_parseable: boolean;
+  status: number | null;
+  ack_exact: boolean;
+}>> {
+  return page.evaluate(async ({ path, idempotencyKey, body, acknowledgement, expectedId }) => {
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return {
+        fetch_completed: false,
+        json_parseable: false,
+        status: null,
+        ack_exact: false,
+      };
+    }
+    let ackExact = false;
+    let jsonParseable = false;
+    try {
+      const payload = await response.json() as {
+        readonly data?: Readonly<Record<string, unknown>>;
+      };
+      jsonParseable = true;
+      const data = payload.data;
+      const acknowledgementValue = data?.[acknowledgement];
+      if (acknowledgementValue && typeof acknowledgementValue === "object" &&
+          !Array.isArray(acknowledgementValue)) {
+        const record = acknowledgementValue as Readonly<Record<string, unknown>>;
+        const keys = Object.keys(record).sort();
+        ackExact = keys.length === 3 &&
+          keys[0] === "id" && keys[1] === "record_version" && keys[2] === "updated_at" &&
+          record.id === expectedId && Number.isSafeInteger(record.record_version) &&
+          Number(record.record_version) > 0 && typeof record.updated_at === "string" &&
+          !Number.isNaN(Date.parse(record.updated_at));
+      }
+    } catch {}
+    return {
+      fetch_completed: true,
+      json_parseable: jsonParseable,
+      status: response.status,
+      ack_exact: ackExact,
+    };
+  }, input);
+}
+
+function isExactProfileAcknowledgement(
+  value: unknown,
+  acknowledgement: "student" | "guardian",
+  expectedId: string,
+): boolean {
+  try {
+    const root = requiredBrowserRecord(value);
+    const data = requiredBrowserRecord(root.data);
+    if (Object.keys(data).length !== 1 || !Object.hasOwn(data, acknowledgement)) return false;
+    const record = requiredBrowserRecord(data[acknowledgement]);
+    const keys = Object.keys(record).sort();
+    return keys.length === 3 &&
+      keys[0] === "id" && keys[1] === "record_version" && keys[2] === "updated_at" &&
+      record.id === expectedId && Number.isSafeInteger(record.record_version) &&
+      Number(record.record_version) > 0 && typeof record.updated_at === "string" &&
+      !Number.isNaN(Date.parse(record.updated_at));
+  } catch {
+    return false;
+  }
+}
+
+async function performDeniedProfilePatches(page: Page, input: {
+  readonly studentId: string;
+  readonly guardianId: string;
+  readonly studentVersion: number;
+  readonly guardianVersion: number;
+  readonly studentMarker: string;
+  readonly guardianMarker: string;
+}): Promise<Readonly<{
+  student_status: number;
+  guardian_status: number;
+  forbidden_codes: boolean;
+  private_echo: boolean;
+}>> {
+  return page.evaluate(async (value) => {
+    const commands = [
+      {
+        path: `/api/v1/students/${value.studentId}`,
+        key: "crm03-admin-student-denied",
+        marker: value.studentMarker,
+        body: {
+          display_name: value.studentMarker,
+          date_of_birth: null,
+          contact_email: null,
+          contact_phone: null,
+          expected_record_version: value.studentVersion,
+        },
+      },
+      {
+        path: `/api/v1/guardians/${value.guardianId}`,
+        key: "crm03-admin-guardian-denied",
+        marker: value.guardianMarker,
+        body: {
+          display_name: "Synthetic denied guardian",
+          email: value.guardianMarker,
+          phone: null,
+          expected_record_version: value.guardianVersion,
+        },
+      },
+    ];
+    const responses = await Promise.all(commands.map(async (command) => {
+      const response = await fetch(command.path, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json", "idempotency-key": command.key },
+        body: JSON.stringify(command.body),
+      });
+      let code: "FORBIDDEN" | "OTHER" | null = null;
+      let echoed = false;
+      try {
+        const payload = await response.json() as { readonly error?: { readonly code?: unknown } };
+        code = payload.error?.code === "FORBIDDEN"
+          ? "FORBIDDEN"
+          : typeof payload.error?.code === "string" ? "OTHER" : null;
+        echoed = JSON.stringify(payload).includes(command.marker);
+      } catch {}
+      return { status: response.status, code, echoed };
+    }));
+    return {
+      student_status: responses[0]?.status ?? 0,
+      guardian_status: responses[1]?.status ?? 0,
+      forbidden_codes: responses.every(({ code }) => code === "FORBIDDEN"),
+      private_echo: responses.some(({ echoed }) => echoed),
+    };
+  }, input);
+}
+
 interface BrowserCurrentRelationship {
   readonly guardian_id: string;
   readonly relationship_type: "father" | "mother" | "other_guardian";
@@ -2423,6 +3629,137 @@ async function assertViewport(page: Page, label: string): Promise<ViewportEviden
     clipped_text: 0,
   }, label);
   return Object.freeze({ label, ...result });
+}
+
+function emptyCrm03MobileViewportEvidence(): Crm03MobileViewportEvidence {
+  const controlCategories = Object.freeze({
+    input_count: 0,
+    button_count: 0,
+    link_count: 0,
+    select_count: 0,
+  });
+  const fixedControls = Object.freeze({
+    cancel: false,
+    save_guardian_profile: false,
+    edit_guardian_profile: false,
+    create_case: false,
+    manage_guardian_relationships: false,
+  });
+  return Object.freeze({
+    page_horizontal_overflow: null,
+    out_of_bounds_controls: null,
+    overlapping_controls: null,
+    clipped_text: null,
+    out_of_bounds_categories: controlCategories,
+    out_of_bounds_fixed_controls: fixedControls,
+    overlapping_categories: controlCategories,
+    overlapping_fixed_controls: fixedControls,
+    clipped_categories: Object.freeze({
+      heading_count: 0,
+      paragraph_count: 0,
+      label_count: 0,
+      button_count: 0,
+      link_count: 0,
+      strong_count: 0,
+      small_count: 0,
+    }),
+    clipped_fixed_controls: fixedControls,
+    clipped_fixed_titles: Object.freeze({
+      student_profile: false,
+      guardian_relationships: false,
+      edit_guardian_profile: false,
+    }),
+  });
+}
+
+async function measureCrm03MobileViewport(page: Page): Promise<Crm03MobileViewportEvidence> {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const main = document.querySelector("main") ?? document.body;
+    const visible = (element: Element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" &&
+        rect.width > 0 && rect.height > 0;
+    };
+    const inHorizontalScroller = (element: Element) =>
+      Boolean(element.closest(".overflow-x-auto"));
+    const controls = [...main.querySelectorAll("a,button,input,select")]
+      .filter((element) => visible(element) && !inHorizontalScroller(element));
+    const outOfBounds = controls.filter((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left < -1 || rect.right > window.innerWidth + 1;
+    });
+    const overlapping = new Set<Element>();
+    let overlappingPairs = 0;
+    for (let left = 0; left < controls.length; left += 1) {
+      const leftElement = controls[left]!;
+      const leftRect = leftElement.getBoundingClientRect();
+      for (let right = left + 1; right < controls.length; right += 1) {
+        const rightElement = controls[right]!;
+        const rightRect = rightElement.getBoundingClientRect();
+        const overlapWidth = Math.min(leftRect.right, rightRect.right) -
+          Math.max(leftRect.left, rightRect.left);
+        const overlapHeight = Math.min(leftRect.bottom, rightRect.bottom) -
+          Math.max(leftRect.top, rightRect.top);
+        if (overlapWidth > 2 && overlapHeight > 2) {
+          overlappingPairs += 1;
+          overlapping.add(leftElement);
+          overlapping.add(rightElement);
+        }
+      }
+    }
+    const clipped = [...main.querySelectorAll("h1,h2,h3,p,label,button,a,strong,small")]
+      .filter((element) => visible(element) && !inHorizontalScroller(element))
+      .filter((element) => !element.classList.contains("truncate"))
+      .filter((element) => {
+        const htmlElement = element as HTMLElement;
+        const style = getComputedStyle(element);
+        return htmlElement.scrollWidth > htmlElement.clientWidth + 1 &&
+          style.overflowX === "hidden";
+      });
+    const categoryCounts = (elements: readonly Element[]) => ({
+      input_count: elements.filter((element) => element.tagName === "INPUT").length,
+      button_count: elements.filter((element) => element.tagName === "BUTTON").length,
+      link_count: elements.filter((element) => element.tagName === "A").length,
+      select_count: elements.filter((element) => element.tagName === "SELECT").length,
+    });
+    const hasExactText = (elements: readonly Element[], text: string) =>
+      elements.some((element) => element.textContent?.trim() === text);
+    const fixedControls = (elements: readonly Element[]) => ({
+      cancel: hasExactText(elements, "取消"),
+      save_guardian_profile: hasExactText(elements, "保存監護人資料"),
+      edit_guardian_profile: hasExactText(elements, "編輯監護人資料"),
+      create_case: hasExactText(elements, "建立案件"),
+      manage_guardian_relationships: hasExactText(elements, "管理監護人關係"),
+    });
+    const overlappingElements = [...overlapping];
+    return {
+      page_horizontal_overflow: Math.max(0, root.scrollWidth - window.innerWidth),
+      out_of_bounds_controls: outOfBounds.length,
+      overlapping_controls: overlappingPairs,
+      clipped_text: clipped.length,
+      out_of_bounds_categories: categoryCounts(outOfBounds),
+      out_of_bounds_fixed_controls: fixedControls(outOfBounds),
+      overlapping_categories: categoryCounts(overlappingElements),
+      overlapping_fixed_controls: fixedControls(overlappingElements),
+      clipped_categories: {
+        heading_count: clipped.filter((element) => /^H[1-3]$/.test(element.tagName)).length,
+        paragraph_count: clipped.filter((element) => element.tagName === "P").length,
+        label_count: clipped.filter((element) => element.tagName === "LABEL").length,
+        button_count: clipped.filter((element) => element.tagName === "BUTTON").length,
+        link_count: clipped.filter((element) => element.tagName === "A").length,
+        strong_count: clipped.filter((element) => element.tagName === "STRONG").length,
+        small_count: clipped.filter((element) => element.tagName === "SMALL").length,
+      },
+      clipped_fixed_controls: fixedControls(clipped),
+      clipped_fixed_titles: {
+        student_profile: hasExactText(clipped, "學生基本資料"),
+        guardian_relationships: hasExactText(clipped, "監護人與聯絡關係"),
+        edit_guardian_profile: hasExactText(clipped, "編輯監護人資料"),
+      },
+    };
+  });
 }
 
 function isLoginStage(stage: BrowserStage): boolean {

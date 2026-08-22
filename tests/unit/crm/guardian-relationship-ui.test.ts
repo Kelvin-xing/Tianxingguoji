@@ -75,5 +75,5 @@ test("student detail reads authoritative current relationships and shows masked 
   assert.match(source, /relationship\.guardian\.phone_hint/);
   assert.match(source, /主要聯絡人/);
   assert.match(source, /次要聯絡人/);
-  assert.doesNotMatch(source, /student\.guardians/);
+  assert.match(source, /guardiansById\.get\(relationship\.guardian\.id\)/);
 });

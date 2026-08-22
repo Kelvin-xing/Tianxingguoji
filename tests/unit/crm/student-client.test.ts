@@ -35,7 +35,9 @@ test("student reads use cancellable same-origin API v1 requests and strict decod
   const detail = await getStudent(STUDENT_ID, controller.signal);
   assert.deepEqual(requests, ["/api/v1/students", `/api/v1/students/${STUDENT_ID}`]);
   assert.equal(students[0]?.id, STUDENT_ID);
+  assert.equal(detail.recordVersion, 1);
   assert.equal(detail.guardians[0]?.id, GUARDIAN_ID);
+  assert.equal(detail.guardians[0]?.recordVersion, 1);
   assert.equal(Object.isFrozen(detail), true);
   assert.equal(Object.isFrozen(detail.guardians), true);
 
@@ -175,11 +177,13 @@ function studentDetailFixture() {
     ...studentListFixture(),
     contactEmail: null,
     contactPhone: null,
+    recordVersion: 1,
     guardians: [{
       id: GUARDIAN_ID,
       displayName: "Synthetic Guardian",
       email: "guardian@example.invalid",
       phone: null,
+      recordVersion: 1,
       relationshipType: "father",
       isLegalGuardian: true,
       isPrimaryContact: true,

@@ -234,7 +234,7 @@ select:focus {
 .selection-card:hover { background: #fafbff; border-color: #93c5fd; }
 .selection-card.selected { background: #f8fbff; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-subtle); }
 .selection-card.disabled { cursor: not-allowed; opacity: 0.55; }
-.selection-card input { position: absolute; opacity: 0; pointer-events: none; }
+.selection-card > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
 .selection-mark { align-items: center; border: 1px solid var(--border); border-radius: 999px; color: #fff; display: flex; flex: 0 0 auto; height: 1.25rem; justify-content: center; margin-top: 0.1rem; width: 1.25rem; }
 .selection-card.selected .selection-mark { background: var(--accent); border-color: var(--accent); }
 .selection-card strong { color: var(--text-primary); display: block; font-size: 0.8125rem; }

@@ -18,6 +18,7 @@ import { PostgresqlStudentCreateRepository } from "../../modules/crm/infrastruct
 import { PostgresqlGuardianRelationshipRepository } from "../../modules/crm/infrastructure/postgresql-guardian-relationship-repository.ts";
 import type { IdentitySessionActor } from "../../modules/identity/public.ts";
 import { createTenantTransactionRunner, type DatabasePool } from "../../modules/shared/server.ts";
+import { hashRequestPayload } from "../../modules/shared/public.ts";
 import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
@@ -27,6 +28,7 @@ import {
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
   NEON_TEST_ORGANIZATION,
+  NEON_TEST_MANIFEST_ID,
   NEON_TEST_PRINCIPALS,
   NEON_TEST_STUDENTS,
 } from "../../scripts/db/neon-test-synthetic-fixture.ts";
@@ -53,9 +55,13 @@ const CONTRACTOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "contractor"
 const SHARED_GUARDIAN = NEON_TEST_STUDENTS[1]!;
 const ALTERNATE_GUARDIAN = NEON_TEST_STUDENTS[0]!;
 const FOREIGN_ORGANIZATION_ID = "63000000-0000-4000-8000-000000000001";
+const FOREIGN_STUDENT_ID = "63000000-0000-4000-8000-000000000601";
+const FOREIGN_GUARDIAN_ID = "63000000-0000-4000-8000-000000000701";
+const FOREIGN_RELATIONSHIP_ID = "63000000-0000-4000-8000-000000000801";
+const INACTIVE_GUARDIAN_ID = "51000000-0000-4000-8000-000000000799";
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
-test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
+test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
   timeout: 300_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -176,7 +182,7 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v4");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v5");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
@@ -419,7 +425,13 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
       if (result.status !== "fulfilled") throw new HarnessError("crm02_concurrent_http");
       return Object.freeze({ attempt: inFlight[index]!, result: result.value });
     });
-    assert.deepEqual(outcomes.map(({ result }) => result.response.status).sort(), [200, 409]);
+    const concurrentStatuses = outcomes.map(({ result }) => result.response.status).sort();
+    if (JSON.stringify(concurrentStatuses) !== JSON.stringify([200, 409])) {
+      throw new HarnessError(
+        `crm02_concurrent_outcome_status_${concurrentStatuses.join("_")}` +
+        `_postgres_${readGuardianRelationshipPostgresCode(devServer) ?? "none"}`,
+      );
+    }
     const successfulOutcome = outcomes.find(({ result }) => result.response.status === 200);
     const staleOutcome = outcomes.find(({ result }) => result.response.status === 409);
     if (!successfulOutcome || !staleOutcome) throw new HarnessError("crm02_concurrent_outcome");
@@ -510,6 +522,146 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
     }
     assert.deepEqual(await readGuardianWorkflowCounts(target, studentId), beforeDenied);
 
+    await prepareProfileMaintenanceFixtures(target);
+    const founderCookie = await login(baseUrl, FOUNDER.email, founderPassword);
+    const assignedStudent = NEON_TEST_STUDENTS[0]!;
+    const unassignedStudent = NEON_TEST_STUDENTS[1]!;
+    const assignedCase = await postJson(baseUrl, "/api/v1/cases", founderCookie, {
+      student_id: assignedStudent.id,
+      intake_year: 2027,
+      admission_type: "transfer",
+      primary_role_binding_id: ADVISOR.roleBindingId,
+      manifest_id: NEON_TEST_MANIFEST_ID,
+    }, "crm03-advisor-assignment");
+    assert.equal(assignedCase.response.status, 200);
+
+    const profileBefore = await readProfileMaintenanceCounts(target);
+    const unassignedDetail = requiredRecord((await getJson(
+      baseUrl, `/api/v1/students/${unassignedStudent.id}`, founderCookie,
+    )).body.data?.student);
+    const unassignedGuardian = requiredRecord(requiredArray(unassignedDetail.guardians)[0]);
+    const founderStudentBody = {
+      display_name: "CRM03 Founder Student",
+      date_of_birth: "2013-03-03",
+      contact_email: "crm03-founder-student@example.invalid",
+      contact_phone: null,
+      expected_record_version: requiredNumber(unassignedDetail, "recordVersion"),
+    };
+    const founderStudent = await patchJson(baseUrl, `/api/v1/students/${unassignedStudent.id}`,
+      founderCookie, founderStudentBody, "crm03-founder-student");
+    assertProfileAcknowledgement(founderStudent, "student", unassignedStudent.id, 2);
+    const founderGuardianBody = {
+      display_name: "CRM03 Founder Guardian",
+      email: "crm03-founder-guardian@example.invalid",
+      phone: null,
+      expected_record_version: requiredNumber(unassignedGuardian, "recordVersion"),
+    };
+    const founderGuardian = await patchJson(baseUrl,
+      `/api/v1/guardians/${unassignedStudent.guardianId}`, founderCookie,
+      founderGuardianBody, "crm03-founder-guardian");
+    assertProfileAcknowledgement(founderGuardian, "guardian", unassignedStudent.guardianId, 2);
+
+    const assignedDetail = requiredRecord((await getJson(
+      baseUrl, `/api/v1/students/${assignedStudent.id}`, advisorCookie,
+    )).body.data?.student);
+    const assignedGuardian = requiredRecord(requiredArray(assignedDetail.guardians)[0]);
+    const advisorStudentBody = {
+      display_name: "CRM03 Advisor Student First",
+      date_of_birth: "2012-02-02",
+      contact_email: "crm03-advisor-student@example.invalid",
+      contact_phone: "+852 2000 0001",
+      expected_record_version: requiredNumber(assignedDetail, "recordVersion"),
+    };
+    const advisorFirst = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, advisorStudentBody, "crm03-advisor-student-first");
+    assertProfileAcknowledgement(advisorFirst, "student", assignedStudent.id, 2);
+    const firstAcknowledgement = advisorFirst.body.data;
+    const advisorGuardianBody = {
+      display_name: "CRM03 Advisor Guardian",
+      email: "crm03-advisor-guardian@example.invalid",
+      phone: null,
+      expected_record_version: requiredNumber(assignedGuardian, "recordVersion"),
+    };
+    assertProfileAcknowledgement(await patchJson(baseUrl,
+      `/api/v1/guardians/${assignedStudent.guardianId}`, advisorCookie,
+      advisorGuardianBody, "crm03-advisor-guardian"), "guardian", assignedStudent.guardianId, 2);
+
+    const advisorSecondBody = {
+      ...advisorStudentBody,
+      display_name: "CRM03 Advisor Student Second",
+      contact_email: "crm03-advisor-student-second@example.invalid",
+      expected_record_version: 2,
+    };
+    assertProfileAcknowledgement(await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, advisorSecondBody, "crm03-advisor-student-second"), "student",
+    assignedStudent.id, 3);
+    const permanentReplay = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, advisorStudentBody, "crm03-advisor-student-first");
+    assert.equal(permanentReplay.response.status, 200);
+    assert.deepEqual(permanentReplay.body.data, firstAcknowledgement);
+
+    const afterAllowedProfiles = await readProfileMaintenanceCounts(target);
+    assert.deepEqual(profileDelta(profileBefore, afterAllowedProfiles), {
+      student_receipts: 3, guardian_receipts: 2, audit: 5, outbox: 5,
+    });
+    const profileHashEvidence = await readProfileReceiptHashEvidence(target);
+    assert.deepEqual(profileHashEvidence, { total: 5, exact: 5, request_hash_alias: 0 });
+    const changedProfile = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, { ...advisorStudentBody, display_name: "CRM03 Changed Payload" },
+      "crm03-advisor-student-first");
+    assertApiError(changedProfile, 409, "CONFLICT");
+    const staleProfile = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, advisorStudentBody, "crm03-advisor-student-stale");
+    assertApiError(staleProfile, 409, "STALE_VERSION");
+    const extraField = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      advisorCookie, { ...advisorSecondBody, organization_id: NEON_TEST_ORGANIZATION.id },
+      "crm03-extra-field");
+    assertApiError(extraField, 400, "INVALID_REQUEST");
+    const invalidProfile = await patchJson(baseUrl, `/api/v1/guardians/${assignedStudent.guardianId}`,
+      advisorCookie, { ...advisorGuardianBody, email: null, phone: null, expected_record_version: 2 },
+      "crm03-invalid-guardian");
+    assertApiError(invalidProfile, 422, "VALIDATION_FAILED");
+    for (const denied of [
+      await patchJson(baseUrl, `/api/v1/students/${unassignedStudent.id}`, advisorCookie,
+        { ...founderStudentBody, expected_record_version: 2 }, "crm03-unassigned-student"),
+      await patchJson(baseUrl, `/api/v1/guardians/${unassignedStudent.guardianId}`, advisorCookie,
+        { ...founderGuardianBody, expected_record_version: 2 }, "crm03-unassigned-guardian"),
+      await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`, adminCookie,
+        { ...advisorSecondBody, expected_record_version: 3 }, "crm03-admin-student"),
+    ]) {
+      assertApiError(denied, 403, "FORBIDDEN");
+      assertNoPrivateErrorEcho(denied, ["CRM03", "example.invalid"]);
+    }
+    const crossTenant = await patchJson(baseUrl, `/api/v1/students/${FOREIGN_STUDENT_ID}`,
+      founderCookie, { ...advisorStudentBody, expected_record_version: 1 }, "crm03-cross-tenant");
+    assertApiError(crossTenant, 404, "NOT_FOUND");
+    const inactive = await patchJson(baseUrl, `/api/v1/guardians/${INACTIVE_GUARDIAN_ID}`,
+      founderCookie, { ...advisorGuardianBody, expected_record_version: 1 }, "crm03-inactive");
+    assertApiError(inactive, 409, "CONFLICT");
+    assert.deepEqual(await readProfileMaintenanceCounts(target), afterAllowedProfiles);
+
+    await installProfileUpdateFailure(target);
+    try {
+      const failedProfile = await patchJson(baseUrl, `/api/v1/students/${unassignedStudent.id}`,
+        founderCookie, { ...founderStudentBody, display_name: "CRM03 Rollback Student",
+          expected_record_version: 2 }, "crm03-rollback");
+      assertApiError(failedProfile, 503, "SERVICE_UNAVAILABLE");
+      assertNoPrivateErrorEcho(failedProfile, ["CRM03 Rollback Student"]);
+      assert.deepEqual(await readProfileMaintenanceCounts(target), afterAllowedProfiles);
+    } finally {
+      await removeProfileUpdateFailure(target);
+    }
+
+    const authoritativeAssigned = requiredRecord((await getJson(
+      baseUrl, `/api/v1/students/${assignedStudent.id}`, advisorCookie,
+    )).body.data?.student);
+    assert.equal(authoritativeAssigned.displayName, advisorSecondBody.display_name);
+    assert.equal(authoritativeAssigned.contactEmail, advisorSecondBody.contact_email);
+    assert.equal(authoritativeAssigned.recordVersion, 3);
+    const authoritativeGuardian = requiredRecord(requiredArray(authoritativeAssigned.guardians)[0]);
+    assert.equal(authoritativeGuardian.displayName, advisorGuardianBody.display_name);
+    assert.equal(authoritativeGuardian.recordVersion, 2);
+
     const list = await getJson(baseUrl, "/api/v1/students", advisorCookie);
     assert.equal(list.response.status, 200);
     assert.equal((list.body.data?.students as Array<{ id?: string }>).some(({ id }) => id === studentId), true);
@@ -539,6 +691,16 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
       SHARED_GUARDIAN.guardianEmail!,
       ALTERNATE_GUARDIAN.guardianName,
       ALTERNATE_GUARDIAN.guardianEmail!,
+      founderStudentBody.display_name,
+      founderStudentBody.contact_email,
+      founderGuardianBody.display_name,
+      founderGuardianBody.email,
+      advisorStudentBody.display_name,
+      advisorStudentBody.contact_email,
+      advisorSecondBody.display_name,
+      advisorSecondBody.contact_email,
+      advisorGuardianBody.display_name,
+      advisorGuardianBody.email,
       applicationPassword,
       advisorPassword,
       adminPassword,
@@ -574,6 +736,20 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
         stale: 409,
         forbidden_roles: 4,
         history_preserved: true,
+      }),
+      profile_maintenance: Object.freeze({
+        founder: 200,
+        assigned_advisor: 200,
+        unassigned_advisor: 403,
+        admin: 403,
+        exact_replay_after_later_update: true,
+        changed_payload: 409,
+        stale: 409,
+        cross_tenant: 404,
+        inactive: 409,
+        rollback: 503,
+        effects: profileDelta(profileBefore, afterAllowedProfiles),
+        response_hash: profileHashEvidence,
       }),
       http: Object.freeze({ create: 201, list: 200, detail: 200, forbidden: 403 }),
       persisted_after_relogin: true,
@@ -705,9 +881,209 @@ async function postJson(
   return Object.freeze({ response, body: await response.json() as ApiEnvelope });
 }
 
+async function patchJson(
+  baseUrl: string,
+  path: string,
+  cookie: string,
+  body: unknown,
+  idempotencyKey: string,
+) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "PATCH",
+    headers: { cookie, "content-type": "application/json", "idempotency-key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+  return Object.freeze({ response, body: await response.json() as ApiEnvelope });
+}
+
+function assertProfileAcknowledgement(
+  result: Readonly<{ response: Response; body: ApiEnvelope }>,
+  resource: "student" | "guardian",
+  expectedId: string,
+  expectedVersion: number,
+): void {
+  assert.equal(result.response.status, 200);
+  assert.equal(result.response.headers.get("cache-control"), "no-store");
+  const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data), [resource]);
+  const acknowledgement = requiredRecord(data[resource]);
+  assert.deepEqual(Object.keys(acknowledgement).sort(), ["id", "record_version", "updated_at"]);
+  assert.equal(acknowledgement.id, expectedId);
+  assert.equal(acknowledgement.record_version, expectedVersion);
+  assert.equal(new Date(requiredString(acknowledgement, "updated_at")).toISOString(),
+    acknowledgement.updated_at);
+}
+
 async function getJson(baseUrl: string, path: string, cookie: string) {
   const response = await fetch(`${baseUrl}${path}`, { headers: { cookie } });
   return Object.freeze({ response, body: await response.json() as ApiEnvelope });
+}
+
+interface ProfileMaintenanceCounts {
+  student_receipts: number;
+  guardian_receipts: number;
+  audit: number;
+  outbox: number;
+}
+
+interface ProfileReceiptHashEvidence {
+  total: number;
+  exact: number;
+  request_hash_alias: number;
+}
+
+async function readProfileReceiptHashEvidence(
+  target: OneRoleBaselineTarget,
+): Promise<ProfileReceiptHashEvidence> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    const result = await client.query<{
+      request_hash: string;
+      response_hash: string;
+      result_reference: string;
+    }>(`
+      SELECT request_hash, response_hash, result_reference
+        FROM shared_idempotency_records
+       WHERE operation IN ('crm.update_student_profile','crm.update_guardian_profile')
+         AND state = 'completed'
+       ORDER BY operation, idempotency_key
+    `);
+    await client.query("COMMIT");
+    let exact = 0;
+    let requestHashAlias = 0;
+    for (const row of result.rows) {
+      const match = /^([0-9a-f-]{36}):(\d{1,16}):(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)$/i
+        .exec(row.result_reference);
+      if (!match) throw new HarnessError("crm03_receipt_reference_shape");
+      const expected = hashRequestPayload({
+        id: match[1]!,
+        record_version: Number(match[2]),
+        updated_at: match[3]!,
+      });
+      if (row.response_hash === expected) exact += 1;
+      if (row.response_hash === row.request_hash) requestHashAlias += 1;
+    }
+    return Object.freeze({ total: result.rows.length, exact, request_hash_alias: requestHashAlias });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("crm03_receipt_hash_inspection");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function readProfileMaintenanceCounts(
+  target: OneRoleBaselineTarget,
+): Promise<ProfileMaintenanceCounts> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    const result = await client.query<ProfileMaintenanceCounts>(`
+      SELECT
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation = 'crm.update_student_profile') AS student_receipts,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation = 'crm.update_guardian_profile') AS guardian_receipts,
+        (SELECT count(*)::int FROM audit_events
+          WHERE event_type IN ('crm.student_profile_updated','crm.guardian_profile_updated')) AS audit,
+        (SELECT count(*)::int FROM audit_outbox
+          WHERE event_type IN ('crm.student_profile_updated','crm.guardian_profile_updated')) AS outbox
+    `);
+    await client.query("COMMIT");
+    const row = result.rows[0];
+    if (!row) throw new HarnessError("crm03_count_inspection");
+    return Object.freeze(row);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("crm03_count_inspection");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+function profileDelta(
+  before: ProfileMaintenanceCounts,
+  after: ProfileMaintenanceCounts,
+): ProfileMaintenanceCounts {
+  return Object.freeze(Object.fromEntries(Object.keys(before).map((key) => [
+    key,
+    after[key as keyof ProfileMaintenanceCounts] - before[key as keyof ProfileMaintenanceCounts],
+  ]))) as unknown as ProfileMaintenanceCounts;
+}
+
+async function prepareProfileMaintenanceFixtures(target: OneRoleBaselineTarget): Promise<void> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [FOREIGN_ORGANIZATION_ID]);
+    await client.query(
+      `INSERT INTO access_organizations (id, display_name, status)
+       VALUES ($1,'CRM03 Synthetic Foreign Organization','disabled')`,
+      [FOREIGN_ORGANIZATION_ID],
+    );
+    await client.query(
+      `INSERT INTO crm_students (id, organization_id, display_name, status)
+       VALUES ($1,$2,'CRM03 Synthetic Foreign Student','active')`,
+      [FOREIGN_STUDENT_ID, FOREIGN_ORGANIZATION_ID],
+    );
+    await client.query(
+      `INSERT INTO crm_guardians (id, organization_id, display_name, email, status)
+       VALUES ($1,$2,'CRM03 Synthetic Foreign Guardian','foreign-guardian@crm03.test.invalid','active')`,
+      [FOREIGN_GUARDIAN_ID, FOREIGN_ORGANIZATION_ID],
+    );
+    await client.query(
+      `INSERT INTO crm_student_guardian_relationships
+        (id, organization_id, student_id, guardian_id, relationship_type,
+         is_legal_guardian, is_primary_contact, is_emergency_contact,
+         is_billing_contact, notification_consent, starts_at)
+       VALUES ($1,$2,$3,$4,'other_guardian',true,true,false,false,false,transaction_timestamp())`,
+      [FOREIGN_RELATIONSHIP_ID, FOREIGN_ORGANIZATION_ID, FOREIGN_STUDENT_ID, FOREIGN_GUARDIAN_ID],
+    );
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query(
+      `INSERT INTO crm_guardians
+        (id, organization_id, display_name, email, status, deletion_requested_at,
+         deletion_requested_by_user_id, deletion_reason)
+       VALUES ($1,$2,'CRM03 Synthetic Inactive Guardian','inactive-guardian@crm03.test.invalid',
+         'pending_delete',transaction_timestamp(),$3,'crm03.local-test')`,
+      [INACTIVE_GUARDIAN_ID, NEON_TEST_ORGANIZATION.id, FOUNDER.userId],
+    );
+    await client.query("COMMIT");
+  } catch {
+    await client.query("ROLLBACK").catch(() => {});
+    throw new HarnessError("crm03_fixture_setup");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function installProfileUpdateFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    CREATE FUNCTION public.test_crm03_fail_student_update()
+    RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+    AS $$ BEGIN RAISE EXCEPTION USING ERRCODE = '57P01'; END; $$;
+    CREATE TRIGGER test_crm03_fail_student_update_trg
+    BEFORE UPDATE ON public.crm_students
+    FOR EACH ROW EXECUTE FUNCTION public.test_crm03_fail_student_update()
+  `, "crm03_fault_install");
+}
+
+async function removeProfileUpdateFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    DROP TRIGGER IF EXISTS test_crm03_fail_student_update_trg ON public.crm_students;
+    DROP FUNCTION IF EXISTS public.test_crm03_fail_student_update()
+  `, "crm03_fault_cleanup");
 }
 
 async function login(baseUrl: string, email: string, password: string): Promise<string> {
@@ -905,7 +1281,9 @@ async function assertCrossTenantReadsAreEmpty(
       capturedSessionVersion: 1,
       reauthenticatedAtMs: null,
     };
-    assert.deepEqual(await service.listStudents(foreignActor), []);
+    const foreignStudents = await service.listStudents(foreignActor);
+    assert.equal(foreignStudents.some(({ id }) => id === studentId), false);
+    assert.equal(foreignStudents.every(({ id }) => id === FOREIGN_STUDENT_ID), true);
     assert.equal(await service.findStudent(foreignActor, studentId), null);
     const guardianService = new GuardianRelationshipService(
       new PostgresqlGuardianRelationshipRepository(createTenantTransactionRunner(
@@ -1120,6 +1498,17 @@ function assertNoSensitiveDevLogs(child: ChildProcess, forbidden: readonly strin
   for (const value of forbidden) {
     if (value && combined.includes(value)) throw new HarnessError("next_log_privacy");
   }
+}
+
+function readGuardianRelationshipPostgresCode(child: ChildProcess): string | null {
+  const logs = DEV_LOGS.get(child);
+  if (!logs) throw new HarnessError("next_log_capture");
+  const matches = `${logs.stdout}\n${logs.stderr}`.matchAll(
+    /(?:^|\n)event=guardian_relationship_postgres_failure postgres_code=(40001|40P01|55P03|57014)(?:\n|$)/g,
+  );
+  let code: string | null = null;
+  for (const match of matches) code = match[1] ?? null;
+  return code;
 }
 
 async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {

@@ -16,6 +16,7 @@ interface StudentRow {
   contact_email: string | null;
   contact_phone: string | null;
   updated_at: Date | string;
+  record_version: number | string;
 }
 
 interface GuardianRow {
@@ -29,6 +30,7 @@ interface GuardianRow {
   is_emergency_contact: boolean;
   is_billing_contact: boolean;
   notification_consent: boolean;
+  record_version: number | string;
 }
 
 export class PostgresqlStudentReadRepository implements StudentReadRepository {
@@ -60,7 +62,8 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
         text: `SELECT guardian.id, guardian.display_name, guardian.email, guardian.phone,
                       relationship.relationship_type, relationship.is_legal_guardian,
                       relationship.is_primary_contact, relationship.is_emergency_contact,
-                      relationship.is_billing_contact, relationship.notification_consent
+                      relationship.is_billing_contact, relationship.notification_consent,
+                      guardian.record_version
                  FROM crm_student_guardian_relationships AS relationship
                  JOIN crm_guardians AS guardian
                    ON guardian.id = relationship.guardian_id
@@ -75,11 +78,13 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
         ...toListItem(student),
         contactEmail: student.contact_email,
         contactPhone: student.contact_phone,
+        recordVersion: toVersion(student.record_version),
         guardians: Object.freeze(guardianResult.rows.map((row) => Object.freeze({
           id: row.id,
           displayName: row.display_name,
           email: row.email,
           phone: row.phone,
+          recordVersion: toVersion(row.record_version),
           relationshipType: row.relationship_type,
           isLegalGuardian: row.is_legal_guardian,
           isPrimaryContact: row.is_primary_contact,
@@ -95,7 +100,8 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 function studentSelect(condition: string): string {
   return `SELECT student.id, student.display_name, student.date_of_birth::text,
                  student.status, student.contact_email, student.contact_phone,
-                 student.updated_at, primary_guardian.display_name AS primary_guardian_name
+                 student.updated_at, student.record_version,
+                 primary_guardian.display_name AS primary_guardian_name
             FROM crm_students AS student
             LEFT JOIN LATERAL (
               SELECT guardian.display_name
@@ -111,6 +117,14 @@ function studentSelect(condition: string): string {
                LIMIT 1
             ) AS primary_guardian ON true
            WHERE ${condition}`;
+}
+
+function toVersion(value: number | string): number {
+  const result = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(result) || result < 1) {
+    throw new TypeError("CRM record version is invalid.");
+  }
+  return result;
 }
 
 function toListItem(row: StudentRow): StudentListItem {
