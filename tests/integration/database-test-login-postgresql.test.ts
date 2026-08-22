@@ -18,6 +18,7 @@ import { IdentityRepositoryError } from "../../modules/identity/application/sess
 import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_SOURCE_COUNT,
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
@@ -135,7 +136,7 @@ test("database-test login honors FORCE RLS on disposable PostgreSQL 17", {
       },
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assert.equal(baseline.marker, "installed");
 
     const seed = await seedNeonTestRelease1(target, "apply");

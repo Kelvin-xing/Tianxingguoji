@@ -27,6 +27,7 @@
     { "name": "202608180090_025_harden_case_stage_transition.sql", "sha256": "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5" },
     { "name": "202608180100_026_fix_case_stage_transition_evidence_binding.sql", "sha256": "2818679cc8b82dd3b3df8e6a39578c1eeda7ab522a3983e7d764969d93313556" },
     { "name": "202608180110_027_enable_candidate_school_target.sql", "sha256": "1585a14650346e47e7631a768c1362423e6ea62d5377608e928f133318a145f5" },
-    { "name": "202608180120_028_expand_database_test_identity.sql", "sha256": "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb" }
+    { "name": "202608180120_028_expand_database_test_identity.sql", "sha256": "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb" },
+    { "name": "202608230010_029_allow_case_assessment_fk_lock.sql", "sha256": "f5af0dfdc36fa7e6e82ce6b6713eab5f02ad0aae31e213cb563624018c97ce2f" }
   ]
 }

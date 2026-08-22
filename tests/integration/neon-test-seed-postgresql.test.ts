@@ -8,6 +8,7 @@ import { Client } from "pg";
 import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_SOURCE_COUNT,
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
@@ -115,7 +116,7 @@ test("dry-runs, applies, and idempotently reapplies the synthetic seed on Postgr
     const baselineEvidence = await runBaselineApply(target, build);
     assert.equal(baselineEvidence.status, "pass");
     assert.equal(baselineEvidence.baseline_id, ONE_ROLE_BASELINE_ID);
-    assert.equal(baselineEvidence.generated_files, 28);
+    assert.equal(baselineEvidence.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assert.equal(baselineEvidence.postflight_state, "installed");
     assert.equal(baselineEvidence.marker, "installed");
 

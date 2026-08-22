@@ -18,16 +18,18 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>(
     bypassAuthForVisualFixture ? 'authenticated' : 'checking',
   )
+  const [desktopNavigationOpen, setDesktopNavigationOpen] = useState(true)
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false)
 
   useEffect(() => {
     if (bypassAuthForVisualFixture) {
-      setAuthState('authenticated')
       return
     }
 
     let cancelled = false
-    setAuthState('checking')
+    queueMicrotask(() => {
+      if (!cancelled) setAuthState('checking')
+    })
     fetch('/api/auth/me', { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('unauthenticated')
@@ -45,10 +47,6 @@ export function AppFrame({ children }: { children: ReactNode }) {
     }
   }, [bypassAuthForVisualFixture, router])
 
-  useEffect(() => {
-    setMobileNavigationOpen(false)
-  }, [pathname])
-
   if (isPublic || isExternalPortal) {
     return <main className="min-h-screen">{children}</main>
   }
@@ -65,9 +63,22 @@ export function AppFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar mobileOpen={mobileNavigationOpen} onClose={() => setMobileNavigationOpen(false)} />
+      <Sidebar
+        desktopOpen={desktopNavigationOpen}
+        mobileOpen={mobileNavigationOpen}
+        onClose={() => {
+          setDesktopNavigationOpen(false)
+          setMobileNavigationOpen(false)
+        }}
+      />
       <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg)' }}>
-        <TopBar onOpenNavigation={() => setMobileNavigationOpen(true)} />
+        <TopBar
+          desktopNavigationOpen={desktopNavigationOpen}
+          onOpenNavigation={() => {
+            setDesktopNavigationOpen(true)
+            setMobileNavigationOpen(true)
+          }}
+        />
         <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>

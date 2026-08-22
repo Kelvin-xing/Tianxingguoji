@@ -8,6 +8,7 @@ import { Client } from "pg";
 import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_SOURCE_COUNT,
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
@@ -126,7 +127,7 @@ test("provisions a synthetic identity with clean failure rollback on PostgreSQL 
       },
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assert.equal(baseline.marker, "installed");
 
     const seed = await seedNeonTestRelease1(baselineTarget, "apply");

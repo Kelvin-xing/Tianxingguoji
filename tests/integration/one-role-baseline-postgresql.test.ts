@@ -8,6 +8,7 @@ import { Client } from "pg";
 import {
   ONE_ROLE_BASELINE_ID,
   ONE_ROLE_CANONICAL_ROLE,
+  ONE_ROLE_SOURCE_COUNT,
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
@@ -109,7 +110,7 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
 
     assert.equal(dryRunEvidence.status, "pass");
     assert.equal(dryRunEvidence.baseline_id, ONE_ROLE_BASELINE_ID);
-    assert.equal(dryRunEvidence.generated_files, 28);
+    assert.equal(dryRunEvidence.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assert.equal(dryRunEvidence.postflight_state, "clean");
     assert.equal(dryRunEvidence.marker, "rolled_back");
 

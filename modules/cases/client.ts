@@ -41,7 +41,145 @@ const BLOCKED_REASONS = Object.freeze([
   "no_school_options",
 ] as const);
 
-export type SchoolTargetCaseStage = (typeof CASE_STAGES)[number];
+const ADMISSION_TYPES = Object.freeze(["s1_admission", "transfer"] as const);
+const PRIMARY_ROLES = Object.freeze(["founder", "advisor"] as const);
+
+export type CaseWorkspaceStage = (typeof CASE_STAGES)[number];
+export type CaseAdmissionType = (typeof ADMISSION_TYPES)[number];
+export type CasePrimaryRole = (typeof PRIMARY_ROLES)[number];
+
+export interface CaseWorkspaceListItem {
+  readonly id: string;
+  readonly caseNumber: string;
+  readonly studentId: string;
+  readonly studentName: string;
+  readonly intakeYear: number;
+  readonly admissionType: CaseAdmissionType;
+  readonly stage: CaseWorkspaceStage;
+  readonly updatedAt: string;
+  readonly primaryRole: CasePrimaryRole;
+}
+
+export interface CaseWorkspaceOptions {
+  readonly students: readonly Readonly<{ readonly id: string; readonly displayName: string }>[];
+  readonly primaryBindings: readonly Readonly<{
+    readonly id: string;
+    readonly role: CasePrimaryRole;
+    readonly label: string;
+  }>[];
+  readonly manifests: readonly Readonly<{
+    readonly id: string;
+    readonly compositionVersion: string;
+    readonly label: string;
+  }>[];
+}
+
+export interface CreateExistingStudentCaseInput {
+  readonly student_id: string;
+  readonly intake_year: number;
+  readonly admission_type: CaseAdmissionType;
+  readonly primary_role_binding_id: string;
+  readonly manifest_id: string;
+}
+
+export interface CreatedExistingStudentCase {
+  readonly id: string;
+  readonly caseNumber: string;
+  readonly studentId: string;
+  readonly assessmentId: string;
+  readonly intakeYear: number;
+  readonly admissionType: CaseAdmissionType;
+  readonly stage: "signed";
+  readonly manifestId: string;
+  readonly recordVersion: 1;
+}
+
+export type CaseRequestFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "validation"
+  | "conflict"
+  | "unavailable";
+
+export async function listCaseWorkspaceOptions(signal?: AbortSignal): Promise<CaseWorkspaceOptions> {
+  return requestApi(
+    { path: "/api/v1/cases/options", signal },
+    decodeCaseWorkspaceOptionsEnvelope,
+  );
+}
+
+export async function listCases(signal?: AbortSignal): Promise<readonly CaseWorkspaceListItem[]> {
+  return requestApi(
+    { path: "/api/v1/cases", signal },
+    (value) => {
+      const record = exactRecord(value, ["cases"]);
+      return Object.freeze(expectArray(record.cases, decodeCaseWorkspaceListItem));
+    },
+  );
+}
+
+export async function createExistingStudentCase(
+  input: CreateExistingStudentCaseInput,
+  idempotencyKey: string,
+): Promise<CreatedExistingStudentCase> {
+  assertCreateCaseInput(input);
+  if (!IDEMPOTENCY_KEY.test(idempotencyKey)) throw new TypeError("Invalid idempotency key.");
+  return requestApi(
+    {
+      path: "/api/v1/cases",
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        student_id: input.student_id,
+        intake_year: input.intake_year,
+        admission_type: input.admission_type,
+        primary_role_binding_id: input.primary_role_binding_id,
+        manifest_id: input.manifest_id,
+      },
+    },
+    (value) => decodeCreatedCaseEnvelope(value, input),
+  );
+}
+
+export function classifyCaseRequestFailure(error: unknown): CaseRequestFailureKind {
+  if (!(error instanceof ApiClientError)) return "unavailable";
+  if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
+  if (error.code === "FORBIDDEN" || error.status === 403) return "forbidden";
+  if (error.code === "NOT_FOUND" || error.status === 404) return "not_found";
+  if (error.code === "VALIDATION_FAILED" || error.status === 422) return "validation";
+  if (error.code === "CONFLICT" || error.status === 409) return "conflict";
+  return "unavailable";
+}
+
+/** Owns one key for one logical Case create attempt, including uncertain retries. */
+export class CaseCreateIdempotencyAttempt {
+  private readonly createKey: () => string;
+  private key: string | null = null;
+
+  constructor(createKey: () => string = () => globalThis.crypto.randomUUID()) {
+    this.createKey = createKey;
+  }
+
+  keyForSubmission(): string {
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      if (!IDEMPOTENCY_KEY.test(nextKey)) throw new TypeError("Invalid idempotency key.");
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  markBusinessFieldChanged(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.key = null;
+  }
+}
+
+export type SchoolTargetCaseStage = CaseWorkspaceStage;
 export type SchoolTargetState = (typeof TARGET_STATES)[number];
 export type SchoolTargetCreateBlockedReason = (typeof BLOCKED_REASONS)[number] | null;
 
@@ -179,6 +317,131 @@ export class SchoolTargetIdempotencyAttempt {
     this.schoolId = null;
     this.key = null;
   }
+}
+
+function decodeCaseWorkspaceOptionsEnvelope(value: unknown): CaseWorkspaceOptions {
+  const root = exactRecord(value, ["options"]);
+  const options = exactRecord(root.options, ["students", "primaryBindings", "manifests"]);
+  const students = expectArray(options.students, (item) => {
+    const record = exactRecord(item, ["id", "displayName"]);
+    return Object.freeze({
+      id: uuid(record.id, "student id"),
+      displayName: nonBlank(record.displayName, "student displayName"),
+    });
+  });
+  const primaryBindings = expectArray(options.primaryBindings, (item) => {
+    const record = exactRecord(item, ["id", "role", "label"]);
+    return Object.freeze({
+      id: uuid(record.id, "primary binding id"),
+      role: oneOf(record.role, PRIMARY_ROLES, "primary binding role"),
+      label: nonBlank(record.label, "primary binding label"),
+    });
+  });
+  const manifests = expectArray(options.manifests, (item) => {
+    const record = exactRecord(item, ["id", "compositionVersion", "label"]);
+    return Object.freeze({
+      id: uuid(record.id, "manifest id"),
+      compositionVersion: nonBlank(record.compositionVersion, "compositionVersion"),
+      label: nonBlank(record.label, "manifest label"),
+    });
+  });
+  assertUnique(students.map(({ id }) => id), "student id");
+  assertUnique(primaryBindings.map(({ id }) => id), "primary binding id");
+  assertUnique(manifests.map(({ id }) => id), "manifest id");
+  return Object.freeze({
+    students: Object.freeze(students),
+    primaryBindings: Object.freeze(primaryBindings),
+    manifests: Object.freeze(manifests),
+  });
+}
+
+function decodeCaseWorkspaceListItem(value: unknown): CaseWorkspaceListItem {
+  const record = exactRecord(value, [
+    "id",
+    "caseNumber",
+    "studentId",
+    "studentName",
+    "intakeYear",
+    "admissionType",
+    "stage",
+    "updatedAt",
+    "primaryRole",
+  ]);
+  return Object.freeze({
+    id: uuid(record.id, "case id"),
+    caseNumber: nonBlank(record.caseNumber, "caseNumber"),
+    studentId: uuid(record.studentId, "studentId"),
+    studentName: nonBlank(record.studentName, "studentName"),
+    intakeYear: caseIntakeYear(record.intakeYear),
+    admissionType: oneOf(record.admissionType, ADMISSION_TYPES, "admissionType"),
+    stage: oneOf(record.stage, CASE_STAGES, "stage"),
+    updatedAt: isoTimestamp(record.updatedAt, "updatedAt"),
+    primaryRole: oneOf(record.primaryRole, PRIMARY_ROLES, "primaryRole"),
+  });
+}
+
+function decodeCreatedCaseEnvelope(
+  value: unknown,
+  input: CreateExistingStudentCaseInput,
+): CreatedExistingStudentCase {
+  const root = exactRecord(value, ["case"]);
+  const record = exactRecord(root.case, [
+    "id",
+    "caseNumber",
+    "studentId",
+    "assessmentId",
+    "intakeYear",
+    "admissionType",
+    "stage",
+    "manifestId",
+    "recordVersion",
+  ]);
+  const created = Object.freeze({
+    id: uuid(record.id, "case id"),
+    caseNumber: nonBlank(record.caseNumber, "caseNumber"),
+    studentId: uuid(record.studentId, "studentId"),
+    assessmentId: uuid(record.assessmentId, "assessmentId"),
+    intakeYear: caseIntakeYear(record.intakeYear),
+    admissionType: oneOf(record.admissionType, ADMISSION_TYPES, "admissionType"),
+    stage: oneOf(record.stage, ["signed"] as const, "stage"),
+    manifestId: uuid(record.manifestId, "manifestId"),
+    recordVersion: oneOfNumber(record.recordVersion, [1] as const, "recordVersion"),
+  });
+  if (
+    created.studentId !== input.student_id ||
+    created.intakeYear !== input.intake_year ||
+    created.admissionType !== input.admission_type ||
+    created.manifestId !== input.manifest_id
+  ) {
+    throw new TypeError("Created Case does not match the request.");
+  }
+  return created;
+}
+
+function assertCreateCaseInput(input: CreateExistingStudentCaseInput): void {
+  assertUuid(input.student_id, "student_id");
+  assertUuid(input.primary_role_binding_id, "primary_role_binding_id");
+  assertUuid(input.manifest_id, "manifest_id");
+  caseIntakeYear(input.intake_year);
+  oneOf(input.admission_type, ADMISSION_TYPES, "admission_type");
+}
+
+function caseIntakeYear(value: unknown): number {
+  const parsed = expectNumber(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 2000 || parsed > 2200) {
+    throw new TypeError("Invalid intake year.");
+  }
+  return parsed;
+}
+
+function oneOfNumber<const Values extends readonly number[]>(
+  value: unknown,
+  values: Values,
+  field: string,
+): Values[number] {
+  const parsed = expectNumber(value);
+  if (!values.includes(parsed)) throw new TypeError(`Invalid ${field}.`);
+  return parsed as Values[number];
 }
 
 function decodeSchoolTargetsView(value: unknown, expectedCaseId: string): SchoolTargetsView {

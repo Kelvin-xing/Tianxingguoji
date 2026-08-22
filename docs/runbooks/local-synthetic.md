@@ -183,7 +183,7 @@ LocalStack 在当前免费本地配置中不启用授权版持久化；容器重
 - 首页返回 HTTP 200，12 项本地底座聚焦测试通过。
 
 2026-08-21 已通过 `pnpm test:database-test-login-dev-http` 在一次性 PostgreSQL 17.10 容器中完成本地等价验收：
-真实执行当前 one-role baseline 的 28 个 generated SQL、应用与 Vercel test 相同的 Release 1 seed 定义、
+真实执行当时的 one-role baseline 的 28 个 generated SQL、应用与 Vercel test 相同的 Release 1 seed 定义、
 provision 合成 founder credential，并由隔离 Next Dev 通过真实 HTTP 入口验证登录、session、错误口令、
 未知字段、跨租户拒绝、故障回滚和登出。测试使用随机 loopback 端口和 tmpfs，结束后删除容器与临时应用目录。
 

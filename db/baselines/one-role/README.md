@@ -2,12 +2,12 @@
 
 This directory is an independent executable baseline for an empty local, Neon
 test, or AWS bootstrap. It is deliberately separate from
-`db/migrations/manifest.json`; the historical 27 migration files and their
+`db/migrations/manifest.json`; the historical 28 migration files and their
 hashes are immutable.
 
-The generator reads all 27 frozen sources, applies six explicit one-role
-transforms (008, 011, 012, 013, 025, and 028), copies the other 21 files byte-for-byte,
-and emits 28 ordered SQL files plus a manifest. `db:baseline:check` regenerates
+The generator reads all 28 frozen sources, applies six explicit one-role
+transforms (008, 011, 012, 013, 025, and 028), copies the other 22 files byte-for-byte,
+and emits 29 ordered SQL files plus a manifest. `db:baseline:check` regenerates
 the result in memory and rejects source drift or generated-file drift.
 
 The 025 transform temporarily grants `TRIGGER` on the transition-facts table
@@ -27,7 +27,7 @@ pnpm test:one-role-baseline-postgresql
 ```
 
 The gate uses the pinned PostgreSQL 17 image, an isolated `tmpfs` data directory,
-a random loopback port, and the real 28-file runner. It requires a dry-run
+a random loopback port, and the real 29-file runner. It requires a dry-run
 `ROLLBACK` plus a clean independent-connection postflight and removes only its
 own temporary container.
 

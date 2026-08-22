@@ -50,7 +50,7 @@ const LEGACY_DATABASE_ROLE_IDENTIFIERS = [
   "rds_iam",
 ] as const;
 
-test("generates a deterministic executable baseline from all 27 frozen sources", async () => {
+test("generates a deterministic executable baseline from all 28 frozen sources", async () => {
   const first = await buildOneRoleBaseline();
   const second = await buildOneRoleBaseline();
 
@@ -120,6 +120,24 @@ test("temporarily grants only the fact-table trigger privilege around the first 
     build.files.reduce((count, file) => count + occurrenceCount(file.contents, revoke), 0),
     1,
   );
+});
+
+test("copies the 029 case FK-lock grant exactly without broad UPDATE privilege", async () => {
+  const build = await buildOneRoleBaseline();
+  const sourceName = "202608230010_029_allow_case_assessment_fk_lock.sql";
+  const expected = "GRANT UPDATE (id) ON TABLE public.cases_service_cases TO tianxing_app;\n";
+  const source = await readFile(`db/migrations/${sourceName}`, "utf8");
+  const generated = build.files.find(({ name }) => name === `028_${sourceName}`);
+
+  assert.equal(source, expected);
+  assert.ok(generated);
+  assert.equal(generated.contents, expected);
+  assert.equal(
+    build.manifest.source_migrations.find(({ name }) => name === sourceName)?.transform,
+    "copy-v1",
+  );
+  assert.doesNotMatch(generated.contents, /GRANT UPDATE ON TABLE/i);
+  assert.doesNotMatch(generated.contents, /GRANT ALL/i);
 });
 
 test("rejects any source drift before generation", async () => {

@@ -107,6 +107,15 @@
     "print": "Print",
     "lang_toggle": "中文"
   },
+  "layout": {
+    "erp_title": "Tianxing Advisory ERP",
+    "open_navigation": "Open navigation",
+    "close_navigation": "Collapse navigation",
+    "notifications": "Notifications",
+    "notifications_unavailable": "Notifications are temporarily unavailable. Please try again later.",
+    "account_menu": "Account menu",
+    "logout": "Log out"
+  },
   "admin": {
     "crawler": "Crawler Admin"
   }

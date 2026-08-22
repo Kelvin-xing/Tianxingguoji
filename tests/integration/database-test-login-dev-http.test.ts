@@ -158,7 +158,7 @@ test("database-test login works through the local Next Dev HTTP runtime", {
     assert.equal(baseline.status, "pass");
     assert.equal(baseline.baseline_id, ONE_ROLE_BASELINE_ID);
     assert.equal(baseline.source_migrations, ONE_ROLE_SOURCE_COUNT);
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assert.equal(baseline.postflight_state, "installed");
     assert.deepEqual(baseline.verification, {
       role_contract: "verified",
