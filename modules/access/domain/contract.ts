@@ -47,6 +47,7 @@ export type RoleBindingStatus = "active" | "revoked";
 export const WORKSPACE_CAPABILITIES = Object.freeze([
   "today.read",
   "cases.read",
+  "cases.create",
   "students.read",
   "students.create",
   "students.guardians.manage",
@@ -66,6 +67,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
   founder: Object.freeze([
     "today.read",
     "cases.read",
+    "cases.create",
     "students.read",
     "students.create",
     "schools.read",
@@ -86,6 +88,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
   advisor: Object.freeze([
     "today.read",
     "cases.read",
+    "cases.create",
     "students.read",
     "students.create",
     "students.guardians.manage",

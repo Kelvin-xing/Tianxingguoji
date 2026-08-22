@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
@@ -9,13 +9,14 @@ export const MIGRATION_DIRECTORY = "db/migrations";
 export const MIGRATION_MANIFEST_PATH = "db/migrations/manifest.json";
 export const NEON_TEST_DATABASE = "txgj_env01_test";
 export const NEON_TEST_MIGRATION_LOGIN = "env01_migration_login";
-export const EXPECTED_MIGRATION_COUNT = 27;
+export const EXPECTED_MIGRATION_COUNT = 28;
 export const EXPECTED_LAST_MIGRATION =
-  "202608180120_028_expand_database_test_identity.sql";
+  "202608230010_029_allow_case_assessment_fk_lock.sql";
 export const EXPECTED_LAST_MIGRATION_SHA256 =
-  "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb";
+  "f5af0dfdc36fa7e6e82ce6b6713eab5f02ad0aae31e213cb563624018c97ce2f";
 
 const SHA256 = /^[a-f0-9]{64}$/;
+const CANONICAL_MIGRATION_NAME = /^\d{12}_\d{3}_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
 
 export type MigrationManifestEntry = Readonly<{
   name: string;
@@ -79,6 +80,70 @@ export async function verifyOrderedMigrationManifest(
   return manifest;
 }
 
+export async function writeOrderedMigrationManifest(
+  migrationDirectory = MIGRATION_DIRECTORY,
+  manifestPath = MIGRATION_MANIFEST_PATH,
+): Promise<MigrationManifest> {
+  let entries;
+  let rawManifest: string;
+  try {
+    [entries, rawManifest] = await Promise.all([
+      readdir(migrationDirectory, { withFileTypes: true }),
+      readFile(manifestPath, "utf8"),
+    ]);
+  } catch {
+    throw new MigrationManifestSafetyError("Migration manifest files could not be read.");
+  }
+
+  const migrationNames = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+    .map((entry) => entry.name)
+    .sort();
+  if (migrationNames.some((name) => !CANONICAL_MIGRATION_NAME.test(name))) {
+    throw new MigrationManifestSafetyError("Migration file name is not canonical.");
+  }
+
+  const existing = parseManifest(rawManifest);
+  if (migrationNames.length < existing.migrations.length) {
+    throw new MigrationManifestSafetyError("Migration manifest history cannot be removed.");
+  }
+
+  const migrations: MigrationManifestEntry[] = [];
+  for (const [index, name] of migrationNames.entries()) {
+    const contents = await readFile(resolve(migrationDirectory, name));
+    const sha256 = createHash("sha256").update(contents).digest("hex");
+    const historical = existing.migrations[index];
+    if (historical !== undefined && historical.name !== name) {
+      throw new MigrationManifestSafetyError("Migration manifest history cannot be reordered.");
+    }
+    if (historical !== undefined && historical.sha256 !== sha256) {
+      throw new MigrationManifestSafetyError(`Migration checksum mismatch: ${name}`);
+    }
+    migrations.push(Object.freeze({ name, sha256 }));
+  }
+
+  const canonical = serializeManifest(migrations);
+  const expected = parseManifest(canonical);
+  const temporaryPath = `${manifestPath}.${process.pid}.tmp`;
+  try {
+    await writeFile(temporaryPath, canonical, { encoding: "utf8", flag: "wx" });
+    const temporary = await verifyOrderedMigrationManifest(migrationDirectory, temporaryPath);
+    if (!manifestsEqual(expected, temporary)) {
+      throw new MigrationManifestSafetyError("Generated migration manifest failed verification.");
+    }
+    await rename(temporaryPath, manifestPath);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
+  }
+
+  const committed = await verifyOrderedMigrationManifest(migrationDirectory, manifestPath);
+  if (!manifestsEqual(expected, committed)) {
+    throw new MigrationManifestSafetyError("Written migration manifest failed verification.");
+  }
+  return committed;
+}
+
 export function assertNeonTestManifest(manifest: MigrationManifest): void {
   const last = manifest.migrations.at(-1);
   if (
@@ -87,7 +152,7 @@ export function assertNeonTestManifest(manifest: MigrationManifest): void {
     last.sha256 !== EXPECTED_LAST_MIGRATION_SHA256
   ) {
     throw new MigrationManifestSafetyError(
-      "Neon test bootstrap requires the frozen 27-migration manifest.",
+      "Neon test bootstrap requires the frozen 28-migration manifest.",
     );
   }
 }
@@ -168,13 +233,42 @@ function parseManifest(rawManifest: string): MigrationManifest {
   });
 }
 
+function serializeManifest(migrations: readonly MigrationManifestEntry[]): string {
+  const entries = migrations.map(({ name, sha256 }) =>
+    `    { "name": ${JSON.stringify(name)}, "sha256": ${JSON.stringify(sha256)} }`
+  );
+  return [
+    "{",
+    '  "manifest_version": 1,',
+    '  "migrations": [',
+    entries.join(",\n"),
+    "  ]",
+    "}",
+    "",
+  ].join("\n");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function runPlanCli(arguments_: readonly string[]): Promise<void> {
-  if (arguments_.length !== 1 || arguments_[0] !== "--neon-test-plan") {
-    throw new MigrationManifestSafetyError("Specify --neon-test-plan.");
+  if (arguments_.length !== 1) {
+    throw new MigrationManifestSafetyError("Specify --neon-test-plan or --write.");
+  }
+  if (arguments_[0] === "--write") {
+    const manifest = await writeOrderedMigrationManifest();
+    process.stdout.write(`${JSON.stringify({
+      status: "pass",
+      mode: "write",
+      count: manifest.migrations.length,
+      last_migration: manifest.migrations.at(-1)?.name ?? null,
+      manifest_sha256: manifest.manifestSha256,
+    })}\n`);
+    return;
+  }
+  if (arguments_[0] !== "--neon-test-plan") {
+    throw new MigrationManifestSafetyError("Specify --neon-test-plan or --write.");
   }
   const manifest = await verifyOrderedMigrationManifest();
   process.stdout.write(`${JSON.stringify(createNeonTestPlanEvidence(manifest), null, 2)}\n`);

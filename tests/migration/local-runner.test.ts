@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+import {
+  MigrationManifestSafetyError,
+  writeOrderedMigrationManifest,
+} from "../../scripts/db/migration-manifest.ts";
 
 import {
   LocalMigrationSafetyError,
@@ -63,11 +68,11 @@ test("verifies the committed ordered migration manifest", async () => {
   const manifest = await verifyMigrationManifest();
 
   assert.equal(manifest.manifestVersion, 1);
-  assert.equal(manifest.migrations.length, 27);
+  assert.equal(manifest.migrations.length, 28);
   assert.equal(manifest.migrations[0]?.name, "202608021330_001_expand_identity_access.sql");
   assert.equal(
     manifest.migrations.at(-1)?.name,
-    "202608180120_028_expand_database_test_identity.sql",
+    "202608230010_029_allow_case_assessment_fk_lock.sql",
   );
 });
 
@@ -95,6 +100,58 @@ test("rejects a changed SQL file before opening a database connection", async ()
     verifyMigrationManifest(directory, manifestPath),
     /Migration checksum mismatch/,
   );
+});
+
+test("writes a deterministic append-only migration manifest and rejects history drift", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "migration-manifest-writer-"));
+  const manifestPath = join(directory, "manifest.json");
+  const firstName = "202608230001_001_expand_example.sql";
+  const secondName = "202608230002_002_expand_example.sql";
+  const firstSql = "SELECT 1;\n";
+  const firstSha = createHash("sha256").update(firstSql).digest("hex");
+  try {
+    await writeFile(join(directory, firstName), firstSql, "utf8");
+    await writeFile(
+      manifestPath,
+      `{\n  "manifest_version": 1,\n  "migrations": [\n    { "name": "${firstName}", "sha256": "${firstSha}" }\n  ]\n}\n`,
+      "utf8",
+    );
+    await writeFile(join(directory, secondName), "SELECT 2;\n", "utf8");
+
+    const appended = await writeOrderedMigrationManifest(directory, manifestPath);
+    const firstWrite = await readFile(manifestPath, "utf8");
+    assert.deepEqual(appended.migrations.map(({ name }) => name), [firstName, secondName]);
+    await writeOrderedMigrationManifest(directory, manifestPath);
+    assert.equal(await readFile(manifestPath, "utf8"), firstWrite);
+
+    await writeFile(join(directory, firstName), "SELECT 3;\n", "utf8");
+    await assert.rejects(
+      writeOrderedMigrationManifest(directory, manifestPath),
+      (error: unknown) => error instanceof MigrationManifestSafetyError &&
+        error.message === `Migration checksum mismatch: ${firstName}`,
+    );
+    await writeFile(join(directory, firstName), firstSql, "utf8");
+
+    const reordered = JSON.parse(firstWrite) as {
+      manifest_version: 1;
+      migrations: { name: string; sha256: string }[];
+    };
+    reordered.migrations.reverse();
+    await writeFile(manifestPath, JSON.stringify(reordered), "utf8");
+    await assert.rejects(
+      writeOrderedMigrationManifest(directory, manifestPath),
+      /Migration manifest history cannot be reordered/,
+    );
+
+    await writeFile(manifestPath, firstWrite, "utf8");
+    await unlink(join(directory, firstName));
+    await assert.rejects(
+      writeOrderedMigrationManifest(directory, manifestPath),
+      /Migration manifest history cannot be removed|Migration manifest history cannot be reordered/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("keeps migration-owner credentials out of the application environment example", async () => {

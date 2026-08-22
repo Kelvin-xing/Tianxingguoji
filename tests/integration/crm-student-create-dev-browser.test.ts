@@ -285,6 +285,11 @@ const CRM02_BROWSER_STAGES = Object.freeze([
   "advisor_login_server_render",
   "advisor_login_browser_render",
   "advisor_login_session",
+  "workspace_shell_desktop_navigation",
+  "workspace_shell_notifications",
+  "workspace_shell_language",
+  "workspace_shell_account_menu",
+  "workspace_shell_mobile_navigation",
   "crm01_student_create",
   "advisor_detail_entry",
   "current_relationship_read",
@@ -318,6 +323,11 @@ const CRM02_BROWSER_STAGES = Object.freeze([
 type Crm02BrowserStage = (typeof CRM02_BROWSER_STAGES)[number];
 
 interface Crm02BrowserEvidence {
+  workspace_desktop_navigation: boolean;
+  workspace_mobile_navigation: boolean;
+  workspace_notifications: boolean;
+  workspace_language: boolean;
+  workspace_account_menu: boolean;
   student_created: boolean;
   advisor_management_entry_visible: boolean;
   current_get_status: number | null;
@@ -536,7 +546,7 @@ test("CRM-01 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, 29);
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
     assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
@@ -1111,6 +1121,11 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
   const appDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-app-"));
   const profileDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-profile-"));
   const evidence: Crm02BrowserEvidence = {
+    workspace_desktop_navigation: false,
+    workspace_mobile_navigation: false,
+    workspace_notifications: false,
+    workspace_language: false,
+    workspace_account_menu: false,
     student_created: false,
     advisor_management_entry_visible: false,
     current_get_status: null,
@@ -1213,7 +1228,7 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, 29);
     baselineGeneratedFiles = baseline.generated_files;
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
@@ -1257,6 +1272,83 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
       advisorPassword,
       (nextStage) => { stage = nextStage; },
     );
+
+    stage = "workspace_shell_desktop_navigation";
+    const workspaceSidebar = page.locator("aside.app-sidebar");
+    await workspaceSidebar.waitFor({ state: "visible" });
+    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+    await workspaceSidebar.waitFor({ state: "hidden" });
+    await page.locator("button.desktop-navigation-button").click();
+    await workspaceSidebar.waitFor({ state: "visible" });
+    evidence.workspace_desktop_navigation = true;
+
+    stage = "workspace_shell_notifications";
+    const notificationButton = page.getByRole("button", { name: "通知", exact: true });
+    await notificationButton.click();
+    const notificationPanel = page.locator("#workspace-notifications");
+    await notificationPanel.waitFor({ state: "visible" });
+    await notificationPanel.getByText("通知服務暫時不可用，請稍後再試。", { exact: true })
+      .waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.activeElement?.id === "workspace-notifications");
+    await assertViewport(page, "ui-shell-notifications-desktop");
+    await page.keyboard.press("Escape");
+    await notificationPanel.waitFor({ state: "hidden" });
+    assert.equal(await notificationButton.evaluate((element) => element === document.activeElement), true);
+    await notificationButton.click();
+    await notificationPanel.waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "今日工作", exact: true, level: 2 }).click();
+    await notificationPanel.waitFor({ state: "hidden" });
+    evidence.workspace_notifications = true;
+
+    stage = "workspace_shell_language";
+    await page.getByRole("button", { name: "English", exact: true }).click();
+    assert.equal(await page.locator("html").getAttribute("lang"), "en");
+    await page.getByRole("heading", { name: "Today's Work", exact: true, level: 1 })
+      .waitFor({ state: "visible" });
+    await workspaceSidebar.getByRole("link", { name: "Today's Work", exact: true })
+      .waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "中文", exact: true }).click();
+    assert.equal(await page.locator("html").getAttribute("lang"), "zh-TW");
+    evidence.workspace_language = true;
+
+    stage = "workspace_shell_account_menu";
+    const accountButton = page.getByRole("button", { name: "帳戶選單", exact: true });
+    await accountButton.click();
+    const accountMenu = page.getByRole("menu", { name: "帳戶選單", exact: true });
+    await accountMenu.waitFor({ state: "visible" });
+    const accountLogout = accountMenu.getByRole("menuitem", { name: "登出", exact: true });
+    await accountLogout.waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.activeElement?.id === "workspace-logout");
+    await assertViewport(page, "ui-shell-account-desktop");
+    await page.keyboard.press("Escape");
+    await accountMenu.waitFor({ state: "hidden" });
+    assert.equal(await accountButton.evaluate((element) => element === document.activeElement), true);
+    evidence.workspace_account_menu = true;
+
+    stage = "workspace_shell_mobile_navigation";
+    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+    await workspaceSidebar.waitFor({ state: "hidden" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator("button.mobile-navigation-button").click();
+    await workspaceSidebar.waitFor({ state: "visible" });
+    await assertViewport(page, "ui-shell-navigation-mobile");
+    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+    await workspaceSidebar.waitFor({ state: "hidden" });
+    await notificationButton.click();
+    await notificationPanel.waitFor({ state: "visible" });
+    await assertViewport(page, "ui-shell-notifications-mobile");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "English", exact: true }).click();
+    assert.equal(await page.locator("html").getAttribute("lang"), "en");
+    await page.getByRole("button", { name: "中文", exact: true }).click();
+    await accountButton.click();
+    await accountMenu.waitFor({ state: "visible" });
+    await assertViewport(page, "ui-shell-account-mobile");
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator("button.desktop-navigation-button").click();
+    await workspaceSidebar.waitFor({ state: "visible" });
+    evidence.workspace_mobile_navigation = true;
 
     stage = "crm01_student_create";
     await page.goto(`${canonicalBaseUrl}/students/new`);
@@ -2229,9 +2321,12 @@ async function loginWithoutEvidence(
 
 async function logout(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "帳戶選單", exact: true }).click();
+  const accountMenu = page.getByRole("menu", { name: "帳戶選單", exact: true });
+  await accountMenu.waitFor({ state: "visible" });
   await Promise.all([
     page.waitForURL("**/login**"),
-    page.getByRole("link", { name: "登出", exact: true }).click(),
+    accountMenu.getByRole("menuitem", { name: "登出", exact: true }).click(),
   ]);
   assert.equal(new URL(page.url()).pathname, "/login");
 }

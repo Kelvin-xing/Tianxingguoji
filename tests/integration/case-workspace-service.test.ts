@@ -3,8 +3,8 @@ import test from "node:test";
 
 import {
   CaseWorkspaceError,
-  CaseWorkspaceRepositoryError,
   CaseWorkspaceService,
+  isCaseWorkspaceError,
   type CaseWorkspaceRepository,
 } from "../../modules/cases/application/workspace-service.ts";
 import type { IdentitySessionActor } from "../../modules/identity/public.ts";
@@ -81,14 +81,16 @@ test("maps repository conflicts to the application error contract", async () => 
   const createdIds = [ids.case, ids.assessment, ids.audit, ids.outbox];
   const service = new CaseWorkspaceService(fakeRepository({
     async createCase() {
-      throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_DUPLICATE");
+      throw Object.assign(new Error("duplicated module instance"), {
+        name: "CaseWorkspaceRepositoryError",
+        code: "CASE_WORKSPACE_DUPLICATE",
+      });
     },
   }), () => createdIds.shift()!, () => Date.parse("2026-08-18T10:00:00.000Z"));
 
   await assert.rejects(
     service.createCase({ actor: actor("founder"), command: command() }),
-    (error: unknown) => error instanceof CaseWorkspaceError &&
-      error.code === "CASE_WORKSPACE_DUPLICATE",
+    (error: unknown) => isCaseWorkspaceError(error, "CASE_WORKSPACE_DUPLICATE"),
   );
 });
 

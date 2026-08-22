@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { evaluateBootstrapAuthorization, type WorkspaceCapability } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -12,7 +13,6 @@ import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const WORKSPACE_ROLES = new Set(["founder", "admin", "advisor"]);
 
 export type CaseWorkspaceStage =
   | "signed"
@@ -118,6 +118,32 @@ export class CaseWorkspaceError extends Error {
   }
 }
 
+const CASE_WORKSPACE_ERROR_CODES = new Set<CaseWorkspaceErrorCode>([
+  "CASE_WORKSPACE_FORBIDDEN",
+  "CASE_WORKSPACE_INVALID",
+  "CASE_WORKSPACE_STUDENT_NOT_FOUND",
+  "CASE_WORKSPACE_BINDING_INACTIVE",
+  "CASE_WORKSPACE_MANIFEST_NOT_APPROVED",
+  "CASE_WORKSPACE_DUPLICATE",
+  "CASE_WORKSPACE_IDEMPOTENCY_CONFLICT",
+  "CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS",
+]);
+
+export function isCaseWorkspaceError(
+  error: unknown,
+  code?: CaseWorkspaceErrorCode,
+): error is CaseWorkspaceError {
+  if (!(error instanceof Error) || error.name !== "CaseWorkspaceError") return false;
+  const candidate = (error as Error & { readonly code?: unknown }).code;
+  if (
+    typeof candidate !== "string" ||
+    !CASE_WORKSPACE_ERROR_CODES.has(candidate as CaseWorkspaceErrorCode)
+  ) {
+    return false;
+  }
+  return code === undefined || candidate === code;
+}
+
 export class CaseWorkspaceRepositoryError extends Error {
   readonly code: CaseWorkspaceErrorCode;
 
@@ -126,6 +152,15 @@ export class CaseWorkspaceRepositoryError extends Error {
     this.name = "CaseWorkspaceRepositoryError";
     this.code = code;
   }
+}
+
+export function isCaseWorkspaceRepositoryError(
+  error: unknown,
+): error is CaseWorkspaceRepositoryError {
+  if (!(error instanceof Error) || error.name !== "CaseWorkspaceRepositoryError") return false;
+  const candidate = (error as Error & { readonly code?: unknown }).code;
+  return typeof candidate === "string" &&
+    CASE_WORKSPACE_ERROR_CODES.has(candidate as CaseWorkspaceErrorCode);
 }
 
 export class CaseWorkspaceService {
@@ -144,17 +179,17 @@ export class CaseWorkspaceService {
   }
 
   listCases(actor: IdentitySessionActor) {
-    return this.repository.listCases(repositoryActor(actor));
+    return this.repository.listCases(repositoryActor(actor, "cases.read"));
   }
 
   findCase(actor: IdentitySessionActor, caseId: string) {
-    const context = repositoryActor(actor);
+    const context = repositoryActor(actor, "cases.read");
     if (!UUID.test(caseId)) throw new CaseWorkspaceError("CASE_WORKSPACE_INVALID");
     return this.repository.findCase({ ...context, caseId });
   }
 
   listOptions(actor: IdentitySessionActor) {
-    return this.repository.listOptions(repositoryActor(actor));
+    return this.repository.listOptions(repositoryActor(actor, "cases.create"));
   }
 
   async createCase(input: {
@@ -169,7 +204,7 @@ export class CaseWorkspaceService {
       idempotencyKey: string;
     }>;
   }): Promise<CreatedExistingStudentCase> {
-    const actor = repositoryActor(input.actor);
+    const actor = repositoryActor(input.actor, "cases.create");
     assertCommand(input.command);
     const serviceCaseId = this.createId();
     const assessmentId = this.createId();
@@ -243,7 +278,7 @@ export class CaseWorkspaceService {
         effects: buildAtomicMutationEffects({ audit, outbox }),
       });
     } catch (error) {
-      if (error instanceof CaseWorkspaceRepositoryError) {
+      if (isCaseWorkspaceRepositoryError(error)) {
         throw new CaseWorkspaceError(error.code);
       }
       throw error;
@@ -251,8 +286,12 @@ export class CaseWorkspaceService {
   }
 }
 
-function repositoryActor(actor: IdentitySessionActor): RepositoryActor {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !WORKSPACE_ROLES.has(actor.role)) {
+function repositoryActor(
+  actor: IdentitySessionActor,
+  capability: WorkspaceCapability,
+): RepositoryActor {
+  const decision = evaluateBootstrapAuthorization(actor.role, { capability });
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !decision.allowed) {
     throw new CaseWorkspaceError("CASE_WORKSPACE_FORBIDDEN");
   }
   return {

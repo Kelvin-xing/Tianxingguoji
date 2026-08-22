@@ -1,6 +1,8 @@
-import { CaseRuntimeUnavailable, CaseWorkspaceError, getCaseWorkspaceRuntime } from "@/modules/cases/server";
+import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
 import { requireIdentityActor } from "@/modules/identity/web";
-import { createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
+import { handleApiRequest, type JsonValue } from "@/modules/shared/public";
+
+import { mapCaseWorkspaceCollectionError } from "../route-contract.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,11 +20,7 @@ export async function GET(request: Request): Promise<Response> {
         },
       } satisfies JsonValue;
     } catch (error) {
-      if (error instanceof CaseWorkspaceError && error.code === "CASE_WORKSPACE_FORBIDDEN") {
-        throw createApiError("FORBIDDEN");
-      }
-      if (error instanceof CaseRuntimeUnavailable) throw createApiError("SERVICE_UNAVAILABLE");
-      throw error;
+      throw mapCaseWorkspaceCollectionError(error);
     }
   });
 }

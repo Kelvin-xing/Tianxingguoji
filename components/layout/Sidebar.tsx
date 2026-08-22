@@ -3,35 +3,39 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Icon, type IconName } from '@/components/workspace/Icon'
 import {
   RELEASE_ONE_NAVIGATION_PLACEHOLDERS,
   type ReleaseOneNavigationPlaceholder,
 } from '@/modules/future/public'
 
-const navItems: Array<{ href: string; label: string; icon: IconName; exact?: boolean }> = [
-  { href: '/today', label: '今日工作', icon: 'layout-dashboard', exact: true },
-  { href: '/cases', label: '案件', icon: 'briefcase' },
-  { href: '/students', label: '學生與監護人', icon: 'users' },
-  { href: '/schools', label: '學校資料', icon: 'book-open' },
-  { href: '/tasks', label: '任務', icon: 'clipboard' },
-  { href: '/documents', label: '文件', icon: 'file-text' },
+const navItems: Array<{ href: string; labelKey: string; icon: IconName; exact?: boolean }> = [
+  { href: '/today', labelKey: 'nav.today', icon: 'layout-dashboard', exact: true },
+  { href: '/cases', labelKey: 'nav.cases', icon: 'briefcase' },
+  { href: '/students', labelKey: 'nav.studentsAndGuardians', icon: 'users' },
+  { href: '/schools', labelKey: 'nav.schoolData', icon: 'book-open' },
+  { href: '/tasks', labelKey: 'nav.tasks', icon: 'clipboard' },
+  { href: '/documents', labelKey: 'nav.documents', icon: 'file-text' },
 ]
 
-const adminItems: Array<{ href: string; label: string; icon: IconName }> = [
-  { href: '/admin/access', label: '身份與權限', icon: 'shield' },
-  { href: '/admin/schools', label: '學校治理', icon: 'book-open' },
-  { href: '/admin/crawler', label: '資料審核', icon: 'settings' },
-  { href: '/admin/knowledge', label: '知識庫', icon: 'book-open' },
+const adminItems: Array<{ href: string; labelKey: string; icon: IconName }> = [
+  { href: '/admin/access', labelKey: 'nav.access', icon: 'shield' },
+  { href: '/admin/schools', labelKey: 'nav.schoolGovernance', icon: 'book-open' },
+  { href: '/admin/crawler', labelKey: 'nav.dataReview', icon: 'settings' },
+  { href: '/admin/knowledge', labelKey: 'nav.knowledge', icon: 'book-open' },
 ]
 
 export function Sidebar({
+  desktopOpen = true,
   mobileOpen = false,
   onClose,
 }: {
+  readonly desktopOpen?: boolean;
   readonly mobileOpen?: boolean;
   readonly onClose?: () => void;
 }) {
+  const { t } = useTranslation()
   const pathname = usePathname()
   const [profile, setProfile] = useState<{ email: string; role: string } | null>(null)
 
@@ -53,8 +57,8 @@ export function Sidebar({
 
   return (
     <>
-      {mobileOpen ? <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" onClick={onClose} /> : null}
-      <aside className={`app-sidebar w-64 min-h-screen flex flex-col shrink-0 ${mobileOpen ? 'fixed inset-y-0 left-0 z-50 md:static' : 'hidden md:flex'}`} style={{ background: 'var(--sidebar-bg)' }}>
+      {mobileOpen ? <button type="button" aria-label={t('layout.close_navigation')} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" onClick={onClose} /> : null}
+      <aside className={`app-sidebar w-64 min-h-screen flex-col shrink-0 ${mobileOpen ? 'fixed inset-y-0 left-0 z-50 flex md:static' : 'hidden'} ${desktopOpen ? 'md:flex' : 'md:hidden'}`} style={{ background: 'var(--sidebar-bg)' }}>
       <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,.08)' }}>
         <div className="flex items-center gap-2.5 justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -66,15 +70,15 @@ export function Sidebar({
             <div className="text-[11px] mt-0.5" style={{ color: 'var(--sidebar-text-muted)' }}>Case workspace</div>
           </div>
           </div>
-          <button type="button" className="icon-button md:hidden" style={{ color: 'var(--sidebar-text)', height: '2.75rem', width: '2.75rem' }} title="Close navigation" aria-label="Close navigation" onClick={onClose}><Icon name="x" size={18} /></button>
+          <button type="button" className="icon-button" style={{ color: 'var(--sidebar-text)', height: '2.75rem', width: '2.75rem' }} title={t('layout.close_navigation')} aria-label={t('layout.close_navigation')} onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1" aria-label="主要導航">
         <div className="sidebar-section-label px-2 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Workspace</div>
-        {navItems.map((item) => <NavItem key={item.href} item={item} active={isActive(item)} onNavigate={onClose} />)}
+        {navItems.map((item) => <NavItem key={item.href} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onClose : undefined} />)}
         <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Administration</div>
-        {adminItems.map((item) => <NavItem key={item.href} item={item} active={isActive(item)} onNavigate={onClose} />)}
+        {adminItems.map((item) => <NavItem key={item.href} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onClose : undefined} />)}
         <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Future</div>
         {RELEASE_ONE_NAVIGATION_PLACEHOLDERS.map((placeholder) => <FuturePlaceholder key={placeholder.featureId} placeholder={placeholder} />)}
       </nav>

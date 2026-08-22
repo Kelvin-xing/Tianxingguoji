@@ -11,9 +11,9 @@ import {
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
 export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v3" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
-export const ONE_ROLE_SOURCE_COUNT = 27;
+export const ONE_ROLE_SOURCE_COUNT = 28;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
-  "d32d23ef8bde853803a48511226c7bd0215d8cb76fd0795818629aa7ace44587";
+  "683fd5fdb871a04eb1834c81d2660efb8b419670612c9a5373b0bc5846888c2c";
 export const ONE_ROLE_BASELINE_DIRECTORY = "db/baselines/one-role";
 export const ONE_ROLE_GENERATED_DIRECTORY = `${ONE_ROLE_BASELINE_DIRECTORY}/generated`;
 export const ONE_ROLE_MANIFEST_PATH = `${ONE_ROLE_BASELINE_DIRECTORY}/manifest.json`;
@@ -244,7 +244,7 @@ async function verifySourceHistory(
     manifest.migrations.length !== ONE_ROLE_SOURCE_COUNT ||
     manifest.manifestSha256 !== ONE_ROLE_SOURCE_MANIFEST_SHA256
   ) {
-    throw new OneRoleBaselineGenerationError("One-role baseline requires the frozen 27-source manifest.");
+    throw new OneRoleBaselineGenerationError("One-role baseline requires the frozen 28-source manifest.");
   }
   return manifest;
 }

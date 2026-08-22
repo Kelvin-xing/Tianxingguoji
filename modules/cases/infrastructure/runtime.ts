@@ -21,6 +21,10 @@ export class CaseRuntimeUnavailable extends Error {
   }
 }
 
+export function isCaseRuntimeUnavailable(error: unknown): error is CaseRuntimeUnavailable {
+  return error instanceof Error && error.name === "CaseRuntimeUnavailable";
+}
+
 /**
  * The production composition root is installed with the approved HK RDS
  * adapter only. There is no local or legacy-Neon fallback for case writes.

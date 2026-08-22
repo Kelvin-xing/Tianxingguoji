@@ -143,7 +143,7 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
       try {
         return await createCaseInTransaction(transaction, input);
       } catch (error) {
-        if (isUniqueViolation(error)) {
+        if (isActiveCaseDuplicateViolation(error)) {
           throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_DUPLICATE");
         }
         throw error;
@@ -327,6 +327,11 @@ function createdCase(row: CaseRow): CreatedExistingStudentCase {
   });
 }
 
-function isUniqueViolation(error: unknown): error is { code: "23505" } {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+function isActiveCaseDuplicateViolation(
+  error: unknown,
+): error is { code: "23505"; constraint: "cases_service_cases_one_active_student_case_idx" } {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { readonly code?: unknown; readonly constraint?: unknown };
+  return candidate.code === "23505" &&
+    candidate.constraint === "cases_service_cases_one_active_student_case_idx";
 }

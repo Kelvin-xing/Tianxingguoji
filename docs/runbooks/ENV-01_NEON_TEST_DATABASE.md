@@ -61,7 +61,7 @@
 
 ## 3. 本地无连接计划
 
-此命令验证独立 one-role manifest、28 个 generated SQL（27 个源迁移转换结果加 1 个 hardening 文件），并回溯验证历史 manifest 与所有源 SHA-256；不读取环境文件，也不连接数据库：
+此命令验证独立 one-role manifest、29 个 generated SQL（28 个源迁移转换结果加 1 个 hardening 文件），并回溯验证历史 manifest 与所有源 SHA-256；不读取环境文件，也不连接数据库：
 
 ```bash
 pnpm db:plan:neon-test
@@ -77,7 +77,7 @@ pnpm test:one-role-baseline-postgresql
 
 该命令使用固定 PostgreSQL 17 镜像、随机容器名、随机 loopback 端口和 `tmpfs` 数据目录，不挂载或清理现有
 `tianxing-local` volume。它以非特权 `tianxing_app` 作为空数据库 owner，通过真实 runner 按 manifest 执行全部
-28 个 generated SQL，dry-run 后只接受 `ROLLBACK`、`postflight_state=clean`、`marker=rolled_back`，并由新的
+29 个 generated SQL，dry-run 后只接受 `ROLLBACK`、`postflight_state=clean`、`marker=rolled_back`，并由新的
 独立连接再次确认 public objects 为 0 且 marker 不存在。
 
 任何 Release 1 synthetic seed 变更在提交架构复审前还必须运行以下真实 PostgreSQL 17 gate：
@@ -87,7 +87,7 @@ pnpm test:neon-test-seed-postgresql
 ```
 
 该命令在另一套随机命名、随机 loopback 端口、`tmpfs` 数据目录的一次性 PostgreSQL `17.10` 容器中，以
-`tianxing_app` 创建空数据库并先通过真实 one-role runner apply 全部 28 个 generated SQL。随后依次验证 seed
+`tianxing_app` 创建空数据库并先通过真实 one-role runner apply 全部 29 个 generated SQL。随后依次验证 seed
 dry-run 回滚且独立新连接仍为空、首次 apply 写入完整固定 fixture、第二次 apply 保持相同计数，以及 baseline
 marker、数据库 owner、当前用户和最小角色属性均未变化。独立 postcheck 还要求所有非 seed public 表为 0，且
 credential、session、Case、Document、Portal grant、Audit 和 Outbox 等明确禁止域的聚合行数为 0。测试无论

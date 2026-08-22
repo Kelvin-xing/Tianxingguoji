@@ -107,6 +107,15 @@
     "print": "列印",
     "lang_toggle": "English"
   },
+  "layout": {
+    "erp_title": "天星顧問 ERP",
+    "open_navigation": "展開導航",
+    "close_navigation": "收合導航",
+    "notifications": "通知",
+    "notifications_unavailable": "通知服務暫時不可用，請稍後再試。",
+    "account_menu": "帳戶選單",
+    "logout": "登出"
+  },
   "admin": {
     "crawler": "爬蟲管理"
   }

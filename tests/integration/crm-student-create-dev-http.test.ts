@@ -116,7 +116,7 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
     });
     assert.equal(baseline.status, "pass");
     assert.equal(baseline.postflight_state, "installed");
-    assert.equal(baseline.generated_files, 28);
+    assert.equal(baseline.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     const baselineState = await inspectBaselineWithNewClient(target);
     assertDatabaseContract(baselineState, target, manifestSha256);
 
@@ -176,7 +176,7 @@ test("CRM-01 and CRM-02 work through PostgreSQL 17 and the real local Next Dev H
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v3");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v4");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
