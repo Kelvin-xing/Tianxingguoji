@@ -1,12 +1,13 @@
 import "server-only";
 
-import type { GuardianRelationshipService } from "../application/guardian-relationship-service.ts";
+import { GuardianRelationshipService } from "../application/guardian-relationship-service.ts";
 import { StudentReadService } from "../application/read-service.ts";
 import { StudentCreateService } from "../application/student-create-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts";
 import { PostgresqlStudentCreateRepository } from "./postgresql-student-create-repository.ts";
+import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-relationship-repository.ts";
 
 export interface GuardianRelationshipRuntime {
   readonly service: GuardianRelationshipService;
@@ -19,9 +20,26 @@ export class GuardianRelationshipRuntimeUnavailable extends Error {
   }
 }
 
-/** General Guardian relationship changes remain unavailable; CRM-01 creation uses its own runtime. */
 export function getGuardianRelationshipRuntime(): GuardianRelationshipRuntime {
-  throw new GuardianRelationshipRuntimeUnavailable();
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new GuardianRelationshipRuntimeUnavailable();
+  const runtimes = globalForCrm.__txGuardianRelationshipRuntimes ??
+    new Map<string, GuardianRelationshipRuntime>();
+  globalForCrm.__txGuardianRelationshipRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    try {
+      runtime = Object.freeze({
+        service: new GuardianRelationshipService(
+          new PostgresqlGuardianRelationshipRepository(getApplicationTenantRunner()),
+        ),
+      });
+    } catch {
+      throw new GuardianRelationshipRuntimeUnavailable();
+    }
+    runtimes.set(mode, runtime);
+  }
+  return runtime;
 }
 
 export interface StudentReadRuntime {
@@ -40,6 +58,7 @@ export class StudentCreateRuntimeUnavailable extends Error {
 }
 
 const globalForCrm = globalThis as typeof globalThis & {
+  __txGuardianRelationshipRuntimes?: Map<string, GuardianRelationshipRuntime>;
   __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
   __txStudentCreateRuntimes?: Map<string, StudentCreateRuntime>;
 };

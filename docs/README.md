@@ -40,6 +40,8 @@
 [`implementation/LOCAL-04_IDENTITY_POSTGRESQL.md`](implementation/LOCAL-04_IDENTITY_POSTGRESQL.md)。
 当前 CRM 学生与主要监护人基础建档纵向切片的冻结合同与角色交接见
 [`implementation/CRM-01_STUDENT_PRIMARY_GUARDIAN_CREATE_PLAN.md`](implementation/CRM-01_STUDENT_PRIMARY_GUARDIAN_CREATE_PLAN.md)。
+当前已完成 Local Dev 验收、等待独立 Git 授权的 CRM 监护人关系维护切片合同见
+[`implementation/CRM-02_GUARDIAN_RELATIONSHIP_MANAGEMENT_PLAN.md`](implementation/CRM-02_GUARDIAN_RELATIONSHIP_MANAGEMENT_PLAN.md)。
 当前模块分层、公开入口和兼容债务见
 [`architecture/MODULE_MAP.md`](architecture/MODULE_MAP.md)。
 
@@ -54,7 +56,7 @@
 | `P2-*` | 15 | Guardian、K12 catalogue、结果、Contractor、治理、Dashboard、Crawler、权限与配置治理 | 本地契约较完整，RDS/浏览器证据不齐；P2-13 至 P2-15 尚未开始 |
 | `P3-*` | 13 | 合成场景、重建、telemetry、生产源码、repositories、浏览器、安全、restore 和首案 gate | 当前 release blocker 集中区域 |
 | `R1X-*` | 9 | Portal、PlatformBilling、运行组合和 AWS source foundation | 本地 contract/slice 存在，生产集成未获准；决策基线位于 `txgj-doc/decisions/` |
-| `CRM-*` | 1 | CRM 可操作纵向切片 | `CRM-01` 本地 PostgreSQL、HTTP 与浏览器验收已通过，待合并及 Vercel Test 验收 |
+| `CRM-*` | 2 | CRM 可操作纵向切片 | `CRM-01` 已按 local-only 政策完成并合并；Vercel Test 未验证。`CRM-02` 的真实 PostgreSQL HTTP 与浏览器 Local Dev gate 已通过，production build 因既有 Google Fonts 外部下载阻塞，等待独立 Git 授权 |
 
 ### 重复 ticket 编号
 

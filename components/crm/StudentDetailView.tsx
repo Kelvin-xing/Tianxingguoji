@@ -4,15 +4,23 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 import { Icon } from '@/components/workspace/Icon'
+import { getWorkspaceAccessSnapshot } from '@/modules/access/client'
 import {
   classifyStudentRequestFailure,
+  getGuardianRelationships,
   getStudent,
+  type CurrentGuardianRelationship,
   type StudentDetail,
 } from '@/modules/crm/client'
 
 type DetailState =
   | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly student: StudentDetail }
+  | {
+      readonly kind: 'ready'
+      readonly student: StudentDetail
+      readonly relationships: readonly CurrentGuardianRelationship[]
+      readonly canManageGuardians: boolean
+    }
   | { readonly kind: 'unauthenticated' | 'forbidden' | 'not_found' | 'error' }
 
 export function StudentDetailView({ studentId }: { readonly studentId: string }) {
@@ -21,8 +29,17 @@ export function StudentDetailView({ studentId }: { readonly studentId: string })
 
   useEffect(() => {
     const controller = new AbortController()
-    getStudent(studentId, controller.signal)
-      .then((student) => setState({ kind: 'ready', student }))
+    Promise.all([
+      getStudent(studentId, controller.signal),
+      getGuardianRelationships(studentId, controller.signal),
+      getWorkspaceAccessSnapshot(controller.signal).catch(() => null),
+    ])
+      .then(([student, guardianView, access]) => setState({
+        kind: 'ready',
+        student,
+        relationships: guardianView.relationships,
+        canManageGuardians: access?.capabilities.includes('students.guardians.manage') ?? false,
+      }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         const failure = classifyStudentRequestFailure(error)
@@ -42,7 +59,7 @@ export function StudentDetailView({ studentId }: { readonly studentId: string })
   if (state.kind === 'error') return <DetailMessage icon="x" title="學生服務暫時不可用" detail="請稍後重試。" onRetry={() => { setState({ kind: 'loading' }); setReloadToken((value) => value + 1) }} />
   if (state.kind !== 'ready') return null
 
-  const { student } = state
+  const { student, relationships, canManageGuardians } = state
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -60,9 +77,17 @@ export function StudentDetailView({ studentId }: { readonly studentId: string })
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Info label="出生日期" value={student.dateOfBirth ?? '未提供'} /><Info label="聯絡 Email" value={student.contactEmail ?? '未提供'} /><Info label="聯絡電話" value={student.contactPhone ?? '未提供'} /><Info label="更新時間" value={formatDate(student.updatedAt)} /></div>
       </section>
 
-      <section className="workspace-section">
-        <div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="section-title">監護人與聯絡關係</h3><p className="section-detail">顯示目前有效的監護人與主要聯絡設定。</p></div><span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>{student.guardians.length} 筆</span></div>
-        {student.guardians.length === 0 ? <div className="empty-state">目前沒有有效監護人關係。</div> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{student.guardians.map((guardian) => <div key={guardian.id} className="selection-card selected"><span className="work-icon blue"><Icon name="user" size={15} /></span><span className="min-w-0 flex-1"><strong className="break-words">{guardian.displayName}</strong><small className="break-words">{relationshipLabel(guardian.relationshipType)} · {guardian.email ?? '未提供 Email'} · {guardian.phone ?? '未提供電話'}</small><small>{[guardian.isPrimaryContact && '主要聯絡', guardian.isLegalGuardian && '法定監護'].filter(Boolean).join(' · ')}</small></span>{guardian.isPrimaryContact ? <span className="status-pill status-success shrink-0">主要聯絡</span> : null}</div>)}</div>}
+      <section className="workspace-section" aria-labelledby="student-guardian-heading">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div><h3 id="student-guardian-heading" className="section-title">監護人與聯絡關係</h3><p className="section-detail">顯示目前有效的主要與次要監護人；聯絡資料只顯示脫敏提示。</p></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>{relationships.length} 筆</span>
+            {canManageGuardians ? <Link href={`/students/${student.id}/guardians`} className="secondary-button"><Icon name="settings" size={15} />管理監護人關係</Link> : null}
+          </div>
+        </div>
+        {relationships.length === 0
+          ? <div className="empty-state">目前沒有有效監護人關係。</div>
+          : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{relationships.map((relationship) => <GuardianSummary key={relationship.relationship_id} relationship={relationship} />)}</div>}
       </section>
     </div>
   )
@@ -74,6 +99,31 @@ function DetailMessage({ icon, title, detail, href, action, onRetry }: { readonl
 
 function Info({ label, value }: { readonly label: string; readonly value: string }) {
   return <div><div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</div><div className="mt-1 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{value}</div></div>
+}
+
+function GuardianSummary({ relationship }: { readonly relationship: CurrentGuardianRelationship }) {
+  const flags = [
+    relationship.is_legal_guardian && '法定監護',
+    relationship.is_emergency_contact && '緊急聯絡',
+    relationship.is_billing_contact && '帳務聯絡',
+    relationship.notification_consent && '接收通知',
+  ].filter(Boolean)
+  const contact = [relationship.guardian.email_hint, relationship.guardian.phone_hint]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <article className="selection-card selected">
+      <span className="work-icon blue"><Icon name="user" size={15} /></span>
+      <span className="min-w-0 flex-1">
+        <strong className="break-words">{relationship.guardian.display_name}</strong>
+        <small className="break-words">{relationshipLabel(relationship.relationship_type)} · {contact || '未提供聯絡提示'}</small>
+        <small>{flags.length > 0 ? flags.join(' · ') : '一般聯絡'}</small>
+      </span>
+      <span className={`status-pill ${relationship.is_primary_contact ? 'status-success' : 'status-warning'} shrink-0`}>
+        {relationship.is_primary_contact ? '主要聯絡人' : '次要聯絡人'}
+      </span>
+    </article>
+  )
 }
 
 function relationshipLabel(value: string): string {

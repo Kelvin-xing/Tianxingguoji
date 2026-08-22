@@ -2,7 +2,7 @@
 
 | Control | Value |
 | --- | --- |
-| Status | `implemented_local_pending_merge_and_vercel_validation` |
+| Status | `accepted_local_vercel_unverified` |
 | Architecture contract | `CRM-STUDENT-GUARDIAN-CREATE/v1` |
 | Business owner | Project owner |
 | Delivery owners | Frontend, Backend, Platform operations |
@@ -23,7 +23,8 @@
 - `/students/new` 提供学生与主要监护人单页表单；
 - `POST /api/v1/students` 创建完整聚合；
 - `GET /api/v1/students` 与 `GET /api/v1/students/{studentId}` 显示持久化结果；
-- Local Dev 与 Vercel test 分别完成 Advisor 登录、创建、查询和重登录验收。
+- Local Dev 完成 Advisor 登录、创建、查询和重登录验收；Vercel Test 按用户于
+  2026-08-22 接受的 local-only 验收政策保持 `not_run (unverified)`。
 
 不包含删除或 purge、重复资料合并、批量导入、监护人自动匹配、Primary handoff、其他 CRM 功能、AWS 部署或真实客户数据。
 
@@ -125,7 +126,9 @@ Primary Guardian：
 
 ### Platform Operations
 
-拥有本地与 Vercel 环境准备、合成 Advisor 凭证、部署、运行时健康和脱敏验收。不得修改应用或 migration 源码。没有新的 migration 时不得重跑 baseline/seed；Vercel 只能在前后端本地 Dev 验收、PR 合并和精确发布 SHA 固定后进入。
+只在本地基础设施不可用或用户另行批准环境操作时负责环境准备、凭证和脱敏运维证据。
+不得修改应用或 migration 源码。根据 2026-08-22 local-only 验收政策，CRM-01 不再要求
+Vercel/Neon 业务 E2E、远程数据库聚合或运行日志验收。
 
 ## 10. 本地测试门槛
 
@@ -137,24 +140,35 @@ Frontend 必须验证 capability 入口、固定 relationship 选项、至少一
 
 完整本地 Dev 验收必须通过真实浏览器或 HTTP 入口，使用本地 Advisor 会话和本地 PostgreSQL，完成创建、列表、详情、刷新、退出及重登录。单元测试、Mock client、typecheck 或 build 不能替代该检查。
 
-本地 Dev 未通过前，前端和后端不得申请 commit、push、PR、merge、Vercel handoff 或云端数据库操作。
+本地 Dev 未通过前，前端和后端不得申请 commit、push、PR 或 merge；本地通过也不得描述为
+Vercel、Neon 或 AWS 通过。
 
-## 11. Vercel Test 验收
+## 11. Vercel Test 状态与已接受风险
 
-平台运维只对已合并的精确 main SHA 执行一次测试环境部署。使用独立 Vercel Advisor 测试凭证和 Neon test PostgreSQL，禁止本地连接 Neon 代替验收。
+CRM-01 不执行 Vercel Test 远程业务验收，状态固定为 `not_run (unverified)`。不得为了补齐本票据
+而从本机连接 Neon、执行 Console 聚合 SQL、重跑 seed/provision、redeploy 或检查包含业务数据的
+运行日志。
 
-验收记录必须证明：Advisor 登录；一次保存产生一个 Student、一个 Guardian、一个 current primary relationship；列表与详情显示相同数据；刷新和重登录后仍存在；重复同一保存不产生第二组记录；无 PII/secret/raw row 输出。
+用户明确接受以下剩余风险：Vercel 环境变量或 Current alias 漂移、TLS/网络连通、serverless runtime
+差异，以及 Neon 托管 PostgreSQL 与本地 PostgreSQL 17 的运行差异。Local Dev 的 schema、角色、
+RLS 与业务合同对齐不能替代这些云端证据。
 
-Vercel 不执行失败注入，不暴露测试接口，也不清理已创建的合成验收记录，因为删除不在本票据范围。
+此前只读确认的 exact main SHA、Production-only 变量、Neon integration unlinked 与 Standard
+Protection 只保留为当时的运维观察，不构成 CRM-01 业务 E2E 通过。
 
 ## 12. 停止与回退
 
 - API/页面字段、capability matrix 或 relationship vocabulary 漂移时停止并回到架构裁决。
 - 本地事务出现部分写入、跨租户可见、PII 日志或幂等重复时禁止提交。
-- Vercel 环境、发布 SHA、数据库或角色不匹配时不部署或立即停止验收。
-- 部署失败可回退到上一 Vercel deployment；数据库中的成功合成记录不通过未批准 SQL 删除。
+- 未获新的用户明确决定，不恢复 Vercel/Neon 远程测试或把历史云端观察升级为验收证据。
 - 任何 schema 缺口必须由 Backend 提交追加 migration，并重新从 Local PostgreSQL 开始完整 promotion 顺序。
 
 ## 13. 完成标准
 
-Backend、Frontend 和本地集成已经提供实际通过证据；架构兼容性审核、Git 合并、Vercel 部署和 Vercel E2E 仍待完成。只有全部门槛都提供实际证据时，本票据才可变为 `pass`。任何未运行的测试或环境保持 `not_run`，不能推定通过。
+Backend PostgreSQL 17/HTTP、Frontend 真实 Local Dev browser、架构兼容性审核、production build、
+GitGuardian/Vercel PR checks 与 PR #21 squash merge 均有实际通过证据；合并后的 main SHA 为
+`f141d819dd27da38d48829b4dfc16003889b5db9`。CRM-01 因此按当前政策完成为
+`accepted_local_vercel_unverified`。
+
+该状态的精确含义是 `Local Dev accepted`；Vercel Test 与 AWS Production 均未验收。任何未运行的
+环境保持 `not_run (unverified)`，不能推定通过。
