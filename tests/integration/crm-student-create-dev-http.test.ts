@@ -61,7 +61,7 @@ const FOREIGN_RELATIONSHIP_ID = "63000000-0000-4000-8000-000000000801";
 const INACTIVE_GUARDIAN_ID = "51000000-0000-4000-8000-000000000799";
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
-test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
+test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
   timeout: 300_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -182,7 +182,7 @@ test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Ne
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v5");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v6");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
@@ -662,6 +662,313 @@ test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Ne
     assert.equal(authoritativeGuardian.displayName, advisorGuardianBody.display_name);
     assert.equal(authoritativeGuardian.recordVersion, 2);
 
+    const duplicateBefore = await readDuplicateWorkflowCounts(target);
+    const crm04SharedEmail = "crm04-shared-student@example.invalid";
+    const leftProfileUpdate = await patchJson(baseUrl, `/api/v1/students/${assignedStudent.id}`,
+      founderCookie, { display_name: "CRM04 Left Student", date_of_birth: "2012-02-02",
+        contact_email: crm04SharedEmail, contact_phone: null, expected_record_version: 3 },
+      "crm04-left-profile");
+    assertProfileAcknowledgement(leftProfileUpdate, "student", assignedStudent.id, 4);
+    const rightProfileUpdate = await patchJson(baseUrl, `/api/v1/students/${unassignedStudent.id}`,
+      founderCookie, { display_name: "CRM04 Right Student", date_of_birth: "2014-04-04",
+        contact_email: crm04SharedEmail, contact_phone: null, expected_record_version: 2 },
+      "crm04-right-profile");
+    assertProfileAcknowledgement(rightProfileUpdate, "student", unassignedStudent.id, 3);
+
+    const candidateBody = { entity_type: "student", left_record_id: assignedStudent.id,
+      right_record_id: unassignedStudent.id };
+    const advisorUnassigned = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      advisorCookie, candidateBody, "crm04-unassigned-pair");
+    assertApiError(advisorUnassigned, 404, "NOT_FOUND");
+    assert.deepEqual(await readDuplicateWorkflowCounts(target), duplicateBefore);
+
+    const secondAssignment = await postJson(baseUrl, "/api/v1/cases", founderCookie, {
+      student_id: unassignedStudent.id, intake_year: 2028, admission_type: "transfer",
+      primary_role_binding_id: ADVISOR.roleBindingId, manifest_id: NEON_TEST_MANIFEST_ID,
+    }, "crm04-second-advisor-assignment");
+    assert.equal(secondAssignment.response.status, 200);
+
+    const crm04Search = await postJson(baseUrl, "/api/v1/crm/duplicate-records/search", advisorCookie,
+      { entity_type: "student", query: "crm04-shared" });
+    assert.equal(crm04Search.response.status, 200);
+    const searchItems = requiredArray(crm04Search.body.data).map(requiredRecord);
+    assert.equal(searchItems.length, 2);
+    for (const item of searchItems) {
+      assert.deepEqual(Object.keys(item).sort(), ["contact_hint", "display_label", "entity_type", "id"]);
+      assert.equal(item.entity_type, "student");
+      assert.equal(String(item.contact_hint).includes(crm04SharedEmail), false);
+    }
+
+    const candidateCreate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      advisorCookie, candidateBody, "crm04-candidate-create");
+    assert.equal(candidateCreate.response.status, 201);
+    const crm04Candidate = requiredRecord(candidateCreate.body.data);
+    assertDuplicateCandidateShape(crm04Candidate);
+    assert.deepEqual(crm04Candidate.matching_signals, ["email"]);
+    const candidateId = requiredString(crm04Candidate, "id");
+    const candidateReplay = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      advisorCookie, candidateBody, "crm04-candidate-create");
+    assert.equal(candidateReplay.response.status, 201);
+    assert.deepEqual(candidateReplay.body.data, candidateCreate.body.data);
+    const candidateChanged = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      advisorCookie, { ...candidateBody, right_record_id: FOREIGN_STUDENT_ID }, "crm04-candidate-create");
+    assertApiError(candidateChanged, 409, "CONFLICT");
+
+    const dataReviewerCookie = await login(baseUrl, DATA_REVIEWER.email, dataReviewerPassword);
+    for (const cookie of [advisorCookie, dataReviewerCookie, founderCookie]) {
+      const queue = await getJson(baseUrl,
+        "/api/v1/crm/duplicate-candidates?entity_type=student&status=review_required", cookie);
+      assert.equal(queue.response.status, 200);
+      assert.equal(requiredArray(queue.body.data).some((item) => requiredRecord(item).id === candidateId), true);
+    }
+    const candidateDetailBefore = await getJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${candidateId}`, founderCookie);
+    assert.equal(candidateDetailBefore.response.status, 200);
+    assertDuplicateDetailShape(candidateDetailBefore.body.data, "student", false);
+    assertDuplicateDetailPair(candidateDetailBefore.body.data);
+
+    const leftId = requiredString(requiredRecord(crm04Candidate.left_record), "id");
+    const rightId = requiredString(requiredRecord(crm04Candidate.right_record), "id");
+    const recordVersions = new Map<string, number>([[assignedStudent.id, 4], [unassignedStudent.id, 3]]);
+    const mergeBody = (sourceId: string, canonicalId: string) => ({
+      source_record_id: sourceId, canonical_record_id: canonicalId,
+      expected_candidate_record_version: 1,
+      expected_source_record_version: recordVersions.get(sourceId),
+      expected_canonical_record_version: recordVersions.get(canonicalId),
+      field_selections: ["display_name", "date_of_birth", "contact_email", "contact_phone"]
+        .map((field_name) => ({ field_name, source_record_id: canonicalId })),
+      reason_code: "duplicate.confirmed",
+    });
+    const mergeAttempts = [
+      { key: "crm04-merge-left", body: mergeBody(leftId, rightId) },
+      { key: "crm04-merge-right", body: mergeBody(rightId, leftId) },
+    ];
+    const mergeOutcomes = await Promise.allSettled(mergeAttempts.map(async (attempt) => ({ attempt,
+      result: await postJson(baseUrl, `/api/v1/crm/duplicate-candidates/${candidateId}/merges`,
+        founderCookie, attempt.body, attempt.key) })));
+    assert.equal(mergeOutcomes.every(({ status }) => status === "fulfilled"), true);
+    const fulfilledMerges = mergeOutcomes.map((outcome) => {
+      if (outcome.status !== "fulfilled") throw new HarnessError("crm04_concurrent_merge_transport");
+      return outcome.value;
+    });
+    assert.deepEqual(fulfilledMerges.map(({ result }) => result.response.status).sort(), [200, 409]);
+    const mergeWinner = fulfilledMerges.find(({ result }) => result.response.status === 200);
+    const mergeLoser = fulfilledMerges.find(({ result }) => result.response.status === 409);
+    if (!mergeWinner || !mergeLoser) throw new HarnessError("crm04_concurrent_merge_outcome");
+    assertApiError(mergeLoser.result, 409, "STALE_VERSION");
+    const mergeAcknowledgement = requiredRecord(mergeWinner.result.body.data);
+    assert.deepEqual(Object.keys(mergeAcknowledgement).sort(), ["candidate_id", "canonical_record_id",
+      "entity_type", "merge_id", "provenance_revision_id", "record_version", "source_record_id"]);
+    assert.equal(mergeAcknowledgement.candidate_id, candidateId);
+    assert.equal(mergeAcknowledgement.entity_type, "student");
+    assert.equal(mergeAcknowledgement.source_record_id, mergeWinner.attempt.body.source_record_id);
+    assert.equal(mergeAcknowledgement.canonical_record_id, mergeWinner.attempt.body.canonical_record_id);
+    assert.equal(mergeAcknowledgement.record_version, 1);
+    const mergeId = requiredString(mergeAcknowledgement, "merge_id");
+    const winningReplay = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${candidateId}/merges`, founderCookie,
+      mergeWinner.attempt.body, mergeWinner.attempt.key);
+    assert.equal(winningReplay.response.status, 200);
+    assert.deepEqual(winningReplay.body.data, mergeWinner.result.body.data);
+    const mergeChanged = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${candidateId}/merges`, founderCookie,
+      { ...mergeWinner.attempt.body, expected_candidate_record_version: 2 }, mergeWinner.attempt.key);
+    assertApiError(mergeChanged, 409, "CONFLICT");
+
+    const canonicalId = requiredString(mergeAcknowledgement, "canonical_record_id");
+    const canonicalLabel = canonicalId === assignedStudent.id ? "CRM04 Left Student" : "CRM04 Right Student";
+    for (const requestedId of [assignedStudent.id, unassignedStudent.id]) {
+      const resolved = requiredRecord((await getJson(baseUrl, `/api/v1/students/${requestedId}`,
+        founderCookie)).body.data?.student);
+      assert.equal(resolved.id, canonicalId);
+      assert.equal(resolved.displayName, canonicalLabel);
+      assert.equal(resolved.contactEmail, crm04SharedEmail);
+    }
+    const mergedDetail = await getJson(baseUrl, `/api/v1/crm/duplicate-candidates/${candidateId}`,
+      founderCookie);
+    assert.equal(mergedDetail.response.status, 200);
+    assertDuplicateDetailShape(mergedDetail.body.data, "student", true);
+    assertDuplicateDetailPair(mergedDetail.body.data);
+    assert.equal(requiredRecord(requiredRecord(mergedDetail.body.data).candidate).status, "merged");
+
+    const beforeDeniedDuplicate = await readDuplicateWorkflowCounts(target);
+    const contractorCookie = await login(baseUrl, CONTRACTOR.email, contractorPassword);
+    const beforeContractorStudentRead = await readScopedCounts(target);
+    const contractorStudentList = await getJson(baseUrl, "/api/v1/students", contractorCookie);
+    assertApiError(contractorStudentList, 403, "FORBIDDEN");
+    assertNoPrivateErrorEcho(contractorStudentList, [crm04SharedEmail, "CRM04 Left Student"]);
+    const contractorStudentDetail = await getJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}`, contractorCookie);
+    assertApiError(contractorStudentDetail, 403, "FORBIDDEN");
+    assertNoPrivateErrorEcho(contractorStudentDetail, [crm04SharedEmail, "CRM04 Left Student"]);
+    assert.deepEqual(await readScopedCounts(target), beforeContractorStudentRead);
+    for (const [role, cookie] of [["admin", adminCookie], ["contractor", contractorCookie]] as const) {
+      const deniedRequests = [
+        await postJson(baseUrl, "/api/v1/crm/duplicate-records/search", cookie,
+          { entity_type: "student", query: "CRM04" }),
+        await getJson(baseUrl, "/api/v1/crm/duplicate-candidates?entity_type=student&status=merged", cookie),
+        await postJson(baseUrl, "/api/v1/crm/duplicate-candidates", cookie, candidateBody,
+          `crm04-${role}-candidate-denied`),
+        await getJson(baseUrl, `/api/v1/crm/duplicate-candidates/${candidateId}`, cookie),
+        await postJson(baseUrl, `/api/v1/crm/duplicate-candidates/${candidateId}/merges`, cookie,
+          mergeWinner.attempt.body, `crm04-${role}-merge-denied`),
+        await postJson(baseUrl, `/api/v1/crm/duplicate-merges/${mergeId}/corrections`, cookie,
+          { expected_merge_record_version: 1, reason_code: "duplicate.merge.corrected" },
+          `crm04-${role}-correction-denied`),
+      ];
+      for (const denied of deniedRequests) {
+        assertApiError(denied, 403, "FORBIDDEN");
+        assertNoPrivateErrorEcho(denied, [crm04SharedEmail, "CRM04 Left Student"]);
+      }
+    }
+    for (const [role, cookie] of [["advisor", advisorCookie],
+      ["data-reviewer", dataReviewerCookie]] as const) {
+      const mergeDenied = await postJson(baseUrl,
+        `/api/v1/crm/duplicate-candidates/${candidateId}/merges`, cookie,
+        mergeWinner.attempt.body, `crm04-${role}-merge-denied`);
+      assertApiError(mergeDenied, 403, "FORBIDDEN");
+      const correctionDenied = await postJson(baseUrl,
+        `/api/v1/crm/duplicate-merges/${mergeId}/corrections`, cookie,
+        { expected_merge_record_version: 1, reason_code: "duplicate.merge.corrected" },
+        `crm04-${role}-correction-denied`);
+      assertApiError(correctionDenied, 403, "FORBIDDEN");
+    }
+    assert.deepEqual(await readDuplicateWorkflowCounts(target), beforeDeniedDuplicate);
+
+    const correctionBody = { expected_merge_record_version: 1,
+      reason_code: "duplicate.merge.corrected" };
+    const correction = await postJson(baseUrl, `/api/v1/crm/duplicate-merges/${mergeId}/corrections`,
+      founderCookie, correctionBody, "crm04-correction");
+    assert.equal(correction.response.status, 200);
+    const correctionData = requiredRecord(correction.body.data);
+    assert.deepEqual(Object.keys(correctionData).sort(), ["canonical_record_id", "corrective_revision_id",
+      "merge_id", "record_version", "restored_alias_target_id", "source_record_id"]);
+    const correctionReplay = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-merges/${mergeId}/corrections`, founderCookie,
+      correctionBody, "crm04-correction");
+    assert.equal(correctionReplay.response.status, 200);
+    assert.deepEqual(correctionReplay.body.data, correction.body.data);
+    const correctedDetail = await getJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${candidateId}`, founderCookie);
+    assert.equal(correctedDetail.response.status, 200);
+    const correctedMerge = requiredRecord(requiredRecord(correctedDetail.body.data).merge);
+    assert.equal(correctedMerge.status, "corrected");
+    assert.equal(correctedMerge.record_version, 2);
+    assert.equal(typeof correctedMerge.correction_id, "string");
+    assert.equal(requiredRecord(requiredRecord(correctedDetail.body.data).candidate).status, "merged");
+    assertDuplicateDetailPair(correctedDetail.body.data);
+    for (const requestedId of [assignedStudent.id, unassignedStudent.id]) {
+      const restored = requiredRecord((await getJson(baseUrl, `/api/v1/students/${requestedId}`,
+        founderCookie)).body.data?.student);
+      assert.equal(restored.id, requestedId);
+    }
+
+    const crossTenantCandidate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      founderCookie, { entity_type: "student", left_record_id: assignedStudent.id,
+        right_record_id: FOREIGN_STUDENT_ID }, "crm04-cross-tenant");
+    assertApiError(crossTenantCandidate, 404, "NOT_FOUND");
+    assertNoPrivateErrorEcho(crossTenantCandidate, [crm04SharedEmail, "CRM04 Left Student"]);
+
+    const assignedGuardianId = assignedStudent.guardianId;
+    const unassignedGuardianId = unassignedStudent.guardianId;
+    for (const [guardianIdValue, label, key] of [
+      [assignedGuardianId, "CRM04 Left Guardian", "crm04-left-guardian"],
+      [unassignedGuardianId, "CRM04 Right Guardian", "crm04-right-guardian"],
+    ] as const) {
+      const guardianDetail = guardianIdValue === assignedGuardianId ? authoritativeGuardian :
+        requiredRecord(requiredArray(requiredRecord((await getJson(baseUrl,
+          `/api/v1/students/${unassignedStudent.id}`, founderCookie)).body.data?.student).guardians)[0]);
+      assertProfileAcknowledgement(await patchJson(baseUrl, `/api/v1/guardians/${guardianIdValue}`,
+        founderCookie, { display_name: label, email: "crm04-shared-guardian@example.invalid", phone: null,
+          expected_record_version: requiredNumber(guardianDetail, "recordVersion") }, key),
+      "guardian", guardianIdValue, requiredNumber(guardianDetail, "recordVersion") + 1);
+    }
+    const beforeRollbackDuplicate = await readDuplicateWorkflowCounts(target);
+    await installDuplicateAuditFailure(target);
+    try {
+      const failedDuplicate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates", founderCookie,
+        { entity_type: "guardian", left_record_id: assignedGuardianId,
+          right_record_id: unassignedGuardianId }, "crm04-rollback-candidate");
+      assertApiError(failedDuplicate, 503, "SERVICE_UNAVAILABLE");
+      assertNoPrivateErrorEcho(failedDuplicate, ["crm04-shared-guardian@example.invalid"]);
+      assert.deepEqual(await readDuplicateWorkflowCounts(target), beforeRollbackDuplicate);
+    } finally {
+      await removeDuplicateAuditFailure(target);
+    }
+
+    const guardianCandidateCreate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      founderCookie, { entity_type: "guardian", left_record_id: assignedGuardianId,
+        right_record_id: unassignedGuardianId }, "crm04-guardian-candidate");
+    assert.equal(guardianCandidateCreate.response.status, 201);
+    const guardianCandidate = requiredRecord(guardianCandidateCreate.body.data);
+    assertDuplicateCandidateShape(guardianCandidate);
+    assert.deepEqual(guardianCandidate.matching_signals, ["email"]);
+    const guardianCandidateId = requiredString(guardianCandidate, "id");
+    const guardianDetail = await getJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${guardianCandidateId}`, founderCookie);
+    assert.equal(guardianDetail.response.status, 200);
+    assertDuplicateDetailShape(guardianDetail.body.data, "guardian", false);
+    assertDuplicateDetailPair(guardianDetail.body.data);
+    const guardianLeftId = requiredString(requiredRecord(guardianCandidate.left_record), "id");
+    const guardianRightId = requiredString(requiredRecord(guardianCandidate.right_record), "id");
+    const guardianMergeBody = {
+      source_record_id: guardianLeftId, canonical_record_id: guardianRightId,
+      expected_candidate_record_version: 1, expected_source_record_version: 3,
+      expected_canonical_record_version: 3,
+      field_selections: ["display_name", "email", "phone"].map((field_name) => ({
+        field_name, source_record_id: guardianRightId,
+      })),
+      reason_code: "duplicate.confirmed",
+    };
+    const guardianMerge = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${guardianCandidateId}/merges`, founderCookie,
+      guardianMergeBody, "crm04-guardian-merge");
+    assert.equal(guardianMerge.response.status, 200);
+    const guardianMergeData = requiredRecord(guardianMerge.body.data);
+    assert.deepEqual(Object.keys(guardianMergeData).sort(), ["candidate_id", "canonical_record_id",
+      "entity_type", "merge_id", "provenance_revision_id", "record_version", "source_record_id"]);
+    assert.equal(guardianMergeData.candidate_id, guardianCandidateId);
+    assert.equal(guardianMergeData.entity_type, "guardian");
+    assert.equal(guardianMergeData.source_record_id, guardianLeftId);
+    assert.equal(guardianMergeData.canonical_record_id, guardianRightId);
+    const guardianMergeId = requiredString(guardianMergeData, "merge_id");
+    const mergedGuardianDetail = await getJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${guardianCandidateId}`, founderCookie);
+    assert.equal(mergedGuardianDetail.response.status, 200);
+    assertDuplicateDetailShape(mergedGuardianDetail.body.data, "guardian", true);
+    assertDuplicateDetailPair(mergedGuardianDetail.body.data);
+    for (const student of [assignedStudent, unassignedStudent]) {
+      const resolvedStudent = requiredRecord((await getJson(baseUrl, `/api/v1/students/${student.id}`,
+        founderCookie)).body.data?.student);
+      const resolvedGuardian = requiredRecord(requiredArray(resolvedStudent.guardians)[0]);
+      assert.equal(resolvedGuardian.id, guardianRightId);
+      assert.equal(resolvedGuardian.email, "crm04-shared-guardian@example.invalid");
+    }
+    const guardianCorrection = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-merges/${guardianMergeId}/corrections`, founderCookie,
+      { expected_merge_record_version: 1, reason_code: "duplicate.merge.corrected" },
+      "crm04-guardian-correction");
+    assert.equal(guardianCorrection.response.status, 200);
+    const correctedGuardianDetail = await getJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${guardianCandidateId}`, founderCookie);
+    assert.equal(correctedGuardianDetail.response.status, 200);
+    assertDuplicateDetailShape(correctedGuardianDetail.body.data, "guardian", true);
+    assertDuplicateDetailPair(correctedGuardianDetail.body.data);
+    assert.equal(requiredRecord(requiredRecord(correctedGuardianDetail.body.data).merge).status, "corrected");
+    for (const student of [assignedStudent, unassignedStudent]) {
+      const restoredStudent = requiredRecord((await getJson(baseUrl, `/api/v1/students/${student.id}`,
+        founderCookie)).body.data?.student);
+      const restoredGuardian = requiredRecord(requiredArray(restoredStudent.guardians)[0]);
+      assert.equal(restoredGuardian.id, student.guardianId);
+    }
+
+    const duplicateAfter = await readDuplicateWorkflowCounts(target);
+    assert.deepEqual(duplicateDelta(duplicateBefore, duplicateAfter), {
+      candidates: 2, merges: 2, alias_revisions: 4, provenance_revisions: 14,
+      corrections: 2, candidate_receipts: 2, merge_receipts: 2, correction_receipts: 2,
+      audit: 6, outbox: 6,
+    });
+
     const list = await getJson(baseUrl, "/api/v1/students", advisorCookie);
     assert.equal(list.response.status, 200);
     assert.equal((list.body.data?.students as Array<{ id?: string }>).some(({ id }) => id === studentId), true);
@@ -701,6 +1008,12 @@ test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Ne
       advisorSecondBody.contact_email,
       advisorGuardianBody.display_name,
       advisorGuardianBody.email,
+      "CRM04 Left Student",
+      "CRM04 Right Student",
+      crm04SharedEmail,
+      "CRM04 Left Guardian",
+      "CRM04 Right Guardian",
+      "crm04-shared-guardian@example.invalid",
       applicationPassword,
       advisorPassword,
       adminPassword,
@@ -750,6 +1063,22 @@ test("CRM-01, CRM-02 and CRM-03 work through PostgreSQL 17 and the real local Ne
         rollback: 503,
         effects: profileDelta(profileBefore, afterAllowedProfiles),
         response_hash: profileHashEvidence,
+      }),
+      duplicate_review: Object.freeze({
+        search: 200,
+        candidate_create: 201,
+        review_roles: 3,
+        advisor_unassigned_pair: 404,
+        concurrent_merge: "one_200_one_409_stale",
+        merge_replay: "exact_no_new_rows",
+        merge_changed_payload: 409,
+        correction: 200,
+        correction_replay: "exact_no_new_rows",
+        denied_roles: "admin_contractor_advisor_data_reviewer",
+        cross_tenant: 404,
+        rollback: 503,
+        resolved_reads: "student_and_guardian_both_ids_then_restored",
+        append_only_effects: duplicateDelta(duplicateBefore, duplicateAfter),
       }),
       http: Object.freeze({ create: 201, list: 200, detail: 200, forbidden: 403 }),
       persisted_after_relogin: true,
@@ -919,6 +1248,93 @@ async function getJson(baseUrl: string, path: string, cookie: string) {
   return Object.freeze({ response, body: await response.json() as ApiEnvelope });
 }
 
+function assertDuplicateCandidateShape(value: unknown): void {
+  const candidate = requiredRecord(value);
+  assert.deepEqual(Object.keys(candidate).sort(), ["entity_type", "id", "left_record", "matching_signals",
+    "merge_id", "record_version", "right_record", "status"]);
+  assert.deepEqual(Object.keys(requiredRecord(candidate.left_record)).sort(), ["display_label", "id"]);
+  assert.deepEqual(Object.keys(requiredRecord(candidate.right_record)).sort(), ["display_label", "id"]);
+}
+
+function assertDuplicateDetailShape(value: unknown, entity: "student" | "guardian", merged: boolean): void {
+  const detail = requiredRecord(value);
+  assert.deepEqual(Object.keys(detail).sort(), ["candidate", "left_profile", "merge", "right_profile",
+    "supported_fields"]);
+  assertDuplicateCandidateShape(detail.candidate);
+  const profileKeys = entity === "student" ? ["contact_email", "contact_phone", "date_of_birth",
+    "display_name", "id", "record_version"] : ["display_name", "email", "id", "phone", "record_version"];
+  assert.deepEqual(Object.keys(requiredRecord(detail.left_profile)).sort(), profileKeys);
+  assert.deepEqual(Object.keys(requiredRecord(detail.right_profile)).sort(), profileKeys);
+  assert.deepEqual(detail.supported_fields, entity === "student" ?
+    ["display_name", "date_of_birth", "contact_email", "contact_phone"] :
+    ["display_name", "email", "phone"]);
+  assert.equal(detail.merge === null, !merged);
+}
+
+function assertDuplicateDetailPair(value: unknown): void {
+  const detail = requiredRecord(value);
+  const candidate = requiredRecord(detail.candidate);
+  assert.equal(requiredRecord(detail.left_profile).id, requiredRecord(candidate.left_record).id);
+  assert.equal(requiredRecord(detail.right_profile).id, requiredRecord(candidate.right_record).id);
+}
+
+interface DuplicateWorkflowCounts {
+  candidates: number;
+  merges: number;
+  alias_revisions: number;
+  provenance_revisions: number;
+  corrections: number;
+  candidate_receipts: number;
+  merge_receipts: number;
+  correction_receipts: number;
+  audit: number;
+  outbox: number;
+}
+
+async function readDuplicateWorkflowCounts(target: OneRoleBaselineTarget): Promise<DuplicateWorkflowCounts> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    const result = await client.query<DuplicateWorkflowCounts>(`
+      SELECT
+        (SELECT count(*)::int FROM crm_duplicate_candidates) AS candidates,
+        (SELECT count(*)::int FROM crm_duplicate_merges) AS merges,
+        (SELECT count(*)::int FROM crm_duplicate_alias_revisions) AS alias_revisions,
+        (SELECT count(*)::int FROM crm_duplicate_field_provenance_revisions) AS provenance_revisions,
+        (SELECT count(*)::int FROM crm_duplicate_merge_corrections) AS corrections,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation='crm.create_duplicate_candidate') AS candidate_receipts,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation='crm.merge_duplicate_candidate') AS merge_receipts,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation='crm.correct_duplicate_merge') AS correction_receipts,
+        (SELECT count(*)::int FROM audit_events WHERE event_type IN
+          ('crm.duplicate_candidate_created','crm.duplicate_merge_approved','crm.duplicate_merge_corrected')) AS audit,
+        (SELECT count(*)::int FROM audit_outbox WHERE event_type IN
+          ('crm.duplicate_candidate_created','crm.duplicate_merge_approved','crm.duplicate_merge_corrected')) AS outbox
+    `);
+    await client.query("COMMIT");
+    const row = result.rows[0];
+    if (!row) throw new HarnessError("crm04_count_inspection");
+    return Object.freeze(row);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("crm04_count_inspection");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+function duplicateDelta(before: DuplicateWorkflowCounts, after: DuplicateWorkflowCounts): DuplicateWorkflowCounts {
+  return Object.freeze(Object.fromEntries(Object.keys(before).map((key) => [key,
+    after[key as keyof DuplicateWorkflowCounts] - before[key as keyof DuplicateWorkflowCounts],
+  ]))) as unknown as DuplicateWorkflowCounts;
+}
+
 interface ProfileMaintenanceCounts {
   student_receipts: number;
   guardian_receipts: number;
@@ -1084,6 +1500,29 @@ async function removeProfileUpdateFailure(target: OneRoleBaselineTarget): Promis
     DROP TRIGGER IF EXISTS test_crm03_fail_student_update_trg ON public.crm_students;
     DROP FUNCTION IF EXISTS public.test_crm03_fail_student_update()
   `, "crm03_fault_cleanup");
+}
+
+async function installDuplicateAuditFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    CREATE FUNCTION public.test_crm04_fail_duplicate_audit()
+    RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+    AS $$ BEGIN
+      IF NEW.event_type = 'crm.duplicate_candidate_created' THEN
+        RAISE EXCEPTION USING ERRCODE = '57P01';
+      END IF;
+      RETURN NEW;
+    END; $$;
+    CREATE TRIGGER test_crm04_fail_duplicate_audit_trg
+    BEFORE INSERT ON public.audit_events
+    FOR EACH ROW EXECUTE FUNCTION public.test_crm04_fail_duplicate_audit()
+  `, "crm04_fault_install");
+}
+
+async function removeDuplicateAuditFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    DROP TRIGGER IF EXISTS test_crm04_fail_duplicate_audit_trg ON public.audit_events;
+    DROP FUNCTION IF EXISTS public.test_crm04_fail_duplicate_audit()
+  `, "crm04_fault_cleanup");
 }
 
 async function login(baseUrl: string, email: string, password: string): Promise<string> {

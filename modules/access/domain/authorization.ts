@@ -15,7 +15,7 @@ export const AUTHORIZATION_DENIAL_CODES = Object.freeze([
 ] as const);
 
 export const ACCESS_POLICY_MANIFEST_VERSION = "access-policy-manifest/v1" as const;
-export const BOOTSTRAP_ACCESS_POLICY_VERSION = "release1-bootstrap-v5" as const;
+export const BOOTSTRAP_ACCESS_POLICY_VERSION = "release1-bootstrap-v6" as const;
 
 export type AuthorizationDenialCode = (typeof AUTHORIZATION_DENIAL_CODES)[number];
 

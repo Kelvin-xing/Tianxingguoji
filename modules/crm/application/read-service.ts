@@ -57,6 +57,26 @@ export class StudentReadError extends Error {
   }
 }
 
+const STUDENT_READ_ERROR_CODES = new Set<StudentReadErrorCode>([
+  "STUDENT_READ_FORBIDDEN",
+  "STUDENT_ID_INVALID",
+]);
+
+export function isStudentReadError(
+  error: unknown,
+  code?: StudentReadErrorCode,
+): error is StudentReadError {
+  if (!(error instanceof Error) || error.name !== "StudentReadError") return false;
+  const candidate = (error as Error & { readonly code?: unknown }).code;
+  if (
+    typeof candidate !== "string" ||
+    !STUDENT_READ_ERROR_CODES.has(candidate as StudentReadErrorCode)
+  ) {
+    return false;
+  }
+  return code === undefined || candidate === code;
+}
+
 export class StudentReadService {
   private readonly repository: StudentReadRepository;
 
