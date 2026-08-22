@@ -1,7 +1,8 @@
-import { getProfileMaintenanceRuntime, getStudentReadRuntime, GuardianRelationshipRuntimeUnavailable, StudentReadError } from "@/modules/crm/server";
+import { getProfileMaintenanceRuntime, getStudentReadRuntime, GuardianRelationshipRuntimeUnavailable } from "@/modules/crm/server";
 import { requireIdentityActor } from "@/modules/identity/web";
 import { createApiError, createRequestContext, errorResponse, handleApiRequest, successResponse, type JsonValue } from "@/modules/shared/public";
 import { assertProfileMaintenanceCapability, mapProfileMaintenanceError, parseStudentProfileUpdate, toProfileAcknowledgement } from "../../profile-maintenance-handler.ts";
+import { mapStudentReadError } from "../../student-read-handler.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,14 +24,10 @@ export async function GET(
         },
       } satisfies JsonValue;
     } catch (error) {
-      if (error instanceof StudentReadError) {
-        if (error.code === "STUDENT_READ_FORBIDDEN") throw createApiError("FORBIDDEN");
-        if (error.code === "STUDENT_ID_INVALID") throw createApiError("NOT_FOUND");
-      }
       if (error instanceof GuardianRelationshipRuntimeUnavailable) {
         throw createApiError("SERVICE_UNAVAILABLE");
       }
-      throw error;
+      throw mapStudentReadError(error, "detail");
     }
   });
 }

@@ -196,6 +196,127 @@ export type StudentRequestFailureKind =
 export type GuardianRelationshipFailureKind = StudentRequestFailureKind | "stale";
 export type ProfileMaintenanceFailureKind = StudentRequestFailureKind | "stale";
 
+export const DUPLICATE_ENTITY_TYPES = Object.freeze(["student", "guardian"] as const);
+export const DUPLICATE_CANDIDATE_STATUSES = Object.freeze([
+  "review_required",
+  "merged",
+  "dismissed",
+] as const);
+
+export type DuplicateEntityType = (typeof DUPLICATE_ENTITY_TYPES)[number];
+export type DuplicateCandidateStatus = (typeof DUPLICATE_CANDIDATE_STATUSES)[number];
+export type DuplicateCandidateFilterStatus = Extract<DuplicateCandidateStatus, "review_required" | "merged">;
+export type DuplicateSignalName = "display_name" | "date_of_birth" | "email" | "phone";
+export type DuplicateSupportedField =
+  | "display_name"
+  | "date_of_birth"
+  | "contact_email"
+  | "contact_phone"
+  | "email"
+  | "phone";
+
+export interface DuplicateRecordSearchResult {
+  readonly id: string;
+  readonly entity_type: DuplicateEntityType;
+  readonly display_label: string;
+  readonly contact_hint: string | null;
+}
+
+export interface DuplicateCandidateRecordLabel {
+  readonly id: string;
+  readonly display_label: string;
+}
+
+export interface DuplicateCandidateSummary {
+  readonly id: string;
+  readonly entity_type: DuplicateEntityType;
+  readonly left_record: DuplicateCandidateRecordLabel;
+  readonly right_record: DuplicateCandidateRecordLabel;
+  readonly matching_signals: readonly DuplicateSignalName[];
+  readonly status: DuplicateCandidateStatus;
+  readonly merge_id: string | null;
+  readonly record_version: number;
+}
+
+export interface DuplicateStudentProfile {
+  readonly id: string;
+  readonly display_name: string;
+  readonly date_of_birth: string | null;
+  readonly contact_email: string | null;
+  readonly contact_phone: string | null;
+  readonly record_version: number;
+}
+
+export interface DuplicateGuardianProfile {
+  readonly id: string;
+  readonly display_name: string;
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly record_version: number;
+}
+
+export type DuplicateProfile = DuplicateStudentProfile | DuplicateGuardianProfile;
+
+export interface DuplicateMergeView {
+  readonly id: string;
+  readonly source_record_id: string;
+  readonly canonical_record_id: string;
+  readonly provenance_revision_id: string;
+  readonly status: "active" | "corrected";
+  readonly record_version: number;
+  readonly correction_id: string | null;
+}
+
+export interface DuplicateCandidateDetail {
+  readonly candidate: DuplicateCandidateSummary;
+  readonly left_profile: DuplicateProfile;
+  readonly right_profile: DuplicateProfile;
+  readonly supported_fields: readonly DuplicateSupportedField[];
+  readonly merge: DuplicateMergeView | null;
+}
+
+export interface DuplicateFieldSelection {
+  readonly field_name: DuplicateSupportedField;
+  readonly source_record_id: string;
+}
+
+export interface DuplicateMergeDraft {
+  readonly source_record_id: string;
+  readonly canonical_record_id: string;
+  readonly expected_candidate_record_version: number;
+  readonly expected_source_record_version: number;
+  readonly expected_canonical_record_version: number;
+  readonly field_selections: readonly DuplicateFieldSelection[];
+}
+
+export interface DuplicateMergeReceipt {
+  readonly merge_id: string;
+  readonly candidate_id: string;
+  readonly entity_type: DuplicateEntityType;
+  readonly source_record_id: string;
+  readonly canonical_record_id: string;
+  readonly provenance_revision_id: string;
+  readonly record_version: number;
+}
+
+export interface DuplicateCorrectionReceipt {
+  readonly corrective_revision_id: string;
+  readonly merge_id: string;
+  readonly source_record_id: string;
+  readonly canonical_record_id: string;
+  readonly restored_alias_target_id: string;
+  readonly record_version: number;
+}
+
+export type DuplicateRequestFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "validation"
+  | "stale"
+  | "conflict"
+  | "unavailable";
+
 export function listStudents(signal?: AbortSignal): Promise<readonly StudentListItem[]> {
   return requestApi(
     { path: "/api/v1/students", signal },
@@ -354,6 +475,137 @@ export function handoffPrimaryGuardian(
   );
 }
 
+export function searchDuplicateRecords(
+  entityType: DuplicateEntityType,
+  query: string,
+  signal?: AbortSignal,
+): Promise<readonly DuplicateRecordSearchResult[]> {
+  assertDuplicateEntityType(entityType);
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2 || normalizedQuery.length > 100) {
+    throw new TypeError("Invalid duplicate record search query.");
+  }
+  return requestApi(
+    {
+      path: "/api/v1/crm/duplicate-records/search",
+      method: "POST",
+      body: { entity_type: entityType, query: normalizedQuery },
+      signal,
+    },
+    (value) => decodeDuplicateSearchResults(value, entityType),
+  );
+}
+
+export function listDuplicateCandidates(
+  entityType: DuplicateEntityType,
+  status: DuplicateCandidateFilterStatus,
+  signal?: AbortSignal,
+): Promise<readonly DuplicateCandidateSummary[]> {
+  assertDuplicateEntityType(entityType);
+  if (status !== "review_required" && status !== "merged") {
+    throw new TypeError("Invalid duplicate candidate status filter.");
+  }
+  return requestApi(
+    {
+      path: `/api/v1/crm/duplicate-candidates?entity_type=${entityType}&status=${status}`,
+      signal,
+    },
+    (value) => decodeDuplicateCandidateList(value, entityType, status),
+  );
+}
+
+export function createDuplicateCandidate(
+  entityType: DuplicateEntityType,
+  leftRecordId: string,
+  rightRecordId: string,
+  idempotencyKey: string,
+): Promise<DuplicateCandidateSummary> {
+  assertDuplicateEntityType(entityType);
+  assertUuid(leftRecordId, "leftRecordId");
+  assertUuid(rightRecordId, "rightRecordId");
+  if (leftRecordId === rightRecordId) throw new TypeError("Duplicate candidate records must differ.");
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: "/api/v1/crm/duplicate-candidates",
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        entity_type: entityType,
+        left_record_id: leftRecordId,
+        right_record_id: rightRecordId,
+      },
+    },
+    (value) => decodeDuplicateCandidateSummary(value, entityType),
+  );
+}
+
+export function getDuplicateCandidate(
+  candidateId: string,
+  signal?: AbortSignal,
+): Promise<DuplicateCandidateDetail> {
+  assertUuid(candidateId, "candidateId");
+  return requestApi(
+    { path: `/api/v1/crm/duplicate-candidates/${candidateId}`, signal },
+    (value) => decodeDuplicateCandidateDetail(value, candidateId),
+  );
+}
+
+export function mergeDuplicateCandidate(
+  candidateId: string,
+  entityType: DuplicateEntityType,
+  draft: DuplicateMergeDraft,
+  supportedFields: readonly DuplicateSupportedField[],
+  idempotencyKey: string,
+): Promise<DuplicateMergeReceipt> {
+  assertUuid(candidateId, "candidateId");
+  assertDuplicateEntityType(entityType);
+  validateDuplicateMergeDraft(entityType, draft, supportedFields);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/crm/duplicate-candidates/${candidateId}/merges`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        source_record_id: draft.source_record_id,
+        canonical_record_id: draft.canonical_record_id,
+        expected_candidate_record_version: draft.expected_candidate_record_version,
+        expected_source_record_version: draft.expected_source_record_version,
+        expected_canonical_record_version: draft.expected_canonical_record_version,
+        field_selections: draft.field_selections.map((selection) => ({
+          field_name: selection.field_name,
+          source_record_id: selection.source_record_id,
+        })),
+        reason_code: "duplicate.confirmed",
+      },
+    },
+    (value) => decodeDuplicateMergeReceipt(value, candidateId, entityType, draft),
+  );
+}
+
+export function correctDuplicateMerge(
+  mergeId: string,
+  expectedMergeRecordVersion: number,
+  idempotencyKey: string,
+): Promise<DuplicateCorrectionReceipt> {
+  assertUuid(mergeId, "mergeId");
+  assertPositiveInteger(expectedMergeRecordVersion, "expectedMergeRecordVersion");
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/crm/duplicate-merges/${mergeId}/corrections`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        expected_merge_record_version: expectedMergeRecordVersion,
+        reason_code: "duplicate.merge.corrected",
+      },
+    },
+    (value) => decodeDuplicateCorrectionReceipt(value, mergeId),
+  );
+}
+
 export function validateStudentCreateDraft(draft: StudentCreateDraft): StudentCreateValidation {
   const errors: Record<string, string> = {};
   if (!draft.student.display_name.trim()) errors.studentDisplayName = "請輸入學生姓名。";
@@ -437,6 +689,17 @@ export function classifyProfileMaintenanceFailure(
 ): ProfileMaintenanceFailureKind {
   if (error instanceof ApiClientError && error.code === "STALE_VERSION") return "stale";
   return classifyStudentRequestFailure(error);
+}
+
+export function classifyDuplicateRequestFailure(error: unknown): DuplicateRequestFailureKind {
+  if (!(error instanceof ApiClientError)) return "unavailable";
+  if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
+  if (error.code === "FORBIDDEN" || error.status === 403) return "forbidden";
+  if (error.code === "NOT_FOUND" || error.status === 404) return "not_found";
+  if (error.code === "VALIDATION_FAILED" || error.status === 422) return "validation";
+  if (error.code === "STALE_VERSION" && error.status === 409) return "stale";
+  if (error.code === "CONFLICT" && error.status === 409) return "conflict";
+  return "unavailable";
 }
 
 /** Owns one key for one logical save attempt, including uncertain retries. */
@@ -543,6 +806,80 @@ export class GuardianRelationshipIdempotencyAttempt {
   operationName(): "attach" | "handoff" {
     return this.operation;
   }
+}
+
+/** Keeps one opaque key for one logical duplicate command and uncertain retries. */
+export class DuplicateMutationIdempotencyAttempt {
+  private readonly operation: "candidate" | "merge" | "correction";
+  private readonly createKey: () => string;
+  private fingerprint: string | null = null;
+  private key: string | null = null;
+
+  constructor(
+    operation: "candidate" | "merge" | "correction",
+    createKey: () => string = () => `duplicate-${operation}:${globalThis.crypto.randomUUID()}`,
+  ) {
+    this.operation = operation;
+    this.createKey = createKey;
+  }
+
+  keyFor(fingerprint: string): string {
+    if (!fingerprint || fingerprint.length > 2_048) throw new TypeError("Invalid duplicate command fingerprint.");
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.key = null;
+    }
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      assertIdempotencyKey(nextKey);
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  rotate(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.fingerprint = null;
+    this.key = null;
+  }
+
+  operationName(): "candidate" | "merge" | "correction" {
+    return this.operation;
+  }
+}
+
+export function duplicateCandidateFingerprint(
+  entityType: DuplicateEntityType,
+  leftRecordId: string,
+  rightRecordId: string,
+): string {
+  assertDuplicateEntityType(entityType);
+  assertUuid(leftRecordId, "leftRecordId");
+  assertUuid(rightRecordId, "rightRecordId");
+  if (leftRecordId === rightRecordId) throw new TypeError("Duplicate candidate records must differ.");
+  return `${entityType}:${leftRecordId}:${rightRecordId}`;
+}
+
+export function duplicateMergeFingerprint(
+  entityType: DuplicateEntityType,
+  draft: DuplicateMergeDraft,
+  supportedFields: readonly DuplicateSupportedField[],
+): string {
+  validateDuplicateMergeDraft(entityType, draft, supportedFields);
+  return JSON.stringify({
+    entity_type: entityType,
+    ...draft,
+    field_selections: draft.field_selections.map((selection) => ({ ...selection })),
+  });
+}
+
+export function duplicateCorrectionFingerprint(mergeId: string, recordVersion: number): string {
+  assertUuid(mergeId, "mergeId");
+  assertPositiveInteger(recordVersion, "recordVersion");
+  return `${mergeId}:${recordVersion}`;
 }
 
 export function guardianAttachFingerprint(draft: AttachGuardianRelationshipDraft): string {
@@ -856,6 +1193,352 @@ function validateAttachGuardianDraft(draft: AttachGuardianRelationshipDraft): vo
   ]) {
     if (typeof value !== "boolean") throw new TypeError("Invalid relationship flag.");
   }
+}
+
+const STUDENT_DUPLICATE_SIGNALS = Object.freeze([
+  "display_name",
+  "date_of_birth",
+  "email",
+  "phone",
+] as const satisfies readonly DuplicateSignalName[]);
+const GUARDIAN_DUPLICATE_SIGNALS = Object.freeze([
+  "display_name",
+  "email",
+  "phone",
+] as const satisfies readonly DuplicateSignalName[]);
+const STUDENT_DUPLICATE_FIELDS = Object.freeze([
+  "display_name",
+  "date_of_birth",
+  "contact_email",
+  "contact_phone",
+] as const satisfies readonly DuplicateSupportedField[]);
+const GUARDIAN_DUPLICATE_FIELDS = Object.freeze([
+  "display_name",
+  "email",
+  "phone",
+] as const satisfies readonly DuplicateSupportedField[]);
+
+function decodeDuplicateSearchResults(
+  value: unknown,
+  expectedEntityType: DuplicateEntityType,
+): readonly DuplicateRecordSearchResult[] {
+  const results = expectArray(value, (item) => {
+    const record = exactRecord(item, ["id", "entity_type", "display_label", "contact_hint"]);
+    const entityType = duplicateEntityType(record.entity_type, "entity_type");
+    if (entityType !== expectedEntityType) throw new TypeError("Mismatched duplicate search entity_type.");
+    return Object.freeze({
+      id: uuid(record.id, "search.id"),
+      entity_type: entityType,
+      display_label: nonEmptyString(record.display_label, "search.display_label"),
+      contact_hint: maskedHint(record.contact_hint, "search.contact_hint"),
+    });
+  });
+  if (results.length > 20) throw new TypeError("Too many duplicate record search results.");
+  assertUnique(results.map(({ id }) => id), "search.id");
+  return Object.freeze([...results]);
+}
+
+function decodeDuplicateCandidateList(
+  value: unknown,
+  expectedEntityType: DuplicateEntityType,
+  expectedStatus: DuplicateCandidateFilterStatus,
+): readonly DuplicateCandidateSummary[] {
+  const candidates = expectArray(value, (item) => {
+    const candidate = decodeDuplicateCandidateSummary(item, expectedEntityType);
+    if (candidate.status !== expectedStatus) throw new TypeError("Mismatched duplicate candidate status.");
+    return candidate;
+  });
+  if (candidates.length > 100) throw new TypeError("Too many duplicate candidates.");
+  assertUnique(candidates.map(({ id }) => id), "candidate.id");
+  return Object.freeze([...candidates]);
+}
+
+function decodeDuplicateCandidateSummary(
+  value: unknown,
+  expectedEntityType?: DuplicateEntityType,
+): DuplicateCandidateSummary {
+  const record = exactRecord(value, [
+    "id",
+    "entity_type",
+    "left_record",
+    "right_record",
+    "matching_signals",
+    "status",
+    "merge_id",
+    "record_version",
+  ]);
+  const entityType = duplicateEntityType(record.entity_type, "candidate.entity_type");
+  if (expectedEntityType !== undefined && entityType !== expectedEntityType) {
+    throw new TypeError("Mismatched candidate.entity_type.");
+  }
+  const leftRecord = decodeDuplicateRecordLabel(record.left_record, "left_record");
+  const rightRecord = decodeDuplicateRecordLabel(record.right_record, "right_record");
+  if (leftRecord.id === rightRecord.id) throw new TypeError("Duplicate candidate pair must differ.");
+  const signals = expectArray(record.matching_signals, (signal) => {
+    const result = expectString(signal);
+    if (!duplicateSignalsFor(entityType).includes(result as DuplicateSignalName)) {
+      throw new TypeError("Invalid candidate.matching_signals.");
+    }
+    return result as DuplicateSignalName;
+  });
+  if (signals.length < 1) throw new TypeError("Missing candidate.matching_signals.");
+  assertCanonicalSubset(signals, duplicateSignalsFor(entityType), "candidate.matching_signals");
+  const status = duplicateCandidateStatus(record.status);
+  const mergeId = record.merge_id === null ? null : uuid(record.merge_id, "candidate.merge_id");
+  if ((status === "merged") !== (mergeId !== null)) {
+    throw new TypeError("Invalid candidate merge state.");
+  }
+  return Object.freeze({
+    id: uuid(record.id, "candidate.id"),
+    entity_type: entityType,
+    left_record: leftRecord,
+    right_record: rightRecord,
+    matching_signals: Object.freeze([...signals]),
+    status,
+    merge_id: mergeId,
+    record_version: positiveInteger(record.record_version, "candidate.record_version"),
+  });
+}
+
+function decodeDuplicateRecordLabel(value: unknown, field: string): DuplicateCandidateRecordLabel {
+  const record = exactRecord(value, ["id", "display_label"]);
+  return Object.freeze({
+    id: uuid(record.id, `${field}.id`),
+    display_label: nonEmptyString(record.display_label, `${field}.display_label`),
+  });
+}
+
+function decodeDuplicateCandidateDetail(value: unknown, expectedCandidateId: string): DuplicateCandidateDetail {
+  const record = exactRecord(value, [
+    "candidate",
+    "left_profile",
+    "right_profile",
+    "supported_fields",
+    "merge",
+  ]);
+  const candidate = decodeDuplicateCandidateSummary(record.candidate);
+  if (candidate.id !== expectedCandidateId) throw new TypeError("Mismatched candidate.id.");
+  const supportedFields = expectArray(record.supported_fields, (field) => expectString(field) as DuplicateSupportedField);
+  const canonicalFields = duplicateFieldsFor(candidate.entity_type);
+  assertExactSequence(supportedFields, canonicalFields, "supported_fields");
+  const leftProfile = decodeDuplicateProfile(record.left_profile, candidate.entity_type);
+  const rightProfile = decodeDuplicateProfile(record.right_profile, candidate.entity_type);
+  if (leftProfile.id !== candidate.left_record.id || rightProfile.id !== candidate.right_record.id) {
+    throw new TypeError("Mismatched candidate profile pair.");
+  }
+  const merge = record.merge === null ? null : decodeDuplicateMergeView(record.merge, candidate);
+  if ((candidate.status === "merged") !== (merge !== null)) {
+    throw new TypeError("Mismatched candidate detail merge state.");
+  }
+  return Object.freeze({
+    candidate,
+    left_profile: leftProfile,
+    right_profile: rightProfile,
+    supported_fields: Object.freeze([...supportedFields]),
+    merge,
+  });
+}
+
+function decodeDuplicateProfile(value: unknown, entityType: DuplicateEntityType): DuplicateProfile {
+  if (entityType === "student") {
+    const record = exactRecord(value, [
+      "id",
+      "display_name",
+      "date_of_birth",
+      "contact_email",
+      "contact_phone",
+      "record_version",
+    ]);
+    return Object.freeze({
+      id: uuid(record.id, "student_profile.id"),
+      display_name: nonEmptyString(record.display_name, "student_profile.display_name"),
+      date_of_birth: nullableDate(record.date_of_birth),
+      contact_email: nullableNonEmptyString(record.contact_email, "student_profile.contact_email"),
+      contact_phone: nullableNonEmptyString(record.contact_phone, "student_profile.contact_phone"),
+      record_version: positiveInteger(record.record_version, "student_profile.record_version"),
+    });
+  }
+  const record = exactRecord(value, ["id", "display_name", "email", "phone", "record_version"]);
+  return Object.freeze({
+    id: uuid(record.id, "guardian_profile.id"),
+    display_name: nonEmptyString(record.display_name, "guardian_profile.display_name"),
+    email: nullableNonEmptyString(record.email, "guardian_profile.email"),
+    phone: nullableNonEmptyString(record.phone, "guardian_profile.phone"),
+    record_version: positiveInteger(record.record_version, "guardian_profile.record_version"),
+  });
+}
+
+function decodeDuplicateMergeView(
+  value: unknown,
+  candidate: DuplicateCandidateSummary,
+): DuplicateMergeView {
+  const record = exactRecord(value, [
+    "id",
+    "source_record_id",
+    "canonical_record_id",
+    "provenance_revision_id",
+    "status",
+    "record_version",
+    "correction_id",
+  ]);
+  const id = uuid(record.id, "merge.id");
+  if (id !== candidate.merge_id) throw new TypeError("Mismatched merge.id.");
+  const sourceRecordId = uuid(record.source_record_id, "merge.source_record_id");
+  const canonicalRecordId = uuid(record.canonical_record_id, "merge.canonical_record_id");
+  assertCandidatePair(candidate, sourceRecordId, canonicalRecordId);
+  const status = expectString(record.status);
+  if (status !== "active" && status !== "corrected") throw new TypeError("Invalid merge.status.");
+  const correctionId = record.correction_id === null ? null : uuid(record.correction_id, "merge.correction_id");
+  if ((status === "corrected") !== (correctionId !== null)) throw new TypeError("Invalid merge correction state.");
+  return Object.freeze({
+    id,
+    source_record_id: sourceRecordId,
+    canonical_record_id: canonicalRecordId,
+    provenance_revision_id: uuid(record.provenance_revision_id, "merge.provenance_revision_id"),
+    status,
+    record_version: positiveInteger(record.record_version, "merge.record_version"),
+    correction_id: correctionId,
+  });
+}
+
+function decodeDuplicateMergeReceipt(
+  value: unknown,
+  expectedCandidateId: string,
+  expectedEntityType: DuplicateEntityType,
+  draft: DuplicateMergeDraft,
+): DuplicateMergeReceipt {
+  const record = exactRecord(value, [
+    "merge_id",
+    "candidate_id",
+    "entity_type",
+    "source_record_id",
+    "canonical_record_id",
+    "provenance_revision_id",
+    "record_version",
+  ]);
+  const candidateId = uuid(record.candidate_id, "receipt.candidate_id");
+  const entityType = duplicateEntityType(record.entity_type, "receipt.entity_type");
+  const sourceRecordId = uuid(record.source_record_id, "receipt.source_record_id");
+  const canonicalRecordId = uuid(record.canonical_record_id, "receipt.canonical_record_id");
+  if (
+    candidateId !== expectedCandidateId ||
+    entityType !== expectedEntityType ||
+    sourceRecordId !== draft.source_record_id ||
+    canonicalRecordId !== draft.canonical_record_id
+  ) {
+    throw new TypeError("Mismatched duplicate merge receipt.");
+  }
+  return Object.freeze({
+    merge_id: uuid(record.merge_id, "receipt.merge_id"),
+    candidate_id: candidateId,
+    entity_type: entityType,
+    source_record_id: sourceRecordId,
+    canonical_record_id: canonicalRecordId,
+    provenance_revision_id: uuid(record.provenance_revision_id, "receipt.provenance_revision_id"),
+    record_version: positiveInteger(record.record_version, "receipt.record_version"),
+  });
+}
+
+function decodeDuplicateCorrectionReceipt(value: unknown, expectedMergeId: string): DuplicateCorrectionReceipt {
+  const record = exactRecord(value, [
+    "corrective_revision_id",
+    "merge_id",
+    "source_record_id",
+    "canonical_record_id",
+    "restored_alias_target_id",
+    "record_version",
+  ]);
+  const mergeId = uuid(record.merge_id, "correction.merge_id");
+  if (mergeId !== expectedMergeId) throw new TypeError("Mismatched correction.merge_id.");
+  const sourceRecordId = uuid(record.source_record_id, "correction.source_record_id");
+  const restoredAliasTargetId = uuid(record.restored_alias_target_id, "correction.restored_alias_target_id");
+  if (restoredAliasTargetId !== sourceRecordId) throw new TypeError("Invalid restored alias target.");
+  return Object.freeze({
+    corrective_revision_id: uuid(record.corrective_revision_id, "correction.corrective_revision_id"),
+    merge_id: mergeId,
+    source_record_id: sourceRecordId,
+    canonical_record_id: uuid(record.canonical_record_id, "correction.canonical_record_id"),
+    restored_alias_target_id: restoredAliasTargetId,
+    record_version: positiveInteger(record.record_version, "correction.record_version"),
+  });
+}
+
+function validateDuplicateMergeDraft(
+  entityType: DuplicateEntityType,
+  draft: DuplicateMergeDraft,
+  supportedFields: readonly DuplicateSupportedField[],
+): void {
+  assertDuplicateEntityType(entityType);
+  const canonicalFields = duplicateFieldsFor(entityType);
+  assertExactSequence(supportedFields, canonicalFields, "supported_fields");
+  assertUuid(draft.source_record_id, "source_record_id");
+  assertUuid(draft.canonical_record_id, "canonical_record_id");
+  if (draft.source_record_id === draft.canonical_record_id) throw new TypeError("Merge records must differ.");
+  assertPositiveInteger(draft.expected_candidate_record_version, "expected_candidate_record_version");
+  assertPositiveInteger(draft.expected_source_record_version, "expected_source_record_version");
+  assertPositiveInteger(draft.expected_canonical_record_version, "expected_canonical_record_version");
+  assertExactSequence(draft.field_selections.map(({ field_name }) => field_name), canonicalFields, "field_selections");
+  for (const selection of draft.field_selections) {
+    assertUuid(selection.source_record_id, "field_selections.source_record_id");
+    if (selection.source_record_id !== draft.source_record_id && selection.source_record_id !== draft.canonical_record_id) {
+      throw new TypeError("Invalid field selection record.");
+    }
+  }
+}
+
+function duplicateSignalsFor(entityType: DuplicateEntityType): readonly DuplicateSignalName[] {
+  return entityType === "student" ? STUDENT_DUPLICATE_SIGNALS : GUARDIAN_DUPLICATE_SIGNALS;
+}
+
+function duplicateFieldsFor(entityType: DuplicateEntityType): readonly DuplicateSupportedField[] {
+  return entityType === "student" ? STUDENT_DUPLICATE_FIELDS : GUARDIAN_DUPLICATE_FIELDS;
+}
+
+function assertCanonicalSubset<T extends string>(values: readonly T[], canonical: readonly T[], field: string): void {
+  if (new Set(values).size !== values.length) throw new TypeError(`Duplicate ${field}.`);
+  let prior = -1;
+  for (const value of values) {
+    const index = canonical.indexOf(value);
+    if (index <= prior) throw new TypeError(`Invalid ${field} order.`);
+    prior = index;
+  }
+}
+
+function assertExactSequence<T extends string>(values: readonly T[], canonical: readonly T[], field: string): void {
+  if (values.length !== canonical.length || values.some((value, index) => value !== canonical[index])) {
+    throw new TypeError(`Invalid ${field} sequence.`);
+  }
+}
+
+function assertCandidatePair(
+  candidate: DuplicateCandidateSummary,
+  sourceRecordId: string,
+  canonicalRecordId: string,
+): void {
+  const pair = new Set([candidate.left_record.id, candidate.right_record.id]);
+  if (sourceRecordId === canonicalRecordId || !pair.has(sourceRecordId) || !pair.has(canonicalRecordId)) {
+    throw new TypeError("Mismatched duplicate candidate pair.");
+  }
+}
+
+function assertDuplicateEntityType(value: string): asserts value is DuplicateEntityType {
+  if (!(DUPLICATE_ENTITY_TYPES as readonly string[]).includes(value)) {
+    throw new TypeError("Invalid duplicate entity type.");
+  }
+}
+
+function duplicateEntityType(value: unknown, field: string): DuplicateEntityType {
+  const result = expectString(value);
+  if (!(DUPLICATE_ENTITY_TYPES as readonly string[]).includes(result)) throw new TypeError(`Invalid ${field}.`);
+  return result as DuplicateEntityType;
+}
+
+function duplicateCandidateStatus(value: unknown): DuplicateCandidateStatus {
+  const result = expectString(value);
+  if (!(DUPLICATE_CANDIDATE_STATUSES as readonly string[]).includes(result)) {
+    throw new TypeError("Invalid candidate.status.");
+  }
+  return result as DuplicateCandidateStatus;
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): Readonly<Record<string, unknown>> {

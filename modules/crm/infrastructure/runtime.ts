@@ -4,12 +4,36 @@ import { GuardianRelationshipService } from "../application/guardian-relationshi
 import { StudentReadService } from "../application/read-service.ts";
 import { StudentCreateService } from "../application/student-create-service.ts";
 import { ProfileMaintenanceService } from "../application/profile-maintenance-service.ts";
+import { DuplicateReviewService } from "../application/duplicate-review-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts";
 import { PostgresqlStudentCreateRepository } from "./postgresql-student-create-repository.ts";
 import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-relationship-repository.ts";
 import { PostgresqlProfileMaintenanceRepository } from "./postgresql-profile-maintenance-repository.ts";
+import { PostgresqlDuplicateReviewRepository } from "./postgresql-duplicate-review-repository.ts";
+
+export interface DuplicateReviewRuntime { readonly service: DuplicateReviewService }
+export class DuplicateReviewRuntimeUnavailable extends Error {
+  constructor() { super("Duplicate review runtime is not configured."); this.name = "DuplicateReviewRuntimeUnavailable"; }
+}
+export function isDuplicateReviewRuntimeUnavailable(value: unknown): value is DuplicateReviewRuntimeUnavailable {
+  return value instanceof Error && value.name === "DuplicateReviewRuntimeUnavailable";
+}
+export function getDuplicateReviewRuntime(): DuplicateReviewRuntime {
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new DuplicateReviewRuntimeUnavailable();
+  const runtimes = globalForCrm.__txDuplicateReviewRuntimes ?? new Map<string, DuplicateReviewRuntime>();
+  globalForCrm.__txDuplicateReviewRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    try { runtime = Object.freeze({ service: new DuplicateReviewService(
+      new PostgresqlDuplicateReviewRepository(getApplicationTenantRunner())) }); }
+    catch { throw new DuplicateReviewRuntimeUnavailable(); }
+    runtimes.set(mode, runtime);
+  }
+  return runtime;
+}
 
 export interface GuardianRelationshipRuntime {
   readonly service: GuardianRelationshipService;
@@ -76,6 +100,7 @@ export class StudentCreateRuntimeUnavailable extends Error {
 
 const globalForCrm = globalThis as typeof globalThis & {
   __txGuardianRelationshipRuntimes?: Map<string, GuardianRelationshipRuntime>;
+  __txDuplicateReviewRuntimes?: Map<string, DuplicateReviewRuntime>;
   __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
   __txStudentCreateRuntimes?: Map<string, StudentCreateRuntime>;
   __txProfileMaintenanceRuntimes?: Map<string, ProfileMaintenanceRuntime>;

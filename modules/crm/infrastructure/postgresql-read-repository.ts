@@ -5,7 +5,7 @@ import type {
   StudentListItem,
   StudentReadRepository,
 } from "../application/read-service.ts";
-import type { TenantTransactionRunner } from "../../shared/server.ts";
+import type { TenantTransaction, TenantTransactionRunner } from "../../shared/server.ts";
 
 interface StudentRow {
   id: string;
@@ -51,11 +51,16 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 
   findStudent(input: Parameters<StudentReadRepository["findStudent"]>[0]) {
     return this.runner.run(input, async (transaction) => {
+      const resolvedStudent = await resolveDuplicateProfile(transaction, "student", input.studentId);
       const studentResult = await transaction.query<StudentRow>({
         text: studentSelect("student.id = $1 AND student.status <> 'purged'"),
-        values: [input.studentId],
+        values: [resolvedStudent?.id ?? input.studentId],
       });
-      const student = studentResult.rows[0];
+      const storedStudent = studentResult.rows[0];
+      const student = storedStudent && resolvedStudent ? { ...storedStudent,
+        id: resolvedStudent.id, display_name: resolvedStudent.displayName,
+        date_of_birth: resolvedStudent.dateOfBirth, contact_email: resolvedStudent.contactEmail,
+        contact_phone: resolvedStudent.contactPhone } : storedStudent;
       if (!student) return null;
 
       const guardianResult = await transaction.query<GuardianRow>({
@@ -72,29 +77,92 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
                   AND relationship.ends_at IS NULL
                   AND guardian.status = 'active'
                 ORDER BY relationship.is_primary_contact DESC, guardian.display_name, guardian.id`,
-        values: [input.studentId],
+        values: [student.id],
       });
-      return Object.freeze({
-        ...toListItem(student),
-        contactEmail: student.contact_email,
-        contactPhone: student.contact_phone,
-        recordVersion: toVersion(student.record_version),
-        guardians: Object.freeze(guardianResult.rows.map((row) => Object.freeze({
-          id: row.id,
-          displayName: row.display_name,
-          email: row.email,
-          phone: row.phone,
-          recordVersion: toVersion(row.record_version),
+      const guardians: StudentDetail["guardians"][number][] = [];
+      for (const row of guardianResult.rows) {
+        const resolved = await resolveDuplicateProfile(transaction, "guardian", row.id);
+        guardians.push(Object.freeze({
+          id: resolved?.id ?? row.id,
+          displayName: resolved?.displayName ?? row.display_name,
+          email: resolved?.email ?? row.email,
+          phone: resolved?.phone ?? row.phone,
+          recordVersion: resolved?.recordVersion ?? toVersion(row.record_version),
           relationshipType: row.relationship_type,
           isLegalGuardian: row.is_legal_guardian,
           isPrimaryContact: row.is_primary_contact,
           isEmergencyContact: row.is_emergency_contact,
           isBillingContact: row.is_billing_contact,
           notificationConsent: row.notification_consent,
-        }))),
+        }));
+      }
+      return Object.freeze({
+        ...toListItem(student),
+        contactEmail: student.contact_email,
+        contactPhone: student.contact_phone,
+        recordVersion: toVersion(student.record_version),
+        guardians: Object.freeze(guardians),
       }) satisfies StudentDetail;
     });
   }
+}
+
+interface ResolvedProfile {
+  id: string;
+  displayName: string;
+  dateOfBirth: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  email: string | null;
+  phone: string | null;
+  recordVersion: number;
+}
+
+async function resolveDuplicateProfile(
+  transaction: TenantTransaction,
+  entityType: "student" | "guardian",
+  requestedId: string,
+): Promise<ResolvedProfile | null> {
+  const aliasResult = await transaction.query<{
+    source_record_id: string; target_record_id: string; merge_id: string;
+  }>({
+    text: `WITH latest AS (
+      SELECT DISTINCT ON (source_record_id) source_record_id,target_record_id,merge_id,revision_number
+        FROM crm_duplicate_alias_revisions WHERE entity_type=$1
+       ORDER BY source_record_id,revision_number DESC
+    ) SELECT latest.source_record_id,latest.target_record_id,latest.merge_id
+        FROM latest JOIN crm_duplicate_merges AS merge ON merge.id=latest.merge_id AND merge.status='active'
+       WHERE latest.target_record_id<>latest.source_record_id
+         AND (latest.source_record_id=$2 OR latest.target_record_id=$2)
+       ORDER BY latest.revision_number DESC LIMIT 1`,
+    values: [entityType, requestedId],
+  });
+  const alias = aliasResult.rows[0];
+  const canonicalId = alias?.target_record_id ?? requestedId;
+  const provenance = alias ? await transaction.query<{ field_name: string; selected_record_id: string }>({
+    text: `SELECT field_name,selected_record_id FROM crm_duplicate_field_provenance_revisions
+            WHERE merge_id=$1 AND correction_id IS NULL ORDER BY field_name`, values: [alias.merge_id],
+  }) : { rows: [] as readonly { field_name: string; selected_record_id: string }[] };
+  const selectedIds = [...new Set([canonicalId, ...provenance.rows.map((row) => row.selected_record_id)])];
+  const table = entityType === "student" ? "crm_students" : "crm_guardians";
+  const rows = await transaction.query<Record<string, unknown>>({
+    text: `SELECT id,display_name,${entityType === "student" ? "date_of_birth::text" : "NULL::text"} AS date_of_birth,
+      ${entityType === "student" ? "contact_email" : "NULL::text"} AS contact_email,
+      ${entityType === "student" ? "contact_phone" : "NULL::text"} AS contact_phone,
+      ${entityType === "student" ? "NULL::text" : "email"} AS email,
+      ${entityType === "student" ? "NULL::text" : "phone"} AS phone,record_version
+      FROM ${table} WHERE id=ANY($1::uuid[]) AND status<>'purged'`, values: [selectedIds],
+  });
+  const byId = new Map(rows.rows.map((row) => [String(row.id), row]));
+  const canonical = byId.get(canonicalId); if (!canonical) return null;
+  const selected = new Map(provenance.rows.map((row) => [row.field_name, row.selected_record_id]));
+  const value = (field: string) => byId.get(selected.get(field) ?? canonicalId)?.[field] ?? null;
+  return Object.freeze({ id: canonicalId, displayName: String(value("display_name")),
+    dateOfBirth: value("date_of_birth") as string | null,
+    contactEmail: value("contact_email") as string | null,
+    contactPhone: value("contact_phone") as string | null,
+    email: value("email") as string | null, phone: value("phone") as string | null,
+    recordVersion: toVersion(canonical.record_version as number | string) });
 }
 
 function studentSelect(condition: string): string {

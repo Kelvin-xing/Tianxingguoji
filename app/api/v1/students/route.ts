@@ -3,7 +3,6 @@ import {
   getStudentReadRuntime,
   GuardianRelationshipRuntimeUnavailable,
   StudentCreateRuntimeUnavailable,
-  StudentReadError,
   isStudentCreateError,
 } from "@/modules/crm/server";
 import { requireIdentityActor } from "@/modules/identity/web";
@@ -17,6 +16,7 @@ import {
 } from "@/modules/shared/public";
 
 import { parseStudentCreateRequest } from "./route-contract.ts";
+import { mapStudentReadError } from "../student-read-handler.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,13 +28,10 @@ export async function GET(request: Request): Promise<Response> {
       const students = await getStudentReadRuntime().service.listStudents(actor);
       return { students: students.map((student) => ({ ...student })) } satisfies JsonValue;
     } catch (error) {
-      if (error instanceof StudentReadError && error.code === "STUDENT_READ_FORBIDDEN") {
-        throw createApiError("FORBIDDEN");
-      }
       if (error instanceof GuardianRelationshipRuntimeUnavailable) {
         throw createApiError("SERVICE_UNAVAILABLE");
       }
-      throw error;
+      throw mapStudentReadError(error, "list");
     }
   });
 }
