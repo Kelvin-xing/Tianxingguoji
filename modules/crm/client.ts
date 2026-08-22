@@ -3,6 +3,7 @@ import {
   expectArray,
   expectBoolean,
   expectNullableString,
+  expectNumber,
   expectRecord,
   expectString,
   requestApi,
@@ -89,6 +90,64 @@ export interface CreatedStudentAggregate {
   };
 }
 
+export interface GuardianContactHint {
+  readonly id: string;
+  readonly display_name: string;
+  readonly email_hint: string | null;
+  readonly phone_hint: string | null;
+}
+
+export interface CurrentGuardianRelationship {
+  readonly relationship_id: string;
+  readonly guardian: GuardianContactHint;
+  readonly relationship_type: RelationshipType;
+  readonly is_legal_guardian: boolean;
+  readonly is_primary_contact: boolean;
+  readonly is_emergency_contact: boolean;
+  readonly is_billing_contact: boolean;
+  readonly notification_consent: boolean;
+  readonly starts_at: string;
+  readonly record_version: number;
+}
+
+export interface GuardianRelationshipsView {
+  readonly student: {
+    readonly id: string;
+    readonly display_name: string;
+  };
+  readonly relationships: readonly CurrentGuardianRelationship[];
+}
+
+export interface AttachGuardianRelationshipDraft {
+  readonly guardian_id: string;
+  readonly relationship_type: RelationshipType;
+  readonly is_legal_guardian: boolean;
+  readonly is_emergency_contact: boolean;
+  readonly is_billing_contact: boolean;
+  readonly notification_consent: boolean;
+}
+
+export interface GuardianRelationshipCommandResult {
+  readonly relationship_id: string;
+  readonly guardian_id: string;
+  readonly relationship_type: RelationshipType;
+  readonly is_legal_guardian: boolean;
+  readonly is_primary_contact: boolean;
+  readonly is_emergency_contact: boolean;
+  readonly is_billing_contact: boolean;
+  readonly notification_consent: boolean;
+  readonly starts_at: string;
+  readonly record_version: number;
+}
+
+export interface PrimaryGuardianHandoffResult {
+  readonly relationship: GuardianRelationshipCommandResult;
+  readonly closed_relationship_ids: {
+    readonly previous_primary: string;
+    readonly successor_secondary: string;
+  };
+}
+
 export type StudentRequestFailureKind =
   | "unauthenticated"
   | "forbidden"
@@ -96,6 +155,8 @@ export type StudentRequestFailureKind =
   | "validation"
   | "conflict"
   | "unavailable";
+
+export type GuardianRelationshipFailureKind = StudentRequestFailureKind | "stale";
 
 export function listStudents(signal?: AbortSignal): Promise<readonly StudentListItem[]> {
   return requestApi(
@@ -131,6 +192,88 @@ export function createStudentWithPrimaryGuardian(
   );
 }
 
+export function getGuardianRelationships(
+  studentId: string,
+  signal?: AbortSignal,
+): Promise<GuardianRelationshipsView> {
+  assertUuid(studentId, "studentId");
+  return requestApi(
+    { path: `/api/v1/students/${studentId}/guardians`, signal },
+    (value) => decodeGuardianRelationshipsView(value, studentId),
+  );
+}
+
+export function searchGuardians(
+  studentId: string,
+  query: string,
+  signal?: AbortSignal,
+): Promise<readonly GuardianContactHint[]> {
+  assertUuid(studentId, "studentId");
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2 || normalizedQuery.length > 100) {
+    throw new TypeError("Invalid guardian search query.");
+  }
+  return requestApi(
+    {
+      path: `/api/v1/students/${studentId}/guardians/search`,
+      method: "POST",
+      body: { query: normalizedQuery },
+      signal,
+    },
+    decodeGuardianSearchResults,
+  );
+}
+
+export function attachGuardianRelationship(
+  studentId: string,
+  draft: AttachGuardianRelationshipDraft,
+  idempotencyKey: string,
+): Promise<GuardianRelationshipCommandResult> {
+  assertUuid(studentId, "studentId");
+  validateAttachGuardianDraft(draft);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/students/${studentId}/guardians`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        guardian_id: draft.guardian_id,
+        relationship_type: draft.relationship_type,
+        is_legal_guardian: draft.is_legal_guardian,
+        is_emergency_contact: draft.is_emergency_contact,
+        is_billing_contact: draft.is_billing_contact,
+        notification_consent: draft.notification_consent,
+      },
+    },
+    (value) => decodeGuardianCommandResult(exactRecord(value, ["relationship"]).relationship),
+  );
+}
+
+export function handoffPrimaryGuardian(
+  studentId: string,
+  successorGuardianId: string,
+  expectedPrimaryRecordVersion: number,
+  idempotencyKey: string,
+): Promise<PrimaryGuardianHandoffResult> {
+  assertUuid(studentId, "studentId");
+  assertUuid(successorGuardianId, "successorGuardianId");
+  assertPositiveInteger(expectedPrimaryRecordVersion, "expectedPrimaryRecordVersion");
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/students/${studentId}/guardians/primary-handoffs`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        successor_guardian_id: successorGuardianId,
+        expected_primary_record_version: expectedPrimaryRecordVersion,
+      },
+    },
+    decodePrimaryGuardianHandoffResult,
+  );
+}
+
 export function validateStudentCreateDraft(draft: StudentCreateDraft): StudentCreateValidation {
   const errors: Record<string, string> = {};
   if (!draft.student.display_name.trim()) errors.studentDisplayName = "請輸入學生姓名。";
@@ -162,6 +305,13 @@ export function classifyStudentRequestFailure(error: unknown): StudentRequestFai
   return "unavailable";
 }
 
+export function classifyGuardianRelationshipFailure(
+  error: unknown,
+): GuardianRelationshipFailureKind {
+  if (error instanceof ApiClientError && error.code === "STALE_VERSION") return "stale";
+  return classifyStudentRequestFailure(error);
+}
+
 /** Owns one key for one logical save attempt, including uncertain retries. */
 export class StudentCreateIdempotencyAttempt {
   private readonly createKey: () => string;
@@ -187,6 +337,70 @@ export class StudentCreateIdempotencyAttempt {
   complete(): void {
     this.key = null;
   }
+}
+
+/** Keeps one key for one logical Guardian mutation and its uncertain retries. */
+export class GuardianRelationshipIdempotencyAttempt {
+  private readonly operation: "attach" | "handoff";
+  private readonly createKey: () => string;
+  private fingerprint: string | null = null;
+  private key: string | null = null;
+
+  constructor(
+    operation: "attach" | "handoff",
+    createKey: () => string = () => `${operation}:${globalThis.crypto.randomUUID()}`,
+  ) {
+    this.operation = operation;
+    this.createKey = createKey;
+  }
+
+  keyFor(fingerprint: string): string {
+    if (!fingerprint || fingerprint.length > 512) throw new TypeError("Invalid operation fingerprint.");
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.key = null;
+    }
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      assertIdempotencyKey(nextKey);
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  rotate(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.fingerprint = null;
+    this.key = null;
+  }
+
+  operationName(): "attach" | "handoff" {
+    return this.operation;
+  }
+}
+
+export function guardianAttachFingerprint(draft: AttachGuardianRelationshipDraft): string {
+  validateAttachGuardianDraft(draft);
+  return [
+    draft.guardian_id,
+    draft.relationship_type,
+    Number(draft.is_legal_guardian),
+    Number(draft.is_emergency_contact),
+    Number(draft.is_billing_contact),
+    Number(draft.notification_consent),
+  ].join(":");
+}
+
+export function guardianHandoffFingerprint(
+  successorGuardianId: string,
+  expectedPrimaryRecordVersion: number,
+): string {
+  assertUuid(successorGuardianId, "successorGuardianId");
+  assertPositiveInteger(expectedPrimaryRecordVersion, "expectedPrimaryRecordVersion");
+  return `${successorGuardianId}:${expectedPrimaryRecordVersion}`;
 }
 
 function normalizeStudentCreateDraft(draft: StudentCreateDraft) {
@@ -304,6 +518,132 @@ function decodeCreatedStudentAggregate(value: unknown): CreatedStudentAggregate 
   });
 }
 
+function decodeGuardianRelationshipsView(
+  value: unknown,
+  expectedStudentId: string,
+): GuardianRelationshipsView {
+  const record = exactRecord(value, ["student", "relationships"]);
+  const student = exactRecord(record.student, ["id", "display_name"]);
+  const studentId = uuid(student.id, "student.id");
+  if (studentId !== expectedStudentId) throw new TypeError("Mismatched student.id.");
+  const relationships = expectArray(record.relationships, decodeCurrentGuardianRelationship);
+  assertUnique(relationships.map(({ relationship_id }) => relationship_id), "relationship_id");
+  assertUnique(relationships.map(({ guardian }) => guardian.id), "guardian.id");
+  if (relationships.filter(({ is_primary_contact }) => is_primary_contact).length > 1) {
+    throw new TypeError("Multiple current primary Guardians.");
+  }
+  return Object.freeze({
+    student: Object.freeze({
+      id: studentId,
+      display_name: nonEmptyString(student.display_name, "student.display_name"),
+    }),
+    relationships: Object.freeze([...relationships]),
+  });
+}
+
+function decodeCurrentGuardianRelationship(value: unknown): CurrentGuardianRelationship {
+  const record = exactRecord(value, [
+    "relationship_id",
+    "guardian",
+    "relationship_type",
+    "is_legal_guardian",
+    "is_primary_contact",
+    "is_emergency_contact",
+    "is_billing_contact",
+    "notification_consent",
+    "starts_at",
+    "record_version",
+  ]);
+  return Object.freeze({
+    relationship_id: uuid(record.relationship_id, "relationship_id"),
+    guardian: decodeGuardianContactHint(record.guardian),
+    relationship_type: relationshipType(record.relationship_type, "relationship_type"),
+    is_legal_guardian: expectBoolean(record.is_legal_guardian),
+    is_primary_contact: expectBoolean(record.is_primary_contact),
+    is_emergency_contact: expectBoolean(record.is_emergency_contact),
+    is_billing_contact: expectBoolean(record.is_billing_contact),
+    notification_consent: expectBoolean(record.notification_consent),
+    starts_at: isoDateTime(record.starts_at, "starts_at"),
+    record_version: positiveInteger(record.record_version, "record_version"),
+  });
+}
+
+function decodeGuardianSearchResults(value: unknown): readonly GuardianContactHint[] {
+  const results = expectArray(value, decodeGuardianContactHint);
+  if (results.length > 20) throw new TypeError("Too many Guardian search results.");
+  assertUnique(results.map(({ id }) => id), "guardian.id");
+  return Object.freeze([...results]);
+}
+
+function decodeGuardianContactHint(value: unknown): GuardianContactHint {
+  const record = exactRecord(value, ["id", "display_name", "email_hint", "phone_hint"]);
+  return Object.freeze({
+    id: uuid(record.id, "guardian.id"),
+    display_name: nonEmptyString(record.display_name, "guardian.display_name"),
+    email_hint: maskedHint(record.email_hint, "guardian.email_hint"),
+    phone_hint: maskedHint(record.phone_hint, "guardian.phone_hint"),
+  });
+}
+
+function decodeGuardianCommandResult(value: unknown): GuardianRelationshipCommandResult {
+  const record = exactRecord(value, [
+    "relationship_id",
+    "guardian_id",
+    "relationship_type",
+    "is_legal_guardian",
+    "is_primary_contact",
+    "is_emergency_contact",
+    "is_billing_contact",
+    "notification_consent",
+    "starts_at",
+    "record_version",
+  ]);
+  return Object.freeze({
+    relationship_id: uuid(record.relationship_id, "relationship_id"),
+    guardian_id: uuid(record.guardian_id, "guardian_id"),
+    relationship_type: relationshipType(record.relationship_type, "relationship_type"),
+    is_legal_guardian: expectBoolean(record.is_legal_guardian),
+    is_primary_contact: expectBoolean(record.is_primary_contact),
+    is_emergency_contact: expectBoolean(record.is_emergency_contact),
+    is_billing_contact: expectBoolean(record.is_billing_contact),
+    notification_consent: expectBoolean(record.notification_consent),
+    starts_at: isoDateTime(record.starts_at, "starts_at"),
+    record_version: positiveInteger(record.record_version, "record_version"),
+  });
+}
+
+function decodePrimaryGuardianHandoffResult(value: unknown): PrimaryGuardianHandoffResult {
+  const record = exactRecord(value, ["relationship", "closed_relationship_ids"]);
+  const relationship = decodeGuardianCommandResult(record.relationship);
+  if (!relationship.is_primary_contact) throw new TypeError("Handoff result is not primary.");
+  const closed = exactRecord(record.closed_relationship_ids, [
+    "previous_primary",
+    "successor_secondary",
+  ]);
+  return Object.freeze({
+    relationship,
+    closed_relationship_ids: Object.freeze({
+      previous_primary: uuid(closed.previous_primary, "closed.previous_primary"),
+      successor_secondary: uuid(closed.successor_secondary, "closed.successor_secondary"),
+    }),
+  });
+}
+
+function validateAttachGuardianDraft(draft: AttachGuardianRelationshipDraft): void {
+  assertUuid(draft.guardian_id, "guardian_id");
+  if (!isRelationshipType(draft.relationship_type)) {
+    throw new TypeError("Invalid relationship_type.");
+  }
+  for (const value of [
+    draft.is_legal_guardian,
+    draft.is_emergency_contact,
+    draft.is_billing_contact,
+    draft.notification_consent,
+  ]) {
+    if (typeof value !== "boolean") throw new TypeError("Invalid relationship flag.");
+  }
+}
+
 function exactRecord(value: unknown, keys: readonly string[]): Readonly<Record<string, unknown>> {
   const record = expectRecord(value);
   const actual = Object.keys(record);
@@ -335,6 +675,12 @@ function nullableNonEmptyString(value: unknown, field: string): string | null {
   return result;
 }
 
+function maskedHint(value: unknown, field: string): string | null {
+  const result = nullableNonEmptyString(value, field);
+  if (result !== null && !result.includes("*")) throw new TypeError(`Unmasked ${field}.`);
+  return result;
+}
+
 function nullableDate(value: unknown): string | null {
   const result = expectNullableString(value);
   if (result !== null && !isValidDate(result)) throw new TypeError("Invalid dateOfBirth.");
@@ -345,6 +691,30 @@ function isoDateTime(value: unknown, field: string): string {
   const result = expectString(value);
   if (Number.isNaN(Date.parse(result))) throw new TypeError(`Invalid ${field}.`);
   return result;
+}
+
+function positiveInteger(value: unknown, field: string): number {
+  const result = expectNumber(value);
+  assertPositiveInteger(result, field);
+  return result;
+}
+
+function assertPositiveInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`Invalid ${field}.`);
+}
+
+function assertIdempotencyKey(value: string): void {
+  if (!IDEMPOTENCY_KEY.test(value)) throw new TypeError("Invalid idempotency key.");
+}
+
+function relationshipType(value: unknown, field: string): RelationshipType {
+  const result = expectString(value);
+  if (!isRelationshipType(result)) throw new TypeError(`Invalid ${field}.`);
+  return result;
+}
+
+function assertUnique(values: readonly string[], field: string): void {
+  if (new Set(values).size !== values.length) throw new TypeError(`Duplicate ${field}.`);
 }
 
 function nullable(value: string): string | null {

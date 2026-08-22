@@ -44,6 +44,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "cases.read",
     "students.read",
     "students.create",
+    "students.guardians.manage",
     "schools.read",
     "tasks.read",
     "documents.read",
@@ -57,7 +58,7 @@ const EXPECTED_MATRIX = Object.freeze({
   contractor: Object.freeze(["tasks.read"]),
 } as const satisfies Readonly<Record<OrganizationRole, readonly WorkspaceCapability[]>>);
 
-test("freezes the CRM-01 five-role workspace capability matrix", () => {
+test("freezes the CRM-02 five-role workspace capability matrix", () => {
   assert.deepEqual(ORGANIZATION_ROLES, [
     "founder",
     "admin",
@@ -122,7 +123,7 @@ test("runtime validators and bootstrap evaluation fail closed for unknown vocabu
 
 test("publishes one deterministic serializable bootstrap policy manifest", () => {
   assert.equal(ACCESS_POLICY_MANIFEST_VERSION, "access-policy-manifest/v1");
-  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v2");
+  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v3");
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.manifestVersion, ACCESS_POLICY_MANIFEST_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.policyVersion, BOOTSTRAP_ACCESS_POLICY_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.defaultDecision, "deny");

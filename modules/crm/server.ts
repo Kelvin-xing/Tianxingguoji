@@ -9,3 +9,4 @@ export * from "./infrastructure/runtime.ts";
 export * from "./infrastructure/student-persistence.ts";
 export * from "./infrastructure/postgresql-read-repository.ts";
 export * from "./infrastructure/postgresql-student-create-repository.ts";
+export * from "./infrastructure/postgresql-guardian-relationship-repository.ts";

@@ -4,8 +4,8 @@ import { handleApiRequest } from "@/modules/shared/public";
 
 import {
   mapGuardianRelationshipError,
-  parseHandoffCommand,
-  toHandoffData,
+  parseSearchRequest,
+  toGuardianHintData,
 } from "../handler.ts";
 
 export const runtime = "nodejs";
@@ -13,16 +13,19 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   request: Request,
-  context: RouteContext<"/api/v1/students/[studentId]/guardians/primary-handoffs">,
+  context: { readonly params: Promise<{ readonly studentId: string }> },
 ): Promise<Response> {
-  return handleApiRequest(request, async (requestContext) => {
+  return handleApiRequest(request, async () => {
     try {
       const { studentId } = await context.params;
-      const command = await parseHandoffCommand(request, studentId, requestContext.requestId);
+      const parsed = await parseSearchRequest(request, studentId);
       const actor = await requireIdentityActor();
-      return toHandoffData(
-        await getGuardianRelationshipRuntime().service.handoffPrimaryContact({ actor, command }),
-      );
+      const results = await getGuardianRelationshipRuntime().service.searchGuardians({
+        actor,
+        studentId: parsed.studentId,
+        query: parsed.query,
+      });
+      return results.map(toGuardianHintData);
     } catch (error) {
       throw mapGuardianRelationshipError(error);
     }

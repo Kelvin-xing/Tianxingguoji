@@ -49,6 +49,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "cases.read",
   "students.read",
   "students.create",
+  "students.guardians.manage",
   "schools.read",
   "tasks.read",
   "documents.read",
@@ -62,7 +63,18 @@ export type WorkspaceCapability = (typeof WORKSPACE_CAPABILITIES)[number];
 export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
   Record<OrganizationRole, readonly WorkspaceCapability[]>
 > = Object.freeze({
-  founder: WORKSPACE_CAPABILITIES,
+  founder: Object.freeze([
+    "today.read",
+    "cases.read",
+    "students.read",
+    "students.create",
+    "schools.read",
+    "tasks.read",
+    "documents.read",
+    "access.manage",
+    "schools.manage",
+    "crawler.manage",
+  ] as const),
   admin: Object.freeze([
     "today.read",
     "students.read",
@@ -76,6 +88,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "cases.read",
     "students.read",
     "students.create",
+    "students.guardians.manage",
     "schools.read",
     "tasks.read",
     "documents.read",

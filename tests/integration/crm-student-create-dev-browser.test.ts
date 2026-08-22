@@ -12,6 +12,7 @@ import test from "node:test";
 import {
   chromium,
   type BrowserContext,
+  type Locator,
   type Page,
   type Request as PlaywrightRequest,
   type Response as PlaywrightResponse,
@@ -25,7 +26,9 @@ import {
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
+  NEON_TEST_ORGANIZATION,
   NEON_TEST_PRINCIPALS,
+  NEON_TEST_STUDENTS,
 } from "../../scripts/db/neon-test-synthetic-fixture.ts";
 import {
   runDatabaseTestProvisionCli,
@@ -45,6 +48,8 @@ const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
 const ADMIN = NEON_TEST_PRINCIPALS.find(({ role }) => role === "admin")!;
+const FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
+const SHARED_GUARDIAN = NEON_TEST_STUDENTS[1]!;
 
 const BROWSER_STAGES = Object.freeze([
   "runtime_preflight",
@@ -265,6 +270,96 @@ class SafeBrowserGateFailure extends Error {
   constructor(evidence: GateFailureEvidence) {
     super(JSON.stringify(evidence));
     this.name = "SafeBrowserGateFailure";
+    this.stack = this.message;
+  }
+}
+
+const CRM02_BROWSER_STAGES = Object.freeze([
+  "runtime_preflight",
+  "postgres_setup",
+  "baseline_seed",
+  "identity_provision",
+  "next_dev",
+  "canonical_origin_discovery",
+  "chrome_launch",
+  "advisor_login_server_render",
+  "advisor_login_browser_render",
+  "advisor_login_session",
+  "crm01_student_create",
+  "advisor_detail_entry",
+  "current_relationship_read",
+  "management_navigation",
+  "search_validation",
+  "guardian_search",
+  "explicit_candidate_selection",
+  "idempotency_and_double_submit",
+  "attach_command",
+  "attach_authority_refresh",
+  "attach_feedback",
+  "attach_persistence",
+  "stale_concurrency_setup",
+  "stale_handoff",
+  "stale_recovery",
+  "reattach_previous_primary",
+  "primary_handoff",
+  "closed_history_aggregate",
+  "advisor_relogin_persistence",
+  "founder_read_only",
+  "founder_direct_forbidden",
+  "admin_read_only",
+  "admin_direct_forbidden",
+  "desktop_viewport",
+  "mobile_viewport",
+  "browser_log_safety",
+  "cleanup",
+  "complete",
+] as const);
+
+type Crm02BrowserStage = (typeof CRM02_BROWSER_STAGES)[number];
+
+interface Crm02BrowserEvidence {
+  student_created: boolean;
+  advisor_management_entry_visible: boolean;
+  current_get_status: number | null;
+  current_primary_visible: boolean;
+  validation_posts_zero: boolean;
+  search_status: number | null;
+  masked_candidate_visible: boolean;
+  candidate_explicitly_selected: boolean;
+  same_retry_key: boolean;
+  changed_field_rotated_key: boolean;
+  double_submit_single_request: boolean;
+  attach_status: number | null;
+  attach_refresh_status: number | null;
+  attach_success_visible: boolean;
+  attach_refresh_persisted: boolean;
+  attach_relogin_persisted: boolean;
+  stale_status: number | null;
+  stale_code: "STALE_VERSION" | "OTHER" | null;
+  stale_recovered: boolean;
+  handoff_status: number | null;
+  new_primary_visible: boolean;
+  closed_history_minimum_met: boolean;
+  founder_current_readable: boolean;
+  founder_controls_hidden: boolean;
+  founder_direct_forbidden: boolean;
+  admin_current_readable: boolean;
+  admin_controls_hidden: boolean;
+  admin_direct_forbidden: boolean;
+  desktop_viewport_passed: boolean;
+  mobile_viewport_passed: boolean;
+  page_errors: number;
+  sensitive_log_matches: number;
+}
+
+class SafeCrm02BrowserGateFailure extends Error {
+  constructor(input: {
+    readonly stage: Crm02BrowserStage;
+    readonly evidence: Readonly<Crm02BrowserEvidence>;
+    readonly cleanup: Readonly<CleanupEvidence>;
+  }) {
+    super(JSON.stringify(Object.freeze({ status: "failed", ...input })));
+    this.name = "SafeCrm02BrowserGateFailure";
     this.stack = this.message;
   }
 }
@@ -1003,6 +1098,832 @@ test("CRM-01 works through the real local browser and disposable PostgreSQL 17",
   }))}\n`);
 });
 
+test("CRM-02 works through the real local browser and disposable PostgreSQL 17", {
+  timeout: 300_000,
+}, async () => {
+  const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
+  const containerName = `tianxing-crm02-browser-pg17-${suffix}`;
+  const secretVolumeName = `tianxing-crm02-browser-secret-${suffix}`;
+  const applicationPassword = randomBytes(32).toString("hex");
+  const advisorPassword = randomBytes(32).toString("base64url");
+  const founderPassword = randomBytes(32).toString("base64url");
+  const adminPassword = randomBytes(32).toString("base64url");
+  const appDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-app-"));
+  const profileDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-profile-"));
+  const evidence: Crm02BrowserEvidence = {
+    student_created: false,
+    advisor_management_entry_visible: false,
+    current_get_status: null,
+    current_primary_visible: false,
+    validation_posts_zero: false,
+    search_status: null,
+    masked_candidate_visible: false,
+    candidate_explicitly_selected: false,
+    same_retry_key: false,
+    changed_field_rotated_key: false,
+    double_submit_single_request: false,
+    attach_status: null,
+    attach_refresh_status: null,
+    attach_success_visible: false,
+    attach_refresh_persisted: false,
+    attach_relogin_persisted: false,
+    stale_status: null,
+    stale_code: null,
+    stale_recovered: false,
+    handoff_status: null,
+    new_primary_visible: false,
+    closed_history_minimum_met: false,
+    founder_current_readable: false,
+    founder_controls_hidden: false,
+    founder_direct_forbidden: false,
+    admin_current_readable: false,
+    admin_controls_hidden: false,
+    admin_direct_forbidden: false,
+    desktop_viewport_passed: false,
+    mobile_viewport_passed: false,
+    page_errors: 0,
+    sensitive_log_matches: 0,
+  };
+  const cleanupEvidence: CleanupEvidence = {
+    context_closed: false,
+    dev_stopped: false,
+    app_directory_removed: false,
+    profile_removed: false,
+    container_removed: false,
+    volume_removed: false,
+  };
+  const canonicalOriginEvidence: CanonicalOriginEvidence = {
+    response_status_307: false,
+    location_present: false,
+    location_parseable: false,
+    pathname_exact: false,
+    protocol_http: false,
+    hostname_loopback: false,
+    port_matches: false,
+    credentials_absent: false,
+    search_absent: false,
+    hash_absent: false,
+  };
+
+  let stage: Crm02BrowserStage = "runtime_preflight";
+  let containerStarted = false;
+  let secretVolumeCreated = false;
+  let devServer: ChildProcess | undefined;
+  let context: BrowserContext | undefined;
+  let failureStage: Crm02BrowserStage | undefined;
+  let baselineGeneratedFiles = 0;
+
+  try {
+    await access(DOCKER, constants.X_OK);
+    await access(CHROME, constants.X_OK);
+
+    stage = "postgres_setup";
+    await runDocker(["image", "inspect", POSTGRES_IMAGE]);
+    await runDocker(["volume", "create", secretVolumeName]);
+    secretVolumeCreated = true;
+    await runDocker([
+      "run", "--rm", "--interactive", "--pull=never",
+      "--volume", `${secretVolumeName}:/run/secrets`,
+      POSTGRES_IMAGE, "/bin/sh", "-c",
+      "umask 022; cat > /run/secrets/local_postgres_password; chmod 0444 /run/secrets/local_postgres_password",
+    ], applicationPassword);
+    await runDocker([
+      "run", "--rm", "--detach", "--pull=never", "--name", containerName,
+      "--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=512m",
+      "--env", "POSTGRES_DB=tianxing",
+      "--env", "POSTGRES_USER=postgres",
+      "--env", "POSTGRES_PASSWORD_FILE=/run/secrets/local_postgres_password",
+      "--volume", `${secretVolumeName}:/run/secrets:ro`,
+      "--volume", `${resolve("infra/local/postgres/init")}:/docker-entrypoint-initdb.d:ro`,
+      "--volume", `${resolve("infra/local/postgres/healthcheck.sh")}:/usr/local/bin/tianxing-postgres-healthcheck:ro`,
+      "--publish", "127.0.0.1::5432",
+      POSTGRES_IMAGE,
+    ]);
+    containerStarted = true;
+    await waitForPostgres(containerName);
+    const databasePort = readLoopbackPort((await runDocker(["port", containerName, "5432/tcp"])).stdout);
+    const target = localTarget(databasePort, applicationPassword);
+
+    stage = "baseline_seed";
+    const build = await verifyCommittedOneRoleBaseline();
+    const baseline = await executeOneRoleBaselineRun({
+      mode: "apply",
+      target,
+      build,
+      dependencies: baselineDependencies(target),
+    });
+    assert.equal(baseline.status, "pass");
+    assert.equal(baseline.generated_files, 28);
+    baselineGeneratedFiles = baseline.generated_files;
+    const seed = await seedNeonTestRelease1(target, "apply");
+    assert.equal(seed.status, "pass");
+    assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
+
+    stage = "identity_provision";
+    assert.equal(await provision(target, ADVISOR.email, advisorPassword), "created");
+    assert.equal(await provision(target, FOUNDER.email, founderPassword), "created");
+    assert.equal(await provision(target, ADMIN.email, adminPassword), "created");
+
+    stage = "next_dev";
+    await populateIsolatedApp(appDirectory);
+    const nextPort = await reserveLoopbackPort();
+    devServer = startNextDev(appDirectory, nextPort, target.connectionString);
+    const listenUrl = `http://127.0.0.1:${nextPort}`;
+    await waitForNextDev(listenUrl, devServer);
+
+    stage = "canonical_origin_discovery";
+    const canonicalBaseUrl = await discoverCanonicalBaseUrl(listenUrl, nextPort, canonicalOriginEvidence);
+
+    stage = "chrome_launch";
+    context = await chromium.launchPersistentContext(profileDirectory, {
+      executablePath: CHROME,
+      headless: true,
+      viewport: { width: 1440, height: 900 },
+      locale: "zh-HK",
+      args: ["--disable-background-networking", "--no-first-run", "--no-default-browser-check"],
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    page.setDefaultTimeout(15_000);
+    const consoleMessages: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (message) => consoleMessages.push(`${message.type()}:${message.text()}`));
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    stage = "advisor_login_server_render";
+    await loginAndWaitForWorkspace(
+      page,
+      canonicalBaseUrl,
+      ADVISOR.email,
+      advisorPassword,
+      (nextStage) => { stage = nextStage; },
+    );
+
+    stage = "crm01_student_create";
+    await page.goto(`${canonicalBaseUrl}/students/new`);
+    await page.getByRole("button", { name: "建立學生", exact: true }).waitFor({ state: "visible" });
+    const token = randomBytes(5).toString("hex");
+    const studentName = `CRM02 Browser Student ${token}`;
+    const primaryGuardianName = `CRM02 Primary Guardian ${token}`;
+    const primaryGuardianEmail = `crm02-primary-${token}@example.invalid`;
+    await fillValidDraft(page, {
+      studentName,
+      guardianName: primaryGuardianName,
+      guardianEmail: primaryGuardianEmail,
+    });
+    await Promise.all([
+      page.waitForURL(/\/students\/[0-9a-f-]{36}$/i),
+      page.getByRole("button", { name: "建立學生", exact: true }).click(),
+    ]);
+    const detailUrl = page.url();
+    const studentId = new URL(detailUrl).pathname.split("/").at(-1) ?? "";
+    assert.match(studentId, /^[0-9a-f-]{36}$/i);
+    evidence.student_created = true;
+
+    stage = "advisor_detail_entry";
+    const currentResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v1/students/${studentId}/guardians`);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const currentResponse = await currentResponsePromise;
+    evidence.current_get_status = currentResponse.status();
+    assert.equal(evidence.current_get_status, 200);
+    const initialCurrent = readCurrentRelationshipResponse(await currentResponse.json(), studentId);
+    const initialPrimary = initialCurrent.relationships.find(({ is_primary_contact }) => is_primary_contact);
+    assert.ok(initialPrimary);
+    assert.equal(initialPrimary.relationship_type, "father");
+    await page.getByRole("heading", { name: studentName, exact: true }).waitFor({ state: "visible" });
+    const detailRelationshipsSection = page.locator('section[aria-labelledby="student-guardian-heading"]');
+    const detailPrimaryCard = relationshipArticle(page, detailRelationshipsSection, primaryGuardianName);
+    await detailPrimaryCard.waitFor({ state: "visible" });
+    evidence.current_primary_visible =
+      await detailPrimaryCard.count() === 1 &&
+      await detailPrimaryCard.getByText("主要聯絡人", { exact: true }).count() === 1;
+    assert.equal(evidence.current_primary_visible, true);
+    assert.equal(await page.getByText(primaryGuardianEmail, { exact: true }).count(), 0);
+    const manageLink = page.getByRole("link", { name: "管理監護人關係", exact: true });
+    await manageLink.waitFor({ state: "visible" });
+    evidence.advisor_management_entry_visible = await manageLink.count() === 1;
+    assert.equal(evidence.advisor_management_entry_visible, true);
+
+    stage = "desktop_viewport";
+    await assertViewport(page, "crm02-advisor-detail-desktop");
+
+    stage = "management_navigation";
+    await Promise.all([
+      page.waitForURL((url) => url.pathname === `/students/${studentId}/guardians`),
+      manageLink.click(),
+    ]);
+    const managementUrl = page.url();
+    await page.getByRole("heading", { name: "監護人關係管理", exact: true, level: 2 }).waitFor({ state: "visible" });
+    const currentRelationshipsSection = page.locator('section[aria-labelledby="current-relationships-heading"]');
+    const attachSection = page.locator('section[aria-labelledby="attach-guardian-heading"]');
+    const handoffSection = page.locator('section[aria-labelledby="handoff-primary-heading"]');
+    const managementPrimaryCard = relationshipArticle(page, currentRelationshipsSection, primaryGuardianName);
+    await managementPrimaryCard.waitFor({ state: "visible" });
+
+    stage = "current_relationship_read";
+    assert.equal(await managementPrimaryCard.count(), 1);
+    assert.equal(await managementPrimaryCard.getByText("主要聯絡人", { exact: true }).count(), 1);
+
+    stage = "search_validation";
+    let validationPosts = 0;
+    const searchPath = `/api/v1/students/${studentId}/guardians/search`;
+    const searchValidationObserver = async (route: Route) => {
+      if (route.request().method() === "POST" && new URL(route.request().url()).pathname === searchPath) {
+        validationPosts += 1;
+      }
+      await route.continue();
+    };
+    await page.route("**/api/v1/students/*/guardians/search", searchValidationObserver);
+    await attachSection.getByLabel("姓名或聯絡線索", { exact: true }).fill("x");
+    await attachSection.getByRole("button", { name: "搜尋", exact: true }).click();
+    await attachSection.getByRole("alert").getByText("請輸入 2 至 100 個字元後再搜尋。", { exact: true })
+      .waitFor({ state: "visible" });
+    evidence.validation_posts_zero = validationPosts === 0;
+    assert.equal(evidence.validation_posts_zero, true);
+    await page.unroute("**/api/v1/students/*/guardians/search", searchValidationObserver);
+
+    stage = "guardian_search";
+    await attachSection.getByLabel("姓名或聯絡線索", { exact: true }).fill(SHARED_GUARDIAN.guardianName);
+    const searchResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === searchPath);
+    await attachSection.getByRole("button", { name: "搜尋", exact: true }).click();
+    const searchResponse = await searchResponsePromise;
+    evidence.search_status = searchResponse.status();
+    assert.equal(evidence.search_status, 200);
+    const candidates = readGuardianSearchResponse(await searchResponse.json());
+    const sharedCandidate = candidates.find(({ display_name }) => display_name === SHARED_GUARDIAN.guardianName);
+    assert.ok(sharedCandidate);
+    assert.equal(sharedCandidate.email_hint?.includes("*") ?? false, true);
+    assert.equal(JSON.stringify(candidates).includes(SHARED_GUARDIAN.guardianEmail ?? ""), false);
+    const sharedCandidateLabel = attachSection.locator("label").filter({
+      has: page.getByText(SHARED_GUARDIAN.guardianName, { exact: true }),
+    });
+    await sharedCandidateLabel.waitFor({ state: "visible" });
+    assert.equal(await page.getByText(SHARED_GUARDIAN.guardianEmail ?? "", { exact: true }).count(), 0);
+    evidence.masked_candidate_visible = true;
+
+    stage = "explicit_candidate_selection";
+    const candidateRadio = sharedCandidateLabel.getByRole("radio");
+    assert.equal(await candidateRadio.count(), 1);
+    assert.equal(await candidateRadio.isChecked(), false);
+    await candidateRadio.focus();
+    await page.keyboard.press("Space");
+    evidence.candidate_explicitly_selected = await candidateRadio.isChecked();
+    assert.equal(evidence.candidate_explicitly_selected, true);
+    await attachSection.getByRole("combobox", { name: "與學生關係", exact: true }).selectOption("mother");
+    assert.equal(await attachSection.getByRole("checkbox", { name: "法定監護人", exact: true }).isChecked(), true);
+    for (const label of ["緊急聯絡人", "帳務聯絡人", "接收通知"] as const) {
+      assert.equal(await attachSection.getByRole("checkbox", { name: label, exact: true }).isChecked(), false);
+    }
+
+    stage = "idempotency_and_double_submit";
+    const attachPath = `/api/v1/students/${studentId}/guardians`;
+    const observedKeys: string[] = [];
+    const attachRetryInterceptor = async (route: Route) => {
+      const request = route.request();
+      if (request.method() === "POST" && new URL(request.url()).pathname === attachPath) {
+        observedKeys.push(request.headers()["idempotency-key"] ?? "");
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    };
+    await page.route("**/api/v1/students/*/guardians", attachRetryInterceptor);
+    const attachButton = attachSection.getByRole("button", { name: "確認關聯為次要監護人", exact: true });
+    await attachButton.evaluate((element) => {
+      const button = element as HTMLButtonElement;
+      button.click();
+      button.click();
+    });
+    await waitUntil(() => observedKeys.length === 1);
+    await attachSection.getByRole("alert")
+      .filter({ hasText: "關聯結果暫時無法確認，請稍後重試；重試不會重複建立關係。" })
+      .waitFor({ state: "visible" });
+    evidence.double_submit_single_request = observedKeys.length === 1;
+    await attachButton.click();
+    await waitUntil(() => observedKeys.length === 2);
+    await attachSection.getByRole("alert")
+      .filter({ hasText: "關聯結果暫時無法確認，請稍後重試；重試不會重複建立關係。" })
+      .waitFor({ state: "visible" });
+    evidence.same_retry_key = observedKeys[0] === observedKeys[1] && observedKeys[0] !== "";
+    await attachSection.getByRole("checkbox", { name: "接收通知", exact: true }).check();
+    await attachButton.click();
+    await waitUntil(() => observedKeys.length === 3);
+    await attachSection.getByRole("alert")
+      .filter({ hasText: "關聯結果暫時無法確認，請稍後重試；重試不會重複建立關係。" })
+      .waitFor({ state: "visible" });
+    evidence.changed_field_rotated_key = observedKeys[2] !== observedKeys[1] && observedKeys[2] !== "";
+    assert.equal(evidence.double_submit_single_request, true);
+    assert.equal(evidence.same_retry_key, true);
+    assert.equal(evidence.changed_field_rotated_key, true);
+    await page.unroute("**/api/v1/students/*/guardians", attachRetryInterceptor);
+    observedKeys.fill("[redacted]");
+
+    stage = "attach_command";
+    const attachResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === attachPath);
+    const attachRefreshPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === attachPath);
+    await attachButton.click();
+    const attachResponse = await attachResponsePromise;
+    evidence.attach_status = attachResponse.status();
+    assert.equal(evidence.attach_status, 201);
+    const attachedRelationship = readGuardianCommandResponse(await attachResponse.json());
+    assert.equal(attachedRelationship.guardian_id, sharedCandidate.id);
+
+    stage = "attach_authority_refresh";
+    const attachRefresh = await attachRefreshPromise;
+    evidence.attach_refresh_status = attachRefresh.status();
+    assert.equal(evidence.attach_refresh_status, 200);
+
+    stage = "attach_feedback";
+    await attachSection.getByRole("status")
+      .getByText("已關聯次要監護人，列表已重新載入。", { exact: true })
+      .waitFor({ state: "visible" });
+    evidence.attach_success_visible = true;
+    const attachedCard = relationshipArticle(page, currentRelationshipsSection, SHARED_GUARDIAN.guardianName);
+    await attachedCard.waitFor({ state: "visible" });
+    assert.equal(await attachedCard.getByText("次要聯絡人", { exact: true }).count(), 1);
+
+    stage = "attach_persistence";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const persistedAttachedCard = relationshipArticle(page, currentRelationshipsSection, SHARED_GUARDIAN.guardianName);
+    await persistedAttachedCard.waitFor({ state: "visible" });
+    evidence.attach_refresh_persisted =
+      await persistedAttachedCard.count() === 1 &&
+      await persistedAttachedCard.getByText("次要聯絡人", { exact: true }).count() === 1;
+    assert.equal(evidence.attach_refresh_persisted, true);
+
+    stage = "desktop_viewport";
+    await assertViewport(page, "crm02-management-desktop");
+
+    stage = "mobile_viewport";
+    await withViewport(page, { width: 390, height: 844 }, () => assertViewport(page, "crm02-management-mobile"));
+    evidence.mobile_viewport_passed = true;
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    stage = "stale_concurrency_setup";
+    const currentBeforeStale = await readCurrentViaBrowser(page, studentId);
+    const primaryBeforeStale = currentBeforeStale.relationships.find(({ is_primary_contact }) => is_primary_contact);
+    assert.ok(primaryBeforeStale);
+    const concurrentHandoff = await performBrowserMutation(page, {
+      path: `/api/v1/students/${studentId}/guardians/primary-handoffs`,
+      idempotencyKey: `crm02-concurrent-${randomBytes(8).toString("hex")}`,
+      body: {
+        successor_guardian_id: sharedCandidate.id,
+        expected_primary_record_version: primaryBeforeStale.record_version,
+      },
+    });
+    assert.equal(concurrentHandoff.status, 200);
+
+    stage = "stale_handoff";
+    await handoffSection.getByRole("combobox", { name: "新的主要聯絡人", exact: true }).selectOption({ label: SHARED_GUARDIAN.guardianName });
+    await handoffSection.getByRole("checkbox", { name: "我已核對交接對象，並確認保留既有歷史與所有監護人資料。", exact: true }).check();
+    const staleResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === `/api/v1/students/${studentId}/guardians/primary-handoffs`);
+    await handoffSection.getByRole("button", { name: "確認交接主要聯絡人", exact: true }).click();
+    const staleResponse = await staleResponsePromise;
+    evidence.stale_status = staleResponse.status();
+    const staleCode = readSafeErrorCode(await staleResponse.json());
+    evidence.stale_code = staleCode === "STALE_VERSION" ? "STALE_VERSION" : "OTHER";
+    assert.equal(evidence.stale_status, 409);
+    assert.equal(evidence.stale_code, "STALE_VERSION");
+
+    stage = "stale_recovery";
+    await handoffSection.getByRole("alert")
+      .filter({ hasText: "主要聯絡人資料已更新，請依最新列表重新選擇。" })
+      .waitFor({ state: "visible" });
+    const recoveredPrimaryCard = relationshipArticle(page, currentRelationshipsSection, SHARED_GUARDIAN.guardianName);
+    await recoveredPrimaryCard.waitFor({ state: "visible" });
+    evidence.stale_recovered =
+      await recoveredPrimaryCard.count() === 1 &&
+      await recoveredPrimaryCard.getByText("主要聯絡人", { exact: true }).count() === 1;
+    assert.equal(evidence.stale_recovered, true);
+
+    stage = "reattach_previous_primary";
+    const previousPrimaryCandidate = await searchAndSelectGuardian(page, primaryGuardianName);
+    assert.equal(previousPrimaryCandidate.email_hint?.includes("*") ?? false, true);
+    assert.equal(JSON.stringify(previousPrimaryCandidate).includes(primaryGuardianEmail), false);
+    const reattachResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === attachPath);
+    await attachSection.getByRole("button", { name: "確認關聯為次要監護人", exact: true }).click();
+    assert.equal((await reattachResponsePromise).status(), 201);
+    const reattachedPreviousPrimaryCard = relationshipArticle(page, currentRelationshipsSection, primaryGuardianName);
+    await reattachedPreviousPrimaryCard.waitFor({ state: "visible" });
+    assert.equal(await reattachedPreviousPrimaryCard.getByText("次要聯絡人", { exact: true }).count(), 1);
+
+    stage = "primary_handoff";
+    await handoffSection.getByRole("combobox", { name: "新的主要聯絡人", exact: true }).selectOption({ label: primaryGuardianName });
+    await handoffSection.getByRole("checkbox", { name: "我已核對交接對象，並確認保留既有歷史與所有監護人資料。", exact: true }).check();
+    const handoffResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === `/api/v1/students/${studentId}/guardians/primary-handoffs`);
+    await handoffSection.getByRole("button", { name: "確認交接主要聯絡人", exact: true }).click();
+    const handoffResponse = await handoffResponsePromise;
+    evidence.handoff_status = handoffResponse.status();
+    assert.equal(evidence.handoff_status, 200);
+    await handoffSection.getByRole("status")
+      .getByText("主要聯絡人已完成交接，列表已重新載入。", { exact: true })
+      .waitFor({ state: "visible" });
+    const newPrimaryCard = relationshipArticle(page, currentRelationshipsSection, primaryGuardianName);
+    await newPrimaryCard.waitFor({ state: "visible" });
+    evidence.new_primary_visible =
+      await newPrimaryCard.count() === 1 &&
+      await newPrimaryCard.getByText("主要聯絡人", { exact: true }).count() === 1;
+    assert.equal(evidence.new_primary_visible, true);
+
+    stage = "closed_history_aggregate";
+    evidence.closed_history_minimum_met = await countClosedRelationships(target, studentId) >= 4;
+    assert.equal(evidence.closed_history_minimum_met, true);
+
+    stage = "advisor_relogin_persistence";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADVISOR.email, advisorPassword);
+    await page.goto(managementUrl);
+    const reloginCurrentSection = page.locator('section[aria-labelledby="current-relationships-heading"]');
+    const reloginPrimaryCard = relationshipArticle(page, reloginCurrentSection, primaryGuardianName);
+    await reloginPrimaryCard.waitFor({ state: "visible" });
+    evidence.attach_relogin_persisted =
+      await reloginPrimaryCard.count() === 1 &&
+      await reloginPrimaryCard.getByText("主要聯絡人", { exact: true }).count() === 1;
+    assert.equal(evidence.attach_relogin_persisted, true);
+
+    stage = "desktop_viewport";
+    await assertViewport(page, "crm02-final-desktop");
+    evidence.desktop_viewport_passed = true;
+
+    stage = "founder_read_only";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, FOUNDER.email, founderPassword);
+    const founderResult = await verifyGuardianReadOnlyRole(page, {
+      detailUrl,
+      managementUrl,
+      primaryGuardianName,
+      studentId,
+      candidateId: sharedCandidate.id,
+    });
+    evidence.founder_current_readable = founderResult.current_readable;
+    evidence.founder_controls_hidden = founderResult.controls_hidden;
+    assert.equal(evidence.founder_current_readable, true);
+    assert.equal(evidence.founder_controls_hidden, true);
+
+    stage = "founder_direct_forbidden";
+    evidence.founder_direct_forbidden = founderResult.direct_forbidden;
+    assert.equal(evidence.founder_direct_forbidden, true);
+
+    stage = "admin_read_only";
+    await logout(page);
+    await loginAndWaitForWorkspace(page, canonicalBaseUrl, ADMIN.email, adminPassword);
+    const adminResult = await verifyGuardianReadOnlyRole(page, {
+      detailUrl,
+      managementUrl,
+      primaryGuardianName,
+      studentId,
+      candidateId: sharedCandidate.id,
+    });
+    evidence.admin_current_readable = adminResult.current_readable;
+    evidence.admin_controls_hidden = adminResult.controls_hidden;
+    assert.equal(evidence.admin_current_readable, true);
+    assert.equal(evidence.admin_controls_hidden, true);
+
+    stage = "admin_direct_forbidden";
+    evidence.admin_direct_forbidden = adminResult.direct_forbidden;
+    assert.equal(evidence.admin_direct_forbidden, true);
+
+    stage = "browser_log_safety";
+    const sensitiveMarkers = [
+      applicationPassword,
+      advisorPassword,
+      founderPassword,
+      adminPassword,
+      ADVISOR.email,
+      FOUNDER.email,
+      ADMIN.email,
+      studentName,
+      primaryGuardianName,
+      primaryGuardianEmail,
+      SHARED_GUARDIAN.guardianName,
+      SHARED_GUARDIAN.guardianEmail ?? "",
+      target.connectionString,
+    ].filter(Boolean);
+    const fixedSensitiveMarkers = ["postgresql://", "database_url", "tx_session=", "set-cookie"];
+    const browserLogs = [...consoleMessages, ...pageErrors];
+    evidence.sensitive_log_matches = browserLogs.filter((entry) => {
+      const normalized = entry.toLowerCase();
+      return sensitiveMarkers.some((marker) => entry.includes(marker)) ||
+        fixedSensitiveMarkers.some((marker) => normalized.includes(marker));
+    }).length;
+    evidence.page_errors = pageErrors.length;
+    assert.equal(evidence.sensitive_log_matches, 0);
+    assert.equal(evidence.page_errors, 0);
+
+    stage = "complete";
+  } catch {
+    failureStage = stage;
+  } finally {
+    stage = "cleanup";
+    cleanupEvidence.context_closed = await closeBrowser(context);
+    cleanupEvidence.dev_stopped = await stopNextDev(devServer);
+    cleanupEvidence.app_directory_removed = await removeDirectory(appDirectory);
+    cleanupEvidence.profile_removed = await removeDirectory(profileDirectory);
+    cleanupEvidence.container_removed = containerStarted
+      ? await removeDockerResource(["rm", "--force", containerName])
+      : true;
+    cleanupEvidence.volume_removed = secretVolumeCreated
+      ? await removeDockerResource(["volume", "rm", "--force", secretVolumeName])
+      : true;
+  }
+
+  if (!Object.values(cleanupEvidence).every(Boolean)) failureStage = "cleanup";
+  if (failureStage) {
+    throw new SafeCrm02BrowserGateFailure({
+      stage: CRM02_BROWSER_STAGES.includes(failureStage) ? failureStage : "runtime_preflight",
+      evidence: Object.freeze({ ...evidence }),
+      cleanup: Object.freeze({ ...cleanupEvidence }),
+    });
+  }
+  process.stdout.write(`${JSON.stringify(Object.freeze({
+    status: "pass",
+    stage: "complete",
+    runtime: Object.freeze({
+      postgres_major: 17,
+      baseline_generated_files: baselineGeneratedFiles,
+      seed: "release1_synthetic",
+      browser_driver: "playwright-core-1.55.0",
+      browser_binary: "system_chrome",
+    }),
+    evidence: Object.freeze({ ...evidence }),
+    cleanup: Object.freeze({ ...cleanupEvidence }),
+  }))}\n`);
+});
+
+interface BrowserCurrentRelationship {
+  readonly guardian_id: string;
+  readonly relationship_type: "father" | "mother" | "other_guardian";
+  readonly is_primary_contact: boolean;
+  readonly record_version: number;
+}
+
+interface BrowserGuardianCandidate {
+  readonly id: string;
+  readonly display_name: string;
+  readonly email_hint: string | null;
+  readonly phone_hint: string | null;
+}
+
+function readCurrentRelationshipResponse(
+  value: unknown,
+  expectedStudentId: string,
+): Readonly<{ relationships: readonly BrowserCurrentRelationship[] }> {
+  const root = requiredBrowserRecord(value);
+  const data = requiredBrowserRecord(root.data);
+  const student = requiredBrowserRecord(data.student);
+  assert.equal(student.id, expectedStudentId);
+  assert.ok(Array.isArray(data.relationships));
+  const relationships = data.relationships.map((item) => {
+    const relationship = requiredBrowserRecord(item);
+    const guardian = requiredBrowserRecord(relationship.guardian);
+    assert.equal(typeof guardian.id, "string");
+    assert.ok(["father", "mother", "other_guardian"].includes(String(relationship.relationship_type)));
+    assert.equal(typeof relationship.is_primary_contact, "boolean");
+    assert.equal(Number.isSafeInteger(relationship.record_version), true);
+    return Object.freeze({
+      guardian_id: String(guardian.id),
+      relationship_type: relationship.relationship_type as BrowserCurrentRelationship["relationship_type"],
+      is_primary_contact: relationship.is_primary_contact as boolean,
+      record_version: relationship.record_version as number,
+    });
+  });
+  return Object.freeze({ relationships: Object.freeze(relationships) });
+}
+
+function readGuardianSearchResponse(value: unknown): readonly BrowserGuardianCandidate[] {
+  const root = requiredBrowserRecord(value);
+  assert.ok(Array.isArray(root.data));
+  assert.equal(root.data.length <= 20, true);
+  return Object.freeze(root.data.map((item) => {
+    const candidate = requiredBrowserRecord(item);
+    assert.equal(typeof candidate.id, "string");
+    assert.equal(typeof candidate.display_name, "string");
+    assert.equal(candidate.email_hint === null || typeof candidate.email_hint === "string", true);
+    assert.equal(candidate.phone_hint === null || typeof candidate.phone_hint === "string", true);
+    return Object.freeze({
+      id: String(candidate.id),
+      display_name: String(candidate.display_name),
+      email_hint: candidate.email_hint as string | null,
+      phone_hint: candidate.phone_hint as string | null,
+    });
+  }));
+}
+
+function readGuardianCommandResponse(value: unknown): Readonly<{ guardian_id: string }> {
+  const root = requiredBrowserRecord(value);
+  const data = requiredBrowserRecord(root.data);
+  const relationship = requiredBrowserRecord(data.relationship);
+  assert.equal(typeof relationship.guardian_id, "string");
+  return Object.freeze({ guardian_id: String(relationship.guardian_id) });
+}
+
+function readSafeErrorCode(value: unknown): string | null {
+  const root = requiredBrowserRecord(value);
+  if (root.error === null || typeof root.error !== "object" || Array.isArray(root.error)) return null;
+  const code = (root.error as Readonly<Record<string, unknown>>).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/.test(code) ? code : null;
+}
+
+function requiredBrowserRecord(value: unknown): Readonly<Record<string, unknown>> {
+  assert.equal(typeof value, "object");
+  assert.notEqual(value, null);
+  assert.equal(Array.isArray(value), false);
+  return value as Readonly<Record<string, unknown>>;
+}
+
+async function readCurrentViaBrowser(
+  page: Page,
+  studentId: string,
+): Promise<Readonly<{ relationships: readonly BrowserCurrentRelationship[] }>> {
+  const result = await page.evaluate(async (path) => {
+    const response = await fetch(path, { credentials: "same-origin" });
+    return { status: response.status, body: await response.json() as unknown };
+  }, `/api/v1/students/${studentId}/guardians`);
+  assert.equal(result.status, 200);
+  return readCurrentRelationshipResponse(result.body, studentId);
+}
+
+async function performBrowserMutation(page: Page, input: {
+  readonly path: string;
+  readonly idempotencyKey: string;
+  readonly body: Readonly<Record<string, string | number | boolean>>;
+}): Promise<Readonly<{ status: number; code: string | null }>> {
+  return page.evaluate(async ({ path, idempotencyKey, body }) => {
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
+      body: JSON.stringify(body),
+    });
+    let code: string | null = null;
+    try {
+      const payload = await response.json() as { readonly error?: { readonly code?: unknown } };
+      code = typeof payload.error?.code === "string" ? payload.error.code : null;
+    } catch {}
+    return { status: response.status, code };
+  }, input);
+}
+
+async function searchAndSelectGuardian(
+  page: Page,
+  displayName: string,
+): Promise<BrowserGuardianCandidate> {
+  const attachSection = page.locator('section[aria-labelledby="attach-guardian-heading"]');
+  await attachSection.getByLabel("姓名或聯絡線索", { exact: true }).fill(displayName);
+  const responsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname.endsWith("/guardians/search"));
+  await attachSection.getByRole("button", { name: "搜尋", exact: true }).click();
+  const response = await responsePromise;
+  assert.equal(response.status(), 200);
+  const candidates = readGuardianSearchResponse(await response.json());
+  const candidate = candidates.find(({ display_name }) => display_name === displayName);
+  assert.ok(candidate);
+  const label = attachSection.locator("label").filter({
+    has: page.getByText(displayName, { exact: true }),
+  });
+  const radio = label.getByRole("radio");
+  assert.equal(await radio.count(), 1);
+  await radio.focus();
+  await page.keyboard.press("Space");
+  assert.equal(await radio.isChecked(), true);
+  return candidate;
+}
+
+function relationshipArticle(page: Page, section: Locator, displayName: string): Locator {
+  return section.locator("article").filter({
+    has: page.getByText(displayName, { exact: true }),
+  });
+}
+
+async function countClosedRelationships(
+  target: OneRoleBaselineTarget,
+  studentId: string,
+): Promise<number> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [ADVISOR.userId]);
+    const result = await client.query<{ readonly count: number }>(
+      `SELECT count(*)::int AS count
+         FROM crm_student_guardian_relationships
+        WHERE student_id = $1 AND ends_at IS NOT NULL`,
+      [studentId],
+    );
+    return result.rows[0]?.count ?? 0;
+  } finally {
+    await client.query("ROLLBACK").catch(() => {});
+    await client.end().catch(() => {});
+  }
+}
+
+async function verifyGuardianReadOnlyRole(page: Page, input: {
+  readonly detailUrl: string;
+  readonly managementUrl: string;
+  readonly primaryGuardianName: string;
+  readonly studentId: string;
+  readonly candidateId: string;
+}): Promise<Readonly<{
+  current_readable: boolean;
+  controls_hidden: boolean;
+  direct_forbidden: boolean;
+}>> {
+  await page.goto(input.detailUrl, { waitUntil: "domcontentloaded" });
+  const detailRelationshipsSection = page.locator('section[aria-labelledby="student-guardian-heading"]');
+  const detailPrimaryCard = relationshipArticle(page, detailRelationshipsSection, input.primaryGuardianName);
+  await detailPrimaryCard.waitFor({ state: "visible" });
+  assert.equal(await detailPrimaryCard.getByText("主要聯絡人", { exact: true }).count(), 1);
+  const detailEntryHidden = await page.getByRole("link", {
+    name: "管理監護人關係",
+    exact: true,
+  }).count() === 0;
+
+  await page.goto(input.managementUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "監護人關係管理", exact: true, level: 2 })
+    .waitFor({ state: "visible" });
+  const currentRelationshipsSection = page.locator('section[aria-labelledby="current-relationships-heading"]');
+  const managementPrimaryCard = relationshipArticle(page, currentRelationshipsSection, input.primaryGuardianName);
+  await managementPrimaryCard.waitFor({ state: "visible" });
+  assert.equal(await managementPrimaryCard.getByText("主要聯絡人", { exact: true }).count(), 1);
+  const attachSection = page.locator('section[aria-labelledby="attach-guardian-heading"]');
+  const handoffSection = page.locator('section[aria-labelledby="handoff-primary-heading"]');
+  const readOnlyText = "目前為只讀模式。管理入口的隱藏只改善使用體驗，每次操作仍由服務端獨立驗證權限。";
+  const attachReadOnlyNotice = attachSection.getByText(readOnlyText, { exact: true });
+  const handoffReadOnlyNotice = handoffSection.getByText(readOnlyText, { exact: true });
+  await attachReadOnlyNotice.waitFor({ state: "visible" });
+  await handoffReadOnlyNotice.waitFor({ state: "visible" });
+  const controlsHidden = detailEntryHidden &&
+    await attachReadOnlyNotice.count() === 1 &&
+    await handoffReadOnlyNotice.count() === 1 &&
+    await attachSection.getByLabel("姓名或聯絡線索", { exact: true }).count() === 0 &&
+    await handoffSection.getByRole("combobox", { name: "新的主要聯絡人", exact: true }).count() === 0 &&
+    await attachSection.getByRole("button", { name: "確認關聯為次要監護人", exact: true }).count() === 0;
+
+  const direct = await page.evaluate(async ({ studentId, candidateId, query }) => {
+    const commands = [
+      { path: `/api/v1/students/${studentId}/guardians/search`, body: { query }, key: null },
+      {
+        path: `/api/v1/students/${studentId}/guardians`,
+        body: {
+          guardian_id: candidateId,
+          relationship_type: "mother",
+          is_legal_guardian: true,
+          is_emergency_contact: false,
+          is_billing_contact: false,
+          notification_consent: false,
+        },
+        key: "crm02-read-only-attach",
+      },
+      {
+        path: `/api/v1/students/${studentId}/guardians/primary-handoffs`,
+        body: { successor_guardian_id: candidateId, expected_primary_record_version: 1 },
+        key: "crm02-read-only-handoff",
+      },
+    ];
+    return Promise.all(commands.map(async (command) => {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (command.key) headers["idempotency-key"] = command.key;
+      const response = await fetch(command.path, {
+        method: "POST",
+        credentials: "same-origin",
+        headers,
+        body: JSON.stringify(command.body),
+      });
+      let code: "FORBIDDEN" | "OTHER" | null = null;
+      let echoed = false;
+      try {
+        const payload = await response.json() as { readonly error?: { readonly code?: unknown } };
+        code = payload.error?.code === "FORBIDDEN"
+          ? "FORBIDDEN"
+          : typeof payload.error?.code === "string" ? "OTHER" : null;
+        echoed = JSON.stringify(payload).includes(query);
+      } catch {}
+      return { status: response.status, code, echoed };
+    }));
+  }, {
+    studentId: input.studentId,
+    candidateId: input.candidateId,
+    query: input.primaryGuardianName,
+  });
+  return Object.freeze({
+    current_readable: true,
+    controls_hidden: controlsHidden,
+    direct_forbidden: direct.every(({ status, code, echoed }) =>
+      status === 403 && code === "FORBIDDEN" && !echoed),
+  });
+}
+
 async function loginAdvisor(input: {
   readonly page: Page;
   readonly context: BrowserContext;
@@ -1245,6 +2166,50 @@ function urlsShareOrigin(left: string, right: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function loginAndWaitForWorkspace(
+  page: Page,
+  baseUrl: string,
+  email: string,
+  password: string,
+  setStage?: (stage: Extract<Crm02BrowserStage,
+    "advisor_login_server_render" | "advisor_login_browser_render" | "advisor_login_session">) => void,
+): Promise<void> {
+  setStage?.("advisor_login_server_render");
+  const serverResponse = await fetch(`${baseUrl}/login`);
+  assert.equal(serverResponse.status, 200);
+  assert.equal(
+    serverResponse.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase(),
+    "text/html",
+  );
+  await serverResponse.text();
+
+  setStage?.("advisor_login_browser_render");
+  await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" });
+  const emailInput = page.getByLabel("測試帳號電郵", { exact: true });
+  const passwordInput = page.getByLabel("密碼", { exact: true });
+  const submitButton = page.getByRole("button", { name: "登入測試工作台", exact: true });
+  await Promise.all([
+    emailInput.waitFor({ state: "visible" }),
+    passwordInput.waitFor({ state: "visible" }),
+    submitButton.waitFor({ state: "visible" }),
+  ]);
+  await emailInput.fill(email);
+  await passwordInput.fill(password);
+  setStage?.("advisor_login_session");
+  const loginResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/v1/auth/login");
+  const authResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname === "/api/v1/auth/me");
+  await submitButton.click();
+  assert.equal((await loginResponsePromise).status(), 303);
+  await page.waitForURL("**/today");
+  assert.equal((await authResponsePromise).status(), 200);
+  await page.getByRole("heading", { name: "今日工作", exact: true, level: 2 })
+    .waitFor({ state: "visible" });
 }
 
 async function loginWithoutEvidence(

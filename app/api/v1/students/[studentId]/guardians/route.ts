@@ -1,113 +1,51 @@
-import { cookies } from "next/headers";
-
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import { getGuardianRelationshipRuntime } from "@/modules/crm/server";
-import { getIdentityRuntime } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
-import { mapGuardianRelationshipError } from "./handler";
+import { requireIdentityActor } from "@/modules/identity/web";
+import {
+  createRequestContext,
+  errorResponse,
+  handleApiRequest,
+  successResponse,
+} from "@/modules/shared/public";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
+import {
+  mapGuardianRelationshipError,
+  parseAttachCommand,
+  toCurrentRelationshipsData,
+  toRelationshipData,
+} from "./handler.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
+export async function GET(
   request: Request,
   context: RouteContext<"/api/v1/students/[studentId]/guardians">,
 ): Promise<Response> {
   return handleApiRequest(request, async () => {
-    const { studentId } = await context.params;
-    const command = await parseAttachCommand(request, studentId);
-    const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-    if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-
     try {
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: false,
-      });
-      const relationship = await getGuardianRelationshipRuntime().service.attachGuardian({ actor, command });
-      return toApiRelationship(relationship);
+      const { studentId } = await context.params;
+      const actor = await requireIdentityActor();
+      return toCurrentRelationshipsData(
+        await getGuardianRelationshipRuntime().service.listCurrent(actor, studentId),
+      );
     } catch (error) {
       throw mapGuardianRelationshipError(error);
     }
   });
 }
 
-async function parseAttachCommand(request: Request, studentId: string) {
-  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-  if (!UUID.test(studentId) || !idempotencyKey) throw createApiError("INVALID_REQUEST");
-
-  let body: unknown;
+export async function POST(
+  request: Request,
+  context: RouteContext<"/api/v1/students/[studentId]/guardians">,
+): Promise<Response> {
+  const requestContext = createRequestContext(request);
   try {
-    body = await request.json();
-  } catch {
-    throw createApiError("INVALID_REQUEST");
+    const { studentId } = await context.params;
+    const command = await parseAttachCommand(request, studentId, requestContext.requestId);
+    const actor = await requireIdentityActor();
+    const relationship = await getGuardianRelationshipRuntime().service.attachGuardian({ actor, command });
+    return successResponse(requestContext, { relationship: toRelationshipData(relationship) }, 201);
+  } catch (error) {
+    return errorResponse(requestContext, mapGuardianRelationshipError(error));
   }
-  if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
-  const guardianId = body.guardian_id;
-  const relationshipType = body.relationship_type;
-  const flags = [
-    body.is_legal_guardian,
-    body.is_primary_contact,
-    body.is_emergency_contact,
-    body.is_billing_contact,
-    body.notification_consent,
-  ];
-  if (
-    typeof guardianId !== "string" ||
-    !UUID.test(guardianId) ||
-    typeof relationshipType !== "string" ||
-    !SAFE_CODE.test(relationshipType) ||
-    flags.some((flag) => typeof flag !== "boolean")
-  ) {
-    throw createApiError("VALIDATION_FAILED");
-  }
-  return {
-    studentId,
-    guardianId,
-    relationshipType,
-    isLegalGuardian: body.is_legal_guardian as boolean,
-    isPrimaryContact: body.is_primary_contact as boolean,
-    isEmergencyContact: body.is_emergency_contact as boolean,
-    isBillingContact: body.is_billing_contact as boolean,
-    notificationConsent: body.notification_consent as boolean,
-    requestId: request.headers.get("x-request-id")?.trim() || "guardian.relationship.attach",
-    idempotencyKey,
-  };
-}
-
-function toApiRelationship(relationship: {
-  readonly relationshipId: string;
-  readonly studentId: string;
-  readonly guardianId: string;
-  readonly relationshipType: string;
-  readonly isLegalGuardian: boolean;
-  readonly isPrimaryContact: boolean;
-  readonly isEmergencyContact: boolean;
-  readonly isBillingContact: boolean;
-  readonly notificationConsent: boolean;
-  readonly startsAtMs: number;
-  readonly endsAtMs: number | null;
-  readonly recordVersion: number;
-}) {
-  return {
-    relationship_id: relationship.relationshipId,
-    student_id: relationship.studentId,
-    guardian_id: relationship.guardianId,
-    relationship_type: relationship.relationshipType,
-    is_legal_guardian: relationship.isLegalGuardian,
-    is_primary_contact: relationship.isPrimaryContact,
-    is_emergency_contact: relationship.isEmergencyContact,
-    is_billing_contact: relationship.isBillingContact,
-    notification_consent: relationship.notificationConsent,
-    starts_at_ms: relationship.startsAtMs,
-    ends_at_ms: relationship.endsAtMs,
-    record_version: relationship.recordVersion,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
