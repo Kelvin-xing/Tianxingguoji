@@ -14,6 +14,13 @@ import type { PrimaryGuardianRelationshipType } from "../domain/contract.ts";
 
 const ATTACH_OPERATION = "crm.attach_student_guardian";
 const HANDOFF_OPERATION = "crm.handoff_student_primary_guardian";
+const POSTGRES_SEVERITIES = new Set([
+  "ERROR", "FATAL", "PANIC", "WARNING", "NOTICE", "DEBUG", "INFO", "LOG",
+]);
+const CONCURRENCY_POSTGRES_CODES = new Set(["40001", "40P01", "55P03", "57014"]);
+
+type ConcurrencyPostgresCode = "40001" | "40P01" | "55P03" | "57014";
+type PostgresFailureReporter = (evidence: Readonly<{ postgresCode: ConcurrencyPostgresCode }>) => void;
 
 interface RelationshipRow extends Record<string, unknown> {
   relationship_id: string;
@@ -48,9 +55,14 @@ interface ReceiptRow extends Record<string, unknown> {
 
 export class PostgresqlGuardianRelationshipRepository implements GuardianRelationshipRepository {
   private readonly runner: TenantTransactionRunner;
+  private readonly reportPostgresFailure: PostgresFailureReporter;
 
-  constructor(runner: TenantTransactionRunner) {
+  constructor(
+    runner: TenantTransactionRunner,
+    reportPostgresFailure: PostgresFailureReporter = writeSafePostgresFailure,
+  ) {
     this.runner = runner;
+    this.reportPostgresFailure = reportPostgresFailure;
   }
 
   listCurrent(input: Parameters<GuardianRelationshipRepository["listCurrent"]>[0]) {
@@ -227,6 +239,8 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
         return await operation(adaptTransaction(tenantTransaction));
       } catch (cause) {
         if (cause instanceof GuardianRelationshipError) throw cause;
+        const postgresCode = readConcurrencyPostgresCode(cause);
+        if (postgresCode) this.reportPostgresFailure(Object.freeze({ postgresCode }));
         throw mapPostgresError(cause);
       }
     });
@@ -479,6 +493,22 @@ function isPostgresError(cause: unknown, code: string, constraint: string): bool
   return cause instanceof Error &&
     (cause as Error & { readonly code?: unknown }).code === code &&
     (cause as Error & { readonly constraint?: unknown }).constraint === constraint;
+}
+
+function readConcurrencyPostgresCode(cause: unknown): ConcurrencyPostgresCode | null {
+  if (!(cause instanceof Error)) return null;
+  const candidate = cause as Error & { readonly code?: unknown; readonly severity?: unknown };
+  if (typeof candidate.code !== "string" || !CONCURRENCY_POSTGRES_CODES.has(candidate.code) ||
+      typeof candidate.severity !== "string" || !POSTGRES_SEVERITIES.has(candidate.severity)) {
+    return null;
+  }
+  return candidate.code as ConcurrencyPostgresCode;
+}
+
+function writeSafePostgresFailure(evidence: Readonly<{ postgresCode: ConcurrencyPostgresCode }>): void {
+  process.stderr.write(
+    `event=guardian_relationship_postgres_failure postgres_code=${evidence.postgresCode}\n`,
+  );
 }
 
 function error(code: ConstructorParameters<typeof GuardianRelationshipError>[0]) {

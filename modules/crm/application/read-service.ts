@@ -17,6 +17,7 @@ export interface StudentGuardianItem {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
+  readonly recordVersion: number;
   readonly relationshipType: string;
   readonly isLegalGuardian: boolean;
   readonly isPrimaryContact: boolean;
@@ -28,6 +29,7 @@ export interface StudentGuardianItem {
 export interface StudentDetail extends StudentListItem {
   readonly contactEmail: string | null;
   readonly contactPhone: string | null;
+  readonly recordVersion: number;
   readonly guardians: readonly StudentGuardianItem[];
 }
 

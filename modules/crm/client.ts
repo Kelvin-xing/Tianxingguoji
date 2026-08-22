@@ -36,6 +36,7 @@ export interface StudentGuardianItem {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
+  readonly recordVersion: number;
   readonly relationshipType: string;
   readonly isLegalGuardian: boolean;
   readonly isPrimaryContact: boolean;
@@ -47,7 +48,43 @@ export interface StudentGuardianItem {
 export interface StudentDetail extends StudentListItem {
   readonly contactEmail: string | null;
   readonly contactPhone: string | null;
+  readonly recordVersion: number;
   readonly guardians: readonly StudentGuardianItem[];
+}
+
+export interface StudentProfileDraft {
+  readonly display_name: string;
+  readonly date_of_birth: string;
+  readonly contact_email: string;
+  readonly contact_phone: string;
+  readonly expected_record_version: number;
+}
+
+export interface GuardianProfileDraft {
+  readonly display_name: string;
+  readonly email: string;
+  readonly phone: string;
+  readonly expected_record_version: number;
+}
+
+export interface ProfileValidation {
+  readonly displayName?: string;
+  readonly dateOfBirth?: string;
+  readonly email?: string;
+  readonly phone?: string;
+  readonly contact?: string;
+}
+
+export interface UpdatedStudentProfile {
+  readonly id: string;
+  readonly record_version: number;
+  readonly updated_at: string;
+}
+
+export interface UpdatedGuardianProfile {
+  readonly id: string;
+  readonly record_version: number;
+  readonly updated_at: string;
 }
 
 export interface StudentCreateDraft {
@@ -157,6 +194,7 @@ export type StudentRequestFailureKind =
   | "unavailable";
 
 export type GuardianRelationshipFailureKind = StudentRequestFailureKind | "stale";
+export type ProfileMaintenanceFailureKind = StudentRequestFailureKind | "stale";
 
 export function listStudents(signal?: AbortSignal): Promise<readonly StudentListItem[]> {
   return requestApi(
@@ -170,6 +208,48 @@ export async function getStudent(studentId: string, signal?: AbortSignal): Promi
   return await requestApi(
     { path: `/api/v1/students/${studentId}`, signal },
     (value) => decodeStudentDetail(exactRecord(value, ["student"]).student),
+  );
+}
+
+export function updateStudentProfile(
+  studentId: string,
+  draft: StudentProfileDraft,
+  idempotencyKey: string,
+): Promise<UpdatedStudentProfile> {
+  assertUuid(studentId, "studentId");
+  if (Object.keys(validateStudentProfileDraft(draft)).length > 0) {
+    throw new TypeError("Invalid Student profile draft.");
+  }
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/students/${studentId}`,
+      method: "PATCH",
+      headers: { "idempotency-key": idempotencyKey },
+      body: normalizeStudentProfileDraft(draft),
+    },
+    (value) => decodeUpdatedStudentProfile(value, studentId),
+  );
+}
+
+export function updateGuardianProfile(
+  guardianId: string,
+  draft: GuardianProfileDraft,
+  idempotencyKey: string,
+): Promise<UpdatedGuardianProfile> {
+  assertUuid(guardianId, "guardianId");
+  if (Object.keys(validateGuardianProfileDraft(draft)).length > 0) {
+    throw new TypeError("Invalid Guardian profile draft.");
+  }
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/guardians/${guardianId}`,
+      method: "PATCH",
+      headers: { "idempotency-key": idempotencyKey },
+      body: normalizeGuardianProfileDraft(draft),
+    },
+    (value) => decodeUpdatedGuardianProfile(value, guardianId),
   );
 }
 
@@ -295,6 +375,46 @@ export function validateStudentCreateDraft(draft: StudentCreateDraft): StudentCr
   return Object.freeze(errors);
 }
 
+export function validateStudentProfileDraft(draft: StudentProfileDraft): ProfileValidation {
+  const errors: Record<string, string> = {};
+  const displayName = draft.display_name.trim();
+  const email = draft.contact_email.trim();
+  const phone = draft.contact_phone.trim();
+  if (displayName.length < 1 || displayName.length > 512) {
+    errors.displayName = "學生姓名必須為 1 至 512 個字元。";
+  }
+  if (draft.date_of_birth && !isValidDate(draft.date_of_birth)) {
+    errors.dateOfBirth = "請輸入有效的出生日期。";
+  }
+  if (email && (email.length > 320 || !isValidEmail(email))) {
+    errors.email = "請輸入有效的學生 Email。";
+  }
+  if (phone.length > 64) errors.phone = "學生電話不可超過 64 個字元。";
+  if (!Number.isSafeInteger(draft.expected_record_version) || draft.expected_record_version < 1) {
+    throw new TypeError("Invalid Student profile record version.");
+  }
+  return Object.freeze(errors);
+}
+
+export function validateGuardianProfileDraft(draft: GuardianProfileDraft): ProfileValidation {
+  const errors: Record<string, string> = {};
+  const displayName = draft.display_name.trim();
+  const email = draft.email.trim();
+  const phone = draft.phone.trim();
+  if (displayName.length < 1 || displayName.length > 512) {
+    errors.displayName = "監護人姓名必須為 1 至 512 個字元。";
+  }
+  if (email && (email.length > 320 || !isValidEmail(email))) {
+    errors.email = "請輸入有效的監護人 Email。";
+  }
+  if (phone.length > 64) errors.phone = "監護人電話不可超過 64 個字元。";
+  if (!email && !phone) errors.contact = "監護人 Email 和電話至少填寫一項。";
+  if (!Number.isSafeInteger(draft.expected_record_version) || draft.expected_record_version < 1) {
+    throw new TypeError("Invalid Guardian profile record version.");
+  }
+  return Object.freeze(errors);
+}
+
 export function classifyStudentRequestFailure(error: unknown): StudentRequestFailureKind {
   if (!(error instanceof ApiClientError)) return "unavailable";
   if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
@@ -308,6 +428,13 @@ export function classifyStudentRequestFailure(error: unknown): StudentRequestFai
 export function classifyGuardianRelationshipFailure(
   error: unknown,
 ): GuardianRelationshipFailureKind {
+  if (error instanceof ApiClientError && error.code === "STALE_VERSION") return "stale";
+  return classifyStudentRequestFailure(error);
+}
+
+export function classifyProfileMaintenanceFailure(
+  error: unknown,
+): ProfileMaintenanceFailureKind {
   if (error instanceof ApiClientError && error.code === "STALE_VERSION") return "stale";
   return classifyStudentRequestFailure(error);
 }
@@ -336,6 +463,42 @@ export class StudentCreateIdempotencyAttempt {
 
   complete(): void {
     this.key = null;
+  }
+}
+
+/** Owns one key for one profile Save attempt and its uncertain retries. */
+export class ProfileUpdateIdempotencyAttempt {
+  private readonly operation: "student" | "guardian";
+  private readonly createKey: () => string;
+  private key: string | null = null;
+
+  constructor(
+    operation: "student" | "guardian",
+    createKey: () => string = () => `${operation}-profile:${globalThis.crypto.randomUUID()}`,
+  ) {
+    this.operation = operation;
+    this.createKey = createKey;
+  }
+
+  keyForSubmission(): string {
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      assertIdempotencyKey(nextKey);
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  markBusinessFieldChanged(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.key = null;
+  }
+
+  operationName(): "student" | "guardian" {
+    return this.operation;
   }
 }
 
@@ -421,6 +584,27 @@ function normalizeStudentCreateDraft(draft: StudentCreateDraft) {
   } as const;
 }
 
+function normalizeStudentProfileDraft(draft: StudentProfileDraft) {
+  const email = nullable(draft.contact_email);
+  return {
+    display_name: draft.display_name.trim(),
+    date_of_birth: nullable(draft.date_of_birth),
+    contact_email: email?.toLowerCase() ?? null,
+    contact_phone: nullable(draft.contact_phone),
+    expected_record_version: draft.expected_record_version,
+  } as const;
+}
+
+function normalizeGuardianProfileDraft(draft: GuardianProfileDraft) {
+  const email = nullable(draft.email);
+  return {
+    display_name: draft.display_name.trim(),
+    email: email?.toLowerCase() ?? null,
+    phone: nullable(draft.phone),
+    expected_record_version: draft.expected_record_version,
+  } as const;
+}
+
 function decodeStudentListItem(value: unknown): StudentListItem {
   const record = exactRecord(value, [
     "id",
@@ -452,17 +636,21 @@ function decodeStudentDetail(value: unknown): StudentDetail {
     "updatedAt",
     "contactEmail",
     "contactPhone",
+    "recordVersion",
     "guardians",
   ]);
   const base = decodeStudentListItem(Object.fromEntries(
     ["id", "displayName", "dateOfBirth", "status", "primaryGuardianName", "updatedAt"]
       .map((key) => [key, record[key]]),
   ));
+  const guardians = expectArray(record.guardians, decodeGuardian);
+  assertUnique(guardians.map(({ id }) => id), "guardian.id");
   return Object.freeze({
     ...base,
     contactEmail: nullableNonEmptyString(record.contactEmail, "contactEmail"),
     contactPhone: nullableNonEmptyString(record.contactPhone, "contactPhone"),
-    guardians: Object.freeze([...expectArray(record.guardians, decodeGuardian)]),
+    recordVersion: positiveInteger(record.recordVersion, "recordVersion"),
+    guardians: Object.freeze([...guardians]),
   });
 }
 
@@ -472,6 +660,7 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     "displayName",
     "email",
     "phone",
+    "recordVersion",
     "relationshipType",
     "isLegalGuardian",
     "isPrimaryContact",
@@ -484,12 +673,37 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     displayName: nonEmptyString(record.displayName, "guardian.displayName"),
     email: nullableNonEmptyString(record.email, "guardian.email"),
     phone: nullableNonEmptyString(record.phone, "guardian.phone"),
+    recordVersion: positiveInteger(record.recordVersion, "guardian.recordVersion"),
     relationshipType: nonEmptyString(record.relationshipType, "guardian.relationshipType"),
     isLegalGuardian: expectBoolean(record.isLegalGuardian),
     isPrimaryContact: expectBoolean(record.isPrimaryContact),
     isEmergencyContact: expectBoolean(record.isEmergencyContact),
     isBillingContact: expectBoolean(record.isBillingContact),
     notificationConsent: expectBoolean(record.notificationConsent),
+  });
+}
+
+function decodeUpdatedStudentProfile(value: unknown, expectedId: string): UpdatedStudentProfile {
+  const envelope = exactRecord(value, ["student"]);
+  const record = exactRecord(envelope.student, ["id", "record_version", "updated_at"]);
+  const id = uuid(record.id, "student.id");
+  if (id !== expectedId) throw new TypeError("Mismatched student.id.");
+  return Object.freeze({
+    id,
+    record_version: positiveInteger(record.record_version, "student.record_version"),
+    updated_at: isoDateTime(record.updated_at, "student.updated_at"),
+  });
+}
+
+function decodeUpdatedGuardianProfile(value: unknown, expectedId: string): UpdatedGuardianProfile {
+  const envelope = exactRecord(value, ["guardian"]);
+  const record = exactRecord(envelope.guardian, ["id", "record_version", "updated_at"]);
+  const id = uuid(record.id, "guardian.id");
+  if (id !== expectedId) throw new TypeError("Mismatched guardian.id.");
+  return Object.freeze({
+    id,
+    record_version: positiveInteger(record.record_version, "guardian.record_version"),
+    updated_at: isoDateTime(record.updated_at, "guardian.updated_at"),
   });
 }
 
