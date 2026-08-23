@@ -156,7 +156,11 @@ export const MODULE_REGISTRY = Object.freeze({
   documents: defineModule({
     id: "documents",
     sourceRoots: ["modules/documents"],
-    publicEntrypoints: ["modules/documents/public.ts", "modules/documents/server.ts"],
+    publicEntrypoints: [
+      "modules/documents/public.ts",
+      "modules/documents/server.ts",
+      "modules/documents/client.ts",
+    ],
     owns: ["Document", "DocumentVersion", "ScanResult"],
   }),
   notifications: defineModule({

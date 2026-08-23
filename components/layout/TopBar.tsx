@@ -22,10 +22,12 @@ const PAGE_TITLES: Array<{ prefix: string; labelKey: string }> = [
 
 export function TopBar({
   desktopNavigationOpen = true,
-  onOpenNavigation,
+  onOpenDesktopNavigation,
+  onOpenMobileNavigation,
 }: {
   readonly desktopNavigationOpen?: boolean;
-  readonly onOpenNavigation?: () => void;
+  readonly onOpenDesktopNavigation?: () => void;
+  readonly onOpenMobileNavigation?: () => void;
 }) {
   const { t } = useTranslation()
   const toggleLang = useLangToggle()
@@ -39,6 +41,14 @@ export function TopBar({
   const logoutLinkRef = useRef<HTMLAnchorElement>(null)
   const titleKey = PAGE_TITLES.find((item) => pathname.startsWith(item.prefix))?.labelKey
   const title = titleKey ? t(titleKey) : t('layout.erp_title')
+
+  function openVisibleNavigation() {
+    if (window.matchMedia('(min-width: 768px)').matches) {
+      onOpenDesktopNavigation?.()
+      return
+    }
+    onOpenMobileNavigation?.()
+  }
 
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
@@ -74,8 +84,7 @@ export function TopBar({
   return (
     <header className="min-h-16 flex items-center justify-between gap-4 px-4 sm:px-6 shrink-0" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
       <div className="flex items-center gap-3 min-w-0">
-        <button type="button" className="icon-button mobile-navigation-button" style={{ height: '2.75rem', width: '2.75rem' }} onClick={onOpenNavigation} title={t('layout.open_navigation')} aria-label={t('layout.open_navigation')}><Icon name="menu" size={19} /></button>
-        {!desktopNavigationOpen ? <button type="button" className="icon-button desktop-navigation-button" style={{ height: '2.75rem', width: '2.75rem' }} onClick={onOpenNavigation} title={t('layout.open_navigation')} aria-label={t('layout.open_navigation')}><Icon name="menu" size={19} /></button> : null}
+        <button type="button" className="icon-button navigation-button desktop-navigation-button mobile-navigation-button" data-desktop-navigation-open={desktopNavigationOpen} style={{ height: '2.75rem', width: '2.75rem' }} onClick={openVisibleNavigation} title={t('layout.open_navigation')} aria-label={t('layout.open_navigation')} aria-controls="workspace-navigation"><Icon name="menu" size={19} /></button>
         <div className="min-w-0">
           <h1 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{title}</h1>
           <div className="hidden sm:flex items-center gap-1.5 mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>

@@ -15,11 +15,13 @@ import {
 export function Sidebar({
   desktopOpen = true,
   mobileOpen = false,
-  onClose,
+  onCloseDesktop,
+  onCloseMobile,
 }: {
   readonly desktopOpen?: boolean;
   readonly mobileOpen?: boolean;
-  readonly onClose?: () => void;
+  readonly onCloseDesktop?: () => void;
+  readonly onCloseMobile?: () => void;
 }) {
   const { t } = useTranslation()
   const pathname = usePathname()
@@ -60,10 +62,18 @@ export function Sidebar({
       : pathname === item.route || pathname.startsWith(`${item.route}/`)
   }
 
+  function closeVisibleNavigation() {
+    if (window.matchMedia('(min-width: 768px)').matches) {
+      onCloseDesktop?.()
+      return
+    }
+    onCloseMobile?.()
+  }
+
   return (
     <>
-      {mobileOpen ? <button type="button" aria-label={t('layout.close_navigation')} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" onClick={onClose} /> : null}
-      <aside className={`app-sidebar w-64 min-h-screen flex-col shrink-0 ${mobileOpen ? 'fixed inset-y-0 left-0 z-50 flex md:static' : 'hidden'} ${desktopOpen ? 'md:flex' : 'md:hidden'}`} style={{ background: 'var(--sidebar-bg)' }}>
+      {mobileOpen ? <button type="button" aria-label={t('layout.close_navigation')} className="fixed inset-0 z-40 bg-slate-950/40 md:hidden" onClick={onCloseMobile} /> : null}
+      <aside id="workspace-navigation" className={`app-sidebar w-64 min-h-screen flex-col shrink-0 ${mobileOpen ? 'fixed inset-y-0 left-0 z-50 flex md:static' : 'hidden'} ${desktopOpen ? 'md:flex' : 'md:hidden'}`} style={{ background: 'var(--sidebar-bg)' }}>
       <div className="px-5 py-5" style={{ borderBottom: '1px solid rgba(255,255,255,.08)' }}>
         <div className="flex items-center gap-2.5 justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -75,18 +85,18 @@ export function Sidebar({
             <div className="text-[11px] mt-0.5" style={{ color: 'var(--sidebar-text-muted)' }}>Case workspace</div>
           </div>
           </div>
-          <button type="button" className="icon-button" style={{ color: 'var(--sidebar-text)', height: '2.75rem', width: '2.75rem' }} title={t('layout.close_navigation')} aria-label={t('layout.close_navigation')} onClick={onClose}><Icon name="x" size={18} /></button>
+          <button type="button" className="icon-button" style={{ color: 'var(--sidebar-text)', height: '2.75rem', width: '2.75rem' }} title={t('layout.close_navigation')} aria-label={t('layout.close_navigation')} onClick={closeVisibleNavigation}><Icon name="x" size={18} /></button>
         </div>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1" aria-label="主要導航">
         {workspaceItems.length > 0 ? <>
           <div className="sidebar-section-label px-2 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Workspace</div>
-          {workspaceItems.map((item) => <NavItem key={item.route} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onClose : undefined} />)}
+          {workspaceItems.map((item) => <NavItem key={item.route} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onCloseMobile : undefined} />)}
         </> : null}
         {administrationItems.length > 0 ? <>
           <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Administration</div>
-          {administrationItems.map((item) => <NavItem key={item.route} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onClose : undefined} />)}
+          {administrationItems.map((item) => <NavItem key={item.route} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onCloseMobile : undefined} />)}
         </> : null}
         <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Future</div>
         {RELEASE_ONE_NAVIGATION_PLACEHOLDERS.map((placeholder) => <FuturePlaceholder key={placeholder.featureId} placeholder={placeholder} />)}

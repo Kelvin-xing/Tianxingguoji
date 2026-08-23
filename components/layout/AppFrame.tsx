@@ -66,18 +66,20 @@ export function AppFrame({ children }: { children: ReactNode }) {
       <Sidebar
         desktopOpen={desktopNavigationOpen}
         mobileOpen={mobileNavigationOpen}
-        onClose={() => {
+        onCloseDesktop={() => {
           setDesktopNavigationOpen(false)
           setMobileNavigationOpen(false)
         }}
+        onCloseMobile={() => setMobileNavigationOpen(false)}
       />
       <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg)' }}>
         <TopBar
           desktopNavigationOpen={desktopNavigationOpen}
-          onOpenNavigation={() => {
+          onOpenDesktopNavigation={() => {
             setDesktopNavigationOpen(true)
-            setMobileNavigationOpen(true)
+            setMobileNavigationOpen(false)
           }}
+          onOpenMobileNavigation={() => setMobileNavigationOpen(true)}
         />
         <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
       </div>
