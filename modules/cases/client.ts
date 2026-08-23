@@ -8,6 +8,10 @@ import {
   expectString,
   requestApi,
 } from "../../lib/api/client.ts";
+import {
+  REFERRAL_SOURCE_TYPES,
+  type ReferralSourceType,
+} from "../crm/client.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -175,6 +179,145 @@ export class CaseCreateIdempotencyAttempt {
   }
 
   complete(): void {
+    this.key = null;
+  }
+}
+
+export interface CaseReferralSourceAssignment {
+  readonly id: string;
+  readonly referral_source_id: string;
+  readonly source_display_name: string;
+  readonly source_type: ReferralSourceType;
+  readonly source_record_version: number;
+  readonly starts_at: string;
+  readonly ends_at: string | null;
+  readonly record_version: number;
+}
+
+export interface CaseReferralSourceAssignments {
+  readonly current: CaseReferralSourceAssignment | null;
+  readonly history: readonly CaseReferralSourceAssignment[];
+}
+
+export interface AssignCaseReferralSourceInput {
+  readonly referral_source_id: string;
+  readonly expected_current_assignment_record_version: number | null;
+}
+
+export interface CaseReferralSourceWriteReceipt {
+  readonly id: string;
+  readonly record_version: number;
+}
+
+export type CaseReferralSourceFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "validation"
+  | "stale"
+  | "conflict"
+  | "unavailable";
+
+export function getCaseReferralSourceAssignments(
+  caseId: string,
+  signal?: AbortSignal,
+): Promise<CaseReferralSourceAssignments> {
+  assertUuid(caseId, "caseId");
+  return requestApi(
+    { path: `/api/v1/cases/${caseId}/referral-source-assignments`, signal },
+    decodeCaseReferralSourceAssignments,
+  );
+}
+
+export function assignCaseReferralSource(
+  caseId: string,
+  input: AssignCaseReferralSourceInput,
+  idempotencyKey: string,
+): Promise<CaseReferralSourceWriteReceipt> {
+  assertUuid(caseId, "caseId");
+  assertUuid(input.referral_source_id, "referral_source_id");
+  if (input.expected_current_assignment_record_version !== null) {
+    positiveInteger(
+      input.expected_current_assignment_record_version,
+      "expected_current_assignment_record_version",
+    );
+  }
+  if (!IDEMPOTENCY_KEY.test(idempotencyKey)) throw new TypeError("Invalid idempotency key.");
+  return requestApi(
+    {
+      path: `/api/v1/cases/${caseId}/referral-source-assignments`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        referral_source_id: input.referral_source_id,
+        expected_current_assignment_record_version:
+          input.expected_current_assignment_record_version,
+      },
+    },
+    (value) => decodeCaseReferralSourceWriteReceipt(
+      value,
+      input.expected_current_assignment_record_version === null
+        ? 1
+        : input.expected_current_assignment_record_version + 1,
+    ),
+  );
+}
+
+export function classifyCaseReferralSourceFailure(error: unknown): CaseReferralSourceFailureKind {
+  if (!(error instanceof ApiClientError)) return "unavailable";
+  if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
+  if (error.code === "FORBIDDEN" || error.status === 403) return "forbidden";
+  if (error.code === "NOT_FOUND" || error.status === 404) return "not_found";
+  if (error.code === "VALIDATION_FAILED" || error.status === 422) return "validation";
+  if (error.code === "STALE_VERSION") return "stale";
+  if (error.code === "CONFLICT" || error.status === 409) return "conflict";
+  return "unavailable";
+}
+
+export function caseReferralSourceFingerprint(
+  caseId: string,
+  input: AssignCaseReferralSourceInput,
+): string {
+  assertUuid(caseId, "caseId");
+  assertUuid(input.referral_source_id, "referral_source_id");
+  if (input.expected_current_assignment_record_version !== null) {
+    positiveInteger(
+      input.expected_current_assignment_record_version,
+      "expected_current_assignment_record_version",
+    );
+  }
+  return `${caseId}:${input.referral_source_id}:${input.expected_current_assignment_record_version ?? "none"}`;
+}
+
+export class CaseReferralSourceIdempotencyAttempt {
+  private readonly createKey: () => string;
+  private fingerprint: string | null = null;
+  private key: string | null = null;
+
+  constructor(createKey: () => string = () => globalThis.crypto.randomUUID()) {
+    this.createKey = createKey;
+  }
+
+  keyFor(fingerprint: string): string {
+    if (fingerprint.trim() === "") throw new TypeError("Invalid assignment fingerprint.");
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.key = null;
+    }
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      if (!IDEMPOTENCY_KEY.test(nextKey)) throw new TypeError("Invalid idempotency key.");
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  rotate(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.fingerprint = null;
     this.key = null;
   }
 }
@@ -444,6 +587,96 @@ function oneOfNumber<const Values extends readonly number[]>(
   return parsed as Values[number];
 }
 
+function decodeCaseReferralSourceAssignments(value: unknown): CaseReferralSourceAssignments {
+  const record = exactRecord(value, ["current", "history"]);
+  const current = record.current === null
+    ? null
+    : decodeCaseReferralSourceAssignment(record.current, "current");
+  const history = expectArray(
+    record.history,
+    (item) => decodeCaseReferralSourceAssignment(item, "history"),
+  );
+  if (history.length > 100) throw new TypeError("Too many referral source assignments.");
+  assertUnique(history.map(({ id }) => id), "assignment id");
+  if (current !== null && history.some(({ id }) => id === current.id)) {
+    throw new TypeError("Current assignment is duplicated in history.");
+  }
+  for (let index = 1; index < history.length; index += 1) {
+    const previous = history[index - 1];
+    const next = history[index];
+    if (!previous || !next || compareClosedAssignments(previous, next) > 0) {
+      throw new TypeError("Invalid assignment history order.");
+    }
+    if (previous.record_version !== next.record_version + 1) {
+      throw new TypeError("Invalid assignment history chain version.");
+    }
+  }
+  if (current === null && history.length > 0) {
+    throw new TypeError("Assignment history cannot exist without a current assignment.");
+  }
+  if (current !== null && history.length > 0 && history[0]?.record_version !== current.record_version) {
+    throw new TypeError("Current and latest closed assignment versions do not match.");
+  }
+  return Object.freeze({
+    current,
+    history: Object.freeze([...history]),
+  });
+}
+
+function decodeCaseReferralSourceAssignment(
+  value: unknown,
+  state: "current" | "history",
+): CaseReferralSourceAssignment {
+  const record = exactRecord(value, [
+    "id",
+    "referral_source_id",
+    "source_display_name",
+    "source_type",
+    "source_record_version",
+    "starts_at",
+    "ends_at",
+    "record_version",
+  ]);
+  const endsAt = expectNullableString(record.ends_at);
+  if ((state === "current" && endsAt !== null) || (state === "history" && endsAt === null)) {
+    throw new TypeError("Invalid assignment current/history state.");
+  }
+  return Object.freeze({
+    id: uuid(record.id, "assignment.id"),
+    referral_source_id: uuid(record.referral_source_id, "assignment.referral_source_id"),
+    source_display_name: boundedNonBlank(record.source_display_name, "assignment.source_display_name", 200),
+    source_type: oneOf(record.source_type, REFERRAL_SOURCE_TYPES, "assignment.source_type"),
+    source_record_version: positiveInteger(
+      record.source_record_version,
+      "assignment.source_record_version",
+    ),
+    starts_at: isoTimestamp(record.starts_at, "assignment.starts_at"),
+    ends_at: endsAt === null ? null : isoTimestamp(endsAt, "assignment.ends_at"),
+    record_version: positiveInteger(record.record_version, "assignment.record_version"),
+  });
+}
+
+function decodeCaseReferralSourceWriteReceipt(
+  value: unknown,
+  expectedVersion: number,
+): CaseReferralSourceWriteReceipt {
+  const record = exactRecord(value, ["id", "record_version"]);
+  const recordVersion = positiveInteger(record.record_version, "assignment receipt.record_version");
+  if (recordVersion !== expectedVersion) throw new TypeError("Mismatched assignment receipt version.");
+  return Object.freeze({
+    id: uuid(record.id, "assignment receipt.id"),
+    record_version: recordVersion,
+  });
+}
+
+function compareClosedAssignments(
+  left: CaseReferralSourceAssignment,
+  right: CaseReferralSourceAssignment,
+): number {
+  if (left.ends_at !== right.ends_at) return left.ends_at! > right.ends_at! ? -1 : 1;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
 function decodeSchoolTargetsView(value: unknown, expectedCaseId: string): SchoolTargetsView {
   const record = exactRecord(value, [
     "case_id",
@@ -585,6 +818,12 @@ function positiveInteger(value: unknown, field: string): number {
 function nonBlank(value: unknown, field: string): string {
   const parsed = expectString(value);
   if (parsed.trim() === "" || parsed !== parsed.trim()) throw new TypeError(`Invalid ${field}.`);
+  return parsed;
+}
+
+function boundedNonBlank(value: unknown, field: string, maxLength: number): string {
+  const parsed = nonBlank(value, field);
+  if (parsed !== parsed.trim() || parsed.length > maxLength) throw new TypeError(`Invalid ${field}.`);
   return parsed;
 }
 

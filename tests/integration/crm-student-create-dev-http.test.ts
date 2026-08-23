@@ -61,9 +61,10 @@ const FOREIGN_RELATIONSHIP_ID = "63000000-0000-4000-8000-000000000801";
 const INACTIVE_GUARDIAN_ID = "51000000-0000-4000-8000-000000000799";
 const PURGED_STUDENT_ID = "64000000-0000-4000-8000-000000000601";
 const PURGED_GUARDIAN_ID = "64000000-0000-4000-8000-000000000701";
+const CRM06_CLOSED_CASE_ID = "65000000-0000-4000-8000-000000000901";
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
-test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
+test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
   timeout: 360_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -184,7 +185,7 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v7");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v8");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
@@ -550,6 +551,7 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
       manifest_id: NEON_TEST_MANIFEST_ID,
     }, "crm03-advisor-assignment");
     assert.equal(assignedCase.response.status, 200);
+    const assignedCaseId = requiredString(requiredRecord(assignedCase.body.data?.case), "id");
 
     const profileBefore = await readProfileMaintenanceCounts(target);
     const unassignedDetail = requiredRecord((await getJson(
@@ -985,6 +987,198 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
       audit: 6, outbox: 6,
     });
 
+    const crm06Before = await readReferralSourceWorkflowCounts(target, []);
+    const founderAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", founderCookie);
+    const adminAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", adminCookie);
+    const advisorAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
+    const dataReviewerAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", dataReviewerCookie);
+    const contractorAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", contractorCookie);
+    assert.deepEqual(referralCapabilities(founderAccessForCrm06), [
+      "cases.referral_sources.assign", "referral_sources.manage", "referral_sources.read",
+    ]);
+    assert.deepEqual(referralCapabilities(adminAccessForCrm06), [
+      "referral_sources.manage", "referral_sources.read",
+    ]);
+    assert.deepEqual(referralCapabilities(advisorAccessForCrm06), [
+      "cases.referral_sources.assign", "referral_sources.read",
+    ]);
+    for (const accessResult of [dataReviewerAccessForCrm06, contractorAccessForCrm06]) {
+      assert.deepEqual(referralCapabilities(accessResult), []);
+    }
+
+    const sourceA = await createReferralSource(baseUrl, founderCookie, "crm06-source-a",
+      { display_name: "CRM06 Synthetic Bank", source_type: "bank" });
+    const sourceAId = assertCommandAcknowledgement(sourceA, 201, 1);
+    const sourceAReplay = await createReferralSource(baseUrl, founderCookie, "crm06-source-a",
+      { display_name: "CRM06 Synthetic Bank", source_type: "bank" });
+    assert.deepEqual(sourceAReplay.body.data, sourceA.body.data);
+    assertApiError(await createReferralSource(baseUrl, founderCookie, "crm06-source-a",
+      { display_name: "CRM06 Changed", source_type: "bank" }), 409, "CONFLICT");
+    const sourceB = await createReferralSource(baseUrl, adminCookie, "crm06-source-b",
+      { display_name: "CRM06 Synthetic Insurer", source_type: "insurance" });
+    const sourceBId = assertCommandAcknowledgement(sourceB, 201, 1);
+    const sourceCId = assertCommandAcknowledgement(await createReferralSource(baseUrl, founderCookie,
+      "crm06-source-c", { display_name: "CRM06 Synthetic Bank", source_type: "other_partner" }), 201, 1);
+    const sourceDId = assertCommandAcknowledgement(await createReferralSource(baseUrl, adminCookie,
+      "crm06-source-d", { display_name: "CRM06 Synthetic Partner D", source_type: "bank" }), 201, 1);
+    const sourceEId = assertCommandAcknowledgement(await createReferralSource(baseUrl, founderCookie,
+      "crm06-source-e", { display_name: "CRM06 Synthetic Partner E", source_type: "insurance" }), 201, 1);
+
+    const sourceList = await getJson(baseUrl, "/api/v1/referral-sources", advisorCookie);
+    assert.equal(sourceList.response.status, 200);
+    const sourceItems = requiredArray(sourceList.body.data).map(requiredRecord);
+    assert.equal(sourceItems.length >= 5, true);
+    sourceItems.forEach(assertReferralSourceView);
+    assertReferralSourceOrder(sourceItems);
+    const sourceDetail = await getJson(baseUrl, `/api/v1/referral-sources/${sourceAId}`, advisorCookie);
+    assert.equal(sourceDetail.response.status, 200);
+    assertReferralSourceView(requiredRecord(sourceDetail.body.data));
+    assert.equal(sourceDetail.body.data?.display_name, "CRM06 Synthetic Bank");
+    assertApiError(await createReferralSource(baseUrl, founderCookie, "crm06-source-extra",
+      { display_name: "CRM06 Extra", source_type: "bank", organization_id: NEON_TEST_ORGANIZATION.id }),
+    422, "VALIDATION_FAILED");
+    assertApiError(await createReferralSource(baseUrl, founderCookie, "crm06-source-invalid-type",
+      { display_name: "CRM06 Invalid", source_type: "school" }), 422, "VALIDATION_FAILED");
+    assert.equal((await fetch(`${baseUrl}/api/v1/referral-sources/${sourceAId}`, {
+      method: "DELETE", headers: { cookie: founderCookie }, redirect: "manual",
+    })).status, 405);
+    assertApiError(await postJson(baseUrl, "/api/v1/referral-sources", advisorCookie,
+      { display_name: "CRM06 Advisor Denied", source_type: "bank" }, "crm06-advisor-denied"),
+    403, "FORBIDDEN");
+    for (const cookie of [dataReviewerCookie, contractorCookie]) {
+      assertApiError(await getJson(baseUrl, "/api/v1/referral-sources", cookie), 403, "FORBIDDEN");
+    }
+    await prepareClosedReferralCase(target, assignedStudent.id);
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${CRM06_CLOSED_CASE_ID}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: sourceAId, expected_current_assignment_record_version: null },
+      "crm06-assignment-ended"), 409, "CONFLICT");
+
+    const assignmentA = await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, founderCookie,
+      { referral_source_id: sourceAId, expected_current_assignment_record_version: null },
+      "crm06-assignment-a");
+    const assignmentAId = assertCommandAcknowledgement(assignmentA, 200, 1);
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, founderCookie,
+      { referral_source_id: sourceBId, expected_current_assignment_record_version: 1,
+        actor_role: "founder" }, "crm06-assignment-extra"), 422, "VALIDATION_FAILED");
+    const assignmentAReplay = await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, founderCookie,
+      { referral_source_id: sourceAId, expected_current_assignment_record_version: null },
+      "crm06-assignment-a");
+    assert.deepEqual(assignmentAReplay.body.data, assignmentA.body.data);
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, founderCookie,
+      { referral_source_id: sourceBId, expected_current_assignment_record_version: null },
+      "crm06-assignment-a"), 409, "CONFLICT");
+    const assignmentB = await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: sourceBId, expected_current_assignment_record_version: 1 },
+      "crm06-assignment-b");
+    assertCommandAcknowledgement(assignmentB, 200, 2);
+    const assignmentAfterB = await getJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie);
+    assertAssignmentCollection(assignmentAfterB, sourceBId, 2, [assignmentAId]);
+
+    const concurrentBodies = [sourceCId, sourceDId].map((referralSourceId, index) => ({
+      key: `crm06-assignment-concurrent-${index}`,
+      request: postJson(baseUrl, `/api/v1/cases/${assignedCaseId}/referral-source-assignments`,
+        advisorCookie, { referral_source_id: referralSourceId,
+          expected_current_assignment_record_version: 2 }, `crm06-assignment-concurrent-${index}`),
+    }));
+    const concurrentResults = await Promise.allSettled(concurrentBodies.map(({ request }) => request));
+    const fulfilled = concurrentResults.map((result) => {
+      if (result.status !== "fulfilled") throw new HarnessError("crm06_concurrent_http");
+      return result.value;
+    });
+    assert.deepEqual(fulfilled.map(({ response }) => response.status).sort(), [200,409]);
+    const concurrentWinner = fulfilled.find(({ response }) => response.status === 200)!;
+    const concurrentLoser = fulfilled.find(({ response }) => response.status === 409)!;
+    assertCommandAcknowledgement(concurrentWinner, 200, 3);
+    assertApiError(concurrentLoser, 409, "STALE_VERSION");
+    const winningSourceId = fulfilled[0] === concurrentWinner ? sourceCId : sourceDId;
+
+    const sourceBUpdate = await patchJson(baseUrl, `/api/v1/referral-sources/${sourceBId}`, adminCookie,
+      { expected_record_version: 1, display_name: "CRM06 Synthetic Insurer Renamed", status: "inactive" },
+      "crm06-source-b-update");
+    assertCommandAcknowledgement(sourceBUpdate, 200, 2);
+    const sourceBUpdateReplay = await patchJson(baseUrl, `/api/v1/referral-sources/${sourceBId}`, adminCookie,
+      { expected_record_version: 1, display_name: "CRM06 Synthetic Insurer Renamed", status: "inactive" },
+      "crm06-source-b-update");
+    assert.deepEqual(sourceBUpdateReplay.body.data, sourceBUpdate.body.data);
+    assertApiError(await patchJson(baseUrl, `/api/v1/referral-sources/${sourceBId}`, adminCookie,
+      { expected_record_version: 1, display_name: "CRM06 Changed Replay", status: "inactive" },
+      "crm06-source-b-update"), 409, "CONFLICT");
+    assertApiError(await patchJson(baseUrl, `/api/v1/referral-sources/${sourceBId}`, adminCookie,
+      { expected_record_version: 2, display_name: "CRM06 Synthetic Insurer Renamed", status: "inactive" },
+      "crm06-source-b-noop"), 409, "CONFLICT");
+    assertApiError(await patchJson(baseUrl, `/api/v1/referral-sources/${sourceBId}`, adminCookie,
+      { expected_record_version: 2, display_name: "CRM06 Synthetic Insurer Renamed", status: "active" },
+      "crm06-source-b-reactivate"), 409, "CONFLICT");
+    const inactiveList = await getJson(baseUrl, "/api/v1/referral-sources?status=inactive", adminCookie);
+    assert.equal(inactiveList.response.status, 200);
+    assert.equal(requiredArray(inactiveList.body.data).some((item) => requiredRecord(item).id === sourceBId), true);
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: sourceBId, expected_current_assignment_record_version: 3 },
+      "crm06-assignment-inactive"), 409, "CONFLICT");
+    const afterRenameAssignment = await getJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, founderCookie);
+    assert.equal(afterRenameAssignment.response.status, 200);
+    const historicalB = requiredArray(requiredRecord(afterRenameAssignment.body.data).history)
+      .map(requiredRecord).find(({ referral_source_id }) => referral_source_id === sourceBId);
+    assert.equal(historicalB?.source_display_name, "CRM06 Synthetic Insurer");
+    assert.equal(historicalB?.source_record_version, 1);
+    assert.notEqual(requiredRecord(requiredRecord(afterRenameAssignment.body.data).current).referral_source_id,
+      sourceBId);
+    assert.equal([sourceCId,sourceDId].includes(winningSourceId), true);
+
+    for (const cookie of [adminCookie,dataReviewerCookie,contractorCookie]) {
+      assertApiError(await getJson(baseUrl,
+        `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, cookie), 403, "FORBIDDEN");
+      assertApiError(await postJson(baseUrl,
+        `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, cookie,
+        { referral_source_id: sourceEId, expected_current_assignment_record_version: 3 },
+        `crm06-assignment-denied-${cookie.length}`), 403, "FORBIDDEN");
+    }
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: sourceEId, expected_current_assignment_record_version: 2 },
+      "crm06-assignment-stale"), 409, "STALE_VERSION");
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: "63000000-0000-4000-8000-000000000901",
+        expected_current_assignment_record_version: 3 }, "crm06-assignment-cross-source"), 404, "NOT_FOUND");
+    assertApiError(await getJson(baseUrl,
+      `/api/v1/cases/63000000-0000-4000-8000-000000000902/referral-source-assignments`, founderCookie),
+    404, "NOT_FOUND");
+
+    const beforeFault = await readReferralSourceWorkflowCounts(target, []);
+    await installCaseReferralSourceInsertFailure(target);
+    try {
+      const failed = await postJson(baseUrl,
+        `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+        { referral_source_id: sourceEId, expected_current_assignment_record_version: 3 },
+        "crm06-assignment-fault");
+      assertApiError(failed, 503, "SERVICE_UNAVAILABLE");
+      assertNoPrivateErrorEcho(failed, ["CRM06 Synthetic Partner E"]);
+      assert.deepEqual(await readReferralSourceWorkflowCounts(target, []), beforeFault);
+    } finally { await removeCaseReferralSourceInsertFailure(target); }
+
+    const crm06After = await readReferralSourceWorkflowCounts(target, [
+      "CRM06 Synthetic Bank", "CRM06 Synthetic Insurer", "CRM06 Synthetic Insurer Renamed",
+      "CRM06 Synthetic Partner D", "CRM06 Synthetic Partner E",
+    ]);
+    assert.equal(crm06After.sources - crm06Before.sources, 5);
+    assert.equal(crm06After.assignments - crm06Before.assignments, 3);
+    assert.equal(crm06After.source_receipts - crm06Before.source_receipts, 6);
+    assert.equal(crm06After.assignment_receipts - crm06Before.assignment_receipts, 3);
+    assert.equal(crm06After.identity_users, crm06Before.identity_users);
+    assert.equal(crm06After.memberships, crm06Before.memberships);
+    assert.equal(crm06After.credentials, crm06Before.credentials);
+    assert.equal(crm06After.private_matches, 0);
+
     const crm05PartnerCreate = await createStudent(baseUrl, founderCookie, "crm05-partner-create", {
       student: { display_name: "CRM05 Partner Student", date_of_birth: null,
         contact_email: null, contact_phone: null },
@@ -1091,6 +1285,11 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
       `/api/v1/guardians/${assignedGuardianId}/deletion-requests`, advisorCookie,
       deletionBody(requiredNumber(assignedGuardianBeforeDeletion, "recordVersion")),
       "crm05-advisor-guardian");
+    if (advisorGuardianDeletion.response.status !== 200) {
+      const failure = readDeletionReviewPostgresFailure(devServer);
+      throw new HarnessError(`crm05_advisor_guardian_deletion_status_${advisorGuardianDeletion.response.status}` +
+        `_stage_${failure?.stage ?? "NONE"}_postgres_${failure?.postgresCode ?? "NULL"}`);
+    }
     assertDeletionReceipt(advisorGuardianDeletion, "guardian", assignedGuardianId,
       requiredNumber(assignedGuardianBeforeDeletion, "recordVersion") + 1);
     const studentWithPendingGuardian = requiredRecord((await getJson(baseUrl,
@@ -1108,6 +1307,10 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
       "crm05-advisor-student");
     assertDeletionReceipt(advisorStudentDeletion, "student", assignedStudent.id,
       requiredNumber(studentWithPendingGuardian, "recordVersion") + 1);
+    assertApiError(await postJson(baseUrl,
+      `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, advisorCookie,
+      { referral_source_id: sourceEId, expected_current_assignment_record_version: 3 },
+      "crm06-assignment-pending-student"), 409, "CONFLICT");
     const pendingStudentView = requiredRecord((await getJson(baseUrl,
       `/api/v1/students/${assignedStudent.id}`, advisorCookie)).body.data?.student);
     assert.equal(pendingStudentView.status, "pending_delete");
@@ -1342,6 +1545,11 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
       "CRM05 Forbidden Student Update",
       "CRM05 Forbidden Guardian Update",
       crm05ForbiddenGuardianEmail,
+      "CRM06 Synthetic Bank",
+      "CRM06 Synthetic Insurer",
+      "CRM06 Synthetic Insurer Renamed",
+      "CRM06 Synthetic Partner D",
+      "CRM06 Synthetic Partner E",
       applicationPassword,
       advisorPassword,
       adminPassword,
@@ -1430,6 +1638,22 @@ test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next D
         later_writes: "denied",
         no_purge_route: true,
         effects: deletionDelta(deletionBefore, deletionAfter),
+      }),
+      referral_source_case_link: Object.freeze({
+        source_create_update: "founder_admin",
+        source_read: "founder_admin_advisor",
+        denied_source_roles: "data_reviewer_contractor",
+        duplicate_names: true,
+        exact_acknowledgement_replay: true,
+        no_op_reactivate: 409,
+        assignment: "founder_assigned_advisor",
+        denied_case_roles: "admin_data_reviewer_contractor",
+        concurrent_assignment: "one_200_one_409_stale",
+        inactive_ended_pending_cross_tenant: "denied",
+        snapshots_immutable: true,
+        rollback: 503,
+        identity_effects: 0,
+        private_matches: crm06After.private_matches,
       }),
       http: Object.freeze({ create: 201, list: 200, detail: 200, forbidden: 403 }),
       persisted_after_relogin: true,
@@ -1548,6 +1772,69 @@ function deletionCapabilities(result: Readonly<{ response: Response; body: ApiEn
   return capabilities.filter((capability): capability is string => typeof capability === "string")
     .filter((capability) => capability.startsWith("students.deletion."))
     .sort();
+}
+
+function referralCapabilities(result: Readonly<{ response: Response; body: ApiEnvelope }>): string[] {
+  assert.equal(result.response.status, 200);
+  return requiredArray(result.body.data?.capabilities)
+    .filter((capability): capability is string => typeof capability === "string")
+    .filter((capability) => capability.startsWith("referral_sources.") ||
+      capability === "cases.referral_sources.assign").sort();
+}
+
+function createReferralSource(baseUrl: string, cookie: string, key: string, body: unknown) {
+  return postJson(baseUrl, "/api/v1/referral-sources", cookie, body, key);
+}
+
+function assertCommandAcknowledgement(result: Readonly<{ response: Response; body: ApiEnvelope }>,
+  status: number, recordVersion: number): string {
+  assert.equal(result.response.status, status);
+  assert.equal(result.response.headers.get("cache-control"), "no-store");
+  const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data).sort(), ["id","record_version"]);
+  assert.equal(data.record_version, recordVersion);
+  return requiredString(data, "id");
+}
+
+function assertReferralSourceView(item: Record<string, unknown>) {
+  assert.deepEqual(Object.keys(item).sort(), ["display_name","id","record_version","source_type","status"]);
+  assert.equal(["bank","insurance","other_partner"].includes(String(item.source_type)), true);
+  assert.equal(["active","inactive"].includes(String(item.status)), true);
+  assert.equal(Number.isSafeInteger(item.record_version), true);
+}
+
+function assertReferralSourceOrder(items: readonly Record<string, unknown>[]) {
+  for (let index = 1; index < items.length; index += 1) {
+    const previous = items[index - 1]!; const current = items[index]!;
+    const previousStatus = previous.status === "active" ? 0 : 1;
+    const currentStatus = current.status === "active" ? 0 : 1;
+    const ordered = previousStatus < currentStatus || (previousStatus === currentStatus &&
+      (String(previous.display_name) < String(current.display_name) ||
+       (previous.display_name === current.display_name && String(previous.id) < String(current.id))));
+    assert.equal(ordered, true);
+  }
+}
+
+function assertAssignmentCollection(result: Readonly<{ response: Response; body: ApiEnvelope }>,
+  currentSourceId: string, currentVersion: number, historicalIds: readonly string[]) {
+  assert.equal(result.response.status, 200);
+  const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data).sort(), ["current","history"]);
+  const current = requiredRecord(data.current); assertAssignmentView(current);
+  assert.equal(current.referral_source_id, currentSourceId);
+  assert.equal(current.record_version, currentVersion);
+  assert.equal(current.ends_at, null);
+  const history = requiredArray(data.history).map(requiredRecord);
+  history.forEach((item) => { assertAssignmentView(item); assert.notEqual(item.ends_at, null); });
+  for (const id of historicalIds) assert.equal(history.some((item) => item.id === id), true);
+}
+
+function assertAssignmentView(item: Record<string, unknown>) {
+  assert.deepEqual(Object.keys(item).sort(), ["ends_at","id","record_version","referral_source_id",
+    "source_display_name","source_record_version","source_type","starts_at"]);
+  assert.equal(["bank","insurance","other_partner"].includes(String(item.source_type)), true);
+  assert.equal(new Date(requiredString(item, "starts_at")).toISOString(), item.starts_at);
+  if (item.ends_at !== null) assert.equal(new Date(String(item.ends_at)).toISOString(), item.ends_at);
 }
 
 function assertDeletionReceipt(
@@ -2032,6 +2319,85 @@ function localProvisionTarget(target: OneRoleBaselineTarget): DatabaseTestProvis
   });
 }
 
+interface ReferralSourceWorkflowCounts {
+  sources: number; assignments: number; source_receipts: number; assignment_receipts: number;
+  audit: number; outbox: number; identity_users: number; memberships: number; credentials: number;
+  private_matches: number;
+}
+
+async function readReferralSourceWorkflowCounts(target: OneRoleBaselineTarget,
+  privateValues: readonly string[]): Promise<ReferralSourceWorkflowCounts> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect(); await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    const result = await client.query<ReferralSourceWorkflowCounts>(`SELECT
+      (SELECT count(*)::int FROM crm_referral_sources) AS sources,
+      (SELECT count(*)::int FROM cases_case_referral_source_assignments) AS assignments,
+      (SELECT count(*)::int FROM shared_idempotency_records WHERE operation IN
+        ('crm.referral_source.create','crm.referral_source.update')) AS source_receipts,
+      (SELECT count(*)::int FROM shared_idempotency_records WHERE operation=
+        'cases.referral_source.assign') AS assignment_receipts,
+      (SELECT count(*)::int FROM audit_events WHERE event_type IN
+        ('crm.referral_source_created','crm.referral_source_updated','cases.referral_source_assigned')) AS audit,
+      (SELECT count(*)::int FROM audit_outbox WHERE event_type IN
+        ('crm.referral_source_created','crm.referral_source_updated','cases.referral_source_assigned')) AS outbox,
+      (SELECT count(*)::int FROM identity_users) AS identity_users,
+      (SELECT count(*)::int FROM access_organization_memberships) AS memberships,
+      (SELECT count(*)::int FROM identity_database_test_credentials) AS credentials,
+      ((SELECT count(*) FROM audit_events AS event WHERE event.event_type IN
+          ('crm.referral_source_created','crm.referral_source_updated','cases.referral_source_assigned')
+          AND EXISTS (SELECT 1 FROM unnest($1::text[]) AS private_value
+            WHERE event.metadata::text LIKE '%' || private_value || '%')) +
+       (SELECT count(*) FROM audit_outbox AS message WHERE message.event_type IN
+          ('crm.referral_source_created','crm.referral_source_updated','cases.referral_source_assigned')
+          AND EXISTS (SELECT 1 FROM unnest($1::text[]) AS private_value
+            WHERE message.payload::text LIKE '%' || private_value || '%')))::int AS private_matches`,
+    [privateValues]);
+    await client.query("COMMIT");
+    const row = result.rows[0]; if (!row) throw new HarnessError("crm06_count_inspection");
+    return Object.freeze(row);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("crm06_count_inspection");
+  } finally { await client.end().catch(() => {}); }
+}
+
+async function prepareClosedReferralCase(target: OneRoleBaselineTarget, studentId: string) {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect(); await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    await client.query(`INSERT INTO cases_service_cases
+      (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
+       primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,record_version)
+      VALUES ($1,$2,$3,'CRM06-CLOSED-CASE','k12',2031,'transfer',$4,$5,$6,'advisor','closed',1)`,
+    [CRM06_CLOSED_CASE_ID,NEON_TEST_ORGANIZATION.id,studentId,ADVISOR.roleBindingId,
+      ADVISOR.membershipId,ADVISOR.userId]);
+    await client.query("COMMIT");
+  } catch {
+    await client.query("ROLLBACK").catch(() => {});
+    throw new HarnessError("crm06_closed_case_fixture");
+  } finally { await client.end().catch(() => {}); }
+}
+
+async function installCaseReferralSourceInsertFailure(target: OneRoleBaselineTarget) {
+  await executeTestDdl(target, `CREATE FUNCTION public.test_crm06_fail_assignment_insert()
+    RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog
+    AS $$ BEGIN RAISE EXCEPTION USING ERRCODE='XX001'; END; $$;
+    CREATE TRIGGER test_crm06_fail_assignment_insert_trg
+    BEFORE INSERT ON public.cases_case_referral_source_assignments
+    FOR EACH ROW EXECUTE FUNCTION public.test_crm06_fail_assignment_insert()`, "crm06_fault_install");
+}
+async function removeCaseReferralSourceInsertFailure(target: OneRoleBaselineTarget) {
+  await executeTestDdl(target, `DROP TRIGGER IF EXISTS test_crm06_fail_assignment_insert_trg
+      ON public.cases_case_referral_source_assignments;
+    DROP FUNCTION IF EXISTS public.test_crm06_fail_assignment_insert()`, "crm06_fault_cleanup");
+}
+
 interface DeletionWorkflowCounts {
   pending_students: number;
   pending_guardians: number;
@@ -2481,6 +2847,19 @@ function readGuardianRelationshipPostgresCode(child: ChildProcess): string | nul
   let code: string | null = null;
   for (const match of matches) code = match[1] ?? null;
   return code;
+}
+
+function readDeletionReviewPostgresFailure(child: ChildProcess): Readonly<{
+  stage: string; postgresCode: string;
+}> | null {
+  const logs = DEV_LOGS.get(child);
+  if (!logs) throw new HarnessError("next_log_capture");
+  const matches = `${logs.stdout}\n${logs.stderr}`.matchAll(
+    /(?:^|\n)event=deletion_review_postgres_failure stage=(receipt_claim|actor_reauthorization|target_lock|advisor_scope|target_update|effects_append|receipt_complete|transaction_boundary) postgres_code=(08003|08006|23503|23505|23514|40001|40P01|42501|42601|42703|42883|42P01|55P03|57014|57P01|OTHER|NULL)(?:\n|$)/g,
+  );
+  let result: Readonly<{ stage: string; postgresCode: string }> | null = null;
+  for (const match of matches) result = Object.freeze({ stage: match[1]!, postgresCode: match[2]! });
+  return result;
 }
 
 async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {

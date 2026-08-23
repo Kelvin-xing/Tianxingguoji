@@ -21,6 +21,23 @@ test("workspace navigation can collapse and reopen on desktop and mobile", async
   assert.match(styles, /@media \(min-width: 768px\)[\s\S]*\.mobile-navigation-button \{ display: none; \}[\s\S]*\.desktop-navigation-button \{ display: inline-flex; \}/);
 });
 
+test("workspace navigation is registry-backed, capability-only and fail-closed", async () => {
+  const sidebar = await source("components/layout/Sidebar.tsx");
+
+  assert.match(sidebar, /import \{ NAVIGATION_REGISTRY, type NavigationRegistryItem \}/);
+  assert.match(sidebar, /getWorkspaceAccessSnapshot\(controller\.signal\)/);
+  assert.match(sidebar, /accessState === 'ready' && accessSnapshot[\s\S]*NAVIGATION_REGISTRY\.filter\(\(item\) => accessSnapshot\.capabilities\.includes\(item\.requiredCapability\)\)[\s\S]*: \[\]/);
+  assert.match(sidebar, /visibleNavigationItems\.filter\(\(item\) => item\.audience === 'workspace'\)/);
+  assert.match(sidebar, /visibleNavigationItems\.filter\(\(item\) => item\.audience === 'administration'\)/);
+  assert.match(sidebar, /workspaceItems\.length > 0 \?/);
+  assert.match(sidebar, /administrationItems\.length > 0 \?/);
+  assert.doesNotMatch(sidebar, /const (?:navItems|adminItems)/);
+  assert.doesNotMatch(sidebar, /workspaceCapabilitiesForRole|BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE/);
+  assert.doesNotMatch(sidebar, /\/admin\/knowledge/);
+  assert.doesNotMatch(sidebar, /\/api\/auth\/me/);
+  assert.doesNotMatch(sidebar, /\.email\b|initials\(/);
+});
+
 test("notification and account controls expose bounded real actions", async () => {
   const sourceText = await source("components/layout/TopBar.tsx");
 

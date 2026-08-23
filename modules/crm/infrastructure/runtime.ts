@@ -6,6 +6,7 @@ import { StudentCreateService } from "../application/student-create-service.ts";
 import { ProfileMaintenanceService } from "../application/profile-maintenance-service.ts";
 import { DuplicateReviewService } from "../application/duplicate-review-service.ts";
 import { DeletionReviewService } from "../application/deletion-review-service.ts";
+import { ReferralSourceService } from "../application/referral-source-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts";
@@ -14,6 +15,29 @@ import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-
 import { PostgresqlProfileMaintenanceRepository } from "./postgresql-profile-maintenance-repository.ts";
 import { PostgresqlDuplicateReviewRepository } from "./postgresql-duplicate-review-repository.ts";
 import { PostgresqlDeletionReviewRepository } from "./postgresql-deletion-review-repository.ts";
+import { PostgresqlReferralSourceRepository } from "./postgresql-referral-source-repository.ts";
+
+export interface ReferralSourceRuntime { readonly service: ReferralSourceService }
+export class ReferralSourceRuntimeUnavailable extends Error {
+  constructor() { super("Referral source runtime is not configured."); this.name = "ReferralSourceRuntimeUnavailable"; }
+}
+export function isReferralSourceRuntimeUnavailable(value: unknown): value is ReferralSourceRuntimeUnavailable {
+  return value instanceof Error && value.name === "ReferralSourceRuntimeUnavailable";
+}
+export function getReferralSourceRuntime(): ReferralSourceRuntime {
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new ReferralSourceRuntimeUnavailable();
+  const runtimes = globalForCrm.__txReferralSourceRuntimes ?? new Map<string, ReferralSourceRuntime>();
+  globalForCrm.__txReferralSourceRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    try { runtime = Object.freeze({ service: new ReferralSourceService(
+      new PostgresqlReferralSourceRepository(getApplicationTenantRunner())) }); }
+    catch { throw new ReferralSourceRuntimeUnavailable(); }
+    runtimes.set(mode, runtime);
+  }
+  return runtime;
+}
 
 export interface DeletionReviewRuntime { readonly service: DeletionReviewService }
 export class DeletionReviewRuntimeUnavailable extends Error {
@@ -123,6 +147,7 @@ export class StudentCreateRuntimeUnavailable extends Error {
 }
 
 const globalForCrm = globalThis as typeof globalThis & {
+  __txReferralSourceRuntimes?: Map<string, ReferralSourceRuntime>;
   __txGuardianRelationshipRuntimes?: Map<string, GuardianRelationshipRuntime>;
   __txDuplicateReviewRuntimes?: Map<string, DuplicateReviewRuntime>;
   __txDeletionReviewRuntimes?: Map<string, DeletionReviewRuntime>;

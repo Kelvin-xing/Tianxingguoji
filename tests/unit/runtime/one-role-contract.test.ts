@@ -15,8 +15,8 @@ test("one-role baseline is independent, executable, and still unapplied", async 
   assert.equal(manifest.status, "executable-unapplied");
   assert.equal(manifest.canonical_login_role, "tianxing_app");
   assert.equal(manifest.source_history_manifest, "db/migrations/manifest.json");
-  assert.equal(manifest.source_migrations.length, 30);
-  assert.equal(manifest.generated_files.length, 31);
+  assert.equal(manifest.source_migrations.length, 31);
+  assert.equal(manifest.generated_files.length, 32);
 });
 
 test("runtime contract contains no inherited test-group preflight", async () => {

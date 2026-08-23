@@ -12,6 +12,8 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+export const REFERRAL_SOURCE_TYPES = Object.freeze(["bank", "insurance", "other_partner"] as const);
+export const REFERRAL_SOURCE_STATUSES = Object.freeze(["active", "inactive"] as const);
 
 export const RELATIONSHIP_TYPES = Object.freeze([
   "father",
@@ -223,6 +225,42 @@ export type PendingDeletionFailureKind =
   | "conflict"
   | "unavailable";
 
+export type ReferralSourceType = (typeof REFERRAL_SOURCE_TYPES)[number];
+export type ReferralSourceStatus = (typeof REFERRAL_SOURCE_STATUSES)[number];
+
+export interface ReferralSource {
+  readonly id: string;
+  readonly display_name: string;
+  readonly source_type: ReferralSourceType;
+  readonly status: ReferralSourceStatus;
+  readonly record_version: number;
+}
+
+export interface CreateReferralSourceInput {
+  readonly display_name: string;
+  readonly source_type: ReferralSourceType;
+}
+
+export interface UpdateReferralSourceInput {
+  readonly expected_record_version: number;
+  readonly display_name: string;
+  readonly status: ReferralSourceStatus;
+}
+
+export interface ReferralSourceWriteReceipt {
+  readonly id: string;
+  readonly record_version: number;
+}
+
+export type ReferralSourceFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "validation"
+  | "stale"
+  | "conflict"
+  | "unavailable";
+
 export const DUPLICATE_ENTITY_TYPES = Object.freeze(["student", "guardian"] as const);
 export const DUPLICATE_CANDIDATE_STATUSES = Object.freeze([
   "review_required",
@@ -343,6 +381,123 @@ export type DuplicateRequestFailureKind =
   | "stale"
   | "conflict"
   | "unavailable";
+
+export function listReferralSources(
+  status?: ReferralSourceStatus,
+  signal?: AbortSignal,
+): Promise<readonly ReferralSource[]> {
+  if (status !== undefined) assertReferralSourceStatus(status, "status");
+  const path = status === undefined
+    ? "/api/v1/referral-sources" as const
+    : `/api/v1/referral-sources?status=${status}` as const;
+  return requestApi(
+    { path, signal },
+    (value) => decodeReferralSourceList(value, status),
+  );
+}
+
+export function getReferralSource(sourceId: string, signal?: AbortSignal): Promise<ReferralSource> {
+  assertUuid(sourceId, "sourceId");
+  return requestApi(
+    { path: `/api/v1/referral-sources/${sourceId}`, signal },
+    decodeReferralSource,
+  );
+}
+
+export function createReferralSource(
+  input: CreateReferralSourceInput,
+  idempotencyKey: string,
+): Promise<ReferralSourceWriteReceipt> {
+  const normalized = normalizeReferralSourceCreate(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: "/api/v1/referral-sources",
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: normalized,
+    },
+    (value) => decodeReferralSourceWriteReceipt(value, undefined, 1),
+  );
+}
+
+export function updateReferralSource(
+  sourceId: string,
+  input: UpdateReferralSourceInput,
+  idempotencyKey: string,
+): Promise<ReferralSourceWriteReceipt> {
+  assertUuid(sourceId, "sourceId");
+  const normalized = normalizeReferralSourceUpdate(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/referral-sources/${sourceId}`,
+      method: "PATCH",
+      headers: { "idempotency-key": idempotencyKey },
+      body: normalized,
+    },
+    (value) => decodeReferralSourceWriteReceipt(
+      value,
+      sourceId,
+      normalized.expected_record_version + 1,
+    ),
+  );
+}
+
+export function classifyReferralSourceFailure(error: unknown): ReferralSourceFailureKind {
+  if (!(error instanceof ApiClientError)) return "unavailable";
+  if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
+  if (error.code === "FORBIDDEN" || error.status === 403) return "forbidden";
+  if (error.code === "NOT_FOUND" || error.status === 404) return "not_found";
+  if (error.code === "VALIDATION_FAILED" || error.status === 422) return "validation";
+  if (error.code === "STALE_VERSION") return "stale";
+  if (error.code === "CONFLICT" || error.status === 409) return "conflict";
+  return "unavailable";
+}
+
+export function referralSourceCreateFingerprint(input: CreateReferralSourceInput): string {
+  const normalized = normalizeReferralSourceCreate(input);
+  return `${normalized.source_type}:${normalized.display_name}`;
+}
+
+export function referralSourceUpdateFingerprint(sourceId: string, input: UpdateReferralSourceInput): string {
+  assertUuid(sourceId, "sourceId");
+  const normalized = normalizeReferralSourceUpdate(input);
+  return `${sourceId}:${normalized.expected_record_version}:${normalized.status}:${normalized.display_name}`;
+}
+
+export class ReferralSourceIdempotencyAttempt {
+  private readonly createKey: () => string;
+  private fingerprint: string | null = null;
+  private key: string | null = null;
+
+  constructor(createKey: () => string = () => globalThis.crypto.randomUUID()) {
+    this.createKey = createKey;
+  }
+
+  keyFor(fingerprint: string): string {
+    if (fingerprint.trim() === "") throw new TypeError("Invalid ReferralSource fingerprint.");
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.key = null;
+    }
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      assertIdempotencyKey(nextKey);
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  rotate(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.fingerprint = null;
+    this.key = null;
+  }
+}
 
 export function listStudents(signal?: AbortSignal): Promise<readonly StudentListItem[]> {
   return requestApi(
@@ -1062,6 +1217,115 @@ function normalizeGuardianProfileDraft(draft: GuardianProfileDraft) {
     phone: nullable(draft.phone),
     expected_record_version: draft.expected_record_version,
   } as const;
+}
+
+function decodeReferralSourceList(
+  value: unknown,
+  expectedStatus?: ReferralSourceStatus,
+): readonly ReferralSource[] {
+  const sources = expectArray(value, decodeReferralSource);
+  if (sources.length > 100) throw new TypeError("Too many ReferralSource records.");
+  assertUnique(sources.map(({ id }) => id), "ReferralSource.id");
+  if (expectedStatus !== undefined && sources.some(({ status }) => status !== expectedStatus)) {
+    throw new TypeError("ReferralSource status filter mismatch.");
+  }
+  for (let index = 1; index < sources.length; index += 1) {
+    const previous = sources[index - 1];
+    const current = sources[index];
+    if (!previous || !current || compareReferralSources(previous, current) > 0) {
+      throw new TypeError("Invalid ReferralSource order.");
+    }
+  }
+  return Object.freeze([...sources]);
+}
+
+function decodeReferralSource(value: unknown): ReferralSource {
+  const record = exactRecord(value, [
+    "id",
+    "display_name",
+    "source_type",
+    "status",
+    "record_version",
+  ]);
+  return Object.freeze({
+    id: uuid(record.id, "ReferralSource.id"),
+    display_name: referralSourceDisplayName(record.display_name),
+    source_type: referralSourceType(record.source_type, "ReferralSource.source_type"),
+    status: referralSourceStatus(record.status, "ReferralSource.status"),
+    record_version: positiveInteger(record.record_version, "ReferralSource.record_version"),
+  });
+}
+
+function decodeReferralSourceWriteReceipt(
+  value: unknown,
+  expectedId: string | undefined,
+  expectedVersion: number,
+): ReferralSourceWriteReceipt {
+  const record = exactRecord(value, ["id", "record_version"]);
+  const id = uuid(record.id, "ReferralSource receipt.id");
+  const recordVersion = positiveInteger(
+    record.record_version,
+    "ReferralSource receipt.record_version",
+  );
+  if ((expectedId !== undefined && id !== expectedId) || recordVersion !== expectedVersion) {
+    throw new TypeError("Mismatched ReferralSource receipt.");
+  }
+  return Object.freeze({ id, record_version: recordVersion });
+}
+
+function normalizeReferralSourceCreate(input: CreateReferralSourceInput) {
+  return Object.freeze({
+    display_name: referralSourceDisplayName(input.display_name),
+    source_type: referralSourceType(input.source_type, "source_type"),
+  });
+}
+
+function normalizeReferralSourceUpdate(input: UpdateReferralSourceInput) {
+  assertPositiveInteger(input.expected_record_version, "expected_record_version");
+  return Object.freeze({
+    expected_record_version: input.expected_record_version,
+    display_name: referralSourceDisplayName(input.display_name),
+    status: referralSourceStatus(input.status, "status"),
+  });
+}
+
+function referralSourceDisplayName(value: unknown): string {
+  const result = expectString(value);
+  if (result !== result.trim() || result.length < 1 || result.length > 200) {
+    throw new TypeError("Invalid ReferralSource display_name.");
+  }
+  return result;
+}
+
+function referralSourceType(value: unknown, field: string): ReferralSourceType {
+  const result = expectString(value);
+  if (!(REFERRAL_SOURCE_TYPES as readonly string[]).includes(result)) {
+    throw new TypeError(`Invalid ${field}.`);
+  }
+  return result as ReferralSourceType;
+}
+
+function referralSourceStatus(value: unknown, field: string): ReferralSourceStatus {
+  const result = expectString(value);
+  assertReferralSourceStatus(result, field);
+  return result;
+}
+
+function assertReferralSourceStatus(
+  value: string,
+  field: string,
+): asserts value is ReferralSourceStatus {
+  if (!(REFERRAL_SOURCE_STATUSES as readonly string[]).includes(value)) {
+    throw new TypeError(`Invalid ${field}.`);
+  }
+}
+
+function compareReferralSources(left: ReferralSource, right: ReferralSource): number {
+  const leftStatus = REFERRAL_SOURCE_STATUSES.indexOf(left.status);
+  const rightStatus = REFERRAL_SOURCE_STATUSES.indexOf(right.status);
+  if (leftStatus !== rightStatus) return leftStatus - rightStatus;
+  if (left.display_name !== right.display_name) return left.display_name < right.display_name ? -1 : 1;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
 
 function decodeStudentListItem(value: unknown): StudentListItem {

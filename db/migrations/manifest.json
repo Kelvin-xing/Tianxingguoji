@@ -30,6 +30,7 @@
     { "name": "202608180120_028_expand_database_test_identity.sql", "sha256": "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb" },
     { "name": "202608230010_029_allow_case_assessment_fk_lock.sql", "sha256": "f5af0dfdc36fa7e6e82ce6b6713eab5f02ad0aae31e213cb563624018c97ce2f" },
     { "name": "202608230020_030_expand_crm_duplicate_review.sql", "sha256": "7bc38d0d6e06f1ee44c6e9d8a263e6751d012b523d75f8cff61587277576bae1" },
-    { "name": "202608230030_031_allow_pending_primary_guardian.sql", "sha256": "313639ecfe709b04af323fb3d8c391b99bbe6b4eedff0679177b7a2aeb166eb7" }
+    { "name": "202608230030_031_allow_pending_primary_guardian.sql", "sha256": "313639ecfe709b04af323fb3d8c391b99bbe6b4eedff0679177b7a2aeb166eb7" },
+    { "name": "202608230030_032_expand_case_referral_source_assignments.sql", "sha256": "9d845ff7bcde7894f2684f381c5c86643233879f2492b0d188ae5ed25235d1b5" }
   ]
 }

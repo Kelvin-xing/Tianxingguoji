@@ -15,6 +15,28 @@ import {
 const OPERATIONS = Object.freeze({ student: "crm.request_student_pending_delete",
   guardian: "crm.request_guardian_pending_delete" } as const);
 const REFERENCE = /^([0-9a-f-]{36}):(\d{1,16}):(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)$/i;
+const POSTGRES_SEVERITIES = new Set([
+  "ERROR", "FATAL", "PANIC", "WARNING", "NOTICE", "DEBUG", "INFO", "LOG",
+]);
+const POSTGRES_CODES = new Set([
+  "08003", "08006", "23503", "23505", "23514", "40001", "40P01", "42501",
+  "42601", "42703", "42883", "42P01", "55P03", "57014", "57P01",
+]);
+
+export const DELETION_REVIEW_FAILURE_STAGES = Object.freeze([
+  "receipt_claim", "actor_reauthorization", "target_lock", "advisor_scope",
+  "target_update", "effects_append", "receipt_complete", "transaction_boundary",
+] as const);
+export type DeletionReviewFailureStage = (typeof DELETION_REVIEW_FAILURE_STAGES)[number];
+export type DeletionReviewSafePostgresCode =
+  | "08003" | "08006" | "23503" | "23505" | "23514" | "40001" | "40P01"
+  | "42501" | "42601" | "42703" | "42883" | "42P01" | "55P03" | "57014"
+  | "57P01" | "OTHER" | null;
+export interface DeletionReviewFailureEvidence {
+  readonly stage: DeletionReviewFailureStage;
+  readonly postgresCode: DeletionReviewSafePostgresCode;
+}
+export type DeletionReviewFailureObserver = (evidence: DeletionReviewFailureEvidence) => void;
 
 interface ReceiptRow extends Record<string, unknown> {
   request_hash: string; state: string; result_reference: string | null; response_hash: string | null;
@@ -30,16 +52,20 @@ interface QueueRow extends Record<string, unknown> {
 
 export class PostgresqlDeletionReviewRepository implements DeletionReviewRepository {
   private readonly runner: TenantTransactionRunner;
-  constructor(runner: TenantTransactionRunner) { this.runner = runner; }
+  private readonly observeFailure: DeletionReviewFailureObserver;
+  constructor(runner: TenantTransactionRunner, observeFailure: DeletionReviewFailureObserver = writeSafeFailure) {
+    this.runner = runner;
+    this.observeFailure = observeFailure;
+  }
 
   requestDeletion(input: Parameters<DeletionReviewRepository["requestDeletion"]>[0]) {
     return this.run(input, async (tx) => {
       const operation = OPERATIONS[input.entityType];
-      const receipt = await claimReceipt(tx, input, operation);
-      await assertActor(tx, input, "request");
-      const target = await lockTarget(tx, input.entityType, input.entityId);
+      const receipt = await this.at("receipt_claim", () => claimReceipt(tx, input, operation));
+      await this.at("actor_reauthorization", () => assertActor(tx, input, "request"));
+      const target = await this.at("target_lock", () => lockTarget(tx, input.entityType, input.entityId));
       if (!target || target.status === "purged") notFound();
-      if (!await canRequest(tx, input)) notFound();
+      if (!await this.at("advisor_scope", () => canRequest(tx, input))) notFound();
       if (receipt) {
         const replay = parseReference(receipt.result_reference, input.entityType, input.entityId);
         assertResponseHash(receipt.response_hash, replay);
@@ -48,24 +74,24 @@ export class PostgresqlDeletionReviewRepository implements DeletionReviewReposit
       if (target.status !== "active") conflict();
       if (version(target.record_version) !== input.expectedRecordVersion) stale();
       const table = tableFor(input.entityType);
-      const updated = await tx.query<TargetRow>(`UPDATE ${table}
+      const updated = await this.at("target_update", () => tx.query<TargetRow>(`UPDATE ${table}
         SET status='pending_delete', deletion_requested_at=transaction_timestamp(),
             deletion_requested_by_user_id=$2, deletion_reason=$4, record_version=record_version+1,
             updated_at=transaction_timestamp()
         WHERE id=$1 AND status='active' AND record_version=$3
         RETURNING id,display_name,status,deletion_requested_at,record_version`,
-      [input.entityId, input.actorUserId, input.expectedRecordVersion, input.reasonCode]);
+      [input.entityId, input.actorUserId, input.expectedRecordVersion, input.reasonCode]));
       const row = updated.rows[0]; if (!row || !row.deletion_requested_at) stale();
       const result = toReceipt(input.entityType, row);
-      await appendAtomicMutationEffects(tx, input.effects);
-      await completeReceipt(tx, input, operation, result);
+      await this.at("effects_append", () => appendAtomicMutationEffects(tx, input.effects));
+      await this.at("receipt_complete", () => completeReceipt(tx, input, operation, result));
       return result;
     });
   }
 
   listDeletionRequests(input: Parameters<DeletionReviewRepository["listDeletionRequests"]>[0]) {
     return this.run(input, async (tx) => {
-      await assertActor(tx, input, "review");
+      await this.at("actor_reauthorization", () => assertActor(tx, input, "review"));
       const rows = await tx.query<QueueRow>(`SELECT entity_type,entity_id,display_label,status,
         deletion_requested_at,record_version FROM (
           SELECT 'student'::text AS entity_type,id AS entity_id,display_name AS display_label,
@@ -79,15 +105,45 @@ export class PostgresqlDeletionReviewRepository implements DeletionReviewReposit
     });
   }
 
-  private run<T>(input: { organizationId: string; actorUserId: string }, operation: (tx: Db) => Promise<T>) {
-    return this.runner.run(input, async (tenantTx) => {
-      try { return await operation(adapt(tenantTx)); }
-      catch (cause) {
-        if (isDeletionReviewError(cause)) throw cause;
-        throw new DeletionReviewError("DELETION_REVIEW_UNAVAILABLE");
-      }
-    });
+  private async run<T>(input: { organizationId: string; actorUserId: string }, operation: (tx: Db) => Promise<T>) {
+    try {
+      return await this.runner.run(input, async (tenantTx) => {
+        try { return await operation(adapt(tenantTx)); }
+        catch (cause) {
+          if (isDeletionReviewError(cause)) throw cause;
+          throw new DeletionReviewError("DELETION_REVIEW_UNAVAILABLE");
+        }
+      });
+    } catch (cause) {
+      if (!isDeletionReviewError(cause)) this.report("transaction_boundary", cause);
+      throw cause;
+    }
   }
+
+  private async at<T>(stage: DeletionReviewFailureStage, operation: () => Promise<T>): Promise<T> {
+    try { return await operation(); }
+    catch (cause) {
+      if (!isDeletionReviewError(cause)) this.report(stage, cause);
+      throw cause;
+    }
+  }
+
+  private report(stage: DeletionReviewFailureStage, cause: unknown): void {
+    this.observeFailure(Object.freeze({ stage, postgresCode: readSafePostgresCode(cause) }));
+  }
+}
+
+function readSafePostgresCode(cause: unknown): DeletionReviewSafePostgresCode {
+  if (!(cause instanceof Error)) return null;
+  const candidate = cause as Error & { readonly code?: unknown; readonly severity?: unknown };
+  if (typeof candidate.code !== "string" || !/^[0-9A-Z]{5}$/.test(candidate.code) ||
+      typeof candidate.severity !== "string" || !POSTGRES_SEVERITIES.has(candidate.severity)) return null;
+  return POSTGRES_CODES.has(candidate.code) ? candidate.code as DeletionReviewSafePostgresCode : "OTHER";
+}
+
+function writeSafeFailure(evidence: DeletionReviewFailureEvidence): void {
+  process.stderr.write(`event=deletion_review_postgres_failure stage=${evidence.stage} ` +
+    `postgres_code=${evidence.postgresCode ?? "NULL"}\n`);
 }
 
 async function assertActor(tx: Db, input: { organizationId: string; actorUserId: string; actorRole: string },
