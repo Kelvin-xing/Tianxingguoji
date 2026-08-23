@@ -61,6 +61,8 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "referral_sources.manage",
   "schools.read",
   "tasks.read",
+  "tasks.create",
+  "tasks.transition",
   "documents.read",
   "access.manage",
   "schools.manage",
@@ -88,6 +90,8 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "referral_sources.manage",
     "schools.read",
     "tasks.read",
+    "tasks.create",
+    "tasks.transition",
     "documents.read",
     "access.manage",
     "schools.manage",
@@ -117,6 +121,8 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "referral_sources.read",
     "schools.read",
     "tasks.read",
+    "tasks.create",
+    "tasks.transition",
     "documents.read",
   ] as const),
   data_reviewer: Object.freeze([
@@ -126,7 +132,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "schools.manage",
     "crawler.manage",
   ] as const),
-  contractor: Object.freeze(["tasks.read"] as const),
+  contractor: Object.freeze(["tasks.read", "tasks.transition"] as const),
 });
 
 export function workspaceCapabilitiesForRole(role: OrganizationRole): readonly WorkspaceCapability[] {

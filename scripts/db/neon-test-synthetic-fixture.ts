@@ -12,6 +12,7 @@ export const NEON_TEST_MANIFEST_ID = "51000000-0000-4000-8000-000000000901";
 export const NEON_TEST_MANIFEST_COMPOSITION_VERSION = "env01-neon-release1-v1";
 export const NEON_TEST_SCHOOL_SNAPSHOT_ID = "51000000-0000-4000-8000-000000000902";
 export const NEON_TEST_SCHOOL_SOURCE_RELEASE_ID = "env01-synthetic-schools-v1";
+export const NEON_TEST_TASK_POLICY_ID = "51000000-0000-4000-8000-000000000903";
 
 const MODULE_FILES = Object.freeze([
   "schema/k12/student-profile.v1.json",
@@ -105,11 +106,11 @@ export type NeonTestManifestFixture = Readonly<{
 export async function loadNeonTestManifestFixture(): Promise<NeonTestManifestFixture> {
   const modules = await Promise.all(
     MODULE_FILES.map(async (path) => {
-      const module = parseK12Module(JSON.parse(await readFile(path, "utf8")) as unknown);
-      if (module.catalogueStatus !== "approved" || module.productionEnabled !== true) {
+      const k12Module = parseK12Module(JSON.parse(await readFile(path, "utf8")) as unknown);
+      if (k12Module.catalogueStatus !== "approved" || k12Module.productionEnabled !== true) {
         throw new Error(`Approved K12 module required: ${path}`);
       }
-      return module;
+      return k12Module;
     }),
   );
   const composition = composeK12Manifest(modules);

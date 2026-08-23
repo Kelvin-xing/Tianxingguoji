@@ -131,7 +131,7 @@ export const MODULE_REGISTRY = Object.freeze({
   tasks: defineModule({
     id: "tasks",
     sourceRoots: ["modules/tasks"],
-    publicEntrypoints: ["modules/tasks/public.ts", "modules/tasks/server.ts"],
+    publicEntrypoints: ["modules/tasks/client.ts", "modules/tasks/public.ts", "modules/tasks/server.ts"],
     owns: ["Task", "TaskAssignment"],
   }),
   schools: defineModule({

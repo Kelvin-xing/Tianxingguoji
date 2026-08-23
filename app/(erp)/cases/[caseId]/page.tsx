@@ -5,6 +5,7 @@ import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/
 import { CaseStageControls } from '@/components/cases/CaseStageControls'
 import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { SchoolTargetsPanel } from '@/components/cases/SchoolTargetsPanel'
+import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
 import { Icon } from '@/components/workspace/Icon'
 import {
   AssessmentServiceError,
@@ -78,6 +79,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <SchoolTargetsPanel caseId={caseId} />
 
       <CaseReferralSourcePanel caseId={caseId} />
+
+      <CaseTasksPanel caseId={caseId} />
 
       <div className="preview-notice"><Icon name="shield" size={15} /><span>PostgreSQL authoritative read/write · 每個答案獨立版本控制，完成背景收集時再次驗證權限、阻塞項、評估版本與冪等憑據。</span></div>
     </div>

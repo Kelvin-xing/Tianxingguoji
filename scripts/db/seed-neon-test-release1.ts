@@ -21,12 +21,17 @@ import {
   NEON_TEST_SCHOOLS,
   NEON_TEST_SCHOOL_SNAPSHOT_ID,
   NEON_TEST_SCHOOL_SOURCE_RELEASE_ID,
+  NEON_TEST_TASK_POLICY_ID,
   NEON_TEST_SEED_VERSION,
   NEON_TEST_STUDENTS,
   loadNeonTestManifestFixture,
   neonTestSchoolSnapshotManifestSha256,
   type NeonTestManifestFixture,
 } from "./neon-test-synthetic-fixture.ts";
+import {
+  RELEASE_1_TASK_INITIAL_STATE,
+  RELEASE_1_TASK_TRANSITION_RULES,
+} from "../../modules/tasks/public.ts";
 import {
   readOneRoleBaselineTarget,
   type OneRoleBaselineTarget,
@@ -72,6 +77,8 @@ export const NEON_TEST_SEED_COUNTS = Object.freeze({
   schools: 3,
   school_snapshots: 1,
   school_records: 3,
+  task_policies: 1,
+  task_rules: RELEASE_1_TASK_TRANSITION_RULES.length,
 });
 
 export const NEON_TEST_SEED_TABLE_COUNTS = Object.freeze({
@@ -87,6 +94,8 @@ export const NEON_TEST_SEED_TABLE_COUNTS = Object.freeze({
   schools_schools: NEON_TEST_SEED_COUNTS.schools,
   schools_snapshots: NEON_TEST_SEED_COUNTS.school_snapshots,
   schools_snapshot_records: NEON_TEST_SEED_COUNTS.school_records,
+  tasks_transition_policies: NEON_TEST_SEED_COUNTS.task_policies,
+  tasks_transition_rules: NEON_TEST_SEED_COUNTS.task_rules,
 });
 
 export type NeonTestSeedMode = "dry-run" | "apply";
@@ -220,6 +229,7 @@ export async function seedNeonTestRelease1(
       populationBefore = await inspectSeedPopulation(client);
       if (populationBefore === "empty") {
         await insertIdentityAndAccess(client);
+        await insertApprovedTaskPolicy(client);
         await insertStudentsAndGuardians(client);
         await insertApprovedManifest(client, fixture);
         await insertSchools(client);
@@ -454,6 +464,8 @@ function seedTableRules(): ReadonlyMap<
     ["schools_schools", rule("schools", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ id }) => id)])],
     ["schools_snapshots", rule("school_snapshots", "id = $1", [NEON_TEST_SCHOOL_SNAPSHOT_ID])],
     ["schools_snapshot_records", rule("school_records", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ recordId }) => recordId)])],
+    ["tasks_transition_policies", rule("task_policies", "id = $1", [NEON_TEST_TASK_POLICY_ID])],
+    ["tasks_transition_rules", rule("task_rules", "policy_id = $1", [NEON_TEST_TASK_POLICY_ID])],
   ]);
 }
 
@@ -523,6 +535,27 @@ async function insertStudentsAndGuardians(client: Client): Promise<void> {
         student.guardianId, student.relationshipType],
     );
   }
+}
+
+async function insertApprovedTaskPolicy(client: Client): Promise<void> {
+  const requester = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+  const reviewer = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
+  await client.query(`INSERT INTO tasks_transition_policies
+    (id,organization_id,version,status,requested_by_user_id,initial_state)
+    VALUES ($1,$2,1,'candidate',$3,$4)`,
+  [NEON_TEST_TASK_POLICY_ID,NEON_TEST_ORGANIZATION.id,requester.userId,RELEASE_1_TASK_INITIAL_STATE]);
+  for (const rule of RELEASE_1_TASK_TRANSITION_RULES) {
+    await client.query(`INSERT INTO tasks_transition_rules
+      (organization_id,policy_id,from_state,to_state,actor_kind,allowed_actor_roles,
+       requires_reason,requires_different_actor)
+      VALUES ($1,$2,$3,$4,$5,$6::text[],$7,$8)`,
+    [NEON_TEST_ORGANIZATION.id,NEON_TEST_TASK_POLICY_ID,rule.from,rule.to,rule.actorKind,
+      [...rule.allowedActorRoles],rule.requiresReason,rule.requiresDifferentActor]);
+  }
+  await client.query(`UPDATE tasks_transition_policies SET status='approved',approval_decision_id='OD-06',
+    approval_decision_status='resolved',approved_by_user_id=$2,approved_role='founder',
+    approved_at=transaction_timestamp(),record_version=2,updated_at=transaction_timestamp()
+    WHERE id=$1 AND status='candidate'`,[NEON_TEST_TASK_POLICY_ID,reviewer.userId]);
 }
 
 async function insertApprovedManifest(
@@ -615,6 +648,23 @@ async function assertExactSeedContent(
          AND record_version = 1
          AND created_by_user_id IS NOT DISTINCT FROM $3::uuid
     `, [principal.userId, principal.email, principal.role === "founder" ? null : founder.userId]);
+  }
+
+  const requester = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+  const reviewer = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
+  await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_policies
+    WHERE id=$1 AND organization_id=$2 AND version=1 AND status='approved'
+      AND requested_by_user_id=$3 AND initial_state=$4 AND approval_decision_id='OD-06'
+      AND approval_decision_status='resolved' AND approved_by_user_id=$5 AND approved_role='founder'
+      AND approved_at IS NOT NULL AND record_version=2`,
+  [NEON_TEST_TASK_POLICY_ID,NEON_TEST_ORGANIZATION.id,requester.userId,
+    RELEASE_1_TASK_INITIAL_STATE,reviewer.userId]);
+  for (const rule of RELEASE_1_TASK_TRANSITION_RULES) {
+    await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_rules
+      WHERE organization_id=$1 AND policy_id=$2 AND from_state=$3 AND to_state=$4
+        AND actor_kind=$5 AND allowed_actor_roles=$6::text[] AND requires_reason=$7
+        AND requires_different_actor=$8`,[NEON_TEST_ORGANIZATION.id,NEON_TEST_TASK_POLICY_ID,
+      rule.from,rule.to,rule.actorKind,[...rule.allowedActorRoles],rule.requiresReason,rule.requiresDifferentActor]);
   }
 
   await assertExactRow(client, `
