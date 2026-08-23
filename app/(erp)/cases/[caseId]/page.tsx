@@ -5,6 +5,7 @@ import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/
 import { CaseStageControls } from '@/components/cases/CaseStageControls'
 import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { SchoolTargetsPanel } from '@/components/cases/SchoolTargetsPanel'
+import { CaseDocumentsPanel } from '@/components/documents/CaseDocumentsPanel'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
 import { Icon } from '@/components/workspace/Icon'
 import {
@@ -79,6 +80,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <SchoolTargetsPanel caseId={caseId} />
 
       <CaseReferralSourcePanel caseId={caseId} />
+
+      <CaseDocumentsPanel caseId={caseId} />
 
       <CaseTasksPanel caseId={caseId} />
 

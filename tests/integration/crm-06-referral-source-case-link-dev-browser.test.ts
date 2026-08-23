@@ -406,7 +406,7 @@ test('CRM-06 ReferralSource management and Case assignment work through a real l
     stage = 'baseline_seed'
     const build = await verifyCommittedOneRoleBaseline()
     evidence.baseline_generated_files = build.files.length
-    assert.equal(evidence.baseline_generated_files, 33)
+    assert.equal(evidence.baseline_generated_files, 34)
     const baseline = await executeOneRoleBaselineRun({ mode: 'apply', target, build, dependencies: baselineDependencies(target) })
     assert.equal(baseline.status, 'pass')
     assert.equal(baseline.baseline_id, ONE_ROLE_BASELINE_ID)

@@ -64,6 +64,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "tasks.create",
   "tasks.transition",
   "documents.read",
+  "documents.create",
   "access.manage",
   "schools.manage",
   "crawler.manage",
@@ -93,6 +94,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "tasks.create",
     "tasks.transition",
     "documents.read",
+    "documents.create",
     "access.manage",
     "schools.manage",
     "crawler.manage",
@@ -124,6 +126,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "tasks.create",
     "tasks.transition",
     "documents.read",
+    "documents.create",
   ] as const),
   data_reviewer: Object.freeze([
     "today.read",
