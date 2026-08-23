@@ -19,6 +19,7 @@ export function StudentsDirectory() {
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [canCreate, setCanCreate] = useState(false)
   const [canReviewDuplicates, setCanReviewDuplicates] = useState(false)
+  const [canReviewDeletionRequests, setCanReviewDeletionRequests] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export function StudentsDirectory() {
         setStudents(records)
         setCanCreate(access.capabilities.some((capability) => String(capability) === 'students.create'))
         setCanReviewDuplicates(access.capabilities.some((capability) => String(capability) === 'students.duplicates.review'))
+        setCanReviewDeletionRequests(access.capabilities.some((capability) => String(capability) === 'students.deletion.review'))
         setLoadState('ready')
       })
       .catch((error: unknown) => {
@@ -57,6 +59,11 @@ export function StudentsDirectory() {
           <p className="page-subtitle">管理學生基本資料、主要監護人與聯絡方式。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {loadState === 'ready' && canReviewDeletionRequests ? (
+            <Link href="/students/deletion-requests" className="secondary-button">
+              <Icon name="shield" size={16} />查看待刪除審查
+            </Link>
+          ) : null}
           {loadState === 'ready' && canReviewDuplicates ? (
             <Link href="/students/duplicates" className="secondary-button">
               <Icon name="users" size={16} />審查疑似重複資料

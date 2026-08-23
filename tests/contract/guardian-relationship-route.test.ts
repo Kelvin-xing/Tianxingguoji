@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  mapGuardianRelationshipError,
   parseAttachCommand,
   parseHandoffCommand,
   parseSearchRequest,
+  toCurrentRelationshipsData,
 } from "../../app/api/v1/students/[studentId]/guardians/handler.ts";
 import { ApiContractError } from "../../modules/shared/public.ts";
 
@@ -64,6 +66,61 @@ test("rejects invalid relationship vocabulary, query length, content type and mi
     headers: { "content-type": "text/plain" },
     body: JSON.stringify({ query: "guardian" }),
   }), STUDENT_ID), "INVALID_REQUEST");
+});
+
+test("serializes the unchanged current relationship DTO with masked hints", () => {
+  const data = toCurrentRelationshipsData({
+    student: { id: STUDENT_ID, displayName: "Synthetic Student" },
+    relationships: [{
+      relationship: {
+        relationshipId: "51000000-0000-4000-8000-000000000801",
+        studentId: STUDENT_ID,
+        guardianId: GUARDIAN_ID,
+        relationshipType: "mother",
+        isLegalGuardian: true,
+        isPrimaryContact: true,
+        isEmergencyContact: false,
+        isBillingContact: false,
+        notificationConsent: false,
+        startsAt: "2026-08-23T00:00:00.000Z",
+        recordVersion: 2,
+      },
+      guardian: {
+        id: GUARDIAN_ID,
+        displayName: "Synthetic Guardian",
+        emailHint: "s***@example.invalid",
+        phoneHint: "******1234",
+      },
+    }],
+  });
+  assert.deepEqual(Object.keys(data).sort(), ["relationships", "student"]);
+  assert.deepEqual(Object.keys(data.student).sort(), ["display_name", "id"]);
+  assert.deepEqual(Object.keys(data.relationships[0]!).sort(), [
+    "guardian", "is_billing_contact", "is_emergency_contact", "is_legal_guardian",
+    "is_primary_contact", "notification_consent", "record_version", "relationship_id",
+    "relationship_type", "starts_at",
+  ]);
+  assert.deepEqual(Object.keys(data.relationships[0]!.guardian).sort(), [
+    "display_name", "email_hint", "id", "phone_hint",
+  ]);
+  assert.equal(data.relationships[0]!.guardian.email_hint, "s***@example.invalid");
+});
+
+test("maps stable not-found errors and rejects unknown error shapes", () => {
+  const equivalent = Object.assign(new Error("safe"), {
+    name: "GuardianRelationshipError",
+    code: "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND",
+  });
+  const mapped = mapGuardianRelationshipError(equivalent);
+  assert.ok(mapped instanceof ApiContractError);
+  assert.equal(mapped.code, "NOT_FOUND");
+  const plain = { name: "GuardianRelationshipError", code: "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND" };
+  assert.equal(mapGuardianRelationshipError(plain), plain);
+  const unknown = Object.assign(new Error("safe"), {
+    name: "GuardianRelationshipError",
+    code: "GUARDIAN_RELATIONSHIP_UNKNOWN",
+  });
+  assert.equal(mapGuardianRelationshipError(unknown), unknown);
 });
 
 function validAttach() {

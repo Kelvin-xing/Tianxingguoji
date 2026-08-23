@@ -100,6 +100,39 @@ test("Advisor assignment is rechecked and denied updates create no effects", asy
   assert.equal(sql.some((text) => text.includes("INSERT INTO audit_events")), false);
 });
 
+test("assigned Advisor reaches the inactive guard for a pending Guardian without widening active scope", async () => {
+  for (const [assigned, expectedCode] of [[true, "PROFILE_MAINTENANCE_INACTIVE"],
+    [false, "PROFILE_MAINTENANCE_FORBIDDEN"]] as const) {
+    const sql: string[] = [];
+    let accessValues: readonly unknown[] | undefined;
+    const repository = new PostgresqlProfileMaintenanceRepository(runner(async (_input, query) =>
+      query(async (text, values) => {
+        sql.push(text);
+        if (text.includes("INSERT INTO shared_idempotency_records")) return result([], 1);
+        if (text.includes("SELECT request_hash")) return result([{
+          request_hash: HASH, state: "in_progress", result_reference: null,
+        }]);
+        if (text === "SELECT status FROM crm_guardians WHERE id = $1") {
+          return result([{ status: "pending_delete" }]);
+        }
+        if (text.includes("FROM crm_student_guardian_relationships AS relationship")) {
+          accessValues = values;
+          return result(assigned ? [{ id: "51000000-0000-4000-8000-000000000801" }] : []);
+        }
+        return result([]);
+      })));
+    await assert.rejects(repository.updateGuardian({ ...guardianInput(), actorRole: "advisor" }),
+      code(expectedCode));
+    const accessSql = sql.find((text) => text.includes("FROM crm_student_guardian_relationships")) ?? "";
+    assert.match(accessSql, /\$3 = 'pending_delete'/);
+    assert.match(accessSql, /student\.status = 'active'/);
+    assert.match(accessSql, /student\.status = 'pending_delete'/);
+    assert.equal(accessValues?.[2], "pending_delete");
+    assert.equal(sql.some((text) => text.includes("UPDATE crm_guardians")), false);
+    assert.equal(sql.some((text) => text.includes("INSERT INTO audit_events")), false);
+  }
+});
+
 test("changed payload conflicts and stale versions remain distinct", async () => {
   const conflict = new PostgresqlProfileMaintenanceRepository(runner(async (_input, query) =>
     query(async (text) => text.includes("INSERT INTO shared_idempotency_records")

@@ -15,6 +15,7 @@ export interface StudentListItem {
 export interface StudentGuardianItem {
   readonly id: string;
   readonly displayName: string;
+  readonly status: "active" | "pending_delete";
   readonly email: string | null;
   readonly phone: string | null;
   readonly recordVersion: number;

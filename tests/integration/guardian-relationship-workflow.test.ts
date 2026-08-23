@@ -107,6 +107,26 @@ test("students.read continues to allow Founder, Admin and Advisor current relati
   }
 });
 
+test("current reads preserve repository visibility and fail closed when the Student is not readable", async () => {
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const repository = repositoryStub(calls);
+  const service = new GuardianRelationshipService(repository);
+  const view = await service.listCurrent(actor("advisor"), STUDENT_ID);
+  assert.equal(view.relationships[0]?.guardian.emailHint, null);
+
+  await assert.rejects(
+    new GuardianRelationshipService({ ...repository, async listCurrent() { return null; } })
+      .listCurrent(actor("advisor"), STUDENT_ID),
+    (error: unknown) => error instanceof GuardianRelationshipError &&
+      error.code === "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND",
+  );
+  await assert.rejects(
+    service.listCurrent(actor("contractor"), STUDENT_ID),
+    (error: unknown) => error instanceof GuardianRelationshipError &&
+      error.code === "GUARDIAN_RELATIONSHIP_FORBIDDEN",
+  );
+});
+
 function actor(role: IdentitySessionActor["role"]): IdentitySessionActor {
   return {
     userId: ACTOR_ID,

@@ -59,10 +59,12 @@ const FOREIGN_STUDENT_ID = "63000000-0000-4000-8000-000000000601";
 const FOREIGN_GUARDIAN_ID = "63000000-0000-4000-8000-000000000701";
 const FOREIGN_RELATIONSHIP_ID = "63000000-0000-4000-8000-000000000801";
 const INACTIVE_GUARDIAN_ID = "51000000-0000-4000-8000-000000000799";
+const PURGED_STUDENT_ID = "64000000-0000-4000-8000-000000000601";
+const PURGED_GUARDIAN_ID = "64000000-0000-4000-8000-000000000701";
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
-test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
-  timeout: 300_000,
+test("CRM-01 through CRM-05 work through PostgreSQL 17 and the real local Next Dev HTTP API", {
+  timeout: 360_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
   const containerName = `tianxing-crm01-pg17-${suffix}`;
@@ -182,7 +184,7 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v6");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v7");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
@@ -271,6 +273,7 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
     const crm02Before = await readGuardianWorkflowCounts(target, studentId);
     const currentBefore = await getJson(baseUrl, `/api/v1/students/${studentId}/guardians`, advisorCookie);
     assert.equal(currentBefore.response.status, 200);
+    assertCurrentRelationshipResponse(currentBefore, studentId, guardianId);
     const initialRelationships = requiredArray(currentBefore.body.data?.relationships);
     assert.equal(initialRelationships.length, 1);
     const initialPrimary = requiredRecord(initialRelationships[0]);
@@ -509,13 +512,26 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
     const beforeDenied = await readGuardianWorkflowCounts(target, studentId);
     for (const [principal, password] of roleCredentials) {
       const cookie = principal.role === "admin" ? adminCookie : await login(baseUrl, principal.email, password);
-      for (const [path, deniedBody, key] of [
-        [`/api/v1/students/${studentId}/guardians/search`, { query: SHARED_GUARDIAN.guardianName }, undefined],
-        [`/api/v1/students/${studentId}/guardians`, attachBody, `crm02-denied-attach-${principal.role}`],
-        [`/api/v1/students/${studentId}/guardians/primary-handoffs`, winningAttempt.body,
+      const actorProbe = await getJson(baseUrl, "/api/v1/auth/me", cookie);
+      if (actorProbe.response.status !== 200 || actorProbe.body.data?.role !== principal.role) {
+        throw new HarnessError(
+          `crm02_denied_${principal.role}_identity_status_${actorProbe.response.status}`,
+        );
+      }
+      for (const [operation, path, deniedBody, key] of [
+        ["search", `/api/v1/students/${studentId}/guardians/search`,
+          { query: SHARED_GUARDIAN.guardianName }, undefined],
+        ["attach", `/api/v1/students/${studentId}/guardians`, attachBody,
+          `crm02-denied-attach-${principal.role}`],
+        ["handoff", `/api/v1/students/${studentId}/guardians/primary-handoffs`, winningAttempt.body,
           `crm02-denied-handoff-${principal.role}`],
       ] as const) {
         const denied = await postJson(baseUrl, path, cookie, deniedBody, key);
+        if (denied.response.status !== 403) {
+          throw new HarnessError(
+            `crm02_denied_${principal.role}_${operation}_status_${denied.response.status}`,
+          );
+        }
         assertApiError(denied, 403, "FORBIDDEN");
         assertNoPrivateErrorEcho(denied, [SHARED_GUARDIAN.guardianName, SHARED_GUARDIAN.guardianEmail!]);
       }
@@ -969,6 +985,310 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
       audit: 6, outbox: 6,
     });
 
+    const crm05PartnerCreate = await createStudent(baseUrl, founderCookie, "crm05-partner-create", {
+      student: { display_name: "CRM05 Partner Student", date_of_birth: null,
+        contact_email: null, contact_phone: null },
+      primary_guardian: { display_name: "CRM05 Partner Guardian",
+        email: "crm05-partner-guardian@example.invalid", phone: null,
+        relationship_type: "other_guardian", is_legal_guardian: true },
+    });
+    assert.equal(crm05PartnerCreate.response.status, 201);
+    const crm05PartnerStudentId = requiredString(crm05PartnerCreate.body.data?.student, "id");
+    const crm05PartnerGuardianId = requiredString(crm05PartnerCreate.body.data?.primary_guardian, "id");
+    const crm05SharedEmail = "crm05-shared-student@example.invalid";
+    const crm05ForbiddenGuardianEmail = "crm05-forbidden-guardian-update@example.invalid";
+    assertProfileAcknowledgement(await patchJson(baseUrl, `/api/v1/students/${studentId}`,
+      founderCookie, { display_name: "CRM05 Lifecycle Student", date_of_birth: "2013-06-18",
+        contact_email: crm05SharedEmail, contact_phone: null, expected_record_version: 1 },
+      "crm05-lifecycle-profile"), "student", studentId, 2);
+    assertProfileAcknowledgement(await patchJson(baseUrl, `/api/v1/students/${crm05PartnerStudentId}`,
+      founderCookie, { display_name: "CRM05 Partner Student", date_of_birth: null,
+        contact_email: crm05SharedEmail, contact_phone: null, expected_record_version: 1 },
+      "crm05-partner-profile"), "student", crm05PartnerStudentId, 2);
+    const crm05MergeCandidate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      founderCookie, { entity_type: "student", left_record_id: studentId,
+        right_record_id: crm05PartnerStudentId }, "crm05-merge-guard-candidate");
+    assert.equal(crm05MergeCandidate.response.status, 201);
+    const crm05MergeCandidateData = requiredRecord(crm05MergeCandidate.body.data);
+    const crm05MergeCandidateId = requiredString(crm05MergeCandidateData, "id");
+
+    const founderAccess = await getJson(baseUrl, "/api/v1/auth/me", founderCookie);
+    const dataReviewerAccess = await getJson(baseUrl, "/api/v1/auth/me", dataReviewerCookie);
+    const contractorAccess = await getJson(baseUrl, "/api/v1/auth/me", contractorCookie);
+    assert.deepEqual(deletionCapabilities(founderAccess),
+      ["students.deletion.request", "students.deletion.review"]);
+    assert.deepEqual(deletionCapabilities(access), ["students.deletion.request"]);
+    assert.deepEqual(deletionCapabilities(adminAccess), []);
+    assert.deepEqual(deletionCapabilities(dataReviewerAccess), []);
+    assert.deepEqual(deletionCapabilities(contractorAccess), []);
+
+    const deletionBefore = await readDeletionWorkflowCounts(target, [
+      "CRM05 Lifecycle Student", "CRM05 Partner Student", crm05SharedEmail,
+      "crm05-partner-guardian@example.invalid", crm05ForbiddenGuardianEmail,
+    ]);
+    const deletionBody = (recordVersion: number) => ({
+      expected_record_version: recordVersion,
+      reason_code: "record.lifecycle.pending_delete_requested",
+    });
+    const scopedAdvisorDenied = await postJson(baseUrl,
+      `/api/v1/students/${crm05PartnerStudentId}/deletion-requests`, advisorCookie,
+      deletionBody(2), "crm05-advisor-unassigned");
+    assertApiError(scopedAdvisorDenied, 404, "NOT_FOUND");
+    const crossTenantDeletion = await postJson(baseUrl,
+      `/api/v1/students/${FOREIGN_STUDENT_ID}/deletion-requests`, founderCookie,
+      deletionBody(1), "crm05-cross-tenant");
+    assertApiError(crossTenantDeletion, 404, "NOT_FOUND");
+    const strictDeletionBody = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie,
+      { ...deletionBody(2), organization_id: NEON_TEST_ORGANIZATION.id }, "crm05-extra-field");
+    assertApiError(strictDeletionBody, 422, "VALIDATION_FAILED");
+    const missingIdempotency = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie, deletionBody(2));
+    assertApiError(missingIdempotency, 422, "VALIDATION_FAILED");
+    const invalidQueue = await getJson(baseUrl,
+      "/api/v1/crm/deletion-requests?entity_type=student&status=pending_delete", founderCookie);
+    assertApiError(invalidQueue, 422, "VALIDATION_FAILED");
+    const unauthenticatedQueue = await getJson(baseUrl, "/api/v1/crm/deletion-requests", "");
+    assertApiError(unauthenticatedQueue, 401, "UNAUTHENTICATED");
+
+    for (const [role, cookie] of [["admin", adminCookie], ["data_reviewer", dataReviewerCookie],
+      ["contractor", contractorCookie]] as const) {
+      const deniedRequest = await postJson(baseUrl,
+        `/api/v1/students/${studentId}/deletion-requests`, cookie, deletionBody(2),
+        `crm05-denied-${role}`);
+      assertApiError(deniedRequest, 403, "FORBIDDEN");
+      assertNoPrivateErrorEcho(deniedRequest, ["CRM05 Lifecycle Student", crm05SharedEmail]);
+      const deniedQueue = await getJson(baseUrl, "/api/v1/crm/deletion-requests", cookie);
+      assertApiError(deniedQueue, 403, "FORBIDDEN");
+    }
+    const advisorQueue = await getJson(baseUrl, "/api/v1/crm/deletion-requests", advisorCookie);
+    assertApiError(advisorQueue, 403, "FORBIDDEN");
+    assert.deepEqual(await readDeletionWorkflowCounts(target, []), deletionBefore);
+
+    const founderDeletion = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie,
+      deletionBody(2), "crm05-founder-student");
+    assertDeletionReceipt(founderDeletion, "student", studentId, 3);
+    const founderDeletionReplay = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie,
+      deletionBody(2), "crm05-founder-student");
+    assertDeletionReceipt(founderDeletionReplay, "student", studentId, 3);
+    assert.deepEqual(founderDeletionReplay.body.data, founderDeletion.body.data);
+    const founderDeletionChanged = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie,
+      deletionBody(3), "crm05-founder-student");
+    assertApiError(founderDeletionChanged, 409, "CONFLICT");
+    const alreadyPending = await postJson(baseUrl,
+      `/api/v1/students/${studentId}/deletion-requests`, founderCookie,
+      deletionBody(3), "crm05-already-pending");
+    assertApiError(alreadyPending, 409, "CONFLICT");
+
+    const assignedBeforeDeletion = requiredRecord((await getJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}`, advisorCookie)).body.data?.student);
+    const assignedGuardianBeforeDeletion = requiredRecord(requiredArray(
+      assignedBeforeDeletion.guardians).find((item) => requiredRecord(item).id === assignedGuardianId));
+    const advisorGuardianDeletion = await postJson(baseUrl,
+      `/api/v1/guardians/${assignedGuardianId}/deletion-requests`, advisorCookie,
+      deletionBody(requiredNumber(assignedGuardianBeforeDeletion, "recordVersion")),
+      "crm05-advisor-guardian");
+    assertDeletionReceipt(advisorGuardianDeletion, "guardian", assignedGuardianId,
+      requiredNumber(assignedGuardianBeforeDeletion, "recordVersion") + 1);
+    const studentWithPendingGuardian = requiredRecord((await getJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}`, advisorCookie)).body.data?.student);
+    const pendingGuardianView = requiredRecord(requiredArray(studentWithPendingGuardian.guardians)
+      .find((item) => requiredRecord(item).id === assignedGuardianId));
+    assert.equal(pendingGuardianView.status, "pending_delete");
+    assert.deepEqual(Object.keys(pendingGuardianView).sort(), ["displayName", "email", "id",
+      "isBillingContact", "isEmergencyContact", "isLegalGuardian", "isPrimaryContact",
+      "notificationConsent", "phone", "recordVersion", "relationshipType", "status"]);
+
+    const advisorStudentDeletion = await postJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}/deletion-requests`, advisorCookie,
+      deletionBody(requiredNumber(studentWithPendingGuardian, "recordVersion")),
+      "crm05-advisor-student");
+    assertDeletionReceipt(advisorStudentDeletion, "student", assignedStudent.id,
+      requiredNumber(studentWithPendingGuardian, "recordVersion") + 1);
+    const pendingStudentView = requiredRecord((await getJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}`, advisorCookie)).body.data?.student);
+    assert.equal(pendingStudentView.status, "pending_delete");
+    assert.equal(requiredRecord(requiredArray(pendingStudentView.guardians)
+      .find((item) => requiredRecord(item).id === assignedGuardianId)).status, "pending_delete");
+    const pendingRelationships = await getJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}/guardians`, advisorCookie);
+    assert.equal(pendingRelationships.response.status, 200);
+    assertCurrentRelationshipResponse(pendingRelationships, assignedStudent.id, assignedGuardianId);
+    assert.equal(JSON.stringify(pendingRelationships.body).includes(advisorGuardianBody.email), false);
+    const purgedRelationships = await getJson(baseUrl,
+      `/api/v1/students/${PURGED_STUDENT_ID}/guardians`, advisorCookie);
+    assertApiError(purgedRelationships, 404, "NOT_FOUND");
+    const crossTenantRelationships = await getJson(baseUrl,
+      `/api/v1/students/${FOREIGN_STUDENT_ID}/guardians`, advisorCookie);
+    assertApiError(crossTenantRelationships, 404, "NOT_FOUND");
+
+    const unassignedBeforeDeletion = requiredRecord((await getJson(baseUrl,
+      `/api/v1/students/${unassignedStudent.id}`, advisorCookie)).body.data?.student);
+    const concurrentDeletionResults = await Promise.all([
+      postJson(baseUrl, `/api/v1/students/${unassignedStudent.id}/deletion-requests`, advisorCookie,
+        deletionBody(requiredNumber(unassignedBeforeDeletion, "recordVersion")), "crm05-concurrent-a"),
+      postJson(baseUrl, `/api/v1/students/${unassignedStudent.id}/deletion-requests`, advisorCookie,
+        deletionBody(requiredNumber(unassignedBeforeDeletion, "recordVersion")), "crm05-concurrent-b"),
+    ]);
+    assert.deepEqual(concurrentDeletionResults.map(({ response }) => response.status).sort(), [200, 409]);
+    assertApiError(concurrentDeletionResults.find(({ response }) => response.status === 409)!,
+      409, "CONFLICT");
+
+    const unassignedGuardianBeforeDeletion = requiredRecord(requiredArray(
+      unassignedBeforeDeletion.guardians).find((item) => requiredRecord(item).id === unassignedGuardianId));
+    const staleDeletion = await postJson(baseUrl,
+      `/api/v1/guardians/${unassignedGuardianId}/deletion-requests`, founderCookie,
+      deletionBody(requiredNumber(unassignedGuardianBeforeDeletion, "recordVersion") - 1),
+      "crm05-stale-guardian");
+    assertApiError(staleDeletion, 409, "STALE_VERSION");
+
+    await installDeletionAuditFailure(target);
+    try {
+      const failedDeletion = await postJson(baseUrl,
+        `/api/v1/guardians/${crm05PartnerGuardianId}/deletion-requests`, founderCookie,
+        deletionBody(1), "crm05-rollback-guardian");
+      assertApiError(failedDeletion, 503, "SERVICE_UNAVAILABLE");
+      assertNoPrivateErrorEcho(failedDeletion,
+        ["CRM05 Partner Guardian", "crm05-partner-guardian@example.invalid"]);
+    } finally {
+      await removeDeletionAuditFailure(target);
+    }
+    const partnerAfterRollback = requiredRecord((await getJson(baseUrl,
+      `/api/v1/students/${crm05PartnerStudentId}`, founderCookie)).body.data?.student);
+    const partnerGuardianAfterRollback = requiredRecord(requiredArray(partnerAfterRollback.guardians)
+      .find((item) => requiredRecord(item).id === crm05PartnerGuardianId));
+    assert.equal(partnerGuardianAfterRollback.status, "active");
+    assert.equal(partnerGuardianAfterRollback.recordVersion, 1);
+
+    const pendingStudentProfile = await patchJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}`, founderCookie,
+      { display_name: "CRM05 Forbidden Student Update", date_of_birth: null,
+        contact_email: null, contact_phone: null,
+        expected_record_version: requiredNumber(pendingStudentView, "recordVersion") },
+      "crm05-pending-student-profile");
+    assertApiError(pendingStudentProfile, 409, "CONFLICT");
+    const pendingProfileCounts = await readProfileMaintenanceCounts(target);
+    const advisorPendingGuardianProfile = await patchJson(baseUrl,
+      `/api/v1/guardians/${assignedGuardianId}`, advisorCookie,
+      { display_name: "CRM05 Advisor Forbidden Guardian Update",
+        email: "crm05-advisor-forbidden-guardian-update@example.invalid", phone: null,
+        expected_record_version: requiredNumber(pendingGuardianView, "recordVersion") },
+      "crm05-advisor-pending-guardian-profile");
+    assertApiError(advisorPendingGuardianProfile, 409, "CONFLICT");
+    assertNoPrivateErrorEcho(advisorPendingGuardianProfile,
+      ["CRM05 Advisor Forbidden Guardian Update",
+        "crm05-advisor-forbidden-guardian-update@example.invalid"]);
+    assert.deepEqual(await readProfileMaintenanceCounts(target), pendingProfileCounts);
+    const pendingGuardianProfile = await patchJson(baseUrl,
+      `/api/v1/guardians/${assignedGuardianId}`, founderCookie,
+      { display_name: "CRM05 Forbidden Guardian Update", email: crm05ForbiddenGuardianEmail, phone: null,
+        expected_record_version: requiredNumber(pendingGuardianView, "recordVersion") },
+      "crm05-pending-guardian-profile");
+    assertApiError(pendingGuardianProfile, 409, "CONFLICT");
+    assertNoPrivateErrorEcho(pendingGuardianProfile,
+      ["CRM05 Forbidden Guardian Update", crm05ForbiddenGuardianEmail]);
+    const unassignedPendingGuardianProfile = await patchJson(baseUrl,
+      `/api/v1/guardians/${INACTIVE_GUARDIAN_ID}`, advisorCookie,
+      { display_name: "CRM05 Hidden Pending Guardian", email: "hidden-pending@example.invalid",
+        phone: null, expected_record_version: 1 }, "crm05-unassigned-pending-guardian-profile");
+    assertApiError(unassignedPendingGuardianProfile, 403, "FORBIDDEN");
+    assertNoPrivateErrorEcho(unassignedPendingGuardianProfile,
+      ["CRM05 Hidden Pending Guardian", "hidden-pending@example.invalid"]);
+    const purgedGuardianProfile = await patchJson(baseUrl,
+      `/api/v1/guardians/${PURGED_GUARDIAN_ID}`, founderCookie,
+      { display_name: "CRM05 Hidden Purged Guardian", email: "hidden-purged@example.invalid",
+        phone: null, expected_record_version: 3 }, "crm05-purged-guardian-profile");
+    assertApiError(purgedGuardianProfile, 404, "NOT_FOUND");
+    assertNoPrivateErrorEcho(purgedGuardianProfile,
+      ["CRM05 Hidden Purged Guardian", "hidden-purged@example.invalid"]);
+    const crossTenantGuardianProfile = await patchJson(baseUrl,
+      `/api/v1/guardians/${FOREIGN_GUARDIAN_ID}`, founderCookie,
+      { display_name: "CRM05 Hidden Foreign Guardian", email: "hidden-foreign@example.invalid",
+        phone: null, expected_record_version: 1 }, "crm05-cross-tenant-guardian-profile");
+    assertApiError(crossTenantGuardianProfile, 404, "NOT_FOUND");
+    assertNoPrivateErrorEcho(crossTenantGuardianProfile,
+      ["CRM05 Hidden Foreign Guardian", "hidden-foreign@example.invalid"]);
+    assert.deepEqual(await readProfileMaintenanceCounts(target), pendingProfileCounts);
+    const pendingAttach = await postJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}/guardians`, advisorCookie, attachBody,
+      "crm05-pending-attach");
+    assertApiError(pendingAttach, 404, "NOT_FOUND");
+    const pendingGuardianAttach = await postJson(baseUrl,
+      `/api/v1/students/${crm05PartnerStudentId}/guardians`, advisorCookie,
+      { ...attachBody, guardian_id: assignedGuardianId }, "crm05-pending-guardian-attach");
+    assertApiError(pendingGuardianAttach, 404, "NOT_FOUND");
+    const pendingHandoff = await postJson(baseUrl,
+      `/api/v1/students/${assignedStudent.id}/guardians/primary-handoffs`, advisorCookie,
+      { successor_guardian_id: unassignedGuardianId, expected_primary_record_version: 2 },
+      "crm05-pending-handoff");
+    assertApiError(pendingHandoff, 404, "NOT_FOUND");
+    const pendingDuplicateCandidate = await postJson(baseUrl, "/api/v1/crm/duplicate-candidates",
+      founderCookie, { entity_type: "student", left_record_id: studentId,
+        right_record_id: crm05PartnerStudentId }, "crm05-pending-candidate");
+    assertApiError(pendingDuplicateCandidate, 404, "NOT_FOUND");
+    const pendingMergeBody = {
+      source_record_id: studentId,
+      canonical_record_id: crm05PartnerStudentId,
+      expected_candidate_record_version: 1,
+      expected_source_record_version: 3,
+      expected_canonical_record_version: 2,
+      field_selections: ["display_name", "date_of_birth", "contact_email", "contact_phone"]
+        .map((field_name) => ({ field_name, source_record_id: crm05PartnerStudentId })),
+      reason_code: "duplicate.confirmed",
+    };
+    assert.deepEqual(Object.keys(pendingMergeBody).sort(), ["canonical_record_id",
+      "expected_candidate_record_version", "expected_canonical_record_version",
+      "expected_source_record_version", "field_selections", "reason_code", "source_record_id"]);
+    assert.deepEqual(pendingMergeBody.field_selections.map(({ field_name }) => field_name),
+      ["display_name", "date_of_birth", "contact_email", "contact_phone"]);
+    assert.equal(pendingMergeBody.field_selections.every(({ source_record_id }) =>
+      source_record_id === crm05PartnerStudentId), true);
+    const pendingMerge = await postJson(baseUrl,
+      `/api/v1/crm/duplicate-candidates/${crm05MergeCandidateId}/merges`, founderCookie,
+      pendingMergeBody, "crm05-pending-merge");
+    assertApiError(pendingMerge, 404, "NOT_FOUND");
+    const pendingCase = await postJson(baseUrl, "/api/v1/cases", founderCookie, {
+      student_id: studentId, intake_year: 2029, admission_type: "transfer",
+      primary_role_binding_id: FOUNDER.roleBindingId, manifest_id: NEON_TEST_MANIFEST_ID,
+    }, "crm05-pending-case");
+    assertApiError(pendingCase, 404, "NOT_FOUND");
+    const purgeRoute = await fetch(`${baseUrl}/api/v1/students/${studentId}/purge`, {
+      method: "POST", headers: { cookie: founderCookie, "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(purgeRoute.status, 404);
+    await purgeRoute.body?.cancel();
+
+    const deletionQueue = await getJson(baseUrl, "/api/v1/crm/deletion-requests", founderCookie);
+    assert.equal(deletionQueue.response.status, 200);
+    assert.equal(deletionQueue.response.headers.get("cache-control"), "no-store");
+    const deletionQueueItems = requiredArray(deletionQueue.body.data).map(requiredRecord);
+    assert.equal(deletionQueueItems.length <= 100, true);
+    for (const item of deletionQueueItems) assertDeletionSummary(item);
+    assertDeletionQueueOrder(deletionQueueItems);
+    const studentDeletionQueue = await getJson(baseUrl,
+      "/api/v1/crm/deletion-requests?entity_type=student", founderCookie);
+    const studentDeletionItems = requiredArray(studentDeletionQueue.body.data).map(requiredRecord);
+    assert.equal(studentDeletionItems.every(({ entity_type }) => entity_type === "student"), true);
+    assert.equal(studentDeletionItems.some(({ entity_id }) => entity_id === studentId), true);
+    const guardianDeletionQueue = await getJson(baseUrl,
+      "/api/v1/crm/deletion-requests?entity_type=guardian", founderCookie);
+    const guardianDeletionItems = requiredArray(guardianDeletionQueue.body.data).map(requiredRecord);
+    assert.equal(guardianDeletionItems.every(({ entity_type }) => entity_type === "guardian"), true);
+    assert.equal(guardianDeletionItems.some(({ entity_id }) => entity_id === assignedGuardianId), true);
+
+    const deletionAfter = await readDeletionWorkflowCounts(target, [
+      "CRM05 Lifecycle Student", "CRM05 Partner Student", crm05SharedEmail,
+      "crm05-partner-guardian@example.invalid", "CRM05 Forbidden Student Update",
+      "CRM05 Forbidden Guardian Update", crm05ForbiddenGuardianEmail,
+    ]);
+    assert.deepEqual(deletionDelta(deletionBefore, deletionAfter), {
+      pending_students: 3, pending_guardians: 1, student_receipts: 3,
+      guardian_receipts: 1, audit: 4, outbox: 4, private_matches: 0,
+    });
+
     const list = await getJson(baseUrl, "/api/v1/students", advisorCookie);
     assert.equal(list.response.status, 200);
     assert.equal((list.body.data?.students as Array<{ id?: string }>).some(({ id }) => id === studentId), true);
@@ -1014,6 +1334,14 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
       "CRM04 Left Guardian",
       "CRM04 Right Guardian",
       "crm04-shared-guardian@example.invalid",
+      "CRM05 Lifecycle Student",
+      "CRM05 Partner Student",
+      "CRM05 Partner Guardian",
+      crm05SharedEmail,
+      "crm05-partner-guardian@example.invalid",
+      "CRM05 Forbidden Student Update",
+      "CRM05 Forbidden Guardian Update",
+      crm05ForbiddenGuardianEmail,
       applicationPassword,
       advisorPassword,
       adminPassword,
@@ -1079,6 +1407,29 @@ test("CRM-01 through CRM-04 work through PostgreSQL 17 and the real local Next D
         rollback: 503,
         resolved_reads: "student_and_guardian_both_ids_then_restored",
         append_only_effects: duplicateDelta(duplicateBefore, duplicateAfter),
+      }),
+      pending_delete_review: Object.freeze({
+        founder_request: 200,
+        assigned_advisor_request: 200,
+        advisor_unassigned: 404,
+        denied_roles: 3,
+        founder_queue: 200,
+        exact_replay: "same_result_no_new_rows",
+        changed_payload: 409,
+        stale: 409,
+        concurrent_request: "one_200_one_409_conflict",
+        rollback: 503,
+        pending_reads: "student_embedded_guardian_and_current_relationships",
+        assigned_advisor_pending_guardian_profile: 409,
+        unassigned_advisor_pending_guardian_profile: 403,
+        founder_pending_guardian_profile: 409,
+        purged_guardian_profile: 404,
+        cross_tenant_guardian_profile: 404,
+        purged_relationships_read: 404,
+        cross_tenant_relationships_read: 404,
+        later_writes: "denied",
+        no_purge_route: true,
+        effects: deletionDelta(deletionBefore, deletionAfter),
       }),
       http: Object.freeze({ create: 201, list: 200, detail: 200, forbidden: 403 }),
       persisted_after_relogin: true,
@@ -1159,12 +1510,86 @@ function assertApiError(
   assert.equal(result.body.error?.code, code);
 }
 
+function assertCurrentRelationshipResponse(
+  result: Readonly<{ response: Response; body: ApiEnvelope }>,
+  studentId: string,
+  guardianId: string,
+): void {
+  assert.equal(result.response.status, 200);
+  const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data).sort(), ["relationships", "student"]);
+  const student = requiredRecord(data.student);
+  assert.deepEqual(Object.keys(student).sort(), ["display_name", "id"]);
+  assert.equal(student.id, studentId);
+  const relationships = requiredArray(data.relationships).map(requiredRecord);
+  const relationship = relationships.find((item) => requiredRecord(item.guardian).id === guardianId);
+  assert.ok(relationship);
+  assert.deepEqual(Object.keys(relationship).sort(), [
+    "guardian", "is_billing_contact", "is_emergency_contact", "is_legal_guardian",
+    "is_primary_contact", "notification_consent", "record_version", "relationship_id",
+    "relationship_type", "starts_at",
+  ]);
+  const guardian = requiredRecord(relationship.guardian);
+  assert.deepEqual(Object.keys(guardian).sort(), ["display_name", "email_hint", "id", "phone_hint"]);
+  assert.equal(guardian.id, guardianId);
+}
+
 function assertNoPrivateErrorEcho(
   result: Readonly<{ response: Response; body: ApiEnvelope }>,
   privateValues: readonly string[],
 ): void {
   const serialized = JSON.stringify(result.body);
   for (const value of privateValues) assert.equal(serialized.includes(value), false);
+}
+
+function deletionCapabilities(result: Readonly<{ response: Response; body: ApiEnvelope }>): string[] {
+  assert.equal(result.response.status, 200);
+  const capabilities = requiredArray(result.body.data?.capabilities);
+  return capabilities.filter((capability): capability is string => typeof capability === "string")
+    .filter((capability) => capability.startsWith("students.deletion."))
+    .sort();
+}
+
+function assertDeletionReceipt(
+  result: Readonly<{ response: Response; body: ApiEnvelope }>,
+  entityType: "student" | "guardian",
+  entityId: string,
+  recordVersion: number,
+): void {
+  assert.equal(result.response.status, 200);
+  assert.equal(result.response.headers.get("cache-control"), "no-store");
+  const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data).sort(), ["deletion_requested_at", "entity_id", "entity_type",
+    "record_version", "status"]);
+  assert.equal(data.entity_type, entityType);
+  assert.equal(data.entity_id, entityId);
+  assert.equal(data.status, "pending_delete");
+  assert.equal(data.record_version, recordVersion);
+  assert.equal(new Date(requiredString(data, "deletion_requested_at")).toISOString(),
+    data.deletion_requested_at);
+}
+
+function assertDeletionSummary(item: Record<string, unknown>): void {
+  assert.deepEqual(Object.keys(item).sort(), ["deletion_requested_at", "display_label", "entity_id",
+    "entity_type", "record_version", "status"]);
+  assert.equal(["student", "guardian"].includes(String(item.entity_type)), true);
+  assert.equal(item.status, "pending_delete");
+  assert.equal(typeof item.display_label, "string");
+  assert.equal(new Date(requiredString(item, "deletion_requested_at")).toISOString(),
+    item.deletion_requested_at);
+}
+
+function assertDeletionQueueOrder(items: readonly Record<string, unknown>[]): void {
+  for (let index = 1; index < items.length; index += 1) {
+    const previous = items[index - 1]!;
+    const current = items[index]!;
+    const previousTime = Date.parse(requiredString(previous, "deletion_requested_at"));
+    const currentTime = Date.parse(requiredString(current, "deletion_requested_at"));
+    assert.equal(previousTime >= currentTime, true);
+    if (previousTime === currentTime) {
+      assert.equal(requiredString(previous, "entity_id") <= requiredString(current, "entity_id"), true);
+    }
+  }
 }
 
 function requiredString(container: unknown, field: string): string {
@@ -1475,6 +1900,24 @@ async function prepareProfileMaintenanceFixtures(target: OneRoleBaselineTarget):
          'pending_delete',transaction_timestamp(),$3,'crm03.local-test')`,
       [INACTIVE_GUARDIAN_ID, NEON_TEST_ORGANIZATION.id, FOUNDER.userId],
     );
+    await client.query(
+      `INSERT INTO crm_students
+        (id, organization_id, display_name, date_of_birth, contact_email, contact_phone, status,
+         deletion_requested_at, deletion_requested_by_user_id, deletion_reason,
+         purge_approved_at, purge_approved_by_user_id, purged_at, record_version)
+       VALUES ($1,$2,NULL,NULL,NULL,NULL,'purged',transaction_timestamp(),$3,NULL,
+         transaction_timestamp(),$3,transaction_timestamp(),3)`,
+      [PURGED_STUDENT_ID, NEON_TEST_ORGANIZATION.id, FOUNDER.userId],
+    );
+    await client.query(
+      `INSERT INTO crm_guardians
+        (id, organization_id, display_name, email, phone, status,
+         deletion_requested_at, deletion_requested_by_user_id, deletion_reason,
+         purge_approved_at, purge_approved_by_user_id, purged_at, record_version)
+       VALUES ($1,$2,NULL,NULL,NULL,'purged',transaction_timestamp(),$3,NULL,
+         transaction_timestamp(),$3,transaction_timestamp(),3)`,
+      [PURGED_GUARDIAN_ID, NEON_TEST_ORGANIZATION.id, FOUNDER.userId],
+    );
     await client.query("COMMIT");
   } catch {
     await client.query("ROLLBACK").catch(() => {});
@@ -1525,6 +1968,30 @@ async function removeDuplicateAuditFailure(target: OneRoleBaselineTarget): Promi
   `, "crm04_fault_cleanup");
 }
 
+async function installDeletionAuditFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    CREATE FUNCTION public.test_crm05_fail_deletion_audit()
+    RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+    AS $$ BEGIN
+      IF NEW.event_type IN ('crm.student_pending_delete_requested',
+                            'crm.guardian_pending_delete_requested') THEN
+        RAISE EXCEPTION USING ERRCODE = '57P01';
+      END IF;
+      RETURN NEW;
+    END; $$;
+    CREATE TRIGGER test_crm05_fail_deletion_audit_trg
+    BEFORE INSERT ON public.audit_events
+    FOR EACH ROW EXECUTE FUNCTION public.test_crm05_fail_deletion_audit()
+  `, "crm05_fault_install");
+}
+
+async function removeDeletionAuditFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    DROP TRIGGER IF EXISTS test_crm05_fail_deletion_audit_trg ON public.audit_events;
+    DROP FUNCTION IF EXISTS public.test_crm05_fail_deletion_audit()
+  `, "crm05_fault_cleanup");
+}
+
 async function login(baseUrl: string, email: string, password: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
     method: "POST",
@@ -1563,6 +2030,72 @@ function localProvisionTarget(target: OneRoleBaselineTarget): DatabaseTestProvis
     statementTimeoutMs: 10_000,
     ssl: false,
   });
+}
+
+interface DeletionWorkflowCounts {
+  pending_students: number;
+  pending_guardians: number;
+  student_receipts: number;
+  guardian_receipts: number;
+  audit: number;
+  outbox: number;
+  private_matches: number;
+}
+
+async function readDeletionWorkflowCounts(
+  target: OneRoleBaselineTarget,
+  privateValues: readonly string[],
+): Promise<DeletionWorkflowCounts> {
+  const client = new Client(createOneRoleBaselineClientConfig(target));
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    const result = await client.query<DeletionWorkflowCounts>(`
+      SELECT
+        (SELECT count(*)::int FROM crm_students WHERE status='pending_delete') AS pending_students,
+        (SELECT count(*)::int FROM crm_guardians WHERE status='pending_delete') AS pending_guardians,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation='crm.request_student_pending_delete') AS student_receipts,
+        (SELECT count(*)::int FROM shared_idempotency_records
+          WHERE operation='crm.request_guardian_pending_delete') AS guardian_receipts,
+        (SELECT count(*)::int FROM audit_events WHERE event_type IN
+          ('crm.student_pending_delete_requested','crm.guardian_pending_delete_requested')) AS audit,
+        (SELECT count(*)::int FROM audit_outbox WHERE event_type IN
+          ('crm.student_pending_delete_requested','crm.guardian_pending_delete_requested')) AS outbox,
+        ((SELECT count(*) FROM audit_events AS event
+          WHERE event.event_type IN
+            ('crm.student_pending_delete_requested','crm.guardian_pending_delete_requested')
+            AND EXISTS (SELECT 1 FROM unnest($1::text[]) AS private_value
+              WHERE event.metadata::text LIKE '%' || private_value || '%')) +
+         (SELECT count(*) FROM audit_outbox AS message
+          WHERE message.event_type IN
+            ('crm.student_pending_delete_requested','crm.guardian_pending_delete_requested')
+            AND EXISTS (SELECT 1 FROM unnest($1::text[]) AS private_value
+              WHERE message.payload::text LIKE '%' || private_value || '%')))::int AS private_matches
+    `, [privateValues]);
+    await client.query("COMMIT");
+    const row = result.rows[0];
+    if (!row) throw new HarnessError("crm05_count_inspection");
+    return Object.freeze(row);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("crm05_count_inspection");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+function deletionDelta(
+  before: DeletionWorkflowCounts,
+  after: DeletionWorkflowCounts,
+): DeletionWorkflowCounts {
+  return Object.freeze(Object.fromEntries(Object.keys(before).map((key) => [
+    key,
+    after[key as keyof DeletionWorkflowCounts] - before[key as keyof DeletionWorkflowCounts],
+  ]))) as unknown as DeletionWorkflowCounts;
 }
 
 interface ScopedCounts {

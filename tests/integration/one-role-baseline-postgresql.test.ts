@@ -154,6 +154,7 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
       mode: "apply",
       manifestSha256,
     });
+    await assertPrimaryContactLifecycleInvariant(clientConfig);
 
     process.stdout.write(`${JSON.stringify({
       status: "pass",
@@ -171,6 +172,13 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
         independent_postflight: "verified",
         verification: applyEvidence.verification,
       },
+      primary_contact_invariant: {
+        active: "pass",
+        pending_delete: "pass",
+        purged: "rejected",
+        zero: "rejected",
+        multiple: "rejected",
+      },
     })}\n`);
   } finally {
     if (started) {
@@ -181,6 +189,110 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
     }
   }
 });
+
+async function assertPrimaryContactLifecycleInvariant(
+  clientConfig: ReturnType<typeof createOneRoleBaselineClientConfig>,
+): Promise<void> {
+  const client = new Client(clientConfig);
+  const organizationId = "65000000-0000-4000-8000-000000000001";
+  const actorId = "65000000-0000-4000-8000-000000000101";
+  const studentId = "65000000-0000-4000-8000-000000000601";
+  const guardianId = "65000000-0000-4000-8000-000000000701";
+  const alternateGuardianId = "65000000-0000-4000-8000-000000000702";
+  const relationshipId = "65000000-0000-4000-8000-000000000801";
+  try {
+    await client.connect();
+    await client.query("BEGIN");
+    await setTenantContext(client, organizationId, actorId);
+    await client.query(`INSERT INTO identity_users (id,normalized_email,status)
+      VALUES ($1,'crm05-primary-invariant@example.invalid','active')`, [actorId]);
+    await client.query(`INSERT INTO access_organizations (id,display_name,status,created_by_user_id)
+      VALUES ($1,'CRM05 Primary Invariant','active',$2)`, [organizationId, actorId]);
+    await client.query(`INSERT INTO crm_guardians (id,organization_id,display_name,status)
+      VALUES ($1,$3,'CRM05 Primary Guardian','active'),
+             ($2,$3,'CRM05 Alternate Guardian','active')`,
+    [guardianId, alternateGuardianId, organizationId]);
+    await client.query(`INSERT INTO crm_students (id,organization_id,display_name,status)
+      VALUES ($1,$2,'CRM05 Primary Student','active')`, [studentId, organizationId]);
+    await client.query(`INSERT INTO crm_student_guardian_relationships
+        (id,organization_id,student_id,guardian_id,relationship_type,is_legal_guardian,
+         is_primary_contact,is_emergency_contact,is_billing_contact,notification_consent,starts_at)
+      VALUES ($1,$2,$3,$4,'other_guardian',true,true,false,false,false,transaction_timestamp())`,
+    [relationshipId, organizationId, studentId, guardianId]);
+    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await client.query("COMMIT");
+
+    await client.query("BEGIN");
+    await setTenantContext(client, organizationId, actorId);
+    await client.query(`UPDATE crm_guardians
+      SET status='pending_delete',deletion_requested_at=transaction_timestamp(),
+          deletion_requested_by_user_id=$2,deletion_reason='record.lifecycle.pending_delete_requested',
+          record_version=record_version+1,updated_at=transaction_timestamp()
+      WHERE id=$1`, [guardianId, actorId]);
+    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    await client.query("COMMIT");
+
+    await expectRejectedTransaction(client, organizationId, actorId, async () => {
+      await client.query(`UPDATE crm_student_guardian_relationships
+        SET ends_at=transaction_timestamp(),ended_by_user_id=$2,end_reason='local invariant test',
+            record_version=record_version+1,updated_at=transaction_timestamp()
+        WHERE id=$1`, [relationshipId, actorId]);
+      await client.query("SET CONSTRAINTS ALL IMMEDIATE");
+    }, "23514", "crm_students_current_primary_contact_check");
+
+    await expectRejectedTransaction(client, organizationId, actorId, async () => {
+      await client.query(`INSERT INTO crm_student_guardian_relationships
+        (id,organization_id,student_id,guardian_id,relationship_type,is_legal_guardian,
+         is_primary_contact,is_emergency_contact,is_billing_contact,notification_consent,starts_at)
+        VALUES ('65000000-0000-4000-8000-000000000802',$1,$2,$3,'other_guardian',true,true,
+          false,false,false,transaction_timestamp())`,
+      [organizationId, studentId, alternateGuardianId]);
+    }, "23505", "crm_relationships_one_current_primary_idx");
+
+    await expectRejectedTransaction(client, organizationId, actorId, async () => {
+      await client.query(`UPDATE crm_guardians
+        SET status='purged',display_name=NULL,email=NULL,phone=NULL,deletion_reason=NULL,
+            purge_approved_at=transaction_timestamp(),purge_approved_by_user_id=$2,
+            purged_at=transaction_timestamp(),record_version=record_version+1,
+            updated_at=transaction_timestamp()
+        WHERE id=$1`, [guardianId, actorId]);
+    }, "23514", "crm_guardians_purge_current_relationship_check");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    throw new HarnessError("primary_contact_invariant");
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function setTenantContext(client: Client, organizationId: string, actorId: string): Promise<void> {
+  await client.query("SELECT set_config('app.organization_id',$1,true)", [organizationId]);
+  await client.query("SELECT set_config('app.actor_user_id',$1,true)", [actorId]);
+}
+
+async function expectRejectedTransaction(
+  client: Client,
+  organizationId: string,
+  actorId: string,
+  operation: () => Promise<void>,
+  expectedCode: string,
+  expectedConstraint: string,
+): Promise<void> {
+  await client.query("BEGIN");
+  await setTenantContext(client, organizationId, actorId);
+  try {
+    await operation();
+    await client.query("COMMIT");
+    throw new HarnessError("primary_contact_expected_rejection");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error instanceof HarnessError) throw error;
+    const postgres = error as { readonly code?: unknown; readonly constraint?: unknown };
+    assert.equal(postgres.code, expectedCode);
+    assert.equal(postgres.constraint, expectedConstraint);
+  }
+}
 
 async function inspectWithNewClient(
   target: OneRoleBaselineTarget,

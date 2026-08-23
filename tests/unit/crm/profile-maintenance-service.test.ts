@@ -99,3 +99,21 @@ test("rejects invalid normalized fields without calling the repository", async (
   } }), (error: unknown) => error instanceof ProfileMaintenanceError &&
     error.code === "PROFILE_MAINTENANCE_INVALID");
 });
+
+test("preserves the repository inactive classification for an authorized Advisor", async () => {
+  const repository: ProfileMaintenanceRepository = {
+    async updateStudent() { throw new Error("unexpected"); },
+    async updateGuardian() { throw new ProfileMaintenanceError("PROFILE_MAINTENANCE_INACTIVE"); },
+  };
+  const ids = [IDS.audit, IDS.outbox];
+  await assert.rejects(
+    new ProfileMaintenanceService(repository, () => ids.shift()!, () => 1_777_075_200_000)
+      .updateGuardian({ actor: actor("advisor"), command: {
+        guardianId: IDS.guardian, displayName: "Guardian", email: "guardian@example.invalid",
+        phone: null, expectedRecordVersion: 2, requestId: "request-pending",
+        idempotencyKey: "guardian-profile:pending",
+      } }),
+    (error: unknown) => error instanceof ProfileMaintenanceError &&
+      error.code === "PROFILE_MAINTENANCE_INACTIVE",
+  );
+});
