@@ -286,11 +286,15 @@ const CRM02_BROWSER_STAGES = Object.freeze([
   "advisor_login_server_render",
   "advisor_login_browser_render",
   "advisor_login_session",
+  "workspace_shell_desktop_single_control",
+  "workspace_shell_desktop_route_persistence",
   "workspace_shell_desktop_navigation",
   "workspace_shell_notifications",
   "workspace_shell_language",
   "workspace_shell_account_menu",
   "workspace_shell_mobile_navigation",
+  "workspace_shell_mobile_route_close",
+  "workspace_shell_mobile_reopen",
   "crm01_student_create",
   "advisor_detail_entry",
   "current_relationship_read",
@@ -324,7 +328,16 @@ const CRM02_BROWSER_STAGES = Object.freeze([
 type Crm02BrowserStage = (typeof CRM02_BROWSER_STAGES)[number];
 
 interface Crm02BrowserEvidence {
+  workspace_navigation_button_count: number | null;
+  workspace_desktop_visible_navigation_button_count: number | null;
+  workspace_desktop_open_button_count: number | null;
+  workspace_desktop_open_button_visible: boolean;
+  workspace_desktop_route_sidebar_persisted: boolean;
+  workspace_desktop_return_sidebar_persisted: boolean;
   workspace_desktop_navigation: boolean;
+  workspace_mobile_navigation_button_count: number | null;
+  workspace_mobile_route_closed: boolean;
+  workspace_mobile_reopened: boolean;
   workspace_mobile_navigation: boolean;
   workspace_notifications: boolean;
   workspace_language: boolean;
@@ -1282,7 +1295,16 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
   const appDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-app-"));
   const profileDirectory = await mkdtemp(join(tmpdir(), "tianxing-crm02-browser-profile-"));
   const evidence: Crm02BrowserEvidence = {
+    workspace_navigation_button_count: null,
+    workspace_desktop_visible_navigation_button_count: null,
+    workspace_desktop_open_button_count: null,
+    workspace_desktop_open_button_visible: false,
+    workspace_desktop_route_sidebar_persisted: false,
+    workspace_desktop_return_sidebar_persisted: false,
     workspace_desktop_navigation: false,
+    workspace_mobile_navigation_button_count: null,
+    workspace_mobile_route_closed: false,
+    workspace_mobile_reopened: false,
     workspace_mobile_navigation: false,
     workspace_notifications: false,
     workspace_language: false,
@@ -1434,12 +1456,56 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
       (nextStage) => { stage = nextStage; },
     );
 
-    stage = "workspace_shell_desktop_navigation";
     const workspaceSidebar = page.locator("aside.app-sidebar");
     await workspaceSidebar.waitFor({ state: "visible" });
+    const navigationButtonDom = page.locator(
+      'header button.navigation-button[aria-controls="workspace-navigation"]',
+    );
+
+    stage = "workspace_shell_desktop_single_control";
+    evidence.workspace_navigation_button_count = await navigationButtonDom.count();
+    assert.equal(evidence.workspace_navigation_button_count, 1);
+    evidence.workspace_desktop_visible_navigation_button_count = await navigationButtonDom
+      .filter({ visible: true })
+      .count();
+    assert.equal(evidence.workspace_desktop_visible_navigation_button_count, 0);
+
+    stage = "workspace_shell_desktop_route_persistence";
+    const studentsNavigationLink = workspaceSidebar.getByRole("link", {
+      name: "學生與監護人",
+      exact: true,
+    });
+    await studentsNavigationLink.waitFor({ state: "visible" });
+    await studentsNavigationLink.click();
+    await page.waitForURL((url) => url.pathname === "/students");
+    await page.getByRole("heading", { name: "學生與監護人", exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    await page.getByText(/^顯示 \d+ \/ \d+ 位學生$/).waitFor({ state: "visible" });
+    assert.equal(await workspaceSidebar.isVisible(), true);
+    evidence.workspace_desktop_route_sidebar_persisted = true;
+
+    const todayNavigationLink = workspaceSidebar.getByRole("link", {
+      name: "今日工作",
+      exact: true,
+    });
+    await todayNavigationLink.waitFor({ state: "visible" });
+    await todayNavigationLink.click();
+    await page.waitForURL((url) => url.pathname === "/today");
+    await page.getByRole("heading", { name: "今日工作", exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    assert.equal(await workspaceSidebar.isVisible(), true);
+    evidence.workspace_desktop_return_sidebar_persisted = true;
+
+    stage = "workspace_shell_desktop_navigation";
     await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
     await workspaceSidebar.waitFor({ state: "hidden" });
-    await page.locator("button.desktop-navigation-button").click();
+    const navigationButton = page.getByRole("button", { name: "展開導航", exact: true });
+    evidence.workspace_desktop_open_button_count = await navigationButton.count();
+    assert.equal(evidence.workspace_desktop_open_button_count, 1);
+    await navigationButton.waitFor({ state: "visible" });
+    evidence.workspace_desktop_open_button_visible = await navigationButton.isVisible();
+    assert.equal(evidence.workspace_desktop_open_button_visible, true);
+    await navigationButton.click();
     await workspaceSidebar.waitFor({ state: "visible" });
     evidence.workspace_desktop_navigation = true;
 
@@ -1490,11 +1556,35 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
     await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
     await workspaceSidebar.waitFor({ state: "hidden" });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.locator("button.mobile-navigation-button").click();
+    evidence.workspace_mobile_navigation_button_count = await navigationButton.count();
+    assert.equal(evidence.workspace_mobile_navigation_button_count, 1);
+    await navigationButton.waitFor({ state: "visible" });
+    await navigationButton.click();
     await workspaceSidebar.waitFor({ state: "visible" });
     await assertViewport(page, "ui-shell-navigation-mobile");
-    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+
+    stage = "workspace_shell_mobile_route_close";
+    await workspaceSidebar.getByRole("link", { name: "學生與監護人", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/students");
+    await page.getByRole("heading", { name: "學生與監護人", exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    await page.getByText(/^顯示 \d+ \/ \d+ 位學生$/).waitFor({ state: "visible" });
     await workspaceSidebar.waitFor({ state: "hidden" });
+    evidence.workspace_mobile_route_closed = true;
+
+    stage = "workspace_shell_mobile_reopen";
+    await navigationButton.waitFor({ state: "visible" });
+    await navigationButton.click();
+    await workspaceSidebar.waitFor({ state: "visible" });
+    evidence.workspace_mobile_reopened = true;
+
+    await workspaceSidebar.getByRole("link", { name: "今日工作", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/today");
+    await page.getByRole("heading", { name: "今日工作", exact: true, level: 2 })
+      .waitFor({ state: "visible" });
+    await workspaceSidebar.waitFor({ state: "hidden" });
+
+    stage = "workspace_shell_mobile_navigation";
     await notificationButton.click();
     await notificationPanel.waitFor({ state: "visible" });
     await assertViewport(page, "ui-shell-notifications-mobile");
@@ -1507,7 +1597,8 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
     await assertViewport(page, "ui-shell-account-mobile");
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator("button.desktop-navigation-button").click();
+    await navigationButton.waitFor({ state: "visible" });
+    await navigationButton.click();
     await workspaceSidebar.waitFor({ state: "visible" });
     evidence.workspace_mobile_navigation = true;
 

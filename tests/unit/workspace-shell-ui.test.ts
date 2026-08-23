@@ -9,16 +9,38 @@ test("workspace navigation can collapse and reopen on desktop and mobile", async
   const sidebar = await source("components/layout/Sidebar.tsx");
   const topBar = await source("components/layout/TopBar.tsx");
   const styles = await source("app/globals.css");
+  const browserHarness = await source("tests/integration/crm-student-create-dev-browser.test.ts");
+  const zh = JSON.parse(await source("i18n/zh-TW.json")) as Record<string, unknown>;
+  const openNavigation = requiredRecord(zh.layout).open_navigation;
 
   assert.match(appFrame, /desktopNavigationOpen, setDesktopNavigationOpen/);
-  assert.match(appFrame, /setDesktopNavigationOpen\(false\)[\s\S]*setMobileNavigationOpen\(false\)/);
-  assert.match(appFrame, /setDesktopNavigationOpen\(true\)[\s\S]*setMobileNavigationOpen\(true\)/);
+  assert.match(appFrame, /onCloseDesktop=\{\(\) => \{[\s\S]*setDesktopNavigationOpen\(false\)[\s\S]*setMobileNavigationOpen\(false\)/);
+  assert.match(appFrame, /onCloseMobile=\{\(\) => setMobileNavigationOpen\(false\)\}/);
+  assert.match(appFrame, /onOpenDesktopNavigation=\{\(\) => \{[\s\S]*setDesktopNavigationOpen\(true\)[\s\S]*setMobileNavigationOpen\(false\)/);
+  assert.match(appFrame, /onOpenMobileNavigation=\{\(\) => setMobileNavigationOpen\(true\)\}/);
+  const desktopOpenHandler = appFrame.match(/onOpenDesktopNavigation=\{\(\) => \{([\s\S]*?)\}\}/)?.[1];
+  assert.ok(desktopOpenHandler);
+  assert.doesNotMatch(desktopOpenHandler, /setMobileNavigationOpen\(true\)/);
   assert.match(sidebar, /desktopOpen \? 'md:flex' : 'md:hidden'/);
   assert.match(sidebar, /title=\{t\('layout\.close_navigation'\)\}/);
-  assert.match(topBar, /mobile-navigation-button/);
-  assert.match(topBar, /!desktopNavigationOpen[\s\S]*desktop-navigation-button/);
-  assert.match(styles, /\.mobile-navigation-button \{ display: inline-flex; \}/);
-  assert.match(styles, /@media \(min-width: 768px\)[\s\S]*\.mobile-navigation-button \{ display: none; \}[\s\S]*\.desktop-navigation-button \{ display: inline-flex; \}/);
+  assert.match(sidebar, /<aside id="workspace-navigation"/);
+  assert.match(sidebar, /aria-label=\{t\('layout\.close_navigation'\)\}/);
+  assert.match(sidebar, /onNavigate=\{mobileOpen \? onCloseMobile : undefined\}/);
+  assert.doesNotMatch(sidebar, /onNavigate=\{mobileOpen \? onCloseDesktop/);
+  assert.equal(topBar.match(/name="menu"/g)?.length, 1);
+  assert.match(topBar, /className="icon-button navigation-button desktop-navigation-button mobile-navigation-button"/);
+  assert.match(topBar, /aria-label=\{t\('layout\.open_navigation'\)\} aria-controls="workspace-navigation"/);
+  assert.match(topBar, /window\.matchMedia\('\(min-width: 768px\)'\)\.matches[\s\S]*onOpenDesktopNavigation\?\.\(\)[\s\S]*onOpenMobileNavigation\?\.\(\)/);
+  assert.match(styles, /\.navigation-button \{ display: inline-flex; \}/);
+  assert.match(styles, /@media \(min-width: 768px\)[\s\S]*\.navigation-button\[data-desktop-navigation-open="true"\] \{ display: none; \}/);
+  assert.equal(openNavigation, "展開導航");
+  assert.equal(
+    browserHarness.includes(
+      `getByRole("button", { name: ${JSON.stringify(openNavigation)}, exact: true })`,
+    ),
+    true,
+  );
+  assert.doesNotMatch(browserHarness, /name: "開啟導航"/);
 });
 
 test("workspace navigation is registry-backed, capability-only and fail-closed", async () => {
