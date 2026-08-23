@@ -49,6 +49,7 @@ import {
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
 const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+const CONTRACTOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "contractor")!;
 const FOREIGN_ORGANIZATION_ID = "64000000-0000-4000-8000-000000000001";
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
@@ -288,6 +289,117 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       baseUrl, `/api/v1/cases/${founderCaseId}`, founderRelogin,
     )).response.status, 200);
 
+    const taskCountsBefore = await readTaskCounts(target);
+    const founderTaskBody = taskCreateBody(founderCaseId, ADVISOR.userId, "Founder synthetic task");
+    const founderTask = await createTask(baseUrl, founderRelogin, "task01-founder-create", founderTaskBody);
+    assertTaskReceipt(founderTask, 201, 1);
+    const founderTaskId = requiredString(founderTask.body.data, "id");
+    const replayedTask = await createTask(baseUrl, founderRelogin, "task01-founder-create", founderTaskBody);
+    assert.equal(replayedTask.response.status, 201);
+    assert.deepEqual(replayedTask.body.data, founderTask.body.data);
+    assertApiError(await createTask(baseUrl, founderRelogin, "task01-founder-create", {
+      ...founderTaskBody, title: "Changed synthetic task",
+    }), 409, "CONFLICT");
+
+    const contractorTask = await createTask(baseUrl, founderRelogin, "task01-contractor-create",
+      taskCreateBody(founderCaseId, CONTRACTOR.userId, "Contractor synthetic task"));
+    assertTaskReceipt(contractorTask, 201, 1);
+    const contractorTaskId = requiredString(contractorTask.body.data, "id");
+    const advisorTask = await createTask(baseUrl, cookies.get("advisor")!, "task01-advisor-create",
+      taskCreateBody(advisorCaseId, ADVISOR.userId, "Advisor synthetic task"));
+    assertTaskReceipt(advisorTask, 201, 1);
+    const advisorTaskId = requiredString(advisorTask.body.data, "id");
+    const reassignmentTask = await createTask(baseUrl, founderRelogin, "task01-reassign-create",
+      taskCreateBody(founderCaseId, ADVISOR.userId, "Reassignment synthetic task"));
+    assertTaskReceipt(reassignmentTask, 201, 1);
+    const reassignmentTaskId = requiredString(reassignmentTask.body.data, "id");
+    const cancellationTask = await createTask(baseUrl, founderRelogin, "task01-cancel-create",
+      taskCreateBody(founderCaseId, ADVISOR.userId, "Cancellation synthetic task"));
+    assertTaskReceipt(cancellationTask, 201, 1);
+    const cancellationTaskId = requiredString(cancellationTask.body.data, "id");
+    assertApiError(await createTask(baseUrl, founderRelogin, "task01-founder-not-primary",
+      taskCreateBody(advisorCaseId, ADVISOR.userId, "Invisible synthetic task")), 404, "NOT_FOUND");
+    assertApiError(await createTask(baseUrl, cookies.get("advisor")!, "task01-advisor-not-primary",
+      taskCreateBody(founderCaseId, ADVISOR.userId, "Invisible synthetic task")), 404, "NOT_FOUND");
+    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+      assertApiError(await createTask(baseUrl, cookies.get(role)!, `task01-create-denied-${role}`,
+        taskCreateBody(founderCaseId, ADVISOR.userId, "Denied synthetic task")), 403, "FORBIDDEN");
+    }
+
+    const founderTaskList = await getJson(baseUrl, "/api/v1/tasks", founderRelogin);
+    assert.equal(founderTaskList.response.status, 200);
+    assert.equal(requiredRecord(founderTaskList.body.data).audience, "case_workspace");
+    const contractorList = await getJson(baseUrl, "/api/v1/tasks", cookies.get("contractor")!);
+    assert.equal(contractorList.response.status, 200);
+    assert.equal(requiredRecord(contractorList.body.data).audience, "assigned_task");
+    const contractorItem = requiredRecord(requiredArray(requiredRecord(contractorList.body.data).tasks)[0]);
+    assert.deepEqual(Object.keys(contractorItem).sort(), ["available_transitions","due_at","id","record_version",
+      "state","task_brief","title","updated_at"].sort());
+    assert.equal(contractorItem.id, contractorTaskId);
+    for (const role of ["admin", "data_reviewer"] as const) {
+      assertApiError(await getJson(baseUrl, "/api/v1/tasks", cookies.get(role)!), 403, "FORBIDDEN");
+    }
+    assert.equal((await getJson(baseUrl, `/api/v1/tasks/options?case_id=${founderCaseId}`, founderRelogin)).response.status, 200);
+    assertApiError(await getJson(baseUrl, `/api/v1/tasks/options?case_id=${founderCaseId}`, cookies.get("contractor")!), 403, "FORBIDDEN");
+
+    const accepted = await transitionTask(baseUrl, cookies.get("advisor")!, founderTaskId,
+      "task01-advisor-accept", taskTransitionBody("accepted", 1, "", null));
+    assertTaskReceipt(accepted, 200, 2);
+    const stale = await transitionTask(baseUrl, cookies.get("advisor")!, founderTaskId,
+      "task01-stale", taskTransitionBody("accepted", 1, "", null));
+    assertApiError(stale, 409, "STALE_VERSION");
+    const completed = await transitionTask(baseUrl, cookies.get("advisor")!, founderTaskId,
+      "task01-advisor-complete", taskTransitionBody("completed", 2, "synthetic completion", null));
+    assertTaskReceipt(completed, 200, 3);
+    const approved = await transitionTask(baseUrl, founderRelogin, founderTaskId,
+      "task01-founder-approve", taskTransitionBody("approved", 3, "synthetic approval", null));
+    assertTaskReceipt(approved, 200, 4);
+    const contractorAccepted = await transitionTask(baseUrl, cookies.get("contractor")!, contractorTaskId,
+      "task01-contractor-accept", taskTransitionBody("accepted", 1, "", null));
+    assertTaskReceipt(contractorAccepted, 200, 2);
+    const reassigned = await transitionTask(baseUrl, founderRelogin, reassignmentTaskId,
+      "task01-founder-reassign", taskTransitionBody("reassigned", 1, "synthetic reassignment", CONTRACTOR.userId));
+    assertTaskReceipt(reassigned, 200, 2);
+    const cancelled = await transitionTask(baseUrl, founderRelogin, cancellationTaskId,
+      "task01-founder-cancel", taskTransitionBody("cancelled", 1, "synthetic cancellation", null));
+    assertTaskReceipt(cancelled, 200, 2);
+    const concurrentResults = await Promise.all([
+      transitionTask(baseUrl, cookies.get("advisor")!, advisorTaskId,
+        "task01-concurrent-a", taskTransitionBody("accepted", 1, "", null)),
+      transitionTask(baseUrl, cookies.get("advisor")!, advisorTaskId,
+        "task01-concurrent-b", taskTransitionBody("accepted", 1, "", null)),
+    ]);
+    assert.deepEqual(concurrentResults.map(({ response }) => response.status).sort(), [200, 409]);
+    assertTaskReceipt(concurrentResults.find(({ response }) => response.status === 200)!, 200, 2);
+    assertApiError(concurrentResults.find(({ response }) => response.status === 409)!, 409, "STALE_VERSION");
+    assertApiError(await transitionTask(baseUrl, cookies.get("admin")!, contractorTaskId,
+      "task01-admin-transition", taskTransitionBody("completed", 2, "denied", null)), 403, "FORBIDDEN");
+    const taskDetail = await getJson(baseUrl, `/api/v1/tasks/${founderTaskId}`, founderRelogin);
+    assert.equal(taskDetail.response.status, 200);
+    assert.equal(requiredRecord(requiredRecord(taskDetail.body.data).task).state, "approved");
+    const reassignedDetail = await getJson(baseUrl, `/api/v1/tasks/${reassignmentTaskId}`, founderRelogin);
+    assert.equal(requiredRecord(requiredRecord(reassignedDetail.body.data).task).state, "reassigned");
+    assert.equal(requiredRecord(requiredRecord(requiredRecord(reassignedDetail.body.data).task).assignee).id,
+      CONTRACTOR.userId);
+    const cancelledDetail = await getJson(baseUrl, `/api/v1/tasks/${cancellationTaskId}`, founderRelogin);
+    assert.equal(requiredRecord(requiredRecord(cancelledDetail.body.data).task).state, "cancelled");
+    const taskCountsAfter = await readTaskCounts(target);
+    assert.deepEqual(taskDelta(taskCountsBefore, taskCountsAfter), {
+      tasks: 5, assignments: 6, transitions: 7, idempotency: 12, audit: 12, outbox: 12,
+    });
+
+    await installTaskFailure(target);
+    try {
+      const beforeTaskFailure = await readTaskCounts(target);
+      const failedTask = await createTask(baseUrl, founderRelogin, "task01-transaction-failure",
+        taskCreateBody(founderCaseId, ADVISOR.userId, "Rollback synthetic task"));
+      assertApiError(failedTask, 503, "SERVICE_UNAVAILABLE");
+      assertNoPrivateErrorEcho(failedTask, ["Rollback synthetic task"]);
+      assert.deepEqual(await readTaskCounts(target), beforeTaskFailure);
+    } finally {
+      await removeTaskFailure(target);
+    }
+
     await installAssessmentFailure(target);
     try {
       const failedBody = createBody(
@@ -335,6 +447,9 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       cross_tenant_read: "empty",
       persisted_after_relogin: true,
       http: Object.freeze({ create: 200, list: 200, detail: 200, forbidden: 403 }),
+      task_workflow: Object.freeze({ create: 201, read: 200, transition: 200,
+        contractor_redaction: "exact", stale: 409, concurrent: "one_winner_one_stale",
+        replay: "exact", rollback: "zero_effects", policy: "OD-06" }),
     });
   } finally {
     await stopNextDev(devServer);
@@ -363,6 +478,36 @@ function createBody(
     primary_role_binding_id: primaryRoleBindingId,
     manifest_id: NEON_TEST_MANIFEST_ID,
   });
+}
+
+function taskCreateBody(caseId: string, assigneeUserId: string, title: string) {
+  return Object.freeze({ case_id: caseId, title, task_brief: "Synthetic Task brief without private data.",
+    due_at: "2027-06-01T00:00:00.000Z", assignee_user_id: assigneeUserId });
+}
+function taskTransitionBody(to: string, expectedRecordVersion: number, reason: string,
+  nextAssigneeUserId: string | null) {
+  return Object.freeze({ to, expected_record_version: expectedRecordVersion, reason,
+    next_assignee_user_id: nextAssigneeUserId });
+}
+async function createTask(baseUrl: string, cookie: string, idempotencyKey: string, body: unknown) {
+  const response = await fetch(`${baseUrl}/api/v1/tasks`, { method: "POST",
+    headers: { cookie, "content-type": "application/json", "idempotency-key": idempotencyKey },
+    body: JSON.stringify(body) });
+  return Object.freeze({ response, body: await response.json() as ApiEnvelope });
+}
+async function transitionTask(baseUrl: string, cookie: string, taskId: string,
+  idempotencyKey: string, body: unknown) {
+  const response = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/transitions`, { method: "POST",
+    headers: { cookie, "content-type": "application/json", "idempotency-key": idempotencyKey },
+    body: JSON.stringify(body) });
+  return Object.freeze({ response, body: await response.json() as ApiEnvelope });
+}
+function assertTaskReceipt(result: Readonly<{ response: Response; body: ApiEnvelope }>, status: number,
+  expectedVersion: number): void {
+  assert.equal(result.response.status, status); const data = requiredRecord(result.body.data);
+  assert.deepEqual(Object.keys(data).sort(), ["id", "record_version"]);
+  assert.match(requiredString(data, "id"), /^[0-9a-f-]{36}$/i);
+  assert.equal(data.record_version, expectedVersion);
 }
 
 type ApiEnvelope = {
@@ -524,6 +669,23 @@ function caseDelta(before: CaseCounts, after: CaseCounts): CaseCounts {
   });
 }
 
+interface TaskCounts { readonly tasks:number;readonly assignments:number;readonly transitions:number;
+  readonly idempotency:number;readonly audit:number;readonly outbox:number }
+async function readTaskCounts(target:OneRoleBaselineTarget):Promise<TaskCounts>{const client=new Client(createOneRoleBaselineClientConfig(target));try{
+  await client.connect();await client.query("BEGIN");await client.query("SELECT set_config('app.organization_id',$1,true)",[NEON_TEST_ORGANIZATION.id]);
+  await client.query("SELECT set_config('app.actor_user_id',$1,true)",[ADVISOR.userId]);const result=await client.query<TaskCounts>(`SELECT
+    (SELECT count(*)::int FROM tasks_tasks) AS tasks,(SELECT count(*)::int FROM tasks_task_assignments) AS assignments,
+    (SELECT count(*)::int FROM tasks_task_transition_receipts) AS transitions,
+    (SELECT count(*)::int FROM shared_idempotency_records WHERE operation IN ('tasks.create','tasks.transition')) AS idempotency,
+    (SELECT count(*)::int FROM audit_events WHERE event_type IN ('tasks.task_created','tasks.task_transitioned')) AS audit,
+    (SELECT count(*)::int FROM audit_outbox WHERE event_type IN ('tasks.task_created','tasks.task_transitioned')) AS outbox`);
+  await client.query("COMMIT");const row=result.rows[0];if(!row)throw new HarnessError("task_count_inspection");return Object.freeze(row);
+  }catch(error){await client.query("ROLLBACK").catch(()=>{});if(error instanceof HarnessError)throw error;throw new HarnessError("task_count_inspection");}
+  finally{await client.end().catch(()=>{});}}
+function taskDelta(before:TaskCounts,after:TaskCounts):TaskCounts{return Object.freeze({tasks:after.tasks-before.tasks,
+  assignments:after.assignments-before.assignments,transitions:after.transitions-before.transitions,
+  idempotency:after.idempotency-before.idempotency,audit:after.audit-before.audit,outbox:after.outbox-before.outbox});}
+
 async function installAssessmentFailure(target: OneRoleBaselineTarget): Promise<void> {
   await executeTestDdl(target, `
     CREATE FUNCTION public.test_case01_fail_assessment_insert()
@@ -541,6 +703,25 @@ async function removeAssessmentFailure(target: OneRoleBaselineTarget): Promise<v
     DROP TRIGGER IF EXISTS test_case01_fail_assessment_insert_trg ON public.cases_assessments;
     DROP FUNCTION IF EXISTS public.test_case01_fail_assessment_insert()
   `, "case_fault_cleanup");
+}
+
+async function installTaskFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    CREATE FUNCTION public.test_task01_fail_task_insert()
+    RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog
+    AS $$ BEGIN RAISE EXCEPTION USING ERRCODE = '55000',
+      CONSTRAINT = 'test_task01_insert_failure'; END; $$;
+    CREATE TRIGGER test_task01_fail_task_insert_trg
+    BEFORE INSERT ON public.tasks_tasks
+    FOR EACH ROW EXECUTE FUNCTION public.test_task01_fail_task_insert()
+  `, "task_fault_install");
+}
+
+async function removeTaskFailure(target: OneRoleBaselineTarget): Promise<void> {
+  await executeTestDdl(target, `
+    DROP TRIGGER IF EXISTS test_task01_fail_task_insert_trg ON public.tasks_tasks;
+    DROP FUNCTION IF EXISTS public.test_task01_fail_task_insert()
+  `, "task_fault_cleanup");
 }
 
 async function executeTestDdl(

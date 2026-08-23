@@ -1,10 +1,21 @@
 import "server-only";
 
-import type { TaskWorkflowService } from "../application/service.ts";
+import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
+import { getApplicationTenantRunner } from "../../shared/server.ts";
+import { TaskWorkspaceService } from "../application/workspace-service.ts";
+import { PostgresqlTaskWorkspaceRepository } from "./postgresql-workspace-repository.ts";
 
 export interface TaskWorkflowRuntime {
-  readonly service: TaskWorkflowService;
+  readonly service: TaskWorkspaceService;
 }
+
+export function isTaskWorkflowRuntimeUnavailable(value: unknown): value is TaskWorkflowRuntimeUnavailable {
+  return value instanceof Error && value.name === "TaskWorkflowRuntimeUnavailable";
+}
+
+const globalForTasks = globalThis as typeof globalThis & {
+  __txTaskWorkflowRuntimes?: Map<string, TaskWorkflowRuntime>;
+};
 
 export class TaskWorkflowRuntimeUnavailable extends Error {
   constructor() {
@@ -18,5 +29,18 @@ export class TaskWorkflowRuntimeUnavailable extends Error {
  * There is deliberately no local, JSON, mock, or legacy-Neon fallback.
  */
 export function getTaskWorkflowRuntime(): TaskWorkflowRuntime {
-  throw new TaskWorkflowRuntimeUnavailable();
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new TaskWorkflowRuntimeUnavailable();
+  const runtimes = globalForTasks.__txTaskWorkflowRuntimes ?? new Map<string, TaskWorkflowRuntime>();
+  globalForTasks.__txTaskWorkflowRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    try {
+      runtime = Object.freeze({ service: new TaskWorkspaceService(
+        new PostgresqlTaskWorkspaceRepository(getApplicationTenantRunner()),
+      ) });
+    } catch { throw new TaskWorkflowRuntimeUnavailable(); }
+    runtimes.set(mode, runtime);
+  }
+  return runtime;
 }

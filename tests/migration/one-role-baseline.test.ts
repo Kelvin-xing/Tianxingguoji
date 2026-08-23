@@ -50,7 +50,7 @@ const LEGACY_DATABASE_ROLE_IDENTIFIERS = [
   "rds_iam",
 ] as const;
 
-test("generates a deterministic executable baseline from all 31 frozen sources", async () => {
+test("generates a deterministic executable baseline from all 32 frozen sources", async () => {
   const first = await buildOneRoleBaseline();
   const second = await buildOneRoleBaseline();
 

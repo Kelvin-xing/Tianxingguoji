@@ -86,6 +86,8 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     schools: 3,
     school_snapshots: 1,
     school_records: 3,
+    task_policies: 1,
+    task_rules: 8,
   });
   assert.deepEqual(NEON_TEST_SEED_TABLE_COUNTS, {
     access_organizations: 1,
@@ -100,6 +102,8 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     schools_schools: 3,
     schools_snapshots: 1,
     schools_snapshot_records: 3,
+    tasks_transition_policies: 1,
+    tasks_transition_rules: 8,
   });
   assert.deepEqual(PROHIBITED_NEON_TEST_SEED_TABLES, [
     "identity_database_test_credentials",

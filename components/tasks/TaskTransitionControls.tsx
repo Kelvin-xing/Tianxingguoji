@@ -1,137 +1,225 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { Icon } from "@/components/workspace/Icon";
+import {
+  TaskIdempotencyAttempt,
+  classifyTaskFailure,
+  getTask,
+  getTaskAssigneeOptions,
+  transitionTask,
+  transitionTaskFingerprint,
+  type AssignedTask,
+  type CaseWorkspaceTask,
+  type TaskAssignee,
+  type TaskDetailResult,
+} from "@/modules/tasks/client";
 import type { TaskState } from "@/modules/tasks/public";
+import { transitionLabel } from "./task-ui";
 
-const ACTIONS_BY_STATE: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  created: [],
-  assigned: ["accepted", "rejected", "reassigned", "cancelled"],
-  accepted: ["completed", "reassigned", "cancelled"],
-  rejected: [],
-  reassigned: [],
-  completed: ["approved"],
-  approved: [],
-  overdue: [],
-  cancelled: [],
-};
-
-interface TaskTransitionControlsProps {
-  readonly taskId: string;
-  readonly state: TaskState;
-  readonly recordVersion: number;
-  readonly allowedActions?: readonly TaskState[];
-}
+type TaskItem = CaseWorkspaceTask | AssignedTask;
+type Notice = "validation" | "stale" | "conflict" | "denied" | "unavailable" | null;
+type AuthoritativeOutcome = "success" | "stale";
 
 export function TaskTransitionControls({
-  taskId,
-  state,
-  recordVersion,
-  allowedActions,
-}: TaskTransitionControlsProps) {
-  const [currentState, setCurrentState] = useState(state);
-  const actions = ACTIONS_BY_STATE[currentState].filter(
-    (action) => allowedActions === undefined || allowedActions.includes(action),
-  );
-  const [selectedAction, setSelectedAction] = useState<TaskState | null>(actions[0] ?? null);
+  task,
+  caseId,
+  onAuthoritativeChange,
+}: {
+  readonly task: TaskItem;
+  readonly caseId?: string;
+  readonly onAuthoritativeChange: (result: TaskDetailResult, outcome: AuthoritativeOutcome) => void;
+}) {
+  const submitting = useRef(false);
+  const attempt = useRef<TaskIdempotencyAttempt | null>(null);
+  const actionSelect = useRef<HTMLSelectElement | null>(null);
+  if (attempt.current === null) attempt.current = new TaskIdempotencyAttempt();
+
+  const [selectedTo, setSelectedTo] = useState<TaskState | "">("");
   const [reason, setReason] = useState("");
-  const [nextAssigneeUserId, setNextAssigneeUserId] = useState("");
-  const [currentRecordVersion, setCurrentRecordVersion] = useState(recordVersion);
+  const [nextAssigneeId, setNextAssigneeId] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [assignees, setAssignees] = useState<readonly TaskAssignee[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
 
-  const requiresAssignee = selectedAction === "reassigned";
-  const submitLabel = useMemo(
-    () => (selectedAction === null ? "No available transition" : `Move to ${selectedAction}`),
-    [selectedAction],
-  );
+  const selected = task.available_transitions.find((transition) => transition.to === selectedTo) ?? null;
 
-  if (actions.length === 0 || selectedAction === null) return null;
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/v1/tasks/${taskId}/transitions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "idempotency-key": `task-transition-${crypto.randomUUID()}`,
-        },
-        body: JSON.stringify({
-          to: selectedAction,
-          expected_record_version: currentRecordVersion,
-          reason,
-          next_assignee_user_id: requiresAssignee ? nextAssigneeUserId || null : null,
-        }),
+  useEffect(() => {
+    if (!selected?.requires_assignee || !caseId) {
+      queueMicrotask(() => {
+        setAssignees([]);
+        setOptionsLoading(false);
       });
-      const payload = await response.json() as {
-        readonly data?: { readonly record_version?: number; readonly state?: TaskState };
-        readonly error?: { readonly message?: string };
-      };
-      if (
-        !response.ok ||
-        typeof payload.data?.record_version !== "number" ||
-        payload.data.state === undefined
-      ) {
-        throw new Error(payload.error?.message ?? "Task transition was not accepted.");
+      return;
+    }
+    const controller = new AbortController();
+    queueMicrotask(() => setOptionsLoading(true));
+    getTaskAssigneeOptions(caseId, controller.signal)
+      .then((result) => setAssignees(result.assignees))
+      .catch(() => {
+        setAssignees([]);
+        setNotice("unavailable");
+      })
+      .finally(() => setOptionsLoading(false));
+    return () => controller.abort();
+  }, [caseId, selected?.requires_assignee]);
+
+  function commandChanged() {
+    attempt.current!.rotate();
+    setNotice(null);
+    setConfirmed(false);
+  }
+
+  function resetForm(nextNotice: Notice) {
+    setSelectedTo("");
+    setReason("");
+    setNextAssigneeId("");
+    setConfirmed(false);
+    setNotice(nextNotice);
+    queueMicrotask(() => actionSelect.current?.focus());
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting.current || pending || selected === null) return;
+    if (!confirmed || (selected.requires_reason && reason.trim() === "") || (selected.requires_assignee && nextAssigneeId === "")) {
+      setNotice("validation");
+      return;
+    }
+    const input = {
+      to: selected.to,
+      expected_record_version: task.record_version,
+      reason: reason.trim(),
+      next_assignee_user_id: selected.requires_assignee ? nextAssigneeId : null,
+    } as const;
+    submitting.current = true;
+    setPending(true);
+    setNotice(null);
+    try {
+      const receipt = await transitionTask(
+        task.id,
+        input,
+        attempt.current!.keyFor(transitionTaskFingerprint(task.id, input)),
+      );
+      const authoritative = await getTask(task.id);
+      if (authoritative.task.id !== receipt.id || authoritative.task.record_version !== receipt.record_version) {
+        throw new TypeError("Task authority mismatch.");
       }
-      setCurrentRecordVersion(payload.data.record_version);
-      setCurrentState(payload.data.state);
-      setSelectedAction(ACTIONS_BY_STATE[payload.data.state][0] ?? null);
-      setReason("");
-      setNextAssigneeUserId("");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Task transition was not accepted.");
+      attempt.current!.complete();
+      resetForm(null);
+      onAuthoritativeChange(authoritative, "success");
+    } catch (error) {
+      const failure = classifyTaskFailure(error);
+      if (failure === "stale") {
+        attempt.current!.rotate();
+        try {
+          const authoritative = await getTask(task.id);
+          resetForm("stale");
+          onAuthoritativeChange(authoritative, "stale");
+        } catch {
+          setNotice("unavailable");
+        }
+      } else {
+        if (failure !== "unavailable") attempt.current!.rotate();
+        setNotice(
+          failure === "validation" ? "validation"
+            : failure === "conflict" ? "conflict"
+              : failure === "forbidden" || failure === "unauthenticated" || failure === "not_found" ? "denied"
+                : "unavailable",
+        );
+      }
     } finally {
+      submitting.current = false;
       setPending(false);
     }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3" aria-label="Task transition">
-      <label className="block text-sm font-medium" htmlFor={`task-transition-${taskId}`}>
-        Transition
-      </label>
-      <select
-        id={`task-transition-${taskId}`}
-        value={selectedAction}
-        onChange={(event) => setSelectedAction(event.target.value as TaskState)}
-        disabled={pending}
-        className="w-full"
-      >
-        {actions.map((action) => <option key={action} value={action}>{action}</option>)}
-      </select>
-      {requiresAssignee ? (
-        <label className="block text-sm font-medium" htmlFor={`task-assignee-${taskId}`}>
-          Next assignee ID
-          <input
-            id={`task-assignee-${taskId}`}
-            value={nextAssigneeUserId}
-            onChange={(event) => setNextAssigneeUserId(event.target.value)}
+    <section className="workspace-section space-y-4" aria-labelledby="task-transition-heading">
+      <div>
+        <h3 id="task-transition-heading" className="section-title">更新任務</h3>
+        <p className="section-detail">可用操作由目前任務及服務端權限即時計算。</p>
+      </div>
+      <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
+        <label className="field-label" htmlFor={`task-transition-${task.id}`}>
+          操作
+          <select
+            ref={actionSelect}
+            id={`task-transition-${task.id}`}
+            value={selectedTo}
             disabled={pending}
             required
-            className="mt-1 w-full"
-          />
+            onChange={(event) => {
+              commandChanged();
+              setSelectedTo(event.target.value as TaskState | "");
+              setReason("");
+              setNextAssigneeId("");
+            }}
+          >
+            <option value="">選擇操作</option>
+            {task.available_transitions.map((transition) => <option value={transition.to} key={transition.to}>{transitionLabel(transition.to)}</option>)}
+          </select>
         </label>
-      ) : null}
-      <label className="block text-sm font-medium" htmlFor={`task-reason-${taskId}`}>
-        Reason
-        <textarea
-          id={`task-reason-${taskId}`}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          disabled={pending}
-          className="mt-1 w-full"
-          rows={3}
-        />
-      </label>
-      {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
-      <button type="submit" disabled={pending} className="primary-button">
-        {pending ? "Updating" : submitLabel}
-      </button>
-    </form>
+
+        {selected?.requires_assignee ? (
+          <label className="field-label" htmlFor={`task-assignee-${task.id}`}>
+            新的負責人
+            <select
+              id={`task-assignee-${task.id}`}
+              value={nextAssigneeId}
+              disabled={pending || optionsLoading}
+              required
+              onChange={(event) => { commandChanged(); setNextAssigneeId(event.target.value); }}
+            >
+              <option value="">{optionsLoading ? "正在載入負責人" : "選擇負責人"}</option>
+              {assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>)}
+            </select>
+          </label>
+        ) : null}
+
+        {selected ? (
+          <label className="field-label" htmlFor={`task-reason-${task.id}`}>
+            原因{selected.requires_reason ? <span aria-hidden="true"> *</span> : null}
+            <textarea
+              id={`task-reason-${task.id}`}
+              value={reason}
+              maxLength={4_000}
+              rows={3}
+              required={selected.requires_reason}
+              disabled={pending}
+              onChange={(event) => { commandChanged(); setReason(event.target.value); }}
+            />
+          </label>
+        ) : null}
+
+        {selected ? (
+          <label className="flex items-start gap-3 text-sm">
+            <input type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => { attempt.current!.rotate(); setNotice(null); setConfirmed(event.target.checked); }} />
+            <span>我確認執行「{transitionLabel(selected.to)}」，並保留任務的既有處理紀錄。</span>
+          </label>
+        ) : null}
+
+        <TransitionNotice notice={notice} />
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button type="button" className="secondary-button justify-center" disabled={pending} onClick={() => { attempt.current!.complete(); resetForm(null); }}>取消</button>
+          <button type="submit" className="primary-button justify-center min-w-36" disabled={pending || selected === null} aria-busy={pending}>
+            <Icon name={pending ? "clock" : "check"} size={15} />{pending ? "正在更新" : "確認更新"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
+}
+
+function TransitionNotice({ notice }: { readonly notice: Notice }) {
+  if (notice === null) return null;
+  const message = notice === "validation" ? "請完整選擇操作、所需負責人及原因，並確認本次操作。"
+      : notice === "stale" ? "任務已有較新版本，已重新載入最新內容。"
+        : notice === "conflict" ? "目前狀態不接受這項操作，請重新確認。"
+          : notice === "denied" ? "目前帳號不能執行這項任務操作。"
+            : "結果暫時無法確認，請稍後重試；重試不會重複更新。";
+  return <div className="form-error" role="alert"><Icon name="x" size={15} /><span>{message}</span></div>;
 }
