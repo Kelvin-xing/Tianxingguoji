@@ -5,6 +5,7 @@ import { StudentReadService } from "../application/read-service.ts";
 import { StudentCreateService } from "../application/student-create-service.ts";
 import { ProfileMaintenanceService } from "../application/profile-maintenance-service.ts";
 import { DuplicateReviewService } from "../application/duplicate-review-service.ts";
+import { DeletionReviewService } from "../application/deletion-review-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts";
@@ -12,6 +13,29 @@ import { PostgresqlStudentCreateRepository } from "./postgresql-student-create-r
 import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-relationship-repository.ts";
 import { PostgresqlProfileMaintenanceRepository } from "./postgresql-profile-maintenance-repository.ts";
 import { PostgresqlDuplicateReviewRepository } from "./postgresql-duplicate-review-repository.ts";
+import { PostgresqlDeletionReviewRepository } from "./postgresql-deletion-review-repository.ts";
+
+export interface DeletionReviewRuntime { readonly service: DeletionReviewService }
+export class DeletionReviewRuntimeUnavailable extends Error {
+  constructor() { super("Deletion review runtime is not configured."); this.name = "DeletionReviewRuntimeUnavailable"; }
+}
+export function isDeletionReviewRuntimeUnavailable(value: unknown): value is DeletionReviewRuntimeUnavailable {
+  return value instanceof Error && value.name === "DeletionReviewRuntimeUnavailable";
+}
+export function getDeletionReviewRuntime(): DeletionReviewRuntime {
+  const mode = loadRuntimeEnvironment().appRuntimeMode;
+  if (mode === "production-aws") throw new DeletionReviewRuntimeUnavailable();
+  const runtimes = globalForCrm.__txDeletionReviewRuntimes ?? new Map<string, DeletionReviewRuntime>();
+  globalForCrm.__txDeletionReviewRuntimes = runtimes;
+  let runtime = runtimes.get(mode);
+  if (!runtime) {
+    try { runtime = Object.freeze({ service: new DeletionReviewService(
+      new PostgresqlDeletionReviewRepository(getApplicationTenantRunner())) }); }
+    catch { throw new DeletionReviewRuntimeUnavailable(); }
+    runtimes.set(mode, runtime);
+  }
+  return runtime;
+}
 
 export interface DuplicateReviewRuntime { readonly service: DuplicateReviewService }
 export class DuplicateReviewRuntimeUnavailable extends Error {
@@ -101,6 +125,7 @@ export class StudentCreateRuntimeUnavailable extends Error {
 const globalForCrm = globalThis as typeof globalThis & {
   __txGuardianRelationshipRuntimes?: Map<string, GuardianRelationshipRuntime>;
   __txDuplicateReviewRuntimes?: Map<string, DuplicateReviewRuntime>;
+  __txDeletionReviewRuntimes?: Map<string, DeletionReviewRuntime>;
   __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
   __txStudentCreateRuntimes?: Map<string, StudentCreateRuntime>;
   __txProfileMaintenanceRuntimes?: Map<string, ProfileMaintenanceRuntime>;

@@ -63,9 +63,10 @@ test("profile UI distinguishes saving, validation, stale, denied, unavailable an
 
 test("read cards remain masked while editors receive exact matched Guardian profiles", async () => {
   const detail = await source("components/crm/StudentDetailView.tsx");
-  assert.match(detail, /relationship\.guardian\.email_hint/);
-  assert.match(detail, /relationship\.guardian\.phone_hint/);
-  assert.match(detail, /guardiansById\.get\(relationship\.guardian\.id\)!/);
+  assert.match(detail, /relationship\?\.guardian\.email_hint/);
+  assert.match(detail, /relationship\?\.guardian\.phone_hint/);
+  assert.match(detail, /relationshipsByGuardianId\.get\(guardian\.id\)/);
+  assert.match(detail, /guardian=\{guardian\}/);
   assert.match(detail, /Guardian profile data does not match the current relationship view/);
 });
 

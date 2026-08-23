@@ -183,6 +183,7 @@ function studentDetailFixture() {
       displayName: "Synthetic Guardian",
       email: "guardian@example.invalid",
       phone: null,
+      status: "active",
       recordVersion: 1,
       relationshipType: "father",
       isLegalGuardian: true,

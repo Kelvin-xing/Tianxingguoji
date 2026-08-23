@@ -11,6 +11,7 @@ import {
   attachGuardianRelationship,
   classifyGuardianRelationshipFailure,
   getGuardianRelationships,
+  getStudent,
   guardianAttachFingerprint,
   guardianHandoffFingerprint,
   handoffPrimaryGuardian,
@@ -24,7 +25,7 @@ import {
 
 type PanelState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly view: GuardianRelationshipsView; readonly canManage: boolean }
+  | { readonly kind: "ready"; readonly view: GuardianRelationshipsView; readonly studentStatus: "active" | "pending_delete"; readonly canManage: boolean }
   | { readonly kind: "unauthenticated" }
   | { readonly kind: "forbidden" }
   | { readonly kind: "unavailable" };
@@ -84,14 +85,16 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
     const controller = new AbortController();
     Promise.all([
       getGuardianRelationships(studentId, controller.signal),
+      getStudent(studentId, controller.signal),
       getWorkspaceAccessSnapshot(controller.signal),
     ])
-      .then(([view, access]) => {
+      .then(([view, student, access]) => {
         if (!mountedRef.current || controller.signal.aborted) return;
         setPanel({
           kind: "ready",
           view,
-          canManage: access.capabilities.includes("students.guardians.manage"),
+          studentStatus: student.status,
+          canManage: student.status === "active" && access.capabilities.includes("students.guardians.manage"),
         });
       })
       .catch((error: unknown) => {
@@ -105,13 +108,21 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
   }, [applyLoadFailure, reloadToken, studentId]);
 
   async function refreshRelationships(): Promise<void> {
-    const view = await getGuardianRelationships(studentId);
-    if (mountedRef.current) setPanel((current) => current.kind === "ready" ? { ...current, view } : current);
+    const [view, student] = await Promise.all([
+      getGuardianRelationships(studentId),
+      getStudent(studentId),
+    ]);
+    if (mountedRef.current) setPanel((current) => current.kind === "ready" ? {
+      ...current,
+      view,
+      studentStatus: student.status,
+      canManage: current.canManage && student.status === "active",
+    } : current);
   }
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (panel.kind !== "ready" || !panel.canManage || searchState.kind === "searching") return;
+    if (panel.kind !== "ready" || panel.studentStatus !== "active" || !panel.canManage || searchState.kind === "searching") return;
     const normalizedQuery = query.trim();
     if (normalizedQuery.length < 2 || normalizedQuery.length > 100) {
       setSearchState({ kind: "validation", requestId: null });
@@ -146,7 +157,7 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
 
   async function handleAttach(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (panel.kind !== "ready" || !panel.canManage || selectedGuardian === null || attachLockedRef.current || attachPending) return;
+    if (panel.kind !== "ready" || panel.studentStatus !== "active" || !panel.canManage || selectedGuardian === null || attachLockedRef.current || attachPending) return;
     const draft: AttachGuardianRelationshipDraft = { guardian_id: selectedGuardian.id, ...attachDraft };
     attachLockedRef.current = true;
     setAttachPending(true);
@@ -171,7 +182,7 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
 
   async function handleHandoff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (panel.kind !== "ready" || !panel.canManage || !handoffConfirmed || successorSelection === "" || handoffLockedRef.current || handoffPending) return;
+    if (panel.kind !== "ready" || panel.studentStatus !== "active" || !panel.canManage || !handoffConfirmed || successorSelection === "" || handoffLockedRef.current || handoffPending) return;
     const primary = currentPrimary(panel.view.relationships);
     const successor = currentSecondaries(panel.view.relationships)[Number(successorSelection)];
     if (!primary || !successor) return;
@@ -248,6 +259,7 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
         <RelationshipList relationships={panel.view.relationships} />
       </section>
 
+      {panel.studentStatus === "pending_delete" ? <div className="inline-callout" role="status"><Icon name="lock" size={15} /><span>這筆學生資料正在進行待刪除審查。現有關係與歷史仍會保留，但關聯監護人和交接主要聯絡人已受限制。</span></div> : <>
       <section className="workspace-section space-y-5" aria-labelledby="attach-guardian-heading">
         <SectionHeading id="attach-guardian-heading" title="關聯已有監護人" detail="輸入至少兩個字元並人工選擇結果；系統不會自動匹配或建立新監護人。" />
         {!panel.canManage ? <ReadOnlyNotice /> : <>
@@ -282,6 +294,7 @@ export function GuardianRelationshipPanel({ studentId }: { readonly studentId: s
               <button type="submit" className="primary-button" disabled={!successor || !handoffConfirmed || handoffPending} aria-busy={handoffPending}><Icon name={handoffPending ? "clock" : "check"} size={15} />{handoffPending ? "交接中…" : "確認交接主要聯絡人"}</button>
             </form>}
       </section>
+      </>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import test from "node:test";
 import { PostgresqlGuardianRelationshipRepository } from
   "../../../modules/crm/infrastructure/postgresql-guardian-relationship-repository.ts";
 import type {
+  DatabaseQuery,
   TenantDatabaseContext,
   TenantTransaction,
   TenantTransactionRunner,
@@ -13,6 +14,27 @@ const CONTEXT = Object.freeze({
   organizationId: "51000000-0000-4000-8000-000000000001",
   actorUserId: "51000000-0000-4000-8000-000000000101",
   studentId: "51000000-0000-4000-8000-000000000601",
+});
+
+test("current reads include pending Student and Guardian while keeping masked hints", async () => {
+  const queries: string[] = [];
+  const repository = new PostgresqlGuardianRelationshipRepository(recordingRunner(queries));
+
+  const result = await repository.listCurrent(CONTEXT);
+
+  assert.ok(result);
+  assert.deepEqual(result.student, {
+    id: CONTEXT.studentId,
+    displayName: "Synthetic Pending Student",
+  });
+  assert.deepEqual(result.relationships[0]?.guardian, {
+    id: "51000000-0000-4000-8000-000000000701",
+    displayName: "Synthetic Pending Guardian",
+    emailHint: "s***@example.invalid",
+    phoneHint: "******1234",
+  });
+  assert.match(queries[0]!, /status IN \('active', 'pending_delete'\)/);
+  assert.match(queries[1]!, /guardian\.status IN \('active', 'pending_delete'\)/);
 });
 
 test("reports only an allowlisted PostgreSQL concurrency code", async () => {
@@ -56,6 +78,43 @@ function failingRunner(cause: unknown): TenantTransactionRunner {
     ): Promise<Result> {
       return operation(Object.freeze({
         async query(): Promise<never> { throw cause; },
+      }));
+    },
+  });
+}
+
+function recordingRunner(queries: string[]): TenantTransactionRunner {
+  return Object.freeze({
+    async run<Result>(
+      _context: TenantDatabaseContext,
+      operation: (transaction: TenantTransaction) => Promise<Result>,
+    ): Promise<Result> {
+      let index = 0;
+      return operation(Object.freeze({
+        async query<Row = Record<string, unknown>>(query: DatabaseQuery): Promise<{ rows: readonly Row[] }> {
+          queries.push(query.text);
+          const rows = index++ === 0 ? [{
+            id: CONTEXT.studentId,
+            display_name: "Synthetic Pending Student",
+          }] : [{
+            relationship_id: "51000000-0000-4000-8000-000000000801",
+            student_id: CONTEXT.studentId,
+            guardian_id: "51000000-0000-4000-8000-000000000701",
+            relationship_type: "mother",
+            is_legal_guardian: true,
+            is_primary_contact: true,
+            is_emergency_contact: false,
+            is_billing_contact: false,
+            notification_consent: false,
+            starts_at: "2026-08-23T00:00:00.000Z",
+            record_version: 2,
+            student_display_name: "Synthetic Pending Student",
+            guardian_display_name: "Synthetic Pending Guardian",
+            email_hint: "s***@example.invalid",
+            phone_hint: "******1234",
+          }];
+          return { rows: rows as unknown as Row[] };
+        },
       }));
     },
   });

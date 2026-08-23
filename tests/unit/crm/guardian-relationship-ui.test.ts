@@ -71,9 +71,10 @@ test("mutations have synchronous locks, pending recovery, authority refresh and 
 test("student detail reads authoritative current relationships and shows masked status", async () => {
   const source = await readFile(detailPath, "utf8");
   assert.match(source, /getGuardianRelationships\(studentId, controller\.signal\)/);
-  assert.match(source, /relationship\.guardian\.email_hint/);
-  assert.match(source, /relationship\.guardian\.phone_hint/);
+  assert.match(source, /relationship\?\.guardian\.email_hint/);
+  assert.match(source, /relationship\?\.guardian\.phone_hint/);
   assert.match(source, /主要聯絡人/);
   assert.match(source, /次要聯絡人/);
-  assert.match(source, /guardiansById\.get\(relationship\.guardian\.id\)/);
+  assert.match(source, /relationshipsByGuardianId\.get\(guardian\.id\)/);
+  assert.match(source, /guardian=\{guardian\}/);
 });

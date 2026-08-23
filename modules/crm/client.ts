@@ -36,6 +36,7 @@ export interface StudentGuardianItem {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
+  readonly status: StudentStatus;
   readonly recordVersion: number;
   readonly relationshipType: string;
   readonly isLegalGuardian: boolean;
@@ -195,6 +196,32 @@ export type StudentRequestFailureKind =
 
 export type GuardianRelationshipFailureKind = StudentRequestFailureKind | "stale";
 export type ProfileMaintenanceFailureKind = StudentRequestFailureKind | "stale";
+
+export const DELETION_ENTITY_TYPES = Object.freeze(["student", "guardian"] as const);
+export const PENDING_DELETION_REASON_CODE = "record.lifecycle.pending_delete_requested" as const;
+
+export type DeletionEntityType = (typeof DELETION_ENTITY_TYPES)[number];
+
+export interface PendingDeletionReceipt {
+  readonly entity_type: DeletionEntityType;
+  readonly entity_id: string;
+  readonly status: "pending_delete";
+  readonly deletion_requested_at: string;
+  readonly record_version: number;
+}
+
+export interface PendingDeletionSummary extends PendingDeletionReceipt {
+  readonly display_label: string;
+}
+
+export type PendingDeletionFailureKind =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "validation"
+  | "stale"
+  | "conflict"
+  | "unavailable";
 
 export const DUPLICATE_ENTITY_TYPES = Object.freeze(["student", "guardian"] as const);
 export const DUPLICATE_CANDIDATE_STATUSES = Object.freeze([
@@ -371,6 +398,43 @@ export function updateGuardianProfile(
       body: normalizeGuardianProfileDraft(draft),
     },
     (value) => decodeUpdatedGuardianProfile(value, guardianId),
+  );
+}
+
+export function requestPendingDeletion(
+  entityType: DeletionEntityType,
+  entityId: string,
+  expectedRecordVersion: number,
+  idempotencyKey: string,
+): Promise<PendingDeletionReceipt> {
+  assertDeletionEntityType(entityType);
+  assertUuid(entityId, "entityId");
+  assertPositiveInteger(expectedRecordVersion, "expectedRecordVersion");
+  assertIdempotencyKey(idempotencyKey);
+  const collection = entityType === "student" ? "students" : "guardians";
+  return requestApi(
+    {
+      path: `/api/v1/${collection}/${entityId}/deletion-requests`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        expected_record_version: expectedRecordVersion,
+        reason_code: PENDING_DELETION_REASON_CODE,
+      },
+    },
+    (value) => decodePendingDeletionReceipt(value, entityType, entityId),
+  );
+}
+
+export function listPendingDeletionRequests(
+  entityType?: DeletionEntityType,
+  signal?: AbortSignal,
+): Promise<readonly PendingDeletionSummary[]> {
+  if (entityType !== undefined) assertDeletionEntityType(entityType);
+  const query = entityType === undefined ? "" : `?entity_type=${entityType}`;
+  return requestApi(
+    { path: `/api/v1/crm/deletion-requests${query}`, signal },
+    decodePendingDeletionSummaries,
   );
 }
 
@@ -702,6 +766,17 @@ export function classifyDuplicateRequestFailure(error: unknown): DuplicateReques
   return "unavailable";
 }
 
+export function classifyPendingDeletionFailure(error: unknown): PendingDeletionFailureKind {
+  if (!(error instanceof ApiClientError)) return "unavailable";
+  if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
+  if (error.code === "FORBIDDEN" || error.status === 403) return "forbidden";
+  if (error.code === "NOT_FOUND" || error.status === 404) return "not_found";
+  if (error.code === "VALIDATION_FAILED" || error.status === 422) return "validation";
+  if (error.code === "STALE_VERSION" && error.status === 409) return "stale";
+  if (error.code === "CONFLICT" && error.status === 409) return "conflict";
+  return "unavailable";
+}
+
 /** Owns one key for one logical save attempt, including uncertain retries. */
 export class StudentCreateIdempotencyAttempt {
   private readonly createKey: () => string;
@@ -851,6 +926,53 @@ export class DuplicateMutationIdempotencyAttempt {
   }
 }
 
+/** Keeps one key for one lifecycle request and its uncertain retries. */
+export class PendingDeletionIdempotencyAttempt {
+  private readonly createKey: () => string;
+  private fingerprint: string | null = null;
+  private key: string | null = null;
+
+  constructor(
+    createKey: () => string = () => `pending-deletion:${globalThis.crypto.randomUUID()}`,
+  ) {
+    this.createKey = createKey;
+  }
+
+  keyFor(fingerprint: string): string {
+    if (!fingerprint || fingerprint.length > 256) throw new TypeError("Invalid deletion fingerprint.");
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.key = null;
+    }
+    if (this.key === null) {
+      const nextKey = this.createKey();
+      assertIdempotencyKey(nextKey);
+      this.key = nextKey;
+    }
+    return this.key;
+  }
+
+  rotate(): void {
+    this.key = null;
+  }
+
+  complete(): void {
+    this.fingerprint = null;
+    this.key = null;
+  }
+}
+
+export function pendingDeletionFingerprint(
+  entityType: DeletionEntityType,
+  entityId: string,
+  expectedRecordVersion: number,
+): string {
+  assertDeletionEntityType(entityType);
+  assertUuid(entityId, "entityId");
+  assertPositiveInteger(expectedRecordVersion, "expectedRecordVersion");
+  return `${entityType}:${entityId}:${expectedRecordVersion}`;
+}
+
 export function duplicateCandidateFingerprint(
   entityType: DuplicateEntityType,
   leftRecordId: string,
@@ -997,6 +1119,7 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     "displayName",
     "email",
     "phone",
+    "status",
     "recordVersion",
     "relationshipType",
     "isLegalGuardian",
@@ -1010,6 +1133,7 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     displayName: nonEmptyString(record.displayName, "guardian.displayName"),
     email: nullableNonEmptyString(record.email, "guardian.email"),
     phone: nullableNonEmptyString(record.phone, "guardian.phone"),
+    status: studentStatus(record.status, "guardian.status"),
     recordVersion: positiveInteger(record.recordVersion, "guardian.recordVersion"),
     relationshipType: nonEmptyString(record.relationshipType, "guardian.relationshipType"),
     isLegalGuardian: expectBoolean(record.isLegalGuardian),
@@ -1018,6 +1142,71 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     isBillingContact: expectBoolean(record.isBillingContact),
     notificationConsent: expectBoolean(record.notificationConsent),
   });
+}
+
+function decodePendingDeletionReceipt(
+  value: unknown,
+  expectedEntityType?: DeletionEntityType,
+  expectedEntityId?: string,
+): PendingDeletionReceipt {
+  const record = exactRecord(value, [
+    "entity_type",
+    "entity_id",
+    "status",
+    "deletion_requested_at",
+    "record_version",
+  ]);
+  const entityType = deletionEntityType(record.entity_type, "entity_type");
+  const entityId = uuid(record.entity_id, "entity_id");
+  if (expectedEntityType !== undefined && entityType !== expectedEntityType) {
+    throw new TypeError("Mismatched deletion entity_type.");
+  }
+  if (expectedEntityId !== undefined && entityId !== expectedEntityId) {
+    throw new TypeError("Mismatched deletion entity_id.");
+  }
+  if (expectString(record.status) !== "pending_delete") {
+    throw new TypeError("Invalid deletion status.");
+  }
+  return Object.freeze({
+    entity_type: entityType,
+    entity_id: entityId,
+    status: "pending_delete",
+    deletion_requested_at: isoDateTime(record.deletion_requested_at, "deletion_requested_at"),
+    record_version: positiveInteger(record.record_version, "record_version"),
+  });
+}
+
+function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletionSummary[] {
+  const items = expectArray(value, (item) => {
+    const record = exactRecord(item, [
+      "entity_type",
+      "entity_id",
+      "display_label",
+      "status",
+      "deletion_requested_at",
+      "record_version",
+    ]);
+    const receipt = decodePendingDeletionReceipt(Object.fromEntries(
+      ["entity_type", "entity_id", "status", "deletion_requested_at", "record_version"]
+        .map((key) => [key, record[key]]),
+    ));
+    return Object.freeze({
+      ...receipt,
+      display_label: nonEmptyString(record.display_label, "display_label"),
+    });
+  });
+  if (items.length > 100) throw new TypeError("Too many deletion request summaries.");
+  assertUnique(items.map(({ entity_type, entity_id }) => `${entity_type}:${entity_id}`), "deletion request");
+  for (let index = 1; index < items.length; index += 1) {
+    const prior = items[index - 1]!;
+    const current = items[index]!;
+    const priorTime = Date.parse(prior.deletion_requested_at);
+    const currentTime = Date.parse(current.deletion_requested_at);
+    if (priorTime < currentTime || (priorTime === currentTime && prior.entity_id > current.entity_id)) {
+      throw new TypeError("Invalid deletion request order.");
+    }
+  }
+  return Object.freeze([...items]);
 }
 
 function decodeUpdatedStudentProfile(value: unknown, expectedId: string): UpdatedStudentProfile {
@@ -1527,6 +1716,21 @@ function assertDuplicateEntityType(value: string): asserts value is DuplicateEnt
   }
 }
 
+function assertDeletionEntityType(value: string): asserts value is DeletionEntityType {
+  if (!(DELETION_ENTITY_TYPES as readonly string[]).includes(value)) {
+    throw new TypeError("Invalid deletion entity type.");
+  }
+}
+
+function deletionEntityType(value: unknown, field: string): DeletionEntityType {
+  const result = expectString(value);
+  assertDeletionEntityType(result);
+  if (!(DELETION_ENTITY_TYPES as readonly string[]).includes(result)) {
+    throw new TypeError(`Invalid ${field}.`);
+  }
+  return result as DeletionEntityType;
+}
+
 function duplicateEntityType(value: unknown, field: string): DuplicateEntityType {
   const result = expectString(value);
   if (!(DUPLICATE_ENTITY_TYPES as readonly string[]).includes(result)) throw new TypeError(`Invalid ${field}.`);
@@ -1539,6 +1743,12 @@ function duplicateCandidateStatus(value: unknown): DuplicateCandidateStatus {
     throw new TypeError("Invalid candidate.status.");
   }
   return result as DuplicateCandidateStatus;
+}
+
+function studentStatus(value: unknown, field: string): StudentStatus {
+  const result = expectString(value);
+  if (result !== "active" && result !== "pending_delete") throw new TypeError(`Invalid ${field}.`);
+  return result;
 }
 
 function exactRecord(value: unknown, keys: readonly string[]): Readonly<Record<string, unknown>> {

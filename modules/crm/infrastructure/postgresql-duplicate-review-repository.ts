@@ -230,6 +230,8 @@ export class PostgresqlDuplicateReviewRepository implements DuplicateReviewRepos
       const merge = mergeResult.rows[0]; if (!merge) notFound();
       if (version(merge.record_version) !== input.expectedMergeRecordVersion) stale();
       if (merge.status !== "active" || merge.correction_id) conflict();
+      if ((await lockRecords(tx, merge.entity_type, merge.source_record_id,
+        merge.canonical_record_id)).length !== 2) notFound();
       const alias = await latestAlias(tx, merge.entity_type, merge.source_record_id, true);
       if (!alias || alias.target_record_id !== merge.canonical_record_id || alias.merge_id !== merge.id) conflict();
       const nextRevision = version(alias.revision_number) + 1;

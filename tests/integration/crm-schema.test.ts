@@ -41,7 +41,7 @@ test("never treats CRM attributes as identity or automatic merge authority", () 
   );
 });
 
-test("requires exactly one current primary relationship to an active Guardian", () => {
+test("requires exactly one current primary relationship to a readable Guardian", () => {
   const nowMs = Date.parse("2026-08-02T08:00:00.000Z");
   const primary = {
     isPrimaryContact: true,
@@ -65,6 +65,13 @@ test("requires exactly one current primary relationship to an active Guardian", 
     evaluatePrimaryContacts({
       nowMs,
       relationships: [{ ...primary, guardianStatus: "pending_delete" }],
+    }),
+    { allowed: true },
+  );
+  assert.deepEqual(
+    evaluatePrimaryContacts({
+      nowMs,
+      relationships: [{ ...primary, guardianStatus: "purged" }],
     }),
     { allowed: false, code: "PRIMARY_GUARDIAN_INACTIVE" },
   );

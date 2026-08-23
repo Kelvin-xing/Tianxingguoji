@@ -50,7 +50,7 @@ const LEGACY_DATABASE_ROLE_IDENTIFIERS = [
   "rds_iam",
 ] as const;
 
-test("generates a deterministic executable baseline from all 29 frozen sources", async () => {
+test("generates a deterministic executable baseline from all 30 frozen sources", async () => {
   const first = await buildOneRoleBaseline();
   const second = await buildOneRoleBaseline();
 
@@ -138,6 +138,22 @@ test("copies the 029 case FK-lock grant exactly without broad UPDATE privilege",
   );
   assert.doesNotMatch(generated.contents, /GRANT UPDATE ON TABLE/i);
   assert.doesNotMatch(generated.contents, /GRANT ALL/i);
+});
+
+test("copies the 031 pending primary Guardian invariant exactly", async () => {
+  const build = await buildOneRoleBaseline();
+  const sourceName = "202608230030_031_allow_pending_primary_guardian.sql";
+  const source = await readFile(`db/migrations/${sourceName}`, "utf8");
+  const generated = build.files.find(({ name }) => name === `030_${sourceName}`);
+
+  assert.ok(generated);
+  assert.equal(generated.contents, source);
+  assert.equal(
+    build.manifest.source_migrations.find(({ name }) => name === sourceName)?.transform,
+    "copy-v1",
+  );
+  assert.match(generated.contents, /guardian\.status IN \('active', 'pending_delete'\)/);
+  assert.doesNotMatch(generated.contents, /CREATE (?:CONSTRAINT )?TRIGGER|ALTER TABLE|GRANT|REVOKE/);
 });
 
 test("rejects any source drift before generation", async () => {

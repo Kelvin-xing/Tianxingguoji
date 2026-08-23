@@ -22,6 +22,7 @@ interface StudentRow {
 interface GuardianRow {
   id: string;
   display_name: string;
+  status: "active" | "pending_delete";
   email: string | null;
   phone: string | null;
   relationship_type: string;
@@ -64,7 +65,7 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
       if (!student) return null;
 
       const guardianResult = await transaction.query<GuardianRow>({
-        text: `SELECT guardian.id, guardian.display_name, guardian.email, guardian.phone,
+        text: `SELECT guardian.id, guardian.display_name, guardian.status, guardian.email, guardian.phone,
                       relationship.relationship_type, relationship.is_legal_guardian,
                       relationship.is_primary_contact, relationship.is_emergency_contact,
                       relationship.is_billing_contact, relationship.notification_consent,
@@ -75,7 +76,7 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
                   AND guardian.organization_id = relationship.organization_id
                 WHERE relationship.student_id = $1
                   AND relationship.ends_at IS NULL
-                  AND guardian.status = 'active'
+                  AND guardian.status <> 'purged'
                 ORDER BY relationship.is_primary_contact DESC, guardian.display_name, guardian.id`,
         values: [student.id],
       });
@@ -85,6 +86,7 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
         guardians.push(Object.freeze({
           id: resolved?.id ?? row.id,
           displayName: resolved?.displayName ?? row.display_name,
+          status: resolved?.status ?? row.status,
           email: resolved?.email ?? row.email,
           phone: resolved?.phone ?? row.phone,
           recordVersion: resolved?.recordVersion ?? toVersion(row.record_version),
@@ -110,6 +112,7 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 interface ResolvedProfile {
   id: string;
   displayName: string;
+  status: "active" | "pending_delete";
   dateOfBirth: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
@@ -150,14 +153,16 @@ async function resolveDuplicateProfile(
       ${entityType === "student" ? "contact_email" : "NULL::text"} AS contact_email,
       ${entityType === "student" ? "contact_phone" : "NULL::text"} AS contact_phone,
       ${entityType === "student" ? "NULL::text" : "email"} AS email,
-      ${entityType === "student" ? "NULL::text" : "phone"} AS phone,record_version
+      ${entityType === "student" ? "NULL::text" : "phone"} AS phone,status,record_version
       FROM ${table} WHERE id=ANY($1::uuid[]) AND status<>'purged'`, values: [selectedIds],
   });
   const byId = new Map(rows.rows.map((row) => [String(row.id), row]));
   const canonical = byId.get(canonicalId); if (!canonical) return null;
   const selected = new Map(provenance.rows.map((row) => [row.field_name, row.selected_record_id]));
   const value = (field: string) => byId.get(selected.get(field) ?? canonicalId)?.[field] ?? null;
-  return Object.freeze({ id: canonicalId, displayName: String(value("display_name")),
+  const status = canonical.status;
+  if (status !== "active" && status !== "pending_delete") return null;
+  return Object.freeze({ id: canonicalId, displayName: String(value("display_name")), status,
     dateOfBirth: value("date_of_birth") as string | null,
     contactEmail: value("contact_email") as string | null,
     contactPhone: value("contact_phone") as string | null,

@@ -109,7 +109,7 @@ export function evaluatePrimaryContacts(
   if (currentPrimaryContacts.length > 1) {
     return { allowed: false, code: "MULTIPLE_PRIMARY_CONTACTS" };
   }
-  if (currentPrimaryContacts[0]?.guardianStatus !== "active") {
+  if (!["active", "pending_delete"].includes(currentPrimaryContacts[0]?.guardianStatus ?? "purged")) {
     return { allowed: false, code: "PRIMARY_GUARDIAN_INACTIVE" };
   }
 

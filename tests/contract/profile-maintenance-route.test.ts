@@ -50,6 +50,11 @@ test("serializes only the exact non-PII acknowledgement and maps stable errors",
     new ProfileMaintenanceError("PROFILE_MAINTENANCE_STALE_VERSION"),
   );
   assert.equal(mapped instanceof ApiContractError && mapped.code, "STALE_VERSION");
+  const pending = mapProfileMaintenanceError(Object.assign(new Error("safe"), {
+    name: "ProfileMaintenanceError",
+    code: "PROFILE_MAINTENANCE_INACTIVE",
+  }));
+  assert.equal(pending instanceof ApiContractError && pending.code, "CONFLICT");
 });
 
 function studentBody() {

@@ -259,7 +259,9 @@ async function listCurrent(
   studentId: string,
 ): Promise<GuardianRelationshipsView | null> {
   const student = await transaction.query<{ id: string; display_name: string }>(
-    "SELECT id, display_name FROM crm_students WHERE id = $1 AND status = 'active'",
+    `SELECT id, display_name
+       FROM crm_students
+      WHERE id = $1 AND status IN ('active', 'pending_delete')`,
     [studentId],
   );
   const studentRow = student.rows[0];
@@ -286,7 +288,7 @@ async function listCurrent(
        FROM crm_student_guardian_relationships AS relationship
        JOIN crm_guardians AS guardian ON guardian.id = relationship.guardian_id
       WHERE relationship.student_id = $1 AND relationship.ends_at IS NULL
-        AND guardian.status = 'active'
+        AND guardian.status IN ('active', 'pending_delete')
       ORDER BY relationship.is_primary_contact DESC, relationship.starts_at, relationship.id`,
     [studentId, studentRow.display_name],
   );

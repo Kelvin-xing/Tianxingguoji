@@ -76,7 +76,7 @@ export class PostgresqlProfileMaintenanceRepository implements ProfileMaintenanc
       const receipt = await claimReceipt(transaction, input, GUARDIAN_OPERATION, input.guardianId);
       const state = await readTargetState(transaction, "crm_guardians", input.guardianId);
       if (state === null || state === "purged") throw notFound();
-      await assertGuardianAccess(transaction, input);
+      await assertGuardianAccess(transaction, input, state);
       if (receipt !== null) return receipt;
       if (state !== "active") throw inactive();
       const locked = await lockTarget(transaction, "crm_guardians", input.guardianId);
@@ -232,6 +232,7 @@ async function assertStudentAccess(
 async function assertGuardianAccess(
   transaction: CrmTransaction,
   input: { readonly actorRole: string; readonly actorUserId: string; readonly guardianId: string },
+  guardianStatus: string,
 ): Promise<void> {
   if (input.actorRole === "founder") return;
   if (input.actorRole !== "advisor") throw forbidden();
@@ -241,14 +242,15 @@ async function assertGuardianAccess(
        JOIN crm_students AS student ON student.id = relationship.student_id
        JOIN cases_service_cases AS service_case ON service_case.student_id = student.id
       WHERE relationship.guardian_id = $1 AND relationship.ends_at IS NULL
-        AND student.status = 'active'
+        AND (student.status = 'active'
+          OR ($3 = 'pending_delete' AND student.status = 'pending_delete'))
         AND service_case.primary_user_id = $2
         AND service_case.primary_role = 'advisor'
         AND service_case.stage <> 'closed'
       ORDER BY relationship.id, service_case.id
       LIMIT 1
       FOR SHARE OF relationship, student, service_case`,
-    [input.guardianId, input.actorUserId],
+    [input.guardianId, input.actorUserId, guardianStatus],
   );
   if (!result.rows[0]) throw forbidden();
 }
