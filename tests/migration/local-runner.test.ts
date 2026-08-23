@@ -68,11 +68,11 @@ test("verifies the committed ordered migration manifest", async () => {
   const manifest = await verifyMigrationManifest();
 
   assert.equal(manifest.manifestVersion, 1);
-  assert.equal(manifest.migrations.length, 30);
+  assert.equal(manifest.migrations.length, 31);
   assert.equal(manifest.migrations[0]?.name, "202608021330_001_expand_identity_access.sql");
   assert.equal(
     manifest.migrations.at(-1)?.name,
-    "202608230030_031_allow_pending_primary_guardian.sql",
+    "202608230030_032_expand_case_referral_source_assignments.sql",
   );
 });
 

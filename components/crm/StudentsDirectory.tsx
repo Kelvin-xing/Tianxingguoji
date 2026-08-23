@@ -20,6 +20,7 @@ export function StudentsDirectory() {
   const [canCreate, setCanCreate] = useState(false)
   const [canReviewDuplicates, setCanReviewDuplicates] = useState(false)
   const [canReviewDeletionRequests, setCanReviewDeletionRequests] = useState(false)
+  const [canReadReferralSources, setCanReadReferralSources] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function StudentsDirectory() {
         setCanCreate(access.capabilities.some((capability) => String(capability) === 'students.create'))
         setCanReviewDuplicates(access.capabilities.some((capability) => String(capability) === 'students.duplicates.review'))
         setCanReviewDeletionRequests(access.capabilities.some((capability) => String(capability) === 'students.deletion.review'))
+        setCanReadReferralSources(access.capabilities.some((capability) => String(capability) === 'referral_sources.read'))
         setLoadState('ready')
       })
       .catch((error: unknown) => {
@@ -59,6 +61,11 @@ export function StudentsDirectory() {
           <p className="page-subtitle">管理學生基本資料、主要監護人與聯絡方式。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {loadState === 'ready' && canReadReferralSources ? (
+            <Link href="/referral-sources" className="secondary-button">
+              <Icon name="briefcase" size={16} />推薦來源
+            </Link>
+          ) : null}
           {loadState === 'ready' && canReviewDeletionRequests ? (
             <Link href="/students/deletion-requests" className="secondary-button">
               <Icon name="shield" size={16} />查看待刪除審查

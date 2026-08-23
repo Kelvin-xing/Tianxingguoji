@@ -123,6 +123,7 @@ export const MODULE_REGISTRY = Object.freeze({
       "ServiceGoalOutcome",
       "CaseReconstruction",
       "ReconstructionVersion",
+      "CaseReferralSourceAssignment",
       "ReconstructionEvent",
       "ReconstructionGap",
     ],

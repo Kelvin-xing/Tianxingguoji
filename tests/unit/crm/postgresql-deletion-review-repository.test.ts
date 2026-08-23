@@ -64,6 +64,40 @@ test("rejects an already-pending target before any lifecycle or effect write", a
   assert.equal(sql.some((text) => text.includes("INSERT INTO audit_outbox")), false);
 });
 
+test("reports only a fixed deletion stage and an allowlisted PostgreSQL SQLSTATE", async () => {
+  const evidence: unknown[] = [];
+  const repository = new PostgresqlDeletionReviewRepository(runner(async (text) => {
+    if (text.includes("INSERT INTO shared_idempotency_records")) return result([{ id: "receipt" }]);
+    if (text.includes("SELECT request_hash,state,result_reference,response_hash")) return result([{
+      request_hash: "ignored", state: "in_progress", result_reference: null, response_hash: null,
+    }]);
+    if (text.includes("SELECT binding.id FROM identity_users")) return result([{ id: "binding" }]);
+    if (text.includes("FROM crm_students WHERE id=$1 FOR UPDATE")) {
+      throw Object.assign(new Error("raw-secret message"), { code: "57014", severity: "ERROR",
+        detail: "raw-secret detail", query: "SELECT raw-secret", stack: "raw-secret stack" });
+    }
+    throw new Error("unexpected query");
+  }), (item) => evidence.push(item));
+
+  await assert.rejects(repository.requestDeletion(await input()), unavailable());
+  assert.deepEqual(evidence, [{ stage: "target_lock", postgresCode: "57014" }]);
+  assert.doesNotMatch(JSON.stringify(evidence), /raw-secret|message|detail|query|stack/);
+});
+
+test("classifies unknown PostgreSQL states as OTHER and non-database failures as null", async () => {
+  for (const [cause, postgresCode] of [
+    [Object.assign(new Error("redacted"), { code: "22012", severity: "ERROR" }), "OTHER"],
+    [Object.assign(new Error("redacted"), { code: "ENOENT" }), null],
+    [{ code: "42501", severity: "ERROR" }, null],
+  ] as const) {
+    const evidence: unknown[] = [];
+    const repository = new PostgresqlDeletionReviewRepository(failingRunner(cause),
+      (item) => evidence.push(item));
+    await assert.rejects(repository.requestDeletion(await input()));
+    assert.deepEqual(evidence, [{ stage: "receipt_claim", postgresCode }]);
+  }
+});
+
 async function input(): Promise<Parameters<DeletionReviewRepository["requestDeletion"]>[0]> {
   let captured: Parameters<DeletionReviewRepository["requestDeletion"]>[0] | undefined;
   const ids = [IDS.audit, IDS.outbox];
@@ -88,6 +122,13 @@ function runner(execute: (text: string, values?: readonly unknown[]) => Promise<
     return operation({ query: ({ text, values }) => execute(text, values) as never });
   } });
 }
+function failingRunner(cause: unknown): TenantTransactionRunner {
+  return runner(() => { throw cause; });
+}
 function result(rows: readonly Record<string, unknown>[], rowCount = rows.length) {
   return Object.freeze({ rows, rowCount });
+}
+function unavailable() {
+  return (error: unknown) => error instanceof DeletionReviewError &&
+    error.code === "DELETION_REVIEW_UNAVAILABLE";
 }
