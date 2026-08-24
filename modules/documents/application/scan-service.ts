@@ -15,6 +15,7 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+=-]{0,255}$/;
+const PROVIDER_VERSION = /^\S{1,1024}$/;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
 const SAFE_BUCKET = /^[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]$/;
 export const MAX_DOCUMENT_SCAN_ATTEMPTS = 3;
@@ -51,6 +52,7 @@ export type DocumentScanClaim =
       readonly status: "duplicate";
       readonly workId: string;
       readonly terminalState: "running" | "clean" | "rejected" | "failed";
+      readonly attemptCount: number;
     };
 
 export interface DocumentScanVerdictResult {
@@ -75,6 +77,7 @@ export interface DocumentScanReconciliationCandidate {
   readonly versionId: string;
   readonly scanPolicyVersion: string;
   readonly attemptCount: number;
+  readonly observedUpdatedAtMs: number;
 }
 
 export interface DocumentScanReconciliationResult {
@@ -133,7 +136,12 @@ export interface DocumentScanRepository {
     readonly candidate: DocumentScanReconciliationCandidate;
     readonly reconciledAtMs: number;
     readonly effects: MutationEffectBundle;
+    readonly publishMissedEvent?: () => Promise<void>;
   }): Promise<"requeued" | "dead_letter" | "ignored">;
+}
+
+export interface DocumentScanRequeuePublisher {
+  publish(candidate: DocumentScanReconciliationCandidate): Promise<void>;
 }
 
 export type DocumentScanErrorCode =
@@ -154,6 +162,7 @@ export class DocumentScanError extends Error {
 
 export interface DocumentScanServiceOptions {
   readonly repository: DocumentScanRepository;
+  readonly requeuePublisher?: DocumentScanRequeuePublisher;
   readonly clock?: DocumentScanClock;
   readonly createId?: () => string;
 }
@@ -161,11 +170,13 @@ export interface DocumentScanServiceOptions {
 /** Documents owns scan state policy; its repository owns each durable transaction. */
 export class DocumentScanService {
   private readonly repository: DocumentScanRepository;
+  private readonly requeuePublisher: DocumentScanRequeuePublisher | null;
   private readonly clock: DocumentScanClock;
   private readonly createId: () => string;
 
   constructor(options: DocumentScanServiceOptions) {
     this.repository = options.repository;
+    this.requeuePublisher = options.requeuePublisher ?? null;
     this.clock = options.clock ?? { nowMs: () => Date.now() };
     this.createId = options.createId ?? randomUUID;
   }
@@ -240,7 +251,8 @@ export class DocumentScanService {
     if (!transition.allowed) throw new DocumentScanError("DOCUMENT_SCAN_TRANSITION_INVALID");
 
     const failedAtMs = this.now();
-    const isFinalAttempt = input.event.deliveryAttempt === MAX_DOCUMENT_SCAN_ATTEMPTS;
+    const isFinalAttempt = input.work.attemptCount === MAX_DOCUMENT_SCAN_ATTEMPTS ||
+      input.event.deliveryAttempt === MAX_DOCUMENT_SCAN_ATTEMPTS;
     const effects = this.effects({
       organizationId: input.work.organizationId,
       documentVersionId: input.work.documentVersionId,
@@ -260,7 +272,7 @@ export class DocumentScanService {
     if (
       result.workId !== input.work.id ||
       result.documentVersionId !== input.work.documentVersionId ||
-      result.attemptCount !== input.event.deliveryAttempt ||
+      result.attemptCount !== input.work.attemptCount ||
       (isFinalAttempt ? result.status !== "dead_letter" : result.status !== "retry")
     ) {
       throw new DocumentScanError("DOCUMENT_SCAN_RESULT_INVALID");
@@ -310,6 +322,14 @@ export class DocumentScanService {
         candidate,
         reconciledAtMs,
         effects,
+        publishMissedEvent: candidate.kind === "missed_event"
+          ? async () => {
+              if (!this.requeuePublisher) {
+                throw new DocumentScanError("DOCUMENT_SCAN_RECONCILIATION_INVALID");
+              }
+              await this.requeuePublisher.publish(candidate);
+            }
+          : undefined,
       });
       if (outcome === "requeued") requeued += 1;
       else if (outcome === "dead_letter") deadLettered += 1;
@@ -403,7 +423,7 @@ function assertEvent(event: DocumentScanEvent): void {
     !SAFE_CODE.test(event.requestId) ||
     !SAFE_BUCKET.test(event.bucket) ||
     !isOpaqueDocumentObjectKey(event.key) ||
-    !SAFE_ID.test(event.versionId) ||
+    !PROVIDER_VERSION.test(event.versionId) ||
     !SAFE_CODE.test(event.scanPolicyVersion) ||
     !Number.isSafeInteger(event.deliveryAttempt) ||
     event.deliveryAttempt < 1 ||
@@ -422,7 +442,9 @@ function assertWorkMatchesEvent(work: DocumentScanWork, event: DocumentScanEvent
     work.key !== event.key ||
     work.versionId !== event.versionId ||
     work.scanPolicyVersion !== event.scanPolicyVersion ||
-    work.attemptCount !== event.deliveryAttempt ||
+    !Number.isSafeInteger(work.attemptCount) ||
+    work.attemptCount < 1 ||
+    work.attemptCount > MAX_DOCUMENT_SCAN_ATTEMPTS ||
     work.state !== "running"
   ) {
     throw new DocumentScanError("DOCUMENT_SCAN_RESULT_INVALID");
@@ -436,11 +458,13 @@ function assertCandidate(candidate: DocumentScanReconciliationCandidate): void {
     !UUID.test(candidate.documentVersionId) ||
     !SAFE_BUCKET.test(candidate.bucket) ||
     !isOpaqueDocumentObjectKey(candidate.key) ||
-    !SAFE_ID.test(candidate.versionId) ||
+    !PROVIDER_VERSION.test(candidate.versionId) ||
     !SAFE_CODE.test(candidate.scanPolicyVersion) ||
     !Number.isSafeInteger(candidate.attemptCount) ||
     candidate.attemptCount < 0 ||
-    candidate.attemptCount > MAX_DOCUMENT_SCAN_ATTEMPTS
+    candidate.attemptCount > MAX_DOCUMENT_SCAN_ATTEMPTS ||
+    !Number.isSafeInteger(candidate.observedUpdatedAtMs) ||
+    candidate.observedUpdatedAtMs <= 0
   ) {
     throw new DocumentScanError("DOCUMENT_SCAN_RECONCILIATION_INVALID");
   }

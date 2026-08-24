@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/workspace/Icon";
+import type { ReactNode } from "react";
+
 import type {
   DocumentClassification,
   DocumentLifecycleState,
@@ -8,15 +10,21 @@ import type {
   DocumentVersionState,
 } from "@/modules/documents/client";
 
-export function DocumentList({ documents }: { readonly documents: readonly DocumentListItem[] }) {
+export function DocumentList({
+  documents,
+  renderActions,
+}: {
+  readonly documents: readonly DocumentListItem[];
+  readonly renderActions?: (document: DocumentListItem) => ReactNode;
+}) {
   return (
     <ul className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
-      {documents.map((document) => <DocumentListRow document={document} key={document.id} />)}
+      {documents.map((document) => <DocumentListRow document={document} key={document.id}>{renderActions?.(document)}</DocumentListRow>)}
     </ul>
   );
 }
 
-export function DocumentListRow({ document }: { readonly document: DocumentListItem }) {
+export function DocumentListRow({ document, children }: { readonly document: DocumentListItem; readonly children?: ReactNode }) {
   return (
     <li className="py-4 min-w-0">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 min-w-0">
@@ -38,13 +46,14 @@ export function DocumentListRow({ document }: { readonly document: DocumentListI
         </div>
         <DocumentVersionPill state={document.latest_version_state} />
       </div>
+      {children}
     </li>
   );
 }
 
 export function DocumentVersionPill({ state }: { readonly state: DocumentVersionState | null }) {
   const tone = state === "available" ? "status-success"
-    : state === "rejected" || state === "scan_failed" || state === "deleted" ? "status-warning"
+    : state === "rejected" || state === "scan_failed" || state === "abandoned" || state === "deleted" ? "status-warning"
       : "";
   return <span className={`status-pill shrink-0 ${tone}`}>{versionStateLabel(state)}</span>;
 }
@@ -88,6 +97,7 @@ export function versionStateLabel(value: DocumentVersionState | null): string {
     available: "可使用",
     rejected: "已拒絕",
     scan_failed: "掃描失敗",
+    abandoned: "已放棄",
     superseded: "已由新版本取代",
     pending_delete: "待刪除審核",
     deleted: "已刪除",

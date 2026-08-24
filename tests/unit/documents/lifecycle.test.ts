@@ -124,12 +124,38 @@ test("allows only a clean available version to become active or downloadable", (
     }),
     { allowed: false, code: "DOCUMENT_NOT_ACTIVE" },
   );
+  assert.deepEqual(
+    evaluateDocumentVersionDownload({
+      document,
+      version: makeVersion({
+        object: { ...available.object, versionId: `v${"x".repeat(256)}` },
+      }),
+    }),
+    { allowed: true },
+  );
+  assert.deepEqual(
+    evaluateDocumentVersionDownload({
+      document,
+      version: makeVersion({
+        object: { ...available.object, versionId: "x".repeat(1025) },
+      }),
+    }),
+    { allowed: false, code: "DOCUMENT_OBJECT_VERSION_INVALID" },
+  );
 });
 
 test("requires quarantine, scanning, and an explicit clean verdict for lifecycle progress", () => {
   assert.deepEqual(
     evaluateDocumentVersionTransition({ from: "pending_upload", to: "quarantined" }),
     { allowed: true },
+  );
+  assert.deepEqual(
+    evaluateDocumentVersionTransition({ from: "pending_upload", to: "abandoned" }),
+    { allowed: true },
+  );
+  assert.deepEqual(
+    evaluateDocumentVersionTransition({ from: "abandoned", to: "quarantined" }),
+    { allowed: false, code: "DOCUMENT_VERSION_TRANSITION_INVALID" },
   );
   assert.deepEqual(
     evaluateDocumentVersionTransition({ from: "pending_upload", to: "available" }),

@@ -115,7 +115,7 @@ test("DOC-01 works through PostgreSQL 17 and the real local Next Dev HTTP API", 
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 34);
+    assert.equal(baseline.generated_files, 35);
     assertDatabaseContract(await inspectBaselineWithNewClient(target), target, manifestSha256);
     assert.equal((await seedNeonTestRelease1(target, "apply")).status, "pass");
 
@@ -293,7 +293,7 @@ test("DOC-01 works through PostgreSQL 17 and the real local Next Dev HTTP API", 
       applicationPassword, ...passwords.values(), ...NEON_TEST_PRINCIPALS.map((value) => value.email),
       founderName, advisorName, "postgresql://", "tx_session=",
     ]);
-    evidence.baseline = { source_migrations: 33, generated_files: 34, postgres_version: 17 };
+    evidence.baseline = { source_migrations: 34, generated_files: 35, postgres_version: 17 };
     evidence.http = {
       founder_create_read: 201,
       advisor_create_read: 201,

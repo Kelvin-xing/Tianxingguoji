@@ -22,6 +22,11 @@ export const CASE_DOCUMENT_CLASSIFICATIONS = Object.freeze([
 export type CaseDocumentClassification = (typeof CASE_DOCUMENT_CLASSIFICATIONS)[number];
 export type VisibleDocumentLifecycleState = "active" | "pending_delete";
 
+export interface PendingDocumentUploadView {
+  readonly id: string;
+  readonly recordVersion: number;
+}
+
 export interface CaseDocumentView {
   readonly id: string;
   readonly caseId: string;
@@ -30,6 +35,7 @@ export interface CaseDocumentView {
   readonly classification: CaseDocumentClassification;
   readonly lifecycleState: VisibleDocumentLifecycleState;
   readonly latestVersionState: DocumentVersionState | null;
+  readonly pendingUpload: PendingDocumentUploadView | null;
   readonly hasActiveVersion: boolean;
   readonly recordVersion: number;
   readonly updatedAt: string;

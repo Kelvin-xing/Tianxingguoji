@@ -16,6 +16,7 @@ const CASE_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_CASE_ID = "10000000-0000-4000-8000-000000000002";
 const DOCUMENT_ID = "20000000-0000-4000-8000-000000000001";
 const OTHER_DOCUMENT_ID = "20000000-0000-4000-8000-000000000002";
+const VERSION_ID = "30000000-0000-4000-8000-000000000001";
 
 test("Document reads use no-query paths and strictly decode all three exact wrappers", async (context) => {
   const originalFetch = globalThis.fetch;
@@ -49,6 +50,9 @@ test("Document reads reject extra keys, malformed enums, authority mismatches an
     documentItem({ lifecycle_state: "deleted" }),
     documentItem({ latest_version_state: "clean" }),
     documentItem({ latest_version_state: null, has_active_version: true }),
+    documentItem({ latest_version_state: "pending_upload", pending_upload: null }),
+    documentItem({ pending_upload: { id: VERSION_ID, record_version: 1 } }),
+    documentItem({ pending_upload: { id: "invalid", record_version: 1 }, latest_version_state: "pending_upload" }),
     documentItem({ case_id: OTHER_CASE_ID }),
   ];
   for (const item of invalid) {
@@ -120,6 +124,7 @@ test("Document failures are classified without exposing server details", () => {
   assert.equal(classifyDocumentFailure(apiError("FORBIDDEN", 403)), "forbidden");
   assert.equal(classifyDocumentFailure(apiError("NOT_FOUND", 404)), "not_found");
   assert.equal(classifyDocumentFailure(apiError("VALIDATION_FAILED", 422)), "validation");
+  assert.equal(classifyDocumentFailure(apiError("STALE_VERSION", 409)), "stale");
   assert.equal(classifyDocumentFailure(apiError("CONFLICT", 409)), "conflict");
   assert.equal(classifyDocumentFailure(apiError("SERVICE_UNAVAILABLE", 503)), "unavailable");
   assert.equal(classifyDocumentFailure(new Error("private detail")), "unavailable");
@@ -134,6 +139,7 @@ function documentItem(overrides: Readonly<Record<string, unknown>> = {}) {
     classification: "identity_and_case_evidence",
     lifecycle_state: "active",
     latest_version_state: null,
+    pending_upload: null,
     has_active_version: false,
     record_version: 1,
     updated_at: "2026-08-23T02:00:00.000Z",

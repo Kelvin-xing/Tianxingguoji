@@ -15,7 +15,7 @@ test("Document routes use authoritative components and Case detail mounts the pa
   assert.doesNotMatch(`${directoryPage}\n${directory}`, /previewCaseWorkspaceAdapter|Preview adapter|mock|fake|fetch\(/i);
 });
 
-test("Document UI is capability-only and exposes no upload or raw identifier controls", async () => {
+test("Document registration UI is capability-only and exposes no raw identifier controls", async () => {
   const [directory, panel, shared] = await Promise.all([
     source("components/documents/DocumentsDirectory.tsx"),
     source("components/documents/CaseDocumentsPanel.tsx"),
@@ -25,7 +25,7 @@ test("Document UI is capability-only and exposes no upload or raw identifier con
   assert.match(panel, /documents\.read/);
   assert.match(panel, /documents\.create/);
   assert.doesNotMatch(`${directory}\n${panel}`, /access\.role|snapshot\.role|capabilitiesByRole|ROLE_(?:CAPABILITIES|NAVIGATION)/);
-  assert.doesNotMatch(`${directory}\n${panel}\n${shared}`, /type=["']file|drag|drop|checksum|mime|signed URL|presigned|raw UUID|localStorage|sessionStorage|console\./i);
+  assert.doesNotMatch(`${directory}\n${panel}\n${shared}`, /drag|drop|signed URL|presigned|raw UUID|localStorage|sessionStorage|console\./i);
   assert.doesNotMatch(directory, /upload|上載文件|Clean|preview/i);
 });
 

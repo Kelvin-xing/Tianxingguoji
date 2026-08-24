@@ -9,11 +9,11 @@ export const MIGRATION_DIRECTORY = "db/migrations";
 export const MIGRATION_MANIFEST_PATH = "db/migrations/manifest.json";
 export const NEON_TEST_DATABASE = "txgj_env01_test";
 export const NEON_TEST_MIGRATION_LOGIN = "env01_migration_login";
-export const EXPECTED_MIGRATION_COUNT = 33;
+export const EXPECTED_MIGRATION_COUNT = 34;
 export const EXPECTED_LAST_MIGRATION =
-  "202608230050_034_complete_case_document_registration.sql";
+  "202608240010_035_harden_document_upload_scan_download.sql";
 export const EXPECTED_LAST_MIGRATION_SHA256 =
-  "e8cced82a8b978a4822f5c802c1a35078c5444a3d1a927845ea296c4eb404f78";
+  "04183e3c8f875e85cf8ff576bb0ed33c5896dd03b94e0085967e837c4556de36";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_MIGRATION_NAME = /^\d{12}_\d{3}_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
@@ -152,7 +152,7 @@ export function assertNeonTestManifest(manifest: MigrationManifest): void {
     last.sha256 !== EXPECTED_LAST_MIGRATION_SHA256
   ) {
     throw new MigrationManifestSafetyError(
-      "Neon test bootstrap requires the frozen 33-migration manifest.",
+      "Neon test bootstrap requires the frozen 34-migration manifest.",
     );
   }
 }

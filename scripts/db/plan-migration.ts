@@ -73,7 +73,7 @@ type MigrationFinding =
     };
 
 const MIGRATION_NAME_PATTERN =
-  /^\d{12}_\d{3}_(expand|backfill|switch|contract|harden|expose|grant|enable|fix|allow)_[a-z][a-z0-9_]*\.sql$/;
+  /^\d{12}_\d{3}_(expand|backfill|switch|contract|harden|expose|grant|enable|fix|allow|complete)_[a-z][a-z0-9_]*\.sql$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 class MigrationPlanInputError extends Error {}

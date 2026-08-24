@@ -47,10 +47,14 @@ function createEvent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createService(repository: InMemoryDocumentScanRepository) {
+function createService(
+  repository: InMemoryDocumentScanRepository,
+  publish: () => Promise<void> = async () => undefined,
+) {
   let nextId = 500;
   return new DocumentScanService({
     repository,
+    requeuePublisher: { publish },
     clock: new FixedClock(),
     createId: () => {
       nextId += 1;
@@ -127,10 +131,10 @@ test("bounded retry treats an exact replay as a duplicate and sends the third fa
   assert.equal(repository.work(first)?.attemptCount, 1);
   assert.equal(scanner.calls().length, 1);
 
-  assert.deepEqual(await processDocumentScanEvent(first, { service, scanner }), {
-    status: "duplicate",
-    workId: repository.work(first)?.id,
-  });
+  await assert.rejects(
+    processDocumentScanEvent(first, { service, scanner }),
+    DocumentScanRetryableWorkerError,
+  );
   assert.equal(scanner.calls().length, 1);
 
   await assert.rejects(
@@ -164,6 +168,7 @@ test("reconciliation finds missed and stuck work without unsafe availability", a
     versionId: VERSION_ID,
     scanPolicyVersion: POLICY,
     attemptCount: 0,
+    observedUpdatedAtMs: Date.UTC(2026, 7, 1),
   });
   const first = await reconcileDocumentScans(
     { staleAfterMs: 60_000, limit: 10 },
@@ -191,6 +196,7 @@ test("reconciliation finds missed and stuck work without unsafe availability", a
     versionId: VERSION_ID,
     scanPolicyVersion: POLICY,
     attemptCount: 1,
+    observedUpdatedAtMs: Date.UTC(2026, 7, 1),
   });
   const second = await reconcileDocumentScans(
     { staleAfterMs: 60_000, limit: 10 },
@@ -213,6 +219,7 @@ test("reconciliation finds missed and stuck work without unsafe availability", a
     versionId: VERSION_ID,
     scanPolicyVersion: POLICY,
     attemptCount: 1,
+    observedUpdatedAtMs: Date.UTC(2026, 7, 1),
   });
   const ignored = await reconcileDocumentScans(
     { staleAfterMs: 60_000, limit: 10 },
@@ -220,6 +227,39 @@ test("reconciliation finds missed and stuck work without unsafe availability", a
   );
   assert.deepEqual(ignored, { inspected: 1, requeued: 0, deadLettered: 0, ignored: 1 });
   assert.equal(repository.state(event), "scan_failed");
+});
+
+test("missed-event reconciliation publishes before one durable effect and rolls back on publish failure", async () => {
+  const repository = readyRepository();
+  const event = createEvent();
+  repository.addReconciliationCandidate({
+    kind: "missed_event",
+    organizationId: ORGANIZATION_ID,
+    documentVersionId: DOCUMENT_VERSION_ID,
+    bucket: BUCKET,
+    key: event.key,
+    versionId: VERSION_ID,
+    scanPolicyVersion: POLICY,
+    attemptCount: 0,
+    observedUpdatedAtMs: Date.UTC(2026, 7, 1),
+  });
+  const failed = createService(repository, async () => {
+    throw new Error("synthetic queue unavailable");
+  });
+  await assert.rejects(
+    () => failed.reconcileDocumentScans({ staleAfterMs: 90_000, limit: 10 }),
+    /synthetic queue unavailable/u,
+  );
+  assert.deepEqual(repository.snapshot(), { versions: 1, works: 0, audits: 0, outbox: 0 });
+
+  let publishes = 0;
+  const recovered = createService(repository, async () => { publishes += 1; });
+  assert.deepEqual(
+    await recovered.reconcileDocumentScans({ staleAfterMs: 90_000, limit: 10 }),
+    { inspected: 1, requeued: 1, deadLettered: 0, ignored: 0 },
+  );
+  assert.equal(publishes, 1);
+  assert.deepEqual(repository.snapshot(), { versions: 1, works: 0, audits: 1, outbox: 1 });
 });
 
 test("a repository failure commits no scan state, work, audit, or outbox facts", async () => {

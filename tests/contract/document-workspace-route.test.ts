@@ -43,7 +43,7 @@ test("DOC-01 route parsers reject query keys and enforce the exact registration 
   }), "doc-01-request"));
 });
 
-test("DOC-01 response mappers expose only the frozen acknowledgement and ten-key read item", () => {
+test("DOC-02 response mappers expose exact pending upload authority without object metadata", () => {
   const item = {
     id: ID,
     caseId: CASE_ID,
@@ -52,6 +52,7 @@ test("DOC-01 response mappers expose only the frozen acknowledgement and ten-key
     classification: "identity_and_case_evidence" as const,
     lifecycleState: "active" as const,
     latestVersionState: null,
+    pendingUpload: null,
     hasActiveVersion: false,
     recordVersion: 1,
     updatedAt: "2026-08-23T00:00:00.000Z",
@@ -62,7 +63,7 @@ test("DOC-01 response mappers expose only the frozen acknowledgement and ten-key
   assert.deepEqual(Object.keys(collection), ["documents"]);
   assert.deepEqual(Object.keys(collection.documents[0]!).sort(), [
     "id", "case_id", "case_number", "display_name", "classification", "lifecycle_state",
-    "latest_version_state", "has_active_version", "record_version", "updated_at",
+    "latest_version_state", "pending_upload", "has_active_version", "record_version", "updated_at",
   ].sort());
   const detail = documentDetailData(item) as { document: Record<string, unknown> };
   assert.deepEqual(detail.document, collection.documents[0]);
@@ -70,6 +71,15 @@ test("DOC-01 response mappers expose only the frozen acknowledgement and ten-key
     id: ID,
     record_version: 1,
   });
+
+  const pending = documentDetailData({
+    ...item,
+    latestVersionState: "pending_upload",
+    pendingUpload: { id: ID, recordVersion: 2 },
+  }) as { document: Record<string, unknown> };
+  assert.deepEqual(pending.document.pending_upload, { id: ID, record_version: 2 });
+  assert.equal(JSON.stringify(pending).includes("checksum"), false);
+  assert.equal(JSON.stringify(pending).includes("object_"), false);
 });
 
 test("DOC-01 route error mapping is HMR-stable and fail closed", () => {

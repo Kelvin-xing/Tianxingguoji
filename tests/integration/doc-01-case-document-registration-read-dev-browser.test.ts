@@ -187,7 +187,7 @@ test("DOC-01 works through a real local browser and disposable PostgreSQL 17", {
     stage = "baseline_seed";
     const build = await verifyCommittedOneRoleBaseline();
     evidence.baseline_generated_files = build.files.length;
-    assert.equal(build.files.length, 34);
+    assert.equal(build.files.length, 35);
     const baseline = await executeOneRoleBaselineRun({ mode: "apply", target, build, dependencies: baselineDependencies(target) });
     assert.equal(baseline.status, "pass");
     assert.equal(baseline.baseline_id, ONE_ROLE_BASELINE_ID);

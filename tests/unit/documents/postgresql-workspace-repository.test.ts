@@ -111,14 +111,30 @@ test("DOC-01 organization directory requires the Case stored Primary identity co
     assert.match(sql, /primary_membership\.status='active'/);
     assert.match(sql, /primary_actor\.id=service_case\.primary_user_id/);
     assert.match(sql, /primary_actor\.status='active'/);
+    assert.match(sql, /ORDER BY version\.upload_generation DESC/);
   }
+});
+
+test("DOC-02 directory returns only the exact authoritative pending upload reference", async () => {
+  const pending = listRunner(true, {
+    latest_version_state: "pending_upload",
+    latest_version_id: IDS[3],
+    latest_version_record_version: 2,
+  });
+  const [document] = (await service(pending.runner).list(actor())).documents;
+  assert.deepEqual(document?.pendingUpload, { id: IDS[3], recordVersion: 2 });
+  assert.equal(JSON.stringify(document).includes("checksum"), false);
+  assert.equal(JSON.stringify(document).includes("object_"), false);
 });
 
 function service(runner: TenantTransactionRunner): DocumentWorkspaceService {
   return new DocumentWorkspaceService(new PostgresqlDocumentWorkspaceRepository(runner));
 }
 
-function listRunner(storedPrimaryActive: boolean) {
+function listRunner(
+  storedPrimaryActive: boolean,
+  override: Partial<DocumentRowFixture> = {},
+) {
   let directoryQuery = "";
   const runner: TenantTransactionRunner = Object.freeze({
     async run<Result>(
@@ -135,7 +151,7 @@ function listRunner(storedPrimaryActive: boolean) {
           }
           if (query.text.includes("FROM documents_documents AS document")) {
             directoryQuery = query.text;
-            return result(storedPrimaryActive ? [documentRow()] : []) as DatabaseQueryResult<Row>;
+            return result(storedPrimaryActive ? [{ ...documentRow(), ...override }] : []) as DatabaseQueryResult<Row>;
           }
           throw new Error("Unexpected DOC-01 directory query.");
         },
@@ -146,7 +162,22 @@ function listRunner(storedPrimaryActive: boolean) {
   return Object.freeze({ runner, directoryQuery: () => directoryQuery });
 }
 
-function documentRow() {
+interface DocumentRowFixture {
+  readonly id: string;
+  readonly service_case_id: string;
+  readonly case_number: string;
+  readonly display_name: string;
+  readonly classification: string;
+  readonly lifecycle_state: string;
+  readonly latest_version_state: string | null;
+  readonly latest_version_id: string | null;
+  readonly latest_version_record_version: number | null;
+  readonly has_active_version: boolean;
+  readonly record_version: number;
+  readonly updated_at: string;
+}
+
+function documentRow(): DocumentRowFixture {
   return Object.freeze({
     id: IDS[2],
     service_case_id: IDS[1],
@@ -155,6 +186,8 @@ function documentRow() {
     classification: "identity_and_case_evidence",
     lifecycle_state: "active",
     latest_version_state: null,
+    latest_version_id: null,
+    latest_version_record_version: null,
     has_active_version: false,
     record_version: 1,
     updated_at: "2026-08-23T00:00:00.000Z",

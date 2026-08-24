@@ -83,18 +83,20 @@ export class InMemoryDocumentScanRepository implements DocumentScanRepository {
           status: "duplicate",
           workId: existing.id,
           terminalState: existing.state,
+          attemptCount: existing.attemptCount,
         };
       }
-      if (input.event.deliveryAttempt !== existing.attemptCount + 1 || existing.attemptCount >= 3) {
+      if (existing.attemptCount >= 3) {
         return {
           status: "duplicate",
           workId: existing.id,
           terminalState: existing.state,
+          attemptCount: existing.attemptCount,
         };
       }
       const resumed: DocumentScanWork = Object.freeze({
         ...existing,
-        attemptCount: input.event.deliveryAttempt,
+        attemptCount: existing.attemptCount + 1,
         state: "running",
       });
       const effects = input.createEffects({
@@ -103,7 +105,7 @@ export class InMemoryDocumentScanRepository implements DocumentScanRepository {
       });
       return this.commitClaim({ workKey, version, work: resumed, effects });
     }
-    if (version.state !== "quarantined" || input.event.deliveryAttempt !== 1) {
+    if (version.state !== "quarantined") {
       throw new DocumentScanError("DOCUMENT_SCAN_EVENT_INVALID");
     }
     const work: DocumentScanWork = Object.freeze({
@@ -196,6 +198,7 @@ export class InMemoryDocumentScanRepository implements DocumentScanRepository {
     readonly candidate: DocumentScanReconciliationCandidate;
     readonly reconciledAtMs: number;
     readonly effects: MutationEffectBundle;
+    readonly publishMissedEvent?: () => Promise<void>;
   }): Promise<"requeued" | "dead_letter" | "ignored"> {
     const candidateKey = tuple(
       input.candidate.bucket,
@@ -214,6 +217,8 @@ export class InMemoryDocumentScanRepository implements DocumentScanRepository {
 
     if (input.candidate.kind === "missed_event") {
       if (version.state !== "quarantined" || work) return "ignored";
+      if (!input.publishMissedEvent) return "ignored";
+      await input.publishMissedEvent();
     } else {
       if (!work || work.state !== "running" || version.state !== "scanning") return "ignored";
       nextVersions.set(candidateKey, { ...version, state: "scan_failed" });

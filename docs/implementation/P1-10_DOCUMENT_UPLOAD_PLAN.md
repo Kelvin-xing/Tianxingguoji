@@ -4,10 +4,17 @@
 | --- | --- |
 | Task ID | `prd-phase-implementation-plan-2026-07-31:P1-10` |
 | Date | 2026-08-07 (Asia/Hong_Kong) |
-| Status | `implemented_locally_pending_schema_reconciliation_runtime_composition_and_cloud_validation` |
+| Status | `superseded_by_DOC-02` |
 | Source plan | `docs/PRD_PHASE_IMPLEMENTATION_PLAN.md`, Phase 1 ticket `P1-10` |
 | Decisions | `DEC-017`, `DEC-018`, `DEC-024`; P0-10 and P0-11 contracts are binding dependencies |
+| Superseded by | [`DOC-02 Case Document Upload, Scan, And Download Plan`](DOC-02_DOCUMENT_UPLOAD_SCAN_DOWNLOAD_PLAN.md) |
 | Runtime action | None. No Terraform init/plan/apply, AWS/S3/KMS/SQS action, RDS connection, migration execution, document-byte handling, commit, push, or deployment occurred. |
+
+> Historical record only. DOC-02 replaces this plan and the former
+> `POST /api/v1/cases/{caseId}/documents/upload-intents` endpoint. The former
+> endpoint is not part of the current API contract and must not be restored or
+> used as implementation guidance; use the version-scoped DOC-02 routes and
+> lifecycle contract instead.
 
 ## Outcome And Scope
 

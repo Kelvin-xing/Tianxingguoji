@@ -15,6 +15,7 @@ import {
   type DocumentClassification,
   type DocumentListItem,
 } from "@/modules/documents/client";
+import { DocumentTransferControls } from "./DocumentTransferControls";
 import { DocumentList, DocumentPageState, classificationLabel } from "./document-ui";
 
 type LoadState = "loading" | "ready" | "unauthenticated" | "denied" | "unavailable";
@@ -31,6 +32,8 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
   const [state, setState] = useState<LoadState>("loading");
   const [documents, setDocuments] = useState<readonly DocumentListItem[]>([]);
   const [canCreate, setCanCreate] = useState(false);
+  const [canUpload, setCanUpload] = useState(false);
+  const [canDownload, setCanDownload] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [classification, setClassification] = useState<DocumentClassification>("identity_and_case_evidence");
   const [pending, setPending] = useState(false);
@@ -50,17 +53,23 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
       if (!access.capabilities.some((capability) => String(capability) === "documents.read")) {
         setDocuments([]);
         setCanCreate(false);
+        setCanUpload(false);
+        setCanDownload(false);
         setState("denied");
         return;
       }
       setDocuments(result.documents);
       setCanCreate(access.capabilities.some((capability) => String(capability) === "documents.create"));
+      setCanUpload(access.capabilities.some((capability) => String(capability) === "documents.upload"));
+      setCanDownload(access.capabilities.some((capability) => String(capability) === "documents.download"));
       setState("ready");
     } catch (error) {
       if (!mounted.current || nextController.signal.aborted) return;
       const failure = classifyDocumentFailure(error);
       setDocuments([]);
       setCanCreate(false);
+      setCanUpload(false);
+      setCanDownload(false);
       setState(failure === "unauthenticated" ? "unauthenticated" : failure === "forbidden" || failure === "not_found" ? "denied" : "unavailable");
     } finally {
       if (controller.current === nextController) controller.current = null;
@@ -79,6 +88,10 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
   function draftChanged() {
     attempt.current!.rotate();
     setNotice(null);
+  }
+
+  function updateAuthoritativeDocument(authoritative: DocumentListItem) {
+    setDocuments((current) => current.map((document) => document.id === authoritative.id ? authoritative : document));
   }
 
   function clearDraft() {
@@ -126,7 +139,7 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
       if (failure !== "unavailable") attempt.current!.rotate();
       setNotice(
         failure === "validation" ? "validation"
-          : failure === "conflict" ? "conflict"
+          : failure === "conflict" || failure === "stale" ? "conflict"
             : failure === "forbidden" || failure === "unauthenticated" || failure === "not_found" ? "denied"
               : "unavailable",
       );
@@ -167,7 +180,20 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
       ) : null}
 
       {state === "ready" && documents.length === 0 ? <DocumentPageState title="本案目前沒有文件" detail="登記後的文件會顯示在這裡。" /> : null}
-      {state === "ready" && documents.length > 0 ? <DocumentList documents={documents} /> : null}
+      {state === "ready" && documents.length > 0 ? (
+        <DocumentList
+          documents={documents}
+          renderActions={(document) => (
+            <DocumentTransferControls
+              caseId={caseId}
+              document={document}
+              canUpload={canUpload}
+              canDownload={canDownload}
+              onAuthoritativeChange={updateAuthoritativeDocument}
+            />
+          )}
+        />
+      ) : null}
     </section>
   );
 }
