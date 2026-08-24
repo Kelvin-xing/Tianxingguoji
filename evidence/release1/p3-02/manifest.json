@@ -16,8 +16,8 @@
       "expectedState": "needs_human",
       "actualState": "needs_human",
       "evidence": {
-        "deferred": 32,
-        "executed": 76,
+        "deferred": 50,
+        "executed": 58,
         "represented": 108,
         "supplemental_checks": 3,
         "total": 108,
@@ -32,8 +32,8 @@
   "artifacts": [
     {
       "path": "coverage/matrix.json",
-      "sha256": "6d5f7d6c379b8b1f8740481d0a4a723430c47fbea259c4bbd42079978fe9ae66",
-      "bytes": 33135
+      "sha256": "d7a7138a801663eff72b5334cb50912c13b92e22bb3096c1444a9ae58000aec6",
+      "bytes": 33449
     }
   ],
   "approvals": [],
@@ -51,11 +51,11 @@
       "AC-24"
     ],
     "matrixArtifactPath": "coverage/matrix.json",
-    "matrixArtifactSha256": "6d5f7d6c379b8b1f8740481d0a4a723430c47fbea259c4bbd42079978fe9ae66",
+    "matrixArtifactSha256": "d7a7138a801663eff72b5334cb50912c13b92e22bb3096c1444a9ae58000aec6",
     "total": 108,
     "represented": 108,
-    "executed": 76,
-    "deferred": 32,
+    "executed": 58,
+    "deferred": 50,
     "unrepresented": 0,
     "coverageStatus": "represented_with_deferred"
   },
@@ -64,5 +64,5 @@
     "rawPiiDetected": false,
     "secretDetected": false
   },
-  "manifestSha256": "09ac739fdd2f95c0206c378ea5ab304309f7d77f47a5035ab3b0b16bc81f6cf3"
+  "manifestSha256": "98ccbdf99edaeb6c768ffe220cdedccdfa9c3bb1993322c447f1d93c1f345cad"
 }

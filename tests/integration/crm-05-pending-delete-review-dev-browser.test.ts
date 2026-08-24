@@ -395,7 +395,7 @@ test("CRM-05 pending deletion requests and review work through a real local brow
     stage = "baseline_seed";
     const build = await verifyCommittedOneRoleBaseline();
     evidence.baseline_generated_files = build.files.length;
-    assert.equal(evidence.baseline_generated_files, 35);
+    assert.equal(evidence.baseline_generated_files, 36);
     const baseline = await executeOneRoleBaselineRun({
       mode: "apply", target, build, dependencies: baselineDependencies(target),
     });

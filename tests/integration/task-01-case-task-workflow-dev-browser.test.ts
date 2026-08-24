@@ -264,7 +264,7 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     await login(page, baseUrl, FOUNDER.email, passwords.get("founder")!);
 
     stage = "founder_case_fixture";
-    const fixture = await createCaseFixture(page, FOUNDER.roleBindingId, 2041);
+    const fixture = await createCaseFixture(page, ADVISOR.roleBindingId, 2041);
     assert.deepEqual(fixture.evidence, { response_status: 200, json_parseable: true, exact_case_dto: true });
     assert.notEqual(fixture.caseId, null);
     const caseId = fixture.caseId!;
@@ -536,19 +536,30 @@ async function createCaseFixture(
         return { caseId: null, evidence };
       }
       if (!object(envelope) || !exactKeys(envelope, ["api_version", "request_id", "data"])) return { caseId: null, evidence };
-      if (!object(envelope.data) || !exactKeys(envelope.data, ["case"]) || !object(envelope.data.case)) return { caseId: null, evidence };
-      const record = envelope.data.case;
+      if (!object(envelope.data) || !exactKeys(envelope.data, ["id", "record_version"]) ||
+          !uuid(envelope.data.id) || envelope.data.record_version !== 2) return { caseId: null, evidence };
+      const caseId = envelope.data.id;
+      const authorityResponse = await fetch(`/api/v1/cases/${caseId}`);
+      const authorityRoot = await authorityResponse.json() as unknown;
+      if (authorityResponse.status !== 200 || !object(authorityRoot) ||
+          !exactKeys(authorityRoot, ["api_version", "request_id", "data"]) ||
+          !object(authorityRoot.data) || !exactKeys(authorityRoot.data, ["case"]) ||
+          !object(authorityRoot.data.case)) return { caseId: null, evidence };
+      const record = authorityRoot.data.case;
       const caseKeys = [
-        "id", "caseNumber", "studentId", "assessmentId", "intakeYear",
-        "admissionType", "stage", "manifestId", "recordVersion",
+        "id", "caseNumber", "studentId", "studentName", "intakeYear", "admissionType",
+        "stage", "workflowStatus", "recordVersion", "availableWorkflowActions", "updatedAt",
+        "primaryRole", "assessmentId", "assessmentStatus", "manifestId",
+        "primaryBindingLabel", "primaryUserId",
       ];
       evidence.exact_case_dto =
-        exactKeys(record, caseKeys) && uuid(record.id) &&
+        exactKeys(record, caseKeys) && record.id === caseId &&
         typeof record.caseNumber === "string" && record.caseNumber.trim() !== "" &&
         record.studentId === student && uuid(record.assessmentId) &&
         record.intakeYear === year && record.admissionType === "transfer" &&
-        record.stage === "signed" && record.manifestId === manifest && record.recordVersion === 1;
-      return { caseId: evidence.exact_case_dto ? record.id as string : null, evidence };
+        record.stage === "background_collection" && record.workflowStatus === "active" &&
+        record.manifestId === manifest && record.recordVersion === envelope.data.record_version;
+      return { caseId: evidence.exact_case_dto ? caseId : null, evidence };
     } catch {
       return { caseId: null, evidence };
     }

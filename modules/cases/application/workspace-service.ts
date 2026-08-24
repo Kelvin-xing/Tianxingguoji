@@ -18,11 +18,11 @@ export type CaseWorkspaceStage =
   | "signed"
   | "background_collection"
   | "school_selection_confirmed"
-  | "interview_preparation"
-  | "application_submitted"
-  | "awaiting_result"
-  | "offer_confirmed"
+  | "application_in_progress"
   | "closed";
+
+export type CaseWorkspaceWorkflowStatus = "active" | "paused" | "termination_pending" | "closed";
+export type CaseWorkspaceWorkflowAction = "pause" | "resume";
 
 export interface CaseWorkspaceListItem {
   readonly id: string;
@@ -32,8 +32,11 @@ export interface CaseWorkspaceListItem {
   readonly intakeYear: number;
   readonly admissionType: string;
   readonly stage: CaseWorkspaceStage;
+  readonly workflowStatus: CaseWorkspaceWorkflowStatus;
+  readonly recordVersion: number;
+  readonly availableWorkflowActions: readonly CaseWorkspaceWorkflowAction[];
   readonly updatedAt: string;
-  readonly primaryRole: "founder" | "advisor";
+  readonly primaryRole: "advisor";
 }
 
 export interface CaseWorkspaceDetail extends CaseWorkspaceListItem {
@@ -42,14 +45,13 @@ export interface CaseWorkspaceDetail extends CaseWorkspaceListItem {
   readonly manifestId: string;
   readonly primaryBindingLabel: string;
   readonly primaryUserId: string;
-  readonly recordVersion: number;
 }
 
 export interface CaseWorkspaceOptions {
   readonly students: readonly Readonly<{ id: string; displayName: string }>[];
   readonly primaryBindings: readonly Readonly<{
     id: string;
-    role: "founder" | "advisor";
+    role: "advisor";
     label: string;
   }>[];
   readonly manifests: readonly Readonly<{
@@ -61,14 +63,7 @@ export interface CaseWorkspaceOptions {
 
 export interface CreatedExistingStudentCase {
   readonly id: string;
-  readonly caseNumber: string;
-  readonly studentId: string;
-  readonly assessmentId: string;
-  readonly intakeYear: number;
-  readonly admissionType: string;
-  readonly stage: "signed";
-  readonly manifestId: string;
-  readonly recordVersion: 1;
+  readonly recordVersion: number;
 }
 
 export interface CaseWorkspaceRepository {
@@ -80,6 +75,7 @@ export interface CaseWorkspaceRepository {
     readonly studentId: string;
     readonly serviceCaseId: string;
     readonly assessmentId: string;
+    readonly transitionFactId: string;
     readonly caseNumber: string;
     readonly intakeYear: number;
     readonly admissionType: string;
@@ -87,6 +83,7 @@ export interface CaseWorkspaceRepository {
     readonly manifestId: string;
     readonly idempotencyKey: string;
     readonly requestHash: string;
+    readonly responseHash: string;
     readonly createdAtMs: number;
     readonly effects: MutationEffectBundle;
   }): Promise<CreatedExistingStudentCase>;
@@ -210,7 +207,8 @@ export class CaseWorkspaceService {
     const assessmentId = this.createId();
     const auditId = this.createId();
     const outboxId = this.createId();
-    for (const id of [serviceCaseId, assessmentId, auditId, outboxId]) {
+    const transitionFactId = this.createId();
+    for (const id of [serviceCaseId, assessmentId, transitionFactId, auditId, outboxId]) {
       if (!UUID.test(id)) throw new CaseWorkspaceError("CASE_WORKSPACE_INVALID");
     }
     const createdAtMs = this.nowMs();
@@ -232,7 +230,7 @@ export class CaseWorkspaceService {
       outcome: "succeeded",
       requestId: input.command.requestId,
       occurredAt,
-      metadata: { record_version: 1, status: "signed", effect_type: "case.created" },
+      metadata: { record_version: 2, status: "background_collection", effect_type: "case.created" },
     });
     const outbox = buildOutboxMessage({
       id: outboxId,
@@ -248,8 +246,8 @@ export class CaseWorkspaceService {
         aggregate_id: serviceCaseId,
         request_id: input.command.requestId,
         effect_type: "case.created",
-        record_version: 1,
-        status: "signed",
+        record_version: 2,
+        status: "background_collection",
       },
       availableAt: occurredAt,
       createdAt: occurredAt,
@@ -261,6 +259,7 @@ export class CaseWorkspaceService {
         studentId: input.command.studentId,
         serviceCaseId,
         assessmentId,
+        transitionFactId,
         caseNumber,
         intakeYear: input.command.intakeYear,
         admissionType: input.command.admissionType,
@@ -273,6 +272,10 @@ export class CaseWorkspaceService {
           manifestId: input.command.manifestId,
           primaryRoleBindingId: input.command.primaryRoleBindingId,
           studentId: input.command.studentId,
+        }),
+        responseHash: hashRequestPayload({
+          id: serviceCaseId,
+          record_version: 2,
         }),
         createdAtMs,
         effects: buildAtomicMutationEffects({ audit, outbox }),

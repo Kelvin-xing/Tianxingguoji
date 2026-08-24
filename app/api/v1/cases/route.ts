@@ -29,7 +29,10 @@ export async function POST(request: Request): Promise<Response> {
         throw createApiError("FORBIDDEN");
       }
       const created = await getCaseWorkspaceRuntime().service.createCase({ actor, command });
-      return { case: { ...created } } satisfies JsonValue;
+      return {
+        id: created.id,
+        record_version: created.recordVersion,
+      } satisfies JsonValue;
     } catch (error) {
       throw mapCaseWorkspaceCollectionError(error);
     }

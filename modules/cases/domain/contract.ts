@@ -61,10 +61,7 @@ export type ServiceCaseStage =
   | "signed"
   | "background_collection"
   | "school_selection_confirmed"
-  | "interview_preparation"
-  | "application_submitted"
-  | "awaiting_result"
-  | "offer_confirmed"
+  | "application_in_progress"
   | "closed";
 
 export interface ServiceCaseCreationInput {
@@ -72,7 +69,7 @@ export interface ServiceCaseCreationInput {
   readonly organizationId: string;
   readonly studentOrganizationId: string;
   readonly studentStatus: "active" | "pending_delete" | "purged";
-  readonly primaryRole: "founder" | "admin" | "advisor" | "data_reviewer" | "contractor";
+  readonly primaryRole: "advisor";
   readonly primaryOrganizationId: string;
   readonly primaryBindingStatus: "active" | "revoked";
   readonly manifestStatus: "candidate" | "approved" | "retired";
@@ -311,7 +308,7 @@ export function evaluateServiceCaseCreation(
   if (input.studentStatus !== "active") {
     return { allowed: false, code: "STUDENT_NOT_ACTIVE" };
   }
-  if (input.primaryRole !== "founder" && input.primaryRole !== "advisor") {
+  if (input.primaryRole !== "advisor") {
     return { allowed: false, code: "PRIMARY_ROLE_NOT_ALLOWED" };
   }
   if (input.primaryBindingStatus !== "active") {
@@ -418,8 +415,9 @@ export function evaluateSchoolTargetCreation(
 }
 
 export function evaluateSchoolTargetTransition(
-  _input: SchoolTargetTransitionInput,
+  input: SchoolTargetTransitionInput,
 ): CaseDecision {
+  void input;
   return { allowed: false, code: "TARGET_ROUTE_POLICY_REQUIRED" };
 }
 

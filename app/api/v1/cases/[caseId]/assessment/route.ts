@@ -19,6 +19,13 @@ const SEMANTIC_STATES = new Set([
   "not_applicable",
   "declined_to_provide",
 ]);
+const UPDATE_FIELDS = Object.freeze([
+  "expected_record_version",
+  "field_id",
+  "semantic_state",
+  "value",
+  "value_type",
+] as const);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +46,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
         manifest_id: view.manifestId,
         record_version: view.recordVersion,
         status: view.status,
+        access: {
+          mode: view.access.mode,
+          can_edit: view.access.canEdit,
+          editable_field_ids: [...view.access.editableFieldIds],
+          can_complete_background: view.access.canCompleteBackground,
+        },
         schema: {
           manifest_id: view.schema.manifestId,
           composition_version: view.schema.compositionVersion,
@@ -81,11 +94,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
         command,
       });
       return {
-        assessment_id: result.assessmentId,
-        field_id: result.fieldId,
-        semantic_state: result.semanticState,
-        value: result.value,
-        value_type: result.valueType,
+        id: result.id,
         record_version: result.recordVersion,
       };
     } catch (error) {
@@ -106,7 +115,7 @@ async function parseUpdateCommand(
   } catch {
     throw createApiError("INVALID_REQUEST");
   }
-  if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
+  if (!isExactRecord(body, UPDATE_FIELDS)) throw createApiError("INVALID_REQUEST");
 
   const fieldId = body.field_id;
   const semanticState = body.semantic_state;
@@ -134,6 +143,11 @@ async function parseUpdateCommand(
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isExactRecord<const Fields extends readonly string[]>(
+  value: unknown,
+  fields: Fields,
+): value is Record<Fields[number], unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  return keys.length === fields.length && fields.every((field, index) => field === keys[index]);
 }

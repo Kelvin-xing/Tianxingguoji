@@ -18,17 +18,10 @@ export type SchoolTargetCaseStage =
   | "signed"
   | "background_collection"
   | "school_selection_confirmed"
-  | "interview_preparation"
-  | "application_submitted"
-  | "awaiting_result"
-  | "offer_confirmed"
+  | "application_in_progress"
   | "closed";
 
-export type SchoolTargetCreateBlockedReason =
-  | "founder_read_only"
-  | "case_stage_not_allowed"
-  | "no_school_options"
-  | null;
+export type SchoolTargetCreateBlockedReason = "selection_workflow_required";
 
 export interface CreateSchoolTargetCommand {
   readonly expectedResolutionSha256: string;
@@ -165,14 +158,11 @@ export class SchoolTargetService {
       actorRole,
       caseId: input.caseId,
     });
-    const createBlockedReason: SchoolTargetCreateBlockedReason =
-      actorRole === "founder" ? "founder_read_only"
-        : snapshot.caseStage !== "background_collection" ? "case_stage_not_allowed"
-        : snapshot.schoolOptions.length === 0 ? "no_school_options"
-        : null;
+    const createBlockedReason: SchoolTargetCreateBlockedReason = "selection_workflow_required";
     return Object.freeze({
       ...snapshot,
-      canCreate: createBlockedReason === null,
+      schoolOptions: Object.freeze([]),
+      canCreate: false,
       createBlockedReason,
     });
   }

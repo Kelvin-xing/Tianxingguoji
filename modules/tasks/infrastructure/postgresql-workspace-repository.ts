@@ -32,7 +32,15 @@ interface TaskRow extends Record<string, unknown> {
 }
 interface RuleRow extends Record<string, unknown> { from_state: TaskState; to_state: TaskState; actor_kind: "assignee" | "approver" | "owner"; allowed_actor_roles: TaskActorRole[]; requires_reason: boolean; requires_different_actor: boolean }
 interface ActorRow extends Record<string, unknown> { role: string }
-interface CaseRow extends Record<string, unknown> { id: string; primary_user_id: string; primary_role: string; stage: string; student_status: string }
+interface CaseRow extends Record<string, unknown> {
+  id: string;
+  primary_user_id: string;
+  primary_role: string;
+  stage: string;
+  workflow_status: string;
+  student_status: string;
+}
+interface TaskLocationRow extends Record<string, unknown> { service_case_id: string }
 interface AssigneeRow extends Record<string, unknown> { id: string; user_id: string; role: TaskAssigneeRole }
 
 export interface TaskRepositoryTestHooks { readonly failBeforeCommit?: (operation: "create" | "transition") => void }
@@ -68,7 +76,7 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
     return this.run(input, async (tx) => {
       await assertActor(tx, input); if (input.actorRole === "contractor") forbidden();
       const serviceCase = await lockCase(tx, input, input.caseId, false); if (!serviceCase) return null;
-      if (!isWritableCase(serviceCase) || serviceCase.primary_user_id !== input.actorUserId) return null;
+      if (!isWritableCase(serviceCase) || !canCreateForCase(serviceCase, input)) return null;
       const result = await tx.query<AssigneeRow>(`SELECT binding.id,binding.user_id,binding.role
         FROM access_role_bindings AS binding
         JOIN access_organization_memberships AS membership ON membership.id=binding.membership_id
@@ -83,10 +91,14 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
 
   create(input: Parameters<TaskWorkspaceRepository["create"]>[0]): Promise<TaskAcknowledgement> {
     return this.run(input, async (tx) => {
-      const replay = await claimReceipt(tx, input, CREATE_OPERATION); await assertActor(tx, input);
-      const serviceCase = await lockCase(tx, input, input.caseId, true); if (!serviceCase || !isWritableCase(serviceCase) ||
-        serviceCase.primary_user_id !== input.actorUserId || serviceCase.primary_role !== input.actorRole) notFound();
-      if (replay) return replay; await assertApprovedPolicy(tx);
+      const replay = await claimReceipt(tx, input, CREATE_OPERATION);
+      const serviceCase = await lockCase(tx, input, input.caseId, true);
+      if (!serviceCase || !isReadableCreateCase(serviceCase)) notFound();
+      await assertActor(tx, input);
+      if (!canCreateForCase(serviceCase, input)) notFound();
+      if (replay) return replay;
+      if (serviceCase.workflow_status !== "active") conflict();
+      await assertApprovedPolicy(tx);
       const assignee = await lockAssignee(tx, input.assigneeUserId); if (!assignee) notFound();
       await tx.query(`INSERT INTO tasks_tasks
         (id,organization_id,service_case_id,title,task_brief,due_at,state,assignee_user_id,
@@ -107,9 +119,16 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
 
   transition(input: Parameters<TaskWorkspaceRepository["transition"]>[0]): Promise<TaskAcknowledgement> {
     return this.run(input, async (tx) => {
-      const replay = await claimReceipt(tx, input, TRANSITION_OPERATION); await assertActor(tx, input);
+      const replay = await claimReceipt(tx, input, TRANSITION_OPERATION);
+      const caseId = await locateTaskCase(tx, input.taskId);
+      if (!caseId) notFound();
+      const serviceCase = await lockCase(tx, input, caseId, true);
+      if (!serviceCase) notFound();
+      await assertActor(tx, input);
       const rows = await selectVisibleTasks(tx, input, null, input.taskId, true); const task = rows[0];
-      if (!task || !isWritableTask(task)) notFound(); if (replay) return replay;
+      if (!task || !isWritableTask(task)) notFound();
+      await lockTaskAssignments(tx, task.id);
+      if (replay) return replay;
       if (version(task.record_version) !== input.expectedRecordVersion) stale();
       const rules = await loadApprovedRules(tx, true); const rule = rules.find((candidate) =>
         candidate.from === task.state && candidate.to === input.to); if (!rule) conflict();
@@ -175,10 +194,20 @@ async function assertActor(tx: Db, input: TaskActorContext): Promise<void> {
 }
 async function lockCase(tx: Db, input: TaskActorContext, caseId: string, update: boolean): Promise<CaseRow | null> {
   const result = await tx.query<CaseRow>(`SELECT service_case.id,service_case.primary_user_id,service_case.primary_role,
-      service_case.stage,student.status AS student_status FROM cases_service_cases AS service_case
+      service_case.stage,service_case.workflow_status,student.status AS student_status
+    FROM cases_service_cases AS service_case
     JOIN crm_students AS student ON student.id=service_case.student_id AND student.organization_id=service_case.organization_id
-    WHERE service_case.id=$1 ${update ? "FOR UPDATE OF service_case" : "FOR SHARE OF service_case"}`, [caseId]);
+    WHERE service_case.id=$1 ${update
+      ? "FOR UPDATE OF service_case FOR SHARE OF student"
+      : "FOR SHARE OF service_case,student"}`, [caseId]);
   return result.rows[0] ?? null;
+}
+async function locateTaskCase(tx: Db, taskId: string): Promise<string | null> {
+  const result = await tx.query<TaskLocationRow>(
+    "SELECT service_case_id FROM tasks_tasks WHERE id=$1",
+    [taskId],
+  );
+  return result.rows[0]?.service_case_id ?? null;
 }
 async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: string | null, taskId: string | null, update: boolean): Promise<readonly TaskRow[]> {
   const result = await tx.query<TaskRow>(`SELECT task.id,task.service_case_id,service_case.case_number,task.title,
@@ -195,8 +224,18 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
       AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
         OR ($3='contractor' AND task.assignee_user_id=$4 AND task.assignee_role='contractor'
           AND task.assignee_redaction_profile='task_only'))
-    ORDER BY task.updated_at DESC,task.id ${update ? "FOR UPDATE OF task,service_case" : ""}`,
+    ORDER BY task.updated_at DESC,task.id ${update ? "FOR UPDATE OF task" : ""}`,
   [caseId,taskId,input.actorRole,input.actorUserId]); return result.rows;
+}
+async function lockTaskAssignments(tx: Db, taskId: string): Promise<void> {
+  await tx.query(
+    `SELECT assignment.id
+       FROM tasks_task_assignments AS assignment
+      WHERE assignment.task_id=$1
+      ORDER BY assignment.created_at,assignment.id
+      FOR UPDATE OF assignment`,
+    [taskId],
+  );
 }
 async function lockAssignee(tx: Db, userId: string): Promise<AssigneeRow | null> {
   const result = await tx.query<AssigneeRow>(`SELECT binding.id,binding.user_id,binding.role
@@ -219,7 +258,17 @@ async function loadApprovedRules(tx: Db, lock = false): Promise<readonly TaskTra
   if (!hasRelease1TaskPolicyContent({ initialState: selected.initial_state, rules })) policyUnavailable(); return rules;
 }
 async function assertApprovedPolicy(tx: Db): Promise<void> { await loadApprovedRules(tx, true); }
-function isWritableCase(row: CaseRow): boolean { return row.stage !== "closed" && row.student_status === "active"; }
+function isWritableCase(row: CaseRow): boolean {
+  return isReadableCreateCase(row) && row.workflow_status === "active";
+}
+function canCreateForCase(row: CaseRow, actor: TaskActorContext): boolean {
+  return actor.actorRole === "founder" ||
+    (actor.actorRole === "advisor" && row.primary_role === "advisor" &&
+      row.primary_user_id === actor.actorUserId);
+}
+function isReadableCreateCase(row: CaseRow): boolean {
+  return row.stage !== "closed" && row.student_status === "active";
+}
 function isWritableTask(row: TaskRow): boolean { return row.case_stage !== "closed" && row.student_status === "active"; }
 function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransitionRule[]): TaskView {
   const transitions: AvailableTaskTransitionView[] = rules.filter((rule) => rule.from === row.state &&

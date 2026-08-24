@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
+import { hashRequestPayload } from "../../shared/public.ts";
 import type {
   CaseWorkspaceDetail,
   CaseWorkspaceListItem,
@@ -19,14 +20,17 @@ interface CaseRow extends Record<string, unknown> {
   intake_year: number;
   admission_type: string;
   stage: CaseWorkspaceListItem["stage"];
+  workflow_status: CaseWorkspaceListItem["workflowStatus"];
+  has_submitted_target: boolean;
   updated_at: Date | string;
-  primary_role: "founder" | "advisor";
+  primary_role: "advisor";
+  student_status: string;
   primary_user_id?: string;
   assessment_id?: string;
   assessment_status?: CaseWorkspaceDetail["assessmentStatus"];
   manifest_id?: string;
   primary_role_binding_id?: string;
-  record_version?: number | string;
+  record_version: number | string;
 }
 
 export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepository {
@@ -38,6 +42,7 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
 
   listCases(input: Parameters<CaseWorkspaceRepository["listCases"]>[0]) {
     return this.database.transaction(input, async (transaction) => {
+      await assertCurrentWorkspaceActor(transaction, input);
       const result = await transaction.query<CaseRow>(
         caseSelect(input.actorRole === "advisor" ? "service_case.primary_user_id = $1" : "true") +
           " ORDER BY service_case.updated_at DESC, service_case.id",
@@ -49,6 +54,7 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
 
   findCase(input: Parameters<CaseWorkspaceRepository["findCase"]>[0]) {
     return this.database.transaction(input, async (transaction) => {
+      await assertCurrentWorkspaceActor(transaction, input);
       const values = input.actorRole === "advisor"
         ? [input.caseId, input.actorUserId]
         : [input.caseId];
@@ -57,12 +63,23 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         : "service_case.id = $1";
       const result = await transaction.query<CaseRow>(
         `SELECT service_case.id, service_case.case_number, service_case.student_id,
-                student.display_name AS student_name, service_case.intake_year,
-                service_case.admission_type, service_case.stage, service_case.updated_at,
+                student.display_name AS student_name, student.status AS student_status,
+                service_case.intake_year,
+                service_case.admission_type, service_case.stage, service_case.workflow_status,
+                service_case.updated_at,
                 service_case.primary_role, service_case.primary_user_id,
                 service_case.primary_role_binding_id,
                 service_case.record_version, assessment.id AS assessment_id,
-                assessment.status AS assessment_status, assessment.manifest_id
+                assessment.status AS assessment_status, assessment.manifest_id,
+                EXISTS (
+                  SELECT 1 FROM cases_school_targets AS target
+                   WHERE target.organization_id = service_case.organization_id
+                     AND target.service_case_id = service_case.id
+                     AND target.state IN (
+                       'submitted', 'interview', 'waitlisted', 'accepted',
+                       'offer_confirmed', 'offer_declined', 'rejected'
+                     )
+                ) AS has_submitted_target
            FROM cases_service_cases AS service_case
            JOIN crm_students AS student
              ON student.id = service_case.student_id
@@ -82,22 +99,22 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         assessmentId: row.assessment_id,
         assessmentStatus: row.assessment_status,
         manifestId: row.manifest_id,
-        primaryBindingLabel: `${row.primary_role === "advisor" ? "Advisor" : "Founder"} · ${row.primary_role_binding_id.slice(-8)}`,
+        primaryBindingLabel: `Advisor · ${row.primary_role_binding_id.slice(-8)}`,
         primaryUserId: row.primary_user_id,
-        recordVersion: Number(row.record_version),
       }) satisfies CaseWorkspaceDetail;
     });
   }
 
   listOptions(input: Parameters<CaseWorkspaceRepository["listOptions"]>[0]) {
     return this.database.transaction(input, async (transaction) => {
+      await assertCurrentWorkspaceActor(transaction, input);
       const students = await transaction.query<{ id: string; display_name: string }>(
           `SELECT id, display_name FROM crm_students
             WHERE status = 'active' ORDER BY display_name, id`,
         );
       const bindings = await transaction.query<{
         id: string;
-        role: "founder" | "advisor";
+        role: "advisor";
         user_id: string;
       }>(
           `SELECT role_binding.id, role_binding.role, role_binding.user_id
@@ -105,7 +122,7 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
              JOIN access_organization_memberships AS membership
                ON membership.id = role_binding.membership_id
               AND membership.organization_id = role_binding.organization_id
-            WHERE role_binding.role IN ('founder', 'advisor')
+            WHERE role_binding.role = 'advisor'
               AND role_binding.status = 'active'
               AND membership.status = 'active'
               AND identity_user_is_active(role_binding.user_id)
@@ -171,8 +188,10 @@ async function createCaseInTransaction(
     request_hash: string;
     state: string;
     result_reference: string | null;
+    response_hash: string | null;
   }>(
-    `SELECT request_hash, state, result_reference FROM shared_idempotency_records
+    `SELECT request_hash, state, result_reference, response_hash
+       FROM shared_idempotency_records
       WHERE organization_id = $1 AND actor_user_id = $2
         AND operation = 'cases.create_existing_student' AND idempotency_key = $3
       FOR UPDATE`,
@@ -186,24 +205,49 @@ async function createCaseInTransaction(
     if (!storedReceipt || storedReceipt.state !== "completed" || !storedReceipt.result_reference) {
       throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS");
     }
-    const replay = await transaction.query<CaseRow>(
-      `SELECT service_case.id, service_case.case_number, service_case.student_id,
-              service_case.intake_year, service_case.admission_type, service_case.stage,
-              assessment.id AS assessment_id, assessment.manifest_id,
-              service_case.record_version
-         FROM cases_service_cases AS service_case
-         JOIN cases_assessments AS assessment
-           ON assessment.service_case_id = service_case.id
-          AND assessment.organization_id = service_case.organization_id
-        WHERE service_case.id = $1`,
+    const replay = await transaction.query<{
+      service_case_id: string;
+      to_record_version: number | string;
+      primary_user_id: string;
+      primary_role: string;
+    } & Record<string, unknown>>(
+      `SELECT transition_fact.service_case_id, transition_fact.to_record_version,
+              service_case.primary_user_id, service_case.primary_role
+         FROM cases_service_case_transition_facts AS transition_fact
+         JOIN cases_service_cases AS service_case
+           ON service_case.id = transition_fact.service_case_id
+          AND service_case.organization_id = transition_fact.organization_id
+        WHERE transition_fact.id = $1
+          AND transition_fact.from_stage = 'signed'
+          AND transition_fact.to_stage = 'background_collection'
+          AND transition_fact.from_record_version = 1
+          AND transition_fact.to_record_version = 2
+        FOR SHARE OF service_case`,
       [storedReceipt.result_reference],
     );
     const row = replay.rows[0];
-    if (!row || !row.assessment_id || !row.manifest_id) {
+    if (!row) {
       throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS");
     }
-    return createdCase(row);
+    await assertCurrentCaseCreator(transaction, input);
+    if (input.actorRole === "advisor" &&
+        (row.primary_role !== "advisor" || row.primary_user_id !== input.actorUserId)) {
+      throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
+    }
+    const replayResult = Object.freeze({
+      id: row.service_case_id,
+      recordVersion: Number(row.to_record_version),
+    });
+    if (storedReceipt.response_hash !== hashRequestPayload({
+      id: replayResult.id,
+      record_version: replayResult.recordVersion,
+    })) {
+      throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS");
+    }
+    return replayResult;
   }
+
+  await assertCurrentCaseCreator(transaction, input);
 
   const student = await transaction.query(
     "SELECT id FROM crm_students WHERE id = $1 AND status = 'active' FOR SHARE",
@@ -225,7 +269,7 @@ async function createCaseInTransaction(
          ON membership.id = role_binding.membership_id
         AND membership.organization_id = role_binding.organization_id
       WHERE role_binding.id = $1
-        AND role_binding.role IN ('founder', 'advisor')
+        AND role_binding.role = 'advisor'
         AND role_binding.status = 'active'
         AND membership.status = 'active'
         AND identity_user_is_active(role_binding.user_id)
@@ -250,11 +294,13 @@ async function createCaseInTransaction(
     `INSERT INTO cases_service_cases
       (id, organization_id, student_id, case_number, application_type, intake_year,
        admission_type, primary_role_binding_id, primary_membership_id, primary_user_id,
-       primary_role, stage)
-     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,$10,'signed')`,
+       primary_role, stage, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,$10,'signed',
+       to_timestamp($11 / 1000.0),to_timestamp($11 / 1000.0))`,
     [input.serviceCaseId, input.organizationId, input.studentId, input.caseNumber,
       input.intakeYear, input.admissionType, selectedBinding.id,
-      selectedBinding.membership_id, selectedBinding.user_id, selectedBinding.role],
+      selectedBinding.membership_id, selectedBinding.user_id, selectedBinding.role,
+      input.createdAtMs],
   );
   await transaction.query(
     `INSERT INTO cases_assessments
@@ -262,36 +308,103 @@ async function createCaseInTransaction(
      VALUES ($1,$2,$3,$4,'draft')`,
     [input.assessmentId, input.organizationId, input.serviceCaseId, input.manifestId],
   );
+  const advanced = await transaction.query<{
+    decision: string;
+    result_stage: string | null;
+    result_record_version: number | string | null;
+  } & Record<string, unknown>>(
+    `SELECT decision, result_stage, result_record_version
+       FROM cases_advance_new_service_case($1,$2,$3,to_timestamp($4 / 1000.0))`,
+    [input.serviceCaseId, input.actorRole, input.transitionFactId, input.createdAtMs],
+  );
+  const advancedRow = advanced.rows[0];
+  if (
+    advancedRow?.decision !== "allowed" ||
+    advancedRow.result_stage !== "background_collection" ||
+    Number(advancedRow.result_record_version) !== 2
+  ) {
+    throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS");
+  }
   await appendAtomicMutationEffects(transaction, input.effects);
-  await transaction.query(
+  const completed = await transaction.query(
     `UPDATE shared_idempotency_records
-        SET state = 'completed', result_reference = $5, response_hash = $4,
+        SET state = 'completed', result_reference = $5, response_hash = $6,
             record_version = record_version + 1,
-            updated_at = to_timestamp($6 / 1000.0)
+            updated_at = to_timestamp($7 / 1000.0)
       WHERE organization_id = $1 AND actor_user_id = $2
         AND operation = 'cases.create_existing_student' AND idempotency_key = $3
         AND request_hash = $4 AND state = 'in_progress'`,
     [input.organizationId, input.actorUserId, input.idempotencyKey, input.requestHash,
-      input.serviceCaseId, input.createdAtMs],
+      input.transitionFactId, input.responseHash, input.createdAtMs],
   );
+  if (completed.rowCount !== 1) {
+    throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_IDEMPOTENCY_IN_PROGRESS");
+  }
   return Object.freeze({
     id: input.serviceCaseId,
-    caseNumber: input.caseNumber,
-    studentId: input.studentId,
-    assessmentId: input.assessmentId,
-    intakeYear: input.intakeYear,
-    admissionType: input.admissionType,
-    stage: "signed",
-    manifestId: input.manifestId,
-    recordVersion: 1,
+    recordVersion: 2,
   });
+}
+
+async function assertCurrentCaseCreator(
+  transaction: PostgreSqlTransaction,
+  input: Parameters<CaseWorkspaceRepository["createCase"]>[0],
+): Promise<void> {
+  await assertCurrentWorkspaceActor(transaction, input);
+}
+
+async function assertCurrentWorkspaceActor(
+  transaction: PostgreSqlTransaction,
+  input: Readonly<{
+    organizationId: string;
+    actorUserId: string;
+    actorRole: string;
+  }>,
+): Promise<void> {
+  if (input.actorRole !== "founder" && input.actorRole !== "advisor") {
+    throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
+  }
+  const actor = await transaction.query(
+    `SELECT role_binding.id
+       FROM identity_users AS identity_user
+       JOIN access_organization_memberships AS membership
+         ON membership.organization_id = $1
+        AND membership.user_id = identity_user.id
+        AND membership.status = 'active'
+       JOIN access_role_bindings AS role_binding
+         ON role_binding.organization_id = membership.organization_id
+        AND role_binding.membership_id = membership.id
+        AND role_binding.user_id = identity_user.id
+        AND role_binding.role = $3
+        AND role_binding.status = 'active'
+       JOIN access_organizations AS organization
+         ON organization.id = membership.organization_id
+        AND organization.status = 'active'
+      WHERE identity_user.id = $2 AND identity_user.status = 'active'
+      FOR SHARE OF identity_user, membership, role_binding, organization`,
+    [input.organizationId, input.actorUserId, input.actorRole],
+  );
+  if (actor.rowCount !== 1) {
+    throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
+  }
 }
 
 function caseSelect(condition: string): string {
   return `SELECT service_case.id, service_case.case_number, service_case.student_id,
-                 student.display_name AS student_name, service_case.intake_year,
-                 service_case.admission_type, service_case.stage, service_case.updated_at,
-                 service_case.primary_role
+                 student.display_name AS student_name, student.status AS student_status,
+                 service_case.intake_year,
+                 service_case.admission_type, service_case.stage,
+                 service_case.workflow_status, service_case.record_version,
+                 service_case.updated_at, service_case.primary_role,
+                 EXISTS (
+                   SELECT 1 FROM cases_school_targets AS target
+                    WHERE target.organization_id = service_case.organization_id
+                      AND target.service_case_id = service_case.id
+                      AND target.state IN (
+                        'submitted', 'interview', 'waitlisted', 'accepted',
+                        'offer_confirmed', 'offer_declined', 'rejected'
+                      )
+                 ) AS has_submitted_target
             FROM cases_service_cases AS service_case
             JOIN crm_students AS student
               ON student.id = service_case.student_id
@@ -308,23 +421,24 @@ function toListItem(row: CaseRow): CaseWorkspaceListItem {
     intakeYear: row.intake_year,
     admissionType: row.admission_type,
     stage: row.stage,
+    workflowStatus: row.workflow_status,
+    recordVersion: Number(row.record_version),
+    availableWorkflowActions: workflowActions(row),
     updatedAt: new Date(row.updated_at).toISOString(),
     primaryRole: row.primary_role,
   });
 }
 
-function createdCase(row: CaseRow): CreatedExistingStudentCase {
-  return Object.freeze({
-    id: row.id,
-    caseNumber: row.case_number,
-    studentId: row.student_id,
-    assessmentId: row.assessment_id!,
-    intakeYear: row.intake_year,
-    admissionType: row.admission_type,
-    stage: "signed",
-    manifestId: row.manifest_id!,
-    recordVersion: 1,
-  });
+function workflowActions(row: CaseRow): CaseWorkspaceListItem["availableWorkflowActions"] {
+  if (row.student_status !== "active") return Object.freeze([]);
+  if (row.workflow_status === "paused") return Object.freeze(["resume"] as const);
+  if (
+    row.workflow_status === "active" &&
+    row.stage !== "signed" &&
+    row.stage !== "closed" &&
+    !row.has_submitted_target
+  ) return Object.freeze(["pause"] as const);
+  return Object.freeze([]);
 }
 
 function isActiveCaseDuplicateViolation(

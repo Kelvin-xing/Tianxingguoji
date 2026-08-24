@@ -118,10 +118,20 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
       manifest_id: NEON_TEST_MANIFEST_ID,
     }, "crm05-deletion-probe-case");
     assert.equal(caseCreate.response.status, 200);
-    assert.deepEqual(Object.keys(requiredRecord(caseCreate.body.data?.case)).sort(), [
-      "admissionType", "assessmentId", "caseNumber", "id", "intakeYear", "manifestId",
-      "recordVersion", "stage", "studentId",
-    ]);
+    const caseReceipt = requiredRecord(caseCreate.body.data);
+    assert.deepEqual(Object.keys(caseReceipt).sort(), ["id", "record_version"]);
+    assert.equal(caseReceipt.record_version, 2);
+    const caseAuthority = await getJson(
+      baseUrl,
+      `/api/v1/cases/${requiredString(caseReceipt, "id")}`,
+      advisorCookie,
+    );
+    assert.equal(caseAuthority.response.status, 200);
+    const caseDetail = requiredRecord(caseAuthority.body.data?.case);
+    assert.equal(caseDetail.studentId, STUDENT.id);
+    assert.equal(caseDetail.stage, "background_collection");
+    assert.equal(caseDetail.workflowStatus, "active");
+    assert.equal(caseDetail.recordVersion, 2);
 
     const before = await getJson(baseUrl, `/api/v1/students/${STUDENT.id}`, advisorCookie);
     assert.equal(before.response.status, 200);

@@ -7,6 +7,7 @@ import {
   type MutationEffectBundle,
 } from "../../audit/public.ts";
 import type { IdentitySessionActor } from "../../identity/public.ts";
+import { evaluateBootstrapAuthorization } from "../../access/public.ts";
 import {
   hashRequestPayload,
   validateIdempotencyKey,
@@ -57,6 +58,14 @@ export interface AssessmentSnapshot {
   readonly manifestStatus: "candidate" | "approved" | "retired";
   readonly manifest: K12ManifestComposition;
   readonly answers: readonly StoredAssessmentAnswer[];
+  readonly access: AssessmentAccessView;
+}
+
+export interface AssessmentAccessView {
+  readonly mode: "full" | "education_profile";
+  readonly canEdit: boolean;
+  readonly editableFieldIds: readonly string[];
+  readonly canCompleteBackground: boolean;
 }
 
 export interface AssessmentView {
@@ -66,6 +75,7 @@ export interface AssessmentView {
   readonly status: AssessmentStatus;
   readonly schema: AssessmentSchemaView;
   readonly answers: readonly AssessmentAnswerView[];
+  readonly access: AssessmentAccessView;
 }
 
 export interface AssessmentAnswerView {
@@ -86,8 +96,9 @@ export interface UpdateAssessmentAnswerCommand {
   readonly idempotencyKey: string;
 }
 
-export interface UpdateAssessmentAnswerResult extends AssessmentAnswerView {
-  readonly assessmentId: string;
+export interface UpdateAssessmentAnswerResult {
+  readonly id: string;
+  readonly recordVersion: number;
 }
 
 export interface CompleteAssessmentBackgroundCommand {
@@ -97,8 +108,7 @@ export interface CompleteAssessmentBackgroundCommand {
 }
 
 export interface AssessmentCompletionResult {
-  readonly assessmentId: string;
-  readonly status: "background_complete";
+  readonly id: string;
   readonly recordVersion: number;
 }
 
@@ -172,14 +182,12 @@ export type AssessmentServiceErrorCode =
 export class AssessmentServiceError extends Error {
   readonly code: AssessmentServiceErrorCode;
   readonly currentRecordVersion: number | null;
-  readonly diffToken: string | null;
   readonly missingFieldIds: readonly string[];
 
   constructor(
     code: AssessmentServiceErrorCode,
     options: {
       readonly currentRecordVersion?: number;
-      readonly diffToken?: string;
       readonly missingFieldIds?: readonly string[];
     } = {},
   ) {
@@ -187,9 +195,31 @@ export class AssessmentServiceError extends Error {
     this.name = "AssessmentServiceError";
     this.code = code;
     this.currentRecordVersion = options.currentRecordVersion ?? null;
-    this.diffToken = options.diffToken ?? null;
     this.missingFieldIds = Object.freeze([...(options.missingFieldIds ?? [])]);
   }
+}
+
+const ASSESSMENT_SERVICE_ERROR_CODES = new Set<AssessmentServiceErrorCode>([
+  "ASSESSMENT_ANSWER_INVALID",
+  "ASSESSMENT_ANSWER_STALE_VERSION",
+  "ASSESSMENT_ANSWER_IDEMPOTENCY_KEY_REUSED",
+  "ASSESSMENT_ANSWER_IDEMPOTENCY_IN_PROGRESS",
+  "ASSESSMENT_CASE_NOT_FOUND",
+  "ASSESSMENT_READ_FORBIDDEN",
+  "ASSESSMENT_WRITE_FORBIDDEN",
+  "ASSESSMENT_SCHEMA_INVALID",
+  "ASSESSMENT_STATUS_INVALID",
+  "ASSESSMENT_STATUS_STALE_VERSION",
+  "ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE",
+  "ASSESSMENT_STATUS_IDEMPOTENCY_KEY_REUSED",
+  "ASSESSMENT_STATUS_IDEMPOTENCY_IN_PROGRESS",
+]);
+
+export function isAssessmentServiceError(error: unknown): error is AssessmentServiceError {
+  if (!(error instanceof Error) || error.name !== "AssessmentServiceError") return false;
+  const code = (error as Error & { readonly code?: unknown }).code;
+  return typeof code === "string" &&
+    ASSESSMENT_SERVICE_ERROR_CODES.has(code as AssessmentServiceErrorCode);
 }
 
 export interface AssessmentServiceOptions {
@@ -240,6 +270,9 @@ export class AssessmentService {
       actorRole: input.actor.role,
       caseId: input.caseId,
     });
+    if (!snapshot.access.canEdit) {
+      throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
+    }
     let schema: AssessmentSchemaView;
     let field: AssessmentSchemaView["fields"][number];
     try {
@@ -249,11 +282,16 @@ export class AssessmentService {
       if (error instanceof AssessmentSchemaError) {
         throw new AssessmentServiceError(
           error.code === "ASSESSMENT_FIELD_NOT_FOUND"
-            ? "ASSESSMENT_ANSWER_INVALID"
+            ? snapshot.access.mode === "full"
+              ? "ASSESSMENT_ANSWER_INVALID"
+              : "ASSESSMENT_CASE_NOT_FOUND"
             : "ASSESSMENT_SCHEMA_INVALID",
         );
       }
       throw error;
+    }
+    if (!snapshot.access.editableFieldIds.includes(input.command.fieldId)) {
+      throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
     }
 
     const value = normalizeAnswerValue(input.command, field);
@@ -359,11 +397,16 @@ export class AssessmentService {
       actorRole: input.actor.role,
       caseId: input.caseId,
     });
+    if (!snapshot.access.canCompleteBackground) {
+      throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
+    }
     const schema = projectAssessment(snapshot).schema;
     const requiredBlockingFieldIds = schema.fields
       .filter((field) => field.blockingStages.includes("background_collection"))
       .map((field) => field.fieldId);
-    const satisfiedBlockingFieldIds = snapshot.answers.map((answer) => answer.fieldId);
+    const satisfiedBlockingFieldIds = snapshot.answers
+      .filter((answer) => answer.semanticState === "provided")
+      .map((answer) => answer.fieldId);
     const decision = evaluateAssessmentStatus({
       manifestStatus: snapshot.manifestStatus,
       targetStatus: "background_complete",
@@ -472,6 +515,20 @@ function projectAssessment(snapshot: AssessmentSnapshot): AssessmentView {
     throw error;
   }
 
+  const visibleFieldIds = new Set(
+    snapshot.access.mode === "full"
+      ? schema.fields.map((field) => field.fieldId)
+      : snapshot.access.editableFieldIds.length > 0
+        ? snapshot.access.editableFieldIds
+        : schema.fields
+          .filter((field) => field.moduleId === "k12-education-profile")
+          .map((field) => field.fieldId),
+  );
+  schema = Object.freeze({
+    ...schema,
+    fields: Object.freeze(schema.fields.filter((field) => visibleFieldIds.has(field.fieldId))),
+  });
+
   const answers = snapshot.answers.map((answer) => {
     try {
       const field = getAssessmentSchemaField(schema, answer.fieldId);
@@ -499,6 +556,7 @@ function projectAssessment(snapshot: AssessmentSnapshot): AssessmentView {
     status: snapshot.status,
     schema,
     answers: Object.freeze(answers),
+    access: snapshot.access,
   });
 }
 
@@ -545,7 +603,12 @@ function assertAssessmentRole(
   actor: IdentitySessionActor,
   capability: "read" | "write",
 ): void {
-  if (actor.role !== "founder" && actor.role !== "admin" && actor.role !== "advisor") {
+  const decision = evaluateBootstrapAuthorization(actor.role, {
+    capability: capability === "read"
+      ? "cases.assessments.read"
+      : "cases.assessments.manage",
+  });
+  if (!decision.allowed) {
     throw new AssessmentServiceError(
       capability === "read" ? "ASSESSMENT_READ_FORBIDDEN" : "ASSESSMENT_WRITE_FORBIDDEN",
     );

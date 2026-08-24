@@ -185,7 +185,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v8");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v12");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);
@@ -551,7 +551,10 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       manifest_id: NEON_TEST_MANIFEST_ID,
     }, "crm03-advisor-assignment");
     assert.equal(assignedCase.response.status, 200);
-    const assignedCaseId = requiredString(requiredRecord(assignedCase.body.data?.case), "id");
+    const assignedCaseReceipt = requiredRecord(assignedCase.body.data);
+    assert.deepEqual(Object.keys(assignedCaseReceipt).sort(), ["id", "record_version"]);
+    assert.equal(assignedCaseReceipt.record_version, 2);
+    const assignedCaseId = requiredString(assignedCaseReceipt, "id");
 
     const profileBefore = await readProfileMaintenanceCounts(target);
     const unassignedDetail = requiredRecord((await getJson(
@@ -1455,7 +1458,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     assertApiError(pendingMerge, 404, "NOT_FOUND");
     const pendingCase = await postJson(baseUrl, "/api/v1/cases", founderCookie, {
       student_id: studentId, intake_year: 2029, admission_type: "transfer",
-      primary_role_binding_id: FOUNDER.roleBindingId, manifest_id: NEON_TEST_MANIFEST_ID,
+      primary_role_binding_id: ADVISOR.roleBindingId, manifest_id: NEON_TEST_MANIFEST_ID,
     }, "crm05-pending-case");
     assertApiError(pendingCase, 404, "NOT_FOUND");
     const purgeRoute = await fetch(`${baseUrl}/api/v1/students/${studentId}/purge`, {
@@ -2371,12 +2374,19 @@ async function prepareClosedReferralCase(target: OneRoleBaselineTarget, studentI
     await client.connect(); await client.query("BEGIN");
     await client.query("SELECT set_config('app.organization_id',$1,true)", [NEON_TEST_ORGANIZATION.id]);
     await client.query("SELECT set_config('app.actor_user_id',$1,true)", [FOUNDER.userId]);
+    await client.query("ALTER TABLE cases_service_cases DISABLE TRIGGER USER");
     await client.query(`INSERT INTO cases_service_cases
       (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
-       primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,record_version)
-      VALUES ($1,$2,$3,'CRM06-CLOSED-CASE','k12',2031,'transfer',$4,$5,$6,'advisor','closed',1)`,
+       primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
+       workflow_status,record_version)
+      VALUES ($1,$2,$3,'CRM06-CLOSED-CASE','k12',2031,'transfer',$4,$5,$6,'advisor','closed',
+        'closed',1)`,
     [CRM06_CLOSED_CASE_ID,NEON_TEST_ORGANIZATION.id,studentId,ADVISOR.roleBindingId,
       ADVISOR.membershipId,ADVISOR.userId]);
+    await client.query("ALTER TABLE cases_service_cases ENABLE TRIGGER USER");
+    const triggerState = await client.query<{ all_enabled: boolean }>(`SELECT bool_and(tgenabled = 'O') AS all_enabled
+      FROM pg_trigger WHERE tgrelid = 'cases_service_cases'::regclass AND NOT tgisinternal`);
+    assert.equal(triggerState.rows[0]?.all_enabled, true);
     await client.query("COMMIT");
   } catch {
     await client.query("ROLLBACK").catch(() => {});

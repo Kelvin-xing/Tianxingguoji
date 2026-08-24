@@ -50,7 +50,7 @@ const LEGACY_DATABASE_ROLE_IDENTIFIERS = [
   "rds_iam",
 ] as const;
 
-test("generates a deterministic executable baseline from all 34 frozen sources", async () => {
+test("generates a deterministic executable baseline from all 35 frozen sources", async () => {
   const first = await buildOneRoleBaseline();
   const second = await buildOneRoleBaseline();
 
@@ -68,6 +68,25 @@ test("generates a deterministic executable baseline from all 34 frozen sources",
     Object.keys(ONE_ROLE_TRANSFORM_SOURCES),
   );
   await assert.doesNotReject(verifyCommittedOneRoleBaseline());
+});
+
+test("seeds Release1 before the primary-contact invariant and reuses its active organization", async () => {
+  const source = await readFile("tests/integration/one-role-baseline-postgresql.test.ts", "utf8");
+  const seedApply = source.indexOf('seedNeonTestRelease1(target, "apply")');
+  const primaryInvariantCall = source.indexOf("assertPrimaryContactLifecycleInvariant(clientConfig)");
+  const primaryInvariant = source.match(
+    /async function assertPrimaryContactLifecycleInvariant[\s\S]*?\n}\n\nfunction writePrimaryContactInvariantFailure/,
+  )?.[0] ?? "";
+
+  assert.ok(seedApply >= 0 && primaryInvariantCall > seedApply);
+  assert.match(primaryInvariant, /const organizationId = NEON_TEST_ORGANIZATION\.id/);
+  assert.match(
+    primaryInvariant,
+    /NEON_TEST_PRINCIPALS\.find\(\(\{ role }\) => role === "founder"\)/,
+  );
+  assert.match(primaryInvariant, /const actorId = founder\.userId/);
+  assert.doesNotMatch(primaryInvariant, /INSERT INTO identity_users|INSERT INTO access_organizations/);
+  assert.doesNotMatch(primaryInvariant, /UPDATE access_organizations/);
 });
 
 test("locks every explicit transform to exactly one set of source anchors", async () => {
@@ -286,7 +305,16 @@ test("executes all generated SQL under one lock and rolls dry-run back", async (
   assert.equal(client.commands.includes("COMMIT"), false);
   assert.equal(client.commands.filter((command) => command.includes("schema_migrations")).length, 0);
   assert.ok(client.commands.some((command) => command.includes("CREATE SCHEMA tianxing_baseline")));
-  for (const file of build.files) assert.ok(client.commands.includes(file.contents));
+  for (const file of build.files) {
+    if (file.name !== "035_202608240020_036_complete_case_workflow_foundation.sql") {
+      assert.ok(client.commands.includes(file.contents));
+      continue;
+    }
+    const groupStart = client.commands.findIndex((command) =>
+      command.startsWith("ALTER TABLE cases_service_cases NO FORCE ROW LEVEL SECURITY"));
+    assert.ok(groupStart >= 0);
+    assert.equal(client.commands.slice(groupStart, groupStart + 6).join(""), file.contents);
+  }
 });
 
 test("commits apply once and rolls a failed generated hash back without executing it", async () => {
@@ -352,6 +380,30 @@ test("reports generated SQL failure, successful rollback, and independent clean 
   assert.equal(evidence.rollback_state, "clean");
   assert.equal(client.commands.at(-1), "ROLLBACK");
   assert.deepEqual(events, ["inspect:1", "open", "close", "inspect:2"]);
+  assertRedacted(serialized);
+});
+
+test("reports the fixed CASE-FLOW statement group without PostgreSQL position data", async () => {
+  const build = await buildOneRoleBaseline();
+  const caseFlow = build.files.find(({ name }) =>
+    name === "035_202608240020_036_complete_case_workflow_foundation.sql");
+  assert.ok(caseFlow);
+  const rawFailure = postgresError("42501", "super-secret SQL failure");
+  const client = new RecordingClient((text) =>
+    text.startsWith("REVOKE ALL ON TABLE cases_service_case_lifecycle_facts")
+      ? rawFailure
+      : undefined);
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, []),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as { original_failure: Record<string, unknown> };
+
+  assert.equal(evidence.original_failure.migration_group, "rls_grants");
+  assert.equal("position" in evidence.original_failure, false);
   assertRedacted(serialized);
 });
 
@@ -517,6 +569,51 @@ test("does not report a code without PostgreSQL error severity", async () => {
 
   assert.equal("postgres_code" in evidence.original_failure, false);
   assertRedacted(serialized);
+});
+
+test("reports only an allowlisted PostgreSQL constraint without raw database context", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const rawFailure = Object.assign(postgresError("23514", "super-secret constraint failure"), {
+    constraint: "cases_service_cases_existing_data_unmapped_check",
+  });
+  const client = new RecordingClient((text) => text === first.contents ? rawFailure : undefined);
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, []),
+  }));
+  const serialized = formatOneRoleBaselineFailure(error);
+  const evidence = JSON.parse(serialized) as {
+    original_failure: Record<string, unknown>;
+  };
+
+  assert.equal(
+    evidence.original_failure.postgres_constraint,
+    "cases_service_cases_existing_data_unmapped_check",
+  );
+  assertRedacted(serialized);
+});
+
+test("omits PostgreSQL constraint names outside the fixed allowlist", async () => {
+  const build = await buildOneRoleBaseline();
+  const first = build.files[0]!;
+  const rawFailure = Object.assign(postgresError("23514", "super-secret constraint failure"), {
+    constraint: "private_unapproved_constraint",
+  });
+  const client = new RecordingClient((text) => text === first.contents ? rawFailure : undefined);
+  const error = await captureOperationFailure(executeOneRoleBaselineRun({
+    mode: "dry-run",
+    target: localTarget(),
+    build,
+    dependencies: scenarioDependencies(build, client, []),
+  }));
+  const evidence = JSON.parse(formatOneRoleBaselineFailure(error)) as {
+    original_failure: Record<string, unknown>;
+  };
+
+  assert.equal("postgres_constraint" in evidence.original_failure, false);
 });
 
 test("reports an independent postcheck failure after a successful dry-run rollback", async () => {

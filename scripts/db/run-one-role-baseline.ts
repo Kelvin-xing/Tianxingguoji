@@ -73,10 +73,19 @@ export type OneRoleBaselineFailureStage =
   | "rollback_state_verification"
   | "postflight_database_inspection"
   | "postflight_state_verification";
+export type OneRoleBaselineMigrationGroup =
+  | "preflight"
+  | "schema"
+  | "lifecycle"
+  | "assessment"
+  | "case_functions"
+  | "rls_grants";
 export type OneRoleBaselineFailureEvidence = Readonly<{
   failure_stage: OneRoleBaselineFailureStage;
   migration_name?: string;
+  migration_group?: OneRoleBaselineMigrationGroup;
   postgres_code?: string;
+  postgres_constraint?: string;
 }>;
 export type OneRoleBaselineRollbackAttempt = "not_attempted" | "succeeded" | "failed";
 export type OneRoleBaselineRollbackState = "clean" | "unknown" | "verification_failed";
@@ -401,10 +410,17 @@ export async function executeOneRoleBaselineTransaction(input: Readonly<{
         file,
         "generated_manifest_before",
       );
-      try {
-        await input.client.query(before);
-      } catch (error) {
-        throw attemptFailure("generated_sql", error, file.name);
+      for (const statementGroup of readGeneratedSqlGroups(file.name, before)) {
+        try {
+          await input.client.query(statementGroup.sql);
+        } catch (error) {
+          throw attemptFailure(
+            "generated_sql",
+            error,
+            file.name,
+            statementGroup.group,
+          );
+        }
       }
       await readVerifiedGeneratedFile(
         readGeneratedFile,
@@ -778,9 +794,10 @@ function attemptFailure(
   stage: OneRoleBaselineFailureStage,
   error?: unknown,
   migrationName?: string,
+  migrationGroup?: OneRoleBaselineMigrationGroup,
 ): OneRoleBaselineAttemptError {
   return new OneRoleBaselineAttemptError({
-    originalFailure: failureEvidence(stage, migrationName, error),
+    originalFailure: failureEvidence(stage, migrationName, error, migrationGroup),
     transactionStarted: true,
     rollbackAttempt: "not_attempted",
   });
@@ -798,13 +815,73 @@ function failureEvidence(
   stage: OneRoleBaselineFailureStage,
   migrationName?: string,
   error?: unknown,
+  migrationGroup?: OneRoleBaselineMigrationGroup,
 ): OneRoleBaselineFailureEvidence {
   const postgresCode = readPostgresCode(error);
+  const postgresConstraint = readPostgresConstraint(error);
   return Object.freeze({
     failure_stage: stage,
     ...(migrationName ? { migration_name: migrationName } : {}),
+    ...(migrationGroup ? { migration_group: migrationGroup } : {}),
     ...(postgresCode ? { postgres_code: postgresCode } : {}),
+    ...(postgresConstraint ? { postgres_constraint: postgresConstraint } : {}),
   });
+}
+
+const CASE_FLOW_MIGRATION_NAME =
+  "035_202608240020_036_complete_case_workflow_foundation.sql";
+
+function readGeneratedSqlGroups(
+  migrationName: string,
+  sql: string,
+): readonly Readonly<{ group?: OneRoleBaselineMigrationGroup; sql: string }>[] {
+  if (migrationName !== CASE_FLOW_MIGRATION_NAME) return [Object.freeze({ sql })];
+  const boundaries = [
+    ["schema", "ALTER TABLE cases_service_cases\n  DROP CONSTRAINT"] as const,
+    ["lifecycle", "CREATE TABLE cases_service_case_lifecycle_facts"] as const,
+    ["assessment", "CREATE FUNCTION cases_assert_case_flow_v1_manifest"] as const,
+    ["case_functions", "CREATE OR REPLACE FUNCTION cases_validate_service_case_write"] as const,
+    ["rls_grants", "REVOKE ALL ON TABLE cases_service_case_lifecycle_facts"] as const,
+  ];
+  const offsets = boundaries.map(([group, marker]) => ({ group, offset: sql.indexOf(marker) }));
+  if (
+    offsets.some(({ offset }) => offset < 0) ||
+    offsets.some(({ offset }, index) => index > 0 && offset <= offsets[index - 1]!.offset)
+  ) {
+    throw new OneRoleBaselineRunError();
+  }
+  const starts = [
+    Object.freeze({ group: "preflight" as const, offset: 0 }),
+    ...offsets,
+  ];
+  return Object.freeze(starts.map(({ group, offset }, index) => Object.freeze({
+    group,
+    sql: sql.slice(offset, starts[index + 1]?.offset),
+  })));
+}
+
+const BASELINE_POSTGRES_CONSTRAINT_ALLOWLIST = new Set([
+  "cases_service_cases_existing_data_unmapped_check",
+]);
+
+function readPostgresConstraint(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    const databaseError = current as Error & {
+      constraint?: unknown;
+      severity?: unknown;
+    };
+    const constraint = databaseError.constraint;
+    if (
+      POSTGRES_ERROR_SEVERITIES.has(String(databaseError.severity)) &&
+      typeof constraint === "string" &&
+      BASELINE_POSTGRES_CONSTRAINT_ALLOWLIST.has(constraint)
+    ) {
+      return constraint;
+    }
+    current = current.cause;
+  }
+  return undefined;
 }
 
 function readPostgresCode(error: unknown): string | undefined {

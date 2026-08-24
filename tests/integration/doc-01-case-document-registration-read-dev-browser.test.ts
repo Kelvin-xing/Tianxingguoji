@@ -187,7 +187,7 @@ test("DOC-01 works through a real local browser and disposable PostgreSQL 17", {
     stage = "baseline_seed";
     const build = await verifyCommittedOneRoleBaseline();
     evidence.baseline_generated_files = build.files.length;
-    assert.equal(build.files.length, 35);
+    assert.equal(build.files.length, 36);
     const baseline = await executeOneRoleBaselineRun({ mode: "apply", target, build, dependencies: baselineDependencies(target) });
     assert.equal(baseline.status, "pass");
     assert.equal(baseline.baseline_id, ONE_ROLE_BASELINE_ID);
@@ -224,7 +224,7 @@ test("DOC-01 works through a real local browser and disposable PostgreSQL 17", {
     await login(page, baseUrl, FOUNDER.email, passwords.get("founder")!);
 
     stage = "founder_case_fixture";
-    const founderCase = await createCaseFixture(page, FOUNDER.roleBindingId, 2046);
+    const founderCase = await createCaseFixture(page, ADVISOR.roleBindingId, 2046);
     assert.equal(founderCase.status, 200);
     assert.equal(founderCase.exact, true);
     assert.notEqual(founderCase.caseId, null);
@@ -443,6 +443,7 @@ async function createCaseFixture(page: Page, bindingId: string, intakeYear: numb
   return page.evaluate(async ({ binding, manifest, student, year }) => {
     const object = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
     const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+    const uuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
     try {
       const response = await fetch("/api/v1/cases", {
         method: "POST",
@@ -450,11 +451,29 @@ async function createCaseFixture(page: Page, bindingId: string, intakeYear: numb
         body: JSON.stringify({ student_id: student, intake_year: year, admission_type: "transfer", primary_role_binding_id: binding, manifest_id: manifest }),
       });
       const root = await response.json() as unknown;
-      if (!object(root) || !object(root.data) || !exact(root.data, ["case"]) || !object(root.data.case)) return { status: response.status, exact: false, caseId: null };
-      const record = root.data.case;
-      const keys = ["id", "caseNumber", "studentId", "assessmentId", "intakeYear", "admissionType", "stage", "manifestId", "recordVersion"];
-      const valid = exact(record, keys) && typeof record.id === "string" && record.studentId === student && record.intakeYear === year && record.recordVersion === 1;
-      return { status: response.status, exact: valid, caseId: valid ? record.id as string : null };
+      if (!object(root) || !object(root.data) || !exact(root.data, ["id", "record_version"]) ||
+          !uuid(root.data.id) || root.data.record_version !== 2) {
+        return { status: response.status, exact: false, caseId: null };
+      }
+      const caseId = root.data.id;
+      const authorityResponse = await fetch(`/api/v1/cases/${caseId}`);
+      const authorityRoot = await authorityResponse.json() as unknown;
+      if (authorityResponse.status !== 200 || !object(authorityRoot) || !object(authorityRoot.data) ||
+          !exact(authorityRoot.data, ["case"]) || !object(authorityRoot.data.case)) {
+        return { status: response.status, exact: false, caseId: null };
+      }
+      const record = authorityRoot.data.case;
+      const keys = [
+        "id", "caseNumber", "studentId", "studentName", "intakeYear", "admissionType",
+        "stage", "workflowStatus", "recordVersion", "availableWorkflowActions", "updatedAt",
+        "primaryRole", "assessmentId", "assessmentStatus", "manifestId",
+        "primaryBindingLabel", "primaryUserId",
+      ];
+      const valid = exact(record, keys) && record.id === caseId && record.studentId === student &&
+        record.intakeYear === year && record.admissionType === "transfer" &&
+        record.stage === "background_collection" && record.workflowStatus === "active" &&
+        record.recordVersion === root.data.record_version && record.manifestId === manifest;
+      return { status: response.status, exact: valid, caseId: valid ? caseId : null };
     } catch {
       return { status: null, exact: false, caseId: null };
     }

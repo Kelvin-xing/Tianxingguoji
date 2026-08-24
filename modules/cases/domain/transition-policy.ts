@@ -4,8 +4,8 @@ import type {
   ServiceCaseStage,
 } from "./contract.ts";
 
-export type CaseLifecycleState = "active" | "paused" | "cancelled";
-export type CaseLifecycleAction = "advance" | "pause" | "resume" | "cancel" | "close";
+export type CaseLifecycleState = "active" | "paused" | "termination_pending" | "closed";
+export type CaseLifecycleAction = "pause" | "resume" | "terminate" | "close";
 
 export type CaseTransitionPolicyDecision =
   | {
@@ -98,24 +98,6 @@ export const HK_K12_STANDARD_V1_TEMPLATE: SchoolTargetRouteTemplate = Object.fre
   ] satisfies readonly SchoolTargetTransitionTemplate[]),
 });
 
-const CASE_FORWARD_STAGES: Readonly<Record<ServiceCaseStage, ServiceCaseStage | null>> = Object.freeze({
-  signed: "background_collection",
-  background_collection: "school_selection_confirmed",
-  school_selection_confirmed: "interview_preparation",
-  interview_preparation: "application_submitted",
-  application_submitted: "awaiting_result",
-  awaiting_result: "offer_confirmed",
-  offer_confirmed: "closed",
-  closed: null,
-});
-
-const CASE_STAGES_BEFORE_SUBMISSION = new Set<ServiceCaseStage>([
-  "signed",
-  "background_collection",
-  "school_selection_confirmed",
-  "interview_preparation",
-]);
-
 const TARGET_TERMINAL_STATES = new Set<SchoolTargetState>([
   "waitlisted",
   "accepted",
@@ -124,63 +106,36 @@ const TARGET_TERMINAL_STATES = new Set<SchoolTargetState>([
 ]);
 
 /**
- * CaseWorkflow's approved P2 lifecycle guard. Pause and cancellation are an
- * overlay rather than replacement case stages, preserving the eight-stage
- * history that is already pinned by the P0 contract.
+ * Canonical CASE-FLOW-01 lifecycle overlay. Milestone changes, termination and
+ * close are delivered by later slices and fail closed here.
  */
 export function evaluateCaseTransitionPolicy(
   input: CaseTransitionPolicyInput,
 ): CaseTransitionPolicyDecision {
   if (input.action === "resume") {
-    if (input.actorRole !== "founder") return deny("CASE_FOUNDER_REQUIRED");
+    if (!isWorkflowManager(input)) return deny("CASE_PRIMARY_ADVISOR_REQUIRED");
     if (input.lifecycleState !== "paused" || input.pausedPreviousStage === null) {
       return deny("CASE_NOT_PAUSED");
     }
-    if (!input.hasReason) return deny("CASE_REASON_REQUIRED");
     return allowCase(input.pausedPreviousStage, "active", null);
   }
 
   if (input.lifecycleState !== "active") return deny("CASE_NOT_ACTIVE");
 
   switch (input.action) {
-    case "advance":
-      if (!isCurrentPrimaryAdvisor(input)) return deny("CASE_PRIMARY_ADVISOR_REQUIRED");
-      if (input.toStage === null || CASE_FORWARD_STAGES[input.stage] !== input.toStage) {
-        return deny("CASE_TRANSITION_NOT_ALLOWED");
-      }
-      if (input.toStage === "closed") return deny("CASE_CLOSE_GUARD_REQUIRED");
-      if (
-        input.stage === "signed" &&
-        (!input.approvedManifest || !input.backgroundBlockersComplete)
-      ) {
-        return deny("CASE_BACKGROUND_EVIDENCE_REQUIRED");
-      }
-      if (
-        input.stage === "background_collection" &&
-        (!input.approvedManifest || !input.schoolSelectionBlockersComplete)
-      ) {
-        return deny("CASE_SCHOOL_SELECTION_EVIDENCE_REQUIRED");
-      }
-      return allowCase(input.toStage, "active", null);
     case "pause":
-      if (input.actorRole !== "advisor" || !input.actorIsCurrentPrimaryAdvisor) {
+      if (!isWorkflowManager(input)) {
         return deny("CASE_PRIMARY_ADVISOR_REQUIRED");
+      }
+      if (input.stage === "signed" || input.stage === "closed") {
+        return deny("CASE_TRANSITION_NOT_ALLOWED");
       }
       if (!input.hasReason) return deny("CASE_REASON_REQUIRED");
       return allowCase(input.stage, "paused", input.stage);
-    case "cancel":
-      if (input.actorRole !== "founder") return deny("CASE_FOUNDER_REQUIRED");
-      if (!CASE_STAGES_BEFORE_SUBMISSION.has(input.stage)) {
-        return deny("CASE_CANCEL_AFTER_SUBMISSION_DENIED");
-      }
-      if (!input.hasReason) return deny("CASE_REASON_REQUIRED");
-      return allowCase(input.stage, "cancelled", null);
+    case "terminate":
+      return deny("CASE_TRANSITION_NOT_ALLOWED");
     case "close":
-      if (input.actorRole !== "founder") return deny("CASE_FOUNDER_REQUIRED");
-      if (input.stage !== "offer_confirmed") return deny("CASE_TRANSITION_NOT_ALLOWED");
-      if (!input.allTargetsTerminalWithOutcomes) return deny("CASE_TARGET_OUTCOMES_REQUIRED");
-      if (input.hasOpenTasks) return deny("CASE_OPEN_TASKS_BLOCK_CLOSE");
-      return allowCase("closed", "active", null);
+      return deny("CASE_TRANSITION_NOT_ALLOWED");
     default:
       return deny("CASE_TRANSITION_NOT_ALLOWED");
   }
@@ -229,11 +184,9 @@ export function outcomeCodesForTargetState(state: SchoolTargetState): readonly C
   }
 }
 
-function isCurrentPrimaryAdvisor(input: CaseTransitionPolicyInput): boolean {
-  return (
-    input.actorIsCurrentPrimaryAdvisor &&
-    (input.actorRole === "advisor" || input.actorRole === "founder")
-  );
+function isWorkflowManager(input: CaseTransitionPolicyInput): boolean {
+  return input.actorRole === "founder" ||
+    (input.actorRole === "advisor" && input.actorIsCurrentPrimaryAdvisor);
 }
 
 function isApprovedHkK12StandardV1(

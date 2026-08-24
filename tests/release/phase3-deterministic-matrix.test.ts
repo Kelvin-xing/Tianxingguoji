@@ -107,7 +107,30 @@ async function executeTypedServiceError(vector: Vector): Promise<MatrixRow> {
 
 function executeCase(vector: Vector): MatrixRow {
   if (String(vector.input.action) === "rollback") return deferred(vector, "P3-08", "The current case policy has no approved rollback command seam.");
-  const action = vector.input.action as CaseTransitionPolicyInput["action"];
+  if (["case.pause_wrong_actor", "case.resume_wrong_actor", "case.resume_missing_reason"]
+    .includes(vector.id)) {
+    return deferred(
+      vector,
+      "CASE-FLOW-01",
+      "The CASE-FLOW-01 pause/resume authority and resume-null-reason contract supersede this vector.",
+    );
+  }
+  const rawAction = String(vector.input.action);
+  if (!["pause", "resume", "terminate", "close"].includes(rawAction)) {
+    return deferred(
+      vector,
+      "CASE-FLOW-02/05",
+      "The legacy advance/cancel vector is superseded by the five-stage workflow contract.",
+    );
+  }
+  const action = rawAction as CaseTransitionPolicyInput["action"];
+  if (action === "terminate" || action === "close") {
+    return deferred(
+      vector,
+      "CASE-FLOW-04/05",
+      "Termination and closure remain reserved after CASE-FLOW-01.",
+    );
+  }
   const stage = (vector.preconditions.canonical_stage ?? vector.input.from ?? "background_collection") as CaseTransitionPolicyInput["stage"];
   const decision = evaluateCaseTransitionPolicy({
     action,
@@ -116,7 +139,7 @@ function executeCase(vector: Vector): MatrixRow {
     stage,
     lifecycleState: action === "resume" ? "paused" : "active",
     pausedPreviousStage: action === "resume" ? "background_collection" : null,
-    toStage: action === "advance" || action === "close" ? vector.input.to as CaseTransitionPolicyInput["toStage"] : null,
+    toStage: null,
     hasReason: typeof vector.input.reason === "string" && vector.input.reason.length > 0,
     approvedManifest: true,
     backgroundBlockersComplete: true,
@@ -124,7 +147,11 @@ function executeCase(vector: Vector): MatrixRow {
     allTargetsTerminalWithOutcomes: vector.preconditions.all_targets_terminal_with_outcomes !== false,
     hasOpenTasks: Number(vector.preconditions.open_tasks ?? 0) > 0,
   });
-  const observed = decision.allowed ? (action === "pause" ? "paused" : action === "cancel" ? "cancelled" : decision.stage) : decision.code;
+  const observed = decision.allowed
+    ? action === "pause"
+      ? "paused"
+      : decision.stage
+    : decision.code;
   return executed(vector, "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy", observed);
 }
 

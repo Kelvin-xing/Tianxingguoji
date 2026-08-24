@@ -189,21 +189,21 @@ test("an approved active overlay creates one immutable candidate target", async 
   assert.doesNotMatch(JSON.stringify(effects), /Eastern|example\.test|Synthetic correction/i);
 });
 
-test("Founder and Primary Advisor read the workspace with server-derived creation policy", async () => {
+test("Founder and Primary Advisor read the frozen Slice 1 workspace without create options", async () => {
   const repository = setup();
   const service = new SchoolTargetService({ repository });
 
   const advisor = await service.getSchoolTargets({ actor: ADVISOR, caseId: CASE_ID });
-  assert.equal(advisor.canCreate, true);
-  assert.equal(advisor.createBlockedReason, null);
+  assert.equal(advisor.canCreate, false);
+  assert.equal(advisor.createBlockedReason, "selection_workflow_required");
   assert.equal(advisor.intakeYear, 2027);
   assert.equal(advisor.admissionType, "hk_k12_standard_v1");
-  assert.equal(advisor.schoolOptions.length, 1);
+  assert.deepEqual(advisor.schoolOptions, []);
 
   const founder = await service.getSchoolTargets({ actor: FOUNDER, caseId: CASE_ID });
   assert.equal(founder.canCreate, false);
-  assert.equal(founder.createBlockedReason, "founder_read_only");
-  assert.deepEqual(founder.schoolOptions, advisor.schoolOptions);
+  assert.equal(founder.createBlockedReason, "selection_workflow_required");
+  assert.deepEqual(founder.schoolOptions, []);
 });
 
 test("non-primary Advisor cannot read a case and non-target stages fail closed", async () => {
@@ -229,7 +229,8 @@ test("non-primary Advisor cannot read a case and non-target stages fail closed",
   );
   const workspace = await service.getSchoolTargets({ actor: ADVISOR, caseId: CASE_ID });
   assert.equal(workspace.canCreate, false);
-  assert.equal(workspace.createBlockedReason, "case_stage_not_allowed");
+  assert.equal(workspace.createBlockedReason, "selection_workflow_required");
+  assert.deepEqual(workspace.schoolOptions, []);
   const expected = resolveSchoolTargetView({ base: baseRecord(), revisions: [] });
   await assert.rejects(
     service.createSchoolTarget({

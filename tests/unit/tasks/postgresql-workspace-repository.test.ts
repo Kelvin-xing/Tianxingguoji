@@ -42,7 +42,9 @@ test("transition locks current Case authority and synchronizes a changed Primary
   });
 
   assert.deepEqual(result, { id: TASK_ID, recordVersion: 2 });
-  assert.match(seam.lockingQuery(), /FOR UPDATE OF task,service_case/);
+  assert.match(seam.caseLockingQuery(), /FOR UPDATE OF service_case FOR SHARE OF student/);
+  assert.match(seam.taskLockingQuery(), /FOR UPDATE OF task/);
+  assert.deepEqual(seam.lockOrder(), ["locate", "case", "actor", "task", "assignment"]);
   assert.equal(seam.updateValues()?.[8], CURRENT_PRIMARY_ID);
 });
 
@@ -78,6 +80,8 @@ function command() {
 }
 
 function transitionSeam(updateRowCount: number) {
+  const observedLockOrder: string[] = [];
+  let caseLockingQuery = "";
   let taskLockingQuery = "";
   let taskUpdateValues: readonly unknown[] | undefined;
   const runner: TenantTransactionRunner = Object.freeze({
@@ -96,12 +100,27 @@ function transitionSeam(updateRowCount: number) {
           if (sql.includes("SELECT request_hash,state,result_reference")) {
             return result([]) as DatabaseQueryResult<Row>;
           }
+          if (sql.includes("SELECT service_case_id FROM tasks_tasks")) {
+            observedLockOrder.push("locate");
+            return result([{ service_case_id: CASE_ID }]) as DatabaseQueryResult<Row>;
+          }
+          if (sql.includes("SELECT service_case.id,service_case.primary_user_id")) {
+            observedLockOrder.push("case");
+            caseLockingQuery = sql;
+            return result([caseRow()]) as DatabaseQueryResult<Row>;
+          }
           if (sql.includes("SELECT binding.role FROM identity_users")) {
+            observedLockOrder.push("actor");
             return result([{ role: "advisor" }]) as DatabaseQueryResult<Row>;
           }
           if (sql.includes("SELECT task.id,task.service_case_id")) {
+            observedLockOrder.push("task");
             taskLockingQuery = sql;
             return result([taskRow()]) as DatabaseQueryResult<Row>;
+          }
+          if (sql.includes("FROM tasks_task_assignments AS assignment")) {
+            observedLockOrder.push("assignment");
+            return result([{ id: IDS[2] }]) as DatabaseQueryResult<Row>;
           }
           if (sql.includes("SELECT id,initial_state FROM tasks_transition_policies")) {
             return result([{ id: "71000000-0000-4000-8000-000000000020", initial_state: "assigned" }]) as DatabaseQueryResult<Row>;
@@ -137,8 +156,21 @@ function transitionSeam(updateRowCount: number) {
   });
   return Object.freeze({
     runner,
-    lockingQuery: () => taskLockingQuery,
+    caseLockingQuery: () => caseLockingQuery,
+    taskLockingQuery: () => taskLockingQuery,
+    lockOrder: () => observedLockOrder,
     updateValues: () => taskUpdateValues,
+  });
+}
+
+function caseRow() {
+  return Object.freeze({
+    id: CASE_ID,
+    primary_user_id: CURRENT_PRIMARY_ID,
+    primary_role: "advisor",
+    stage: "background_collection",
+    workflow_status: "active",
+    student_status: "active",
   });
 }
 

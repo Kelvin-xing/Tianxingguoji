@@ -8,7 +8,7 @@ import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlSchoolTargetRepository } from "./postgresql-school-target-repository.ts";
 
 export interface SchoolTargetRuntime {
-  readonly service: SchoolTargetService;
+  readonly service: Pick<SchoolTargetService, "getSchoolTargets">;
 }
 
 export class SchoolTargetRuntimeUnavailable extends Error {
@@ -32,9 +32,12 @@ export function getSchoolTargetRuntime(): SchoolTargetRuntime {
   if (!runtime) {
     const adapter = createPostgreSqlAdapter(getApplicationTenantRunner());
     const schools = new PostgresqlResolvedSchoolTransaction();
+    const service = new SchoolTargetService({
+      repository: new PostgresqlSchoolTargetRepository(adapter, schools),
+    });
     runtime = Object.freeze({
-      service: new SchoolTargetService({
-        repository: new PostgresqlSchoolTargetRepository(adapter, schools),
+      service: Object.freeze({
+        getSchoolTargets: service.getSchoolTargets.bind(service),
       }),
     });
     runtimes.set(mode, runtime);

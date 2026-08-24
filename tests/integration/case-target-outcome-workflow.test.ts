@@ -97,7 +97,7 @@ function outcome(code: "waitlisted" | "accepted" | "rejected" | "withdrawn" | "n
   };
 }
 
-test("case breadth keeps lifecycle overlays separate from stages and enforces every OD-04 boundary", () => {
+test("CASE-FLOW-01 exposes only pause and resume while later lifecycle actions fail closed", () => {
   const baseline = {
     actorRole: "advisor" as const,
     actorIsCurrentPrimaryAdvisor: true,
@@ -112,20 +112,6 @@ test("case breadth keeps lifecycle overlays separate from stages and enforces ev
     allTargetsTerminalWithOutcomes: true,
     hasOpenTasks: false,
   };
-  assert.deepEqual(evaluateCaseTransitionPolicy({ ...baseline, action: "advance" }), {
-    allowed: true,
-    stage: "school_selection_confirmed",
-    lifecycleState: "active",
-    pausedPreviousStage: null,
-  });
-  assert.equal(
-    evaluateCaseTransitionPolicy({
-      ...baseline,
-      action: "advance",
-      schoolSelectionBlockersComplete: false,
-    }).allowed,
-    false,
-  );
   assert.deepEqual(evaluateCaseTransitionPolicy({ ...baseline, action: "pause", toStage: null }), {
     allowed: true,
     stage: "background_collection",
@@ -152,10 +138,10 @@ test("case breadth keeps lifecycle overlays separate from stages and enforces ev
   assert.equal(
     evaluateCaseTransitionPolicy({
       ...baseline,
-      action: "cancel",
+      action: "terminate",
       actorRole: "founder",
       actorIsCurrentPrimaryAdvisor: false,
-      stage: "application_submitted",
+      stage: "application_in_progress",
       toStage: null,
     }).allowed,
     false,
@@ -166,22 +152,22 @@ test("case breadth keeps lifecycle overlays separate from stages and enforces ev
       action: "close",
       actorRole: "founder",
       actorIsCurrentPrimaryAdvisor: false,
-      stage: "offer_confirmed",
+      stage: "application_in_progress",
       toStage: null,
       allTargetsTerminalWithOutcomes: false,
     }).allowed,
     false,
   );
-  assert.deepEqual(
+  assert.equal(
     evaluateCaseTransitionPolicy({
       ...baseline,
       action: "close",
       actorRole: "founder",
       actorIsCurrentPrimaryAdvisor: false,
-      stage: "offer_confirmed",
+      stage: "application_in_progress",
       toStage: null,
-    }),
-    { allowed: true, stage: "closed", lifecycleState: "active", pausedPreviousStage: null },
+    }).allowed,
+    false,
   );
 });
 
