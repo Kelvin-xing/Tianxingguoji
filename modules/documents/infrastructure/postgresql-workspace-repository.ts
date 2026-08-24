@@ -17,6 +17,7 @@ import {
 
 const REGISTER_OPERATION = "documents.register_case_metadata";
 const REFERENCE = /^([0-9a-f-]{36}):(\d{1,16})$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ActorRow extends Record<string, unknown> {
   role: string;
@@ -36,6 +37,8 @@ interface DocumentRow extends Record<string, unknown> {
   classification: string;
   lifecycle_state: string;
   latest_version_state: string | null;
+  latest_version_id: string | null;
+  latest_version_record_version: number | string | null;
   has_active_version: boolean;
   record_version: number | string;
   updated_at: Date | string;
@@ -229,6 +232,8 @@ async function selectVisibleDocuments(
     text: `SELECT document.id,document.service_case_id,service_case.case_number,
         document.display_name,document.classification,document.lifecycle_state,
         latest_version.state AS latest_version_state,
+        latest_version.id AS latest_version_id,
+        latest_version.record_version AS latest_version_record_version,
         EXISTS (
           SELECT 1 FROM documents_document_versions AS active_version
            WHERE active_version.id=document.active_document_version_id
@@ -256,11 +261,11 @@ async function selectVisibleDocuments(
         ON primary_actor.id=service_case.primary_user_id
        AND primary_actor.status='active'
       LEFT JOIN LATERAL (
-        SELECT version.state
+        SELECT version.id,version.state,version.record_version
           FROM documents_document_versions AS version
          WHERE version.document_id=document.id
            AND version.organization_id=document.organization_id
-         ORDER BY version.created_at DESC,version.id ASC
+         ORDER BY version.upload_generation DESC
          LIMIT 1
       ) AS latest_version ON true
      WHERE document.organization_id=$1
@@ -348,6 +353,7 @@ function documentView(row: DocumentRow): CaseDocumentView {
       !isDocumentVersionStateOrNull(row.latest_version_state)) {
     unavailable();
   }
+  const pendingUpload = pendingUploadView(row);
   return Object.freeze({
     id: row.id,
     caseId: row.service_case_id,
@@ -356,9 +362,28 @@ function documentView(row: DocumentRow): CaseDocumentView {
     classification: row.classification,
     lifecycleState: row.lifecycle_state,
     latestVersionState: row.latest_version_state,
+    pendingUpload,
     hasActiveVersion: row.has_active_version,
     recordVersion: version(row.record_version),
     updatedAt: new Date(row.updated_at).toISOString(),
+  });
+}
+
+function pendingUploadView(
+  row: Pick<DocumentRow, "latest_version_id" | "latest_version_record_version" | "latest_version_state">,
+): CaseDocumentView["pendingUpload"] {
+  if (row.latest_version_state === null) {
+    if (row.latest_version_id !== null || row.latest_version_record_version !== null) unavailable();
+    return null;
+  }
+  if (!row.latest_version_id || !UUID.test(row.latest_version_id) ||
+      row.latest_version_record_version === null) {
+    unavailable();
+  }
+  if (row.latest_version_state !== "pending_upload") return null;
+  return Object.freeze({
+    id: row.latest_version_id,
+    recordVersion: version(row.latest_version_record_version),
   });
 }
 

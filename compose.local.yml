@@ -30,9 +30,11 @@ services:
       AWS_DEFAULT_REGION: ap-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT_STRATEGY: path
       LOCALSTACK_S3_BUCKET: tianxing-local-documents
       LOCALSTACK_SQS_QUEUE: tianxing-local-document-scan
       LOCALSTACK_SQS_DLQ: tianxing-local-document-scan-dlq
+      LOCALSTACK_BROWSER_ORIGIN: "http://localhost:3000"
     ports:
       - "127.0.0.1:4566:4566"
     volumes:

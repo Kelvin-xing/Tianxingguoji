@@ -12,7 +12,7 @@ export interface SyntheticScanResult {
   readonly objectKey: string;
   readonly objectVersionId: string;
   readonly verdict: "clean" | "malicious" | "failed";
-  readonly scannerVersion: "synthetic-scanner-v1";
+  readonly scannerVersion: string;
 }
 
 export interface SyntheticScanCall {
@@ -37,9 +37,11 @@ const SAFE_IDENTIFIER = /^[A-Za-z][A-Za-z0-9._:/-]{0,255}$/;
 export class SyntheticScannerFake {
   private readonly outcomeQueue: SyntheticScannerOutcome[] = [];
   private readonly recordedCalls: SyntheticScanCall[] = [];
+  private readonly scannerVersion: string;
 
   constructor(...outcomes: SyntheticScannerOutcome[]) {
     this.outcomeQueue.push(...outcomes);
+    this.scannerVersion = "clamav-release1";
   }
 
   enqueue(...outcomes: SyntheticScannerOutcome[]): void {
@@ -59,7 +61,7 @@ export class SyntheticScannerFake {
       objectKey: input.objectKey,
       objectVersionId: input.objectVersionId,
       verdict: outcome,
-      scannerVersion: "synthetic-scanner-v1",
+      scannerVersion: this.scannerVersion,
     };
   }
 

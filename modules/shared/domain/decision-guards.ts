@@ -135,6 +135,8 @@ const RELEASE_ONE_TRANSITIONS = new Set([
   "ScopeGrant:active:revoked",
   "ScopeGrant:active:expired",
   "DocumentVersion:pending_upload:quarantined",
+  "DocumentVersion:pending_upload:rejected",
+  "DocumentVersion:pending_upload:abandoned",
   "DocumentVersion:quarantined:scanning",
   "DocumentVersion:scanning:available",
   "DocumentVersion:scanning:rejected",

@@ -720,7 +720,7 @@ test("CRM-01 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 34);
+    assert.equal(baseline.generated_files, 35);
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
     assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
@@ -1411,7 +1411,7 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 34);
+    assert.equal(baseline.generated_files, 35);
     baselineGeneratedFiles = baseline.generated_files;
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
@@ -2143,7 +2143,7 @@ test("CRM-03 maintains Student and Guardian profiles through a real local browse
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 34);
+    assert.equal(baseline.generated_files, 35);
     baselineGeneratedFiles = baseline.generated_files;
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");

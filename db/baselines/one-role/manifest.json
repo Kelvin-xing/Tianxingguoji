@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "c71313b777db411bbce35368b10efe72480e5fd16c423fd7e8764c44c1409169",
+  "source_history_manifest_sha256": "4ff9edfc846f9373bacce95a8fd27bc042921dc7b26e624716b14980d4ce86a1",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -247,6 +247,13 @@
       "generated_file": "033_202608230050_034_complete_case_document_registration.sql",
       "generated_sha256": "e8cced82a8b978a4822f5c802c1a35078c5444a3d1a927845ea296c4eb404f78",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202608240010_035_harden_document_upload_scan_download.sql",
+      "source_sha256": "04183e3c8f875e85cf8ff576bb0ed33c5896dd03b94e0085967e837c4556de36",
+      "generated_file": "034_202608240010_035_harden_document_upload_scan_download.sql",
+      "generated_sha256": "04183e3c8f875e85cf8ff576bb0ed33c5896dd03b94e0085967e837c4556de36",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -413,6 +420,11 @@
     {
       "name": "033_202608230050_034_complete_case_document_registration.sql",
       "sha256": "e8cced82a8b978a4822f5c802c1a35078c5444a3d1a927845ea296c4eb404f78",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "034_202608240010_035_harden_document_upload_scan_download.sql",
+      "sha256": "04183e3c8f875e85cf8ff576bb0ed33c5896dd03b94e0085967e837c4556de36",
       "transform": "copy-v1"
     },
     {

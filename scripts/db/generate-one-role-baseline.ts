@@ -11,9 +11,9 @@ import {
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
 export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v3" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
-export const ONE_ROLE_SOURCE_COUNT = 33;
+export const ONE_ROLE_SOURCE_COUNT = 34;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
-  "c71313b777db411bbce35368b10efe72480e5fd16c423fd7e8764c44c1409169";
+  "4ff9edfc846f9373bacce95a8fd27bc042921dc7b26e624716b14980d4ce86a1";
 export const ONE_ROLE_BASELINE_DIRECTORY = "db/baselines/one-role";
 export const ONE_ROLE_GENERATED_DIRECTORY = `${ONE_ROLE_BASELINE_DIRECTORY}/generated`;
 export const ONE_ROLE_MANIFEST_PATH = `${ONE_ROLE_BASELINE_DIRECTORY}/manifest.json`;

@@ -11,6 +11,7 @@ export const DOCUMENT_VERSION_STATES = Object.freeze([
   "available",
   "rejected",
   "scan_failed",
+  "abandoned",
   "superseded",
   "pending_delete",
   "deleted",
@@ -25,6 +26,16 @@ export const SCAN_RESULT_STATES = Object.freeze([
 ] as const);
 
 export const DOCUMENT_OBJECT_REGION = "ap-east-1" as const;
+export const DOCUMENT_UPLOAD_MAX_BYTES = 10_485_760;
+export const DOCUMENT_UPLOAD_INTENT_TTL_MS = 10 * 60 * 1000;
+export const DOCUMENT_DOWNLOAD_INTENT_TTL_MS = 5 * 60 * 1000;
+export const DOCUMENT_SCAN_POLICY_VERSION = "clamav-release1-v1" as const;
+export const DOCUMENT_SCAN_TIMEOUT_MS = 30 * 1000;
+export const DOCUMENT_UPLOAD_CONTENT_TYPES = Object.freeze([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+] as const);
 export const SOFT_DELETE_WINDOW_DAYS = 30;
 
 export type DocumentLifecycleState = (typeof DOCUMENT_LIFECYCLE_STATES)[number];
@@ -33,6 +44,7 @@ export type ScanResultState = (typeof SCAN_RESULT_STATES)[number];
 export type DocumentObjectRegion = typeof DOCUMENT_OBJECT_REGION;
 export type DocumentOwnerKind = "student" | "case" | "task";
 export type DocumentScanVerdict = "clean" | "malicious" | "failed";
+export type DocumentUploadContentType = (typeof DOCUMENT_UPLOAD_CONTENT_TYPES)[number];
 
 export interface DocumentOwner {
   readonly kind: DocumentOwnerKind;
@@ -121,6 +133,7 @@ const UUID_PATTERN =
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const OBJECT_KEY_PATTERN =
   /^documents\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/versions\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PROVIDER_VERSION_PATTERN = /^\S{1,1024}$/;
 const SOFT_DELETE_WINDOW_MS = SOFT_DELETE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 function isUuid(value: string): boolean {
@@ -195,7 +208,7 @@ export function validateDocumentObjectReference(
   }
   if (
     version.object.versionId !== null &&
-    (version.object.versionId.trim() === "" || /\s/.test(version.object.versionId))
+    !PROVIDER_VERSION_PATTERN.test(version.object.versionId)
   ) {
     return { allowed: false, code: "DOCUMENT_OBJECT_VERSION_INVALID" };
   }
@@ -218,12 +231,13 @@ export function evaluateDocumentVersionDownload(input: {
 
 const VERSION_TRANSITIONS: Readonly<Record<DocumentVersionState, readonly DocumentVersionState[]>> =
   Object.freeze({
-    pending_upload: ["quarantined"],
+    pending_upload: ["quarantined", "rejected", "abandoned"],
     quarantined: ["scanning"],
     scanning: ["available", "rejected", "scan_failed"],
     available: ["superseded", "pending_delete", "deleted"],
     rejected: ["deleted"],
     scan_failed: ["scanning"],
+    abandoned: [],
     superseded: ["pending_delete", "deleted"],
     pending_delete: ["deleted"],
     deleted: [],

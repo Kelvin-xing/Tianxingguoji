@@ -30,11 +30,18 @@ Compose 首次创建以下本地资源：
 - PostgreSQL 数据库 `tianxing` 和唯一 login/owner `tianxing_app`；
 - PostgreSQL 镜像的 `postgres` 角色只在首次初始化时充当 bootstrap superuser，初始化完成后固定为 `NOLOGIN`，不能作为应用或日常 operator 账号；
 - 启用版本控制的 S3 桶 `tianxing-local-documents`；
-- SQS 队列 `tianxing-local-document-scan`；
-- 死信队列 `tianxing-local-document-scan-dlq`，主队列在三次失败后转入；
+- SQS 队列 `tianxing-local-document-scan`，固定 `VisibilityTimeout=180` 秒；初始化脚本每次运行都会重新锁定该值；
+- 死信队列 `tianxing-local-document-scan-dlq`，主队列在三次接收失败后转入；
 - ClamAV 守护进程和病毒特征库。
 
-这些名称、密码和 `test` AWS 凭据只适用于回环网络，不能复制到其他环境。
+主队列策略固定为恰好两条、且都只允许向该队列执行 `sqs:SendMessage`：一条允许来自上述
+精确 S3 桶和 LocalStack 账号的对象事件；另一条只允许固定 `test` 凭据对应的 LocalStack
+账号 root principal，由有界的文档协调 Worker 重发已绑定的合成对象事件。两条授权都不使用
+wildcard principal、action、resource 或 condition。
+
+这些名称、密码、策略和 `test` AWS 凭据只适用于回环网络上的 `local-synthetic` 环境，不能复制到
+其他环境。尤其不得把 LocalStack root principal 授权复制到 `production-aws`；生产队列策略必须
+按独立架构、安全和最小权限审查重新设计。
 
 ## 前置条件
 
@@ -61,7 +68,7 @@ pnpm local:ps
 `POSTGRES_PASSWORD_FILE` 读取它。命令随后执行 `docker compose ... up -d --wait`；只有 Compose 认为依赖已就绪
 后才返回成功。ClamAV 首次加载特征库通常比另外两个服务慢。
 
-然后启动 Next.js：
+依赖就绪后，先安装当前 one-role baseline、写入 Release 1 合成 seed，并 provision 本地测试身份：
 
 ```sh
 pnpm db:plan:local
@@ -74,12 +81,29 @@ printf '%s\n' "$LOCAL_DATABASE_TEST_PASSWORD" \
   | pnpm db:provision:local-identity --email=founder@env01.test.invalid
 LOCAL_DATABASE_TEST_PASSWORD=''
 unset LOCAL_DATABASE_TEST_PASSWORD
-pnpm dev
 ```
 
 密码由操作员隐藏输入，只通过标准输入传入，不得写入 Git、环境模板或命令参数。
 `founder@env01.test.invalid` 是本地与 Vercel test 共用的固定纯合成 founder 标识；两个环境
 使用不同的数据库 URL 和密码。
+
+数据库、seed 和身份准备完成后，使用两个独立终端分别启动 Next.js 和 DOC-02 文档扫描 Worker。
+两个命令都会读取仓库根目录的 `.env.local`；其中环境模板固定了 Release 1 合成组织 UUID 和非用户
+Worker 上下文 UUID，它们不是登录身份，也不能替代用户权限检查。
+
+终端 A：
+
+```sh
+pnpm dev
+```
+
+终端 B：
+
+```sh
+pnpm worker:documents:local
+```
+
+Worker 输出 `document-worker-ready` 后才表示已取得本地队列并可以接收 DOC-02 扫描事件。
 
 打开 `http://localhost:3000/login`，使用该邮箱和刚 provision 的本机密码登录。
 本地身份、verifier 和会话保存在 PostgreSQL；
@@ -142,7 +166,7 @@ baseline runner 只接受被 Git 忽略的 `.env.migration.local`，并要求 UR
 `tianxing_app` 完全匹配；Next.js 只读取 `.env.local`，应用进程不持有 operator 文件。
 历史 runner 使用过的 `tianxing_migration` 仅作为旧实机记录，不能作为新合同。
 
-baseline `dry-run` 在单事务中执行 28 个生成文件并回滚；它不会留下历史
+baseline `dry-run` 在单事务中执行当前 manifest 的全部生成文件并回滚；它不会留下历史
 `migration.schema_migrations`，只在 apply 时写入独立的 `tianxing_baseline.installations` marker。
 apply 使用 advisory lock、超时和单事务；已安装 marker 与 manifest 不匹配时会拒绝重复安装。
 历史迁移一旦应用便不得修改，修复必须新增迁移或重新生成经过审查的 baseline。
@@ -157,6 +181,12 @@ apply 使用 advisory lock、超时和单事务；已安装 marker 与 manifest 
 seed 仍是独立操作，未因 baseline 代码生成而自动执行。
 
 ## 停止与重置
+
+按以下顺序停止，避免停止依赖时仍有新的上传或正在处理的扫描：
+
+1. 停止浏览器中的上传操作，并在 Next.js 终端按 `Ctrl-C`，阻止签发新的上传能力；
+2. 在 Worker 终端按 `Ctrl-C`，等待当前一次处理结束并确认进程退出；
+3. 最后停止 Compose 依赖。
 
 保留数据卷并停止服务：
 
