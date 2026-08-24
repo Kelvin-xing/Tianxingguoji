@@ -18,8 +18,9 @@ const ids = Object.freeze({
   manifest: "41000000-0000-4000-8000-000000000006",
   case: "41000000-0000-4000-8000-000000000007",
   assessment: "41000000-0000-4000-8000-000000000008",
-  audit: "41000000-0000-4000-8000-000000000009",
-  outbox: "41000000-0000-4000-8000-00000000000a",
+  transition: "41000000-0000-4000-8000-000000000009",
+  audit: "41000000-0000-4000-8000-00000000000a",
+  outbox: "41000000-0000-4000-8000-00000000000b",
 });
 
 test("creates an existing-student case with audit and idempotency context", async () => {
@@ -29,18 +30,11 @@ test("creates an existing-student case with audit and idempotency context", asyn
       observed = input;
       return {
         id: input.serviceCaseId,
-        caseNumber: input.caseNumber,
-        studentId: input.studentId,
-        assessmentId: input.assessmentId,
-        intakeYear: input.intakeYear,
-        admissionType: input.admissionType,
-        stage: "signed",
-        manifestId: input.manifestId,
-        recordVersion: 1,
+        recordVersion: 2,
       };
     },
   });
-  const createdIds = [ids.case, ids.assessment, ids.audit, ids.outbox];
+  const createdIds = [ids.case, ids.assessment, ids.audit, ids.outbox, ids.transition];
   const service = new CaseWorkspaceService(
     repository,
     () => createdIds.shift()!,
@@ -49,12 +43,12 @@ test("creates an existing-student case with audit and idempotency context", asyn
 
   const result = await service.createCase({ actor: actor("advisor"), command: command() });
 
-  assert.equal(result.id, ids.case);
-  assert.equal(result.studentId, ids.student);
-  assert.match(result.caseNumber, /^TX-2027-/);
+  assert.deepEqual(result, { id: ids.case, recordVersion: 2 });
   assert.equal(observed?.actorRole, "advisor");
   assert.equal(observed?.idempotencyKey, "case-workspace-test-1");
   assert.match(observed?.requestHash ?? "", /^[a-f0-9]{64}$/);
+  assert.match(observed?.responseHash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(observed?.transitionFactId, ids.transition);
   assert.equal(observed?.effects.audit.id, ids.audit);
   assert.equal(observed?.effects.outbox.auditEventId, ids.audit);
   assert.equal(observed?.effects.audit.resourceId, ids.case);
@@ -78,7 +72,7 @@ test("rejects non-workspace roles before repository access", async () => {
 });
 
 test("maps repository conflicts to the application error contract", async () => {
-  const createdIds = [ids.case, ids.assessment, ids.audit, ids.outbox];
+  const createdIds = [ids.case, ids.assessment, ids.audit, ids.outbox, ids.transition];
   const service = new CaseWorkspaceService(fakeRepository({
     async createCase() {
       throw Object.assign(new Error("duplicated module instance"), {

@@ -98,6 +98,7 @@ const FOREIGN_CASE_ID = "65000000-0000-4000-8000-000000000005";
 const FOREIGN_DOCUMENT_ID = "65000000-0000-4000-8000-000000000006";
 const FOREIGN_GUARDIAN_ID = "65000000-0000-4000-8000-000000000007";
 const FOREIGN_RELATIONSHIP_ID = "65000000-0000-4000-8000-000000000008";
+const FOREIGN_CASE_TRANSITION_FACT_ID = "65000000-0000-4000-8000-000000000009";
 const WORKER_READY_MARKER = "document-worker-ready";
 const QUEUE_CONVERGENCE_POLL_COUNT = 301;
 const QUEUE_CONVERGENCE_POLL_INTERVAL_MS = 250;
@@ -590,7 +591,7 @@ test("DOC-02 uploads, scans, recovers and downloads through real local HTTP depe
 
     stage = "baseline_seed";
     const build = await verifyCommittedOneRoleBaseline();
-    assert.equal(build.files.length, 35);
+    assert.equal(build.files.length, 36);
     const manifestSha256 = createHash("sha256").update(build.manifestJson).digest("hex");
     const baseline = await executeOneRoleBaselineRun({
       mode: "apply",
@@ -599,10 +600,10 @@ test("DOC-02 uploads, scans, recovers and downloads through real local HTTP depe
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 35);
+    assert.equal(baseline.generated_files, 36);
     assertDatabaseContract(await inspectBaselineWithNewClient(target), target, manifestSha256);
     assert.equal((await seedNeonTestRelease1(target, "apply")).status, "pass");
-    evidence.baseline = Object.freeze({ postgres_major: 17, source: 34, generated: 35 });
+    evidence.baseline = Object.freeze({ postgres_major: 17, source: 35, generated: 36 });
 
     stage = "identity_provision";
     for (const principalValue of NEON_TEST_PRINCIPALS) {
@@ -729,7 +730,7 @@ test("DOC-02 uploads, scans, recovers and downloads through real local HTTP depe
       baseUrl,
       cookies.get("founder")!,
       NEON_TEST_STUDENTS[0]!.id,
-      FOUNDER.roleBindingId,
+      ADVISOR.roleBindingId,
       2051,
       `doc02-founder-case-${suffix}`,
       firstCaseFixtureEvidence,
@@ -1987,15 +1988,17 @@ async function createCase(
   if (!isRecord(body)) throw new HarnessError("http_shape");
   const result: HttpResult = Object.freeze({ response, body, text });
   const data = requiredData(result);
-  assert.deepEqual(Object.keys(data), ["case"]);
-  const created = requiredRecord(data.case);
-  assert.deepEqual(Object.keys(created).sort(), [
-    "admissionType", "assessmentId", "caseNumber", "id", "intakeYear",
-    "manifestId", "recordVersion", "stage", "studentId",
-  ].sort());
-  const id = requiredUuid(created.id);
+  assert.deepEqual(Object.keys(data).sort(), ["id", "record_version"]);
+  const id = requiredUuid(data.id);
+  assert.equal(data.record_version, 2);
+  const authority = await getJson(baseUrl, `/api/v1/cases/${id}`, cookie);
+  assert.equal(authority.response.status, 200);
+  const created = requiredRecord(requiredData(authority).case);
+  assert.equal(created.id, id);
   assert.equal(created.studentId, studentId);
-  assert.equal(created.recordVersion, 1);
+  assert.equal(created.stage, "background_collection");
+  assert.equal(created.workflowStatus, "active");
+  assert.equal(created.recordVersion, 2);
   observation.exact_case_envelope = true;
   return id;
 }
@@ -3519,7 +3522,7 @@ async function prepareForeignDocumentFixture(target: OneRoleBaselineTarget): Pro
     ]);
     await client.query(`INSERT INTO access_role_bindings
       (id,organization_id,membership_id,user_id,role,status,created_by_user_id)
-      VALUES ($1,$2,$3,$4,'founder','active',$4)`, [
+      VALUES ($1,$2,$3,$4,'advisor','active',$4)`, [
       FOREIGN_ROLE_BINDING_ID,
       FOREIGN_ORGANIZATION_ID,
       FOREIGN_MEMBERSHIP_ID,
@@ -3552,9 +3555,9 @@ async function prepareForeignDocumentFixture(target: OneRoleBaselineTarget): Pro
     await client.query(`INSERT INTO cases_service_cases
       (id,organization_id,student_id,case_number,application_type,intake_year,
        admission_type,primary_role_binding_id,primary_membership_id,primary_user_id,
-       primary_role,stage)
+       primary_role,stage,workflow_status,record_version)
       VALUES ($1,$2,$3,'DOC02-FOREIGN','k12',2054,'transfer',$4,$5,$6,
-        'founder','signed')`, [
+        'advisor','signed','active',1)`, [
       FOREIGN_CASE_ID,
       FOREIGN_ORGANIZATION_ID,
       FOREIGN_STUDENT_ID,
@@ -3562,6 +3565,15 @@ async function prepareForeignDocumentFixture(target: OneRoleBaselineTarget): Pro
       FOREIGN_MEMBERSHIP_ID,
       FOUNDER.userId,
     ]);
+    const advanced = await client.query<{ decision: string; result_stage: string; result_record_version: string }>(
+      "SELECT * FROM cases_advance_new_service_case($1,'advisor',$2,transaction_timestamp())",
+      [FOREIGN_CASE_ID, FOREIGN_CASE_TRANSITION_FACT_ID],
+    );
+    assert.deepEqual(advanced.rows, [{
+      decision: "allowed",
+      result_stage: "background_collection",
+      result_record_version: "2",
+    }]);
     await client.query(`INSERT INTO documents_documents
       (id,organization_id,owner_kind,service_case_id,display_name,classification,
        lifecycle_state,legal_hold)

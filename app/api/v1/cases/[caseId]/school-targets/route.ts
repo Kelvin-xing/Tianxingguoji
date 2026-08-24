@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-
+import { evaluateBootstrapAuthorization } from "@/modules/access/public";
 import {
   SchoolTargetError,
   SchoolTargetRuntimeUnavailable,
@@ -9,8 +8,6 @@ import {
 import {
   IdentityRuntimeUnavailable,
   IdentityServiceError,
-  SESSION_COOKIE_NAME,
-  getIdentityRuntime,
 } from "@/modules/identity/server";
 import { requireIdentityActor } from "@/modules/identity/web";
 import {
@@ -18,7 +15,6 @@ import {
   createApiError,
   handleApiRequest,
 } from "@/modules/shared/public";
-import { parseCreateSchoolTargetRequest } from "./route-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -59,27 +55,16 @@ export async function POST(
   request: Request,
   context: { readonly params: Promise<{ readonly caseId: string }> },
 ): Promise<Response> {
-  return handleApiRequest(request, async (requestContext) => {
-    try {
-      const { caseId } = await context.params;
-      if (!UUID.test(caseId)) throw createApiError("INVALID_REQUEST");
-      const parsed = await parseCreateSchoolTargetRequest(request, requestContext.requestId);
-      const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-      if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: true,
-      });
-      const item = await getSchoolTargetRuntime().service.createSchoolTarget({
-        actor,
-        caseId,
-        schoolId: parsed.schoolId,
-        command: parsed.command,
-      });
-      return { case_id: caseId, item: toApiItem(item) };
-    } catch (error) {
-      throw mapSchoolTargetError(error);
+  return handleApiRequest(request, async () => {
+    const actor = await requireIdentityActor();
+    if (!evaluateBootstrapAuthorization(actor.role, {
+      capability: "cases.workflow.manage",
+    }).allowed) {
+      throw createApiError("FORBIDDEN");
     }
+    const { caseId } = await context.params;
+    if (!UUID.test(caseId)) throw createApiError("VALIDATION_FAILED");
+    throw createApiError("CONFLICT");
   });
 }
 

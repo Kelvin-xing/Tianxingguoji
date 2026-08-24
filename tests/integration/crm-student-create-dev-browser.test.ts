@@ -720,7 +720,7 @@ test("CRM-01 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 35);
+    assert.equal(baseline.generated_files, 36);
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
     assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
@@ -1411,7 +1411,7 @@ test("CRM-02 works through the real local browser and disposable PostgreSQL 17",
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 35);
+    assert.equal(baseline.generated_files, 36);
     baselineGeneratedFiles = baseline.generated_files;
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
@@ -2143,7 +2143,7 @@ test("CRM-03 maintains Student and Guardian profiles through a real local browse
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 35);
+    assert.equal(baseline.generated_files, 36);
     baselineGeneratedFiles = baseline.generated_files;
     const seed = await seedNeonTestRelease1(target, "apply");
     assert.equal(seed.status, "pass");
@@ -2836,34 +2836,32 @@ async function createAdvisorAssignment(page: Page, input: {
       };
       jsonParseable = true;
       const data = payload.data;
-      const candidate = data?.case;
-      if (data && Object.keys(data).length === 1 && candidate &&
-          typeof candidate === "object" && !Array.isArray(candidate)) {
-        const record = candidate as Readonly<Record<string, unknown>>;
-        const keys = Object.keys(record).sort();
-        const expectedKeys = [
-          "admissionType",
-          "assessmentId",
-          "caseNumber",
-          "id",
-          "intakeYear",
-          "manifestId",
-          "recordVersion",
-          "stage",
-          "studentId",
-        ];
-        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        exactCaseDto = keys.length === expectedKeys.length &&
-          keys.every((key, index) => key === expectedKeys[index]) &&
-          typeof record.id === "string" && uuid.test(record.id) &&
-          typeof record.assessmentId === "string" && uuid.test(record.assessmentId) &&
-          typeof record.caseNumber === "string" && record.caseNumber.trim().length > 0 &&
-          record.studentId === value.studentId &&
-          record.intakeYear === value.intakeYear &&
-          record.admissionType === value.admissionType &&
-          record.stage === "signed" &&
-          record.manifestId === value.manifestId &&
-          record.recordVersion === 1;
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (data && Object.keys(data).length === 2 &&
+          typeof data.id === "string" && uuid.test(data.id) && data.record_version === 2) {
+        const authorityResponse = await fetch(`/api/v1/cases/${data.id}`, { credentials: "same-origin" });
+        const authorityPayload = await authorityResponse.json() as { readonly data?: Readonly<Record<string, unknown>> };
+        const authorityData = authorityPayload.data;
+        const candidate = authorityData?.case;
+        if (authorityResponse.status === 200 && authorityData && Object.keys(authorityData).length === 1 &&
+            candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+          const record = candidate as Readonly<Record<string, unknown>>;
+          const keys = Object.keys(record).sort();
+          const expectedKeys = [
+            "admissionType", "assessmentId", "assessmentStatus", "availableWorkflowActions",
+            "caseNumber", "id", "intakeYear", "manifestId", "primaryBindingLabel",
+            "primaryRole", "primaryUserId", "recordVersion", "stage", "studentId",
+            "studentName", "updatedAt", "workflowStatus",
+          ];
+          exactCaseDto = keys.length === expectedKeys.length &&
+            keys.every((key, index) => key === expectedKeys[index]) &&
+            record.id === data.id && typeof record.assessmentId === "string" && uuid.test(record.assessmentId) &&
+            typeof record.caseNumber === "string" && record.caseNumber.trim().length > 0 &&
+            record.studentId === value.studentId && record.intakeYear === value.intakeYear &&
+            record.admissionType === value.admissionType && record.stage === "background_collection" &&
+            record.workflowStatus === "active" && record.manifestId === value.manifestId &&
+            record.recordVersion === data.record_version;
+        }
       }
     } catch {}
     return {

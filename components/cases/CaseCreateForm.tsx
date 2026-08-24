@@ -10,6 +10,7 @@ import {
   CaseCreateIdempotencyAttempt,
   classifyCaseRequestFailure,
   createExistingStudentCase,
+  getCase,
   listCaseWorkspaceOptions,
   type CaseAdmissionType,
   type CaseWorkspaceOptions,
@@ -85,7 +86,7 @@ export function CaseCreateForm({ preselectedStudentId }: { readonly preselectedS
     setValidationMessage('')
     if (!options) return setValidationMessage('案件選項尚未載入，請稍後再試。')
     if (step === 1 && !student) return setValidationMessage('請先選擇一名學生。')
-    if (step === 2 && (!validIntakeYear(intakeYear) || !primaryBinding)) return setValidationMessage('請輸入有效的入學年度並選擇主要負責人。')
+    if (step === 2 && (!validIntakeYear(intakeYear) || !primaryBinding)) return setValidationMessage('請輸入有效的入學年度並選擇主要顧問。')
     if (step === 3 && !manifest) return setValidationMessage('目前沒有可用的評估表版本。')
     setStep((current) => Math.min(current + 1, 4))
   }
@@ -106,16 +107,25 @@ export function CaseCreateForm({ preselectedStudentId }: { readonly preselectedS
     submissionLocked.current = true
     setSubmitState({ kind: 'submitting' })
     try {
-      const created = await createExistingStudentCase({
+      const receipt = await createExistingStudentCase({
         student_id: student.id,
         intake_year: Number(intakeYear),
         admission_type: admissionType,
         primary_role_binding_id: primaryBinding.id,
         manifest_id: manifest.id,
       }, attempt.current.keyForSubmission())
+      const authoritative = await getCase(receipt.id)
+      if (
+        authoritative.id !== receipt.id ||
+        authoritative.recordVersion !== receipt.record_version ||
+        authoritative.stage !== 'background_collection' ||
+        authoritative.workflowStatus !== 'active'
+      ) {
+        throw new TypeError('Authoritative Case does not match the create receipt.')
+      }
       attempt.current.complete()
       setSubmitState({ kind: 'success' })
-      router.push(`/cases/${created.id}`)
+      router.push(`/cases/${authoritative.id}`)
       router.refresh()
     } catch (error: unknown) {
       const failure = classifyCaseRequestFailure(error)
@@ -148,7 +158,7 @@ export function CaseCreateForm({ preselectedStudentId }: { readonly preselectedS
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>建立案件</span></div>
-      <section><div className="eyebrow">K12 案件</div><h2 className="page-title">建立案件</h2><p className="page-subtitle">為已有學生建立案件，並指定入學設定與主要負責人。</p></section>
+      <section><div className="eyebrow">K12 案件</div><h2 className="page-title">建立案件</h2><p className="page-subtitle">為已有學生建立案件，並指定入學設定與主要顧問。</p></section>
 
       <section className="workspace-section" aria-busy={pending}>
         <div className="wizard-steps" aria-label="建立案件步驟">{STEPS.map((item) => { const active = item.id === step; const complete = item.id < step; return <div key={item.id} className={`wizard-step ${active ? 'active' : ''} ${complete ? 'complete' : ''}`} aria-current={active ? 'step' : undefined}><div className="wizard-number">{complete ? <Icon name="check" size={14} /> : item.id}</div><span>{item.label}</span></div> })}</div>
@@ -171,7 +181,7 @@ function StudentStep({ students, studentId, onSelect }: { readonly students: Cas
 }
 
 function IdentityStep({ intakeYear, admissionType, primaryBindingId, primaryBindings, onIntakeYear, onAdmissionType, onPrimaryBinding }: { readonly intakeYear: string; readonly admissionType: CaseAdmissionType; readonly primaryBindingId: string; readonly primaryBindings: CaseWorkspaceOptions['primaryBindings']; readonly onIntakeYear: (value: string) => void; readonly onAdmissionType: (value: CaseAdmissionType) => void; readonly onPrimaryBinding: (value: string) => void }) {
-  return <div className="space-y-5"><div><h3 className="section-title">案件設定</h3><p className="section-detail">確認入學年度、申請類型和主要負責人。</p></div><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Field label="服務類型" id="case-application-type"><div id="case-application-type" className="locked-field"><Icon name="lock" size={14} />K12</div></Field><Field label="入學年度" id="case-intake-year" required><input id="case-intake-year" name="intake_year" type="number" min={2000} max={2200} inputMode="numeric" value={intakeYear} onChange={(event) => onIntakeYear(event.target.value)} required /></Field><Field label="申請類型" id="case-admission-type" required><select id="case-admission-type" name="admission_type" value={admissionType} onChange={(event) => onAdmissionType(event.target.value as CaseAdmissionType)} required><option value="s1_admission">中一入學</option><option value="transfer">插班</option></select></Field></div><Field label="主要負責人" id="case-primary-binding" required><select id="case-primary-binding" name="primary_role_binding_id" value={primaryBindingId} onChange={(event) => onPrimaryBinding(event.target.value)} disabled={primaryBindings.length === 0} required><option value="">選擇主要負責人</option>{primaryBindings.map((binding) => <option key={binding.id} value={binding.id}>{binding.label}</option>)}</select></Field><div className="inline-callout"><Icon name="shield" size={15} /><span>可選項只用於填寫表單；服務端仍會驗證學生、負責人與案件權限。</span></div></div>
+  return <div className="space-y-5"><div><h3 className="section-title">案件設定</h3><p className="section-detail">確認入學年度、申請類型和主要顧問。</p></div><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Field label="服務類型" id="case-application-type"><div id="case-application-type" className="locked-field"><Icon name="lock" size={14} />K12</div></Field><Field label="入學年度" id="case-intake-year" required><input id="case-intake-year" name="intake_year" type="number" min={2000} max={2200} inputMode="numeric" value={intakeYear} onChange={(event) => onIntakeYear(event.target.value)} required /></Field><Field label="申請類型" id="case-admission-type" required><select id="case-admission-type" name="admission_type" value={admissionType} onChange={(event) => onAdmissionType(event.target.value as CaseAdmissionType)} required><option value="s1_admission">中一入學</option><option value="transfer">插班</option></select></Field></div><Field label="主要顧問" id="case-primary-binding" required><select id="case-primary-binding" name="primary_role_binding_id" value={primaryBindingId} onChange={(event) => onPrimaryBinding(event.target.value)} disabled={primaryBindings.length === 0} required><option value="">選擇主要顧問</option>{primaryBindings.map((binding) => <option key={binding.id} value={binding.id}>{binding.label}</option>)}</select></Field><div className="inline-callout"><Icon name="shield" size={15} /><span>可選項只包含目前可指派的顧問；服務端仍會驗證學生、顧問與案件權限。</span></div></div>
 }
 
 function ManifestStep({ manifestId, manifests, onChange }: { readonly manifestId: string; readonly manifests: CaseWorkspaceOptions['manifests']; readonly onChange: (value: string) => void }) {
@@ -179,7 +189,7 @@ function ManifestStep({ manifestId, manifests, onChange }: { readonly manifestId
 }
 
 function ReviewStep({ studentName, intakeYear, admissionType, primaryBindingLabel, manifestLabel }: { readonly studentName?: string; readonly intakeYear: string; readonly admissionType: CaseAdmissionType; readonly primaryBindingLabel?: string; readonly manifestLabel?: string }) {
-  return <div className="space-y-5"><div><h3 className="section-title">檢查並建立</h3><p className="section-detail">請確認以下案件資料。建立後將直接開啟案件詳情。</p></div><div className="review-list"><ReviewLine label="學生" value={studentName ?? '未選擇'} /><ReviewLine label="服務類型" value="K12" /><ReviewLine label="入學年度與申請類型" value={`${intakeYear} · ${admissionType === 's1_admission' ? '中一入學' : '插班'}`} /><ReviewLine label="主要負責人" value={primaryBindingLabel ?? '未選擇'} /><ReviewLine label="評估表版本" value={manifestLabel ?? '未選擇'} /></div></div>
+  return <div className="space-y-5"><div><h3 className="section-title">檢查並建立</h3><p className="section-detail">請確認以下案件資料。建立後將直接開啟案件詳情。</p></div><div className="review-list"><ReviewLine label="學生" value={studentName ?? '未選擇'} /><ReviewLine label="服務類型" value="K12" /><ReviewLine label="入學年度與申請類型" value={`${intakeYear} · ${admissionType === 's1_admission' ? '中一入學' : '插班'}`} /><ReviewLine label="主要顧問" value={primaryBindingLabel ?? '未選擇'} /><ReviewLine label="評估表版本" value={manifestLabel ?? '未選擇'} /></div></div>
 }
 
 function SubmitFeedback({ state }: { readonly state: SubmitState }) {

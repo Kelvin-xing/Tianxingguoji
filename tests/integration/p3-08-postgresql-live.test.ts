@@ -29,7 +29,7 @@ const ids = Object.freeze({
   outbox: "31000000-0000-4000-8000-00000000000c",
 });
 
-test("P3-08 live repository commits one atomic case and replays the exact result", { skip: skipReason }, async () => {
+test("P3-08 retired live repository fails closed without a database mutation", { skip: skipReason }, async () => {
   const admin = new pg.Pool({ connectionString: adminUrl, max: 1 });
   const application = new pg.Pool({ connectionString: applicationUrl, max: 3 });
   try {
@@ -45,9 +45,10 @@ test("P3-08 live repository commits one atomic case and replays the exact result
     const runner = createTenantTransactionRunner(application as unknown as DatabasePool);
     const repository = createProductionCaseCreationRepository(createPostgreSqlAdapter(runner));
     const input = createCaseInput();
-    const first = await repository.createStudentAndK12Case(input);
-    const replay = await repository.createStudentAndK12Case(input);
-    assert.deepEqual(replay, first);
+    await assert.rejects(
+      repository.createStudentAndK12Case(input),
+      /CASE_CREATION_LEGACY_PATH_DISABLED/,
+    );
 
     const counts = await admin.query<{ students: number; cases: number; assessments: number; audits: number; outbox: number; receipts: number }>(`
       SELECT
@@ -58,7 +59,7 @@ test("P3-08 live repository commits one atomic case and replays the exact result
         (SELECT count(*)::int FROM audit_outbox WHERE id=$5) AS outbox,
         (SELECT count(*)::int FROM shared_idempotency_records WHERE result_reference=$2::text AND state='completed') AS receipts`,
       [ids.student, ids.serviceCase, ids.assessment, ids.audit, ids.outbox]);
-    assert.deepEqual(counts.rows[0], { students: 1, cases: 1, assessments: 1, audits: 1, outbox: 1, receipts: 1 });
+    assert.deepEqual(counts.rows[0], { students: 0, cases: 0, assessments: 0, audits: 0, outbox: 0, receipts: 0 });
   } finally {
     await application.end();
     await admin.end();

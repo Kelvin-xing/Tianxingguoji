@@ -1,6 +1,6 @@
 import {
-  AssessmentServiceError,
-  CaseRuntimeUnavailable,
+  isAssessmentServiceError,
+  isCaseRuntimeUnavailable,
 } from "@/modules/cases/server";
 import {
   ApiContractError,
@@ -24,8 +24,8 @@ export function requireAssessmentIdempotencyKey(request: Request): string {
 
 export function mapAssessmentError(error: unknown): ApiContractError | unknown {
   if (error instanceof ApiContractError) return error;
-  if (error instanceof CaseRuntimeUnavailable) return createApiError("SERVICE_UNAVAILABLE");
-  if (!(error instanceof AssessmentServiceError)) return error;
+  if (isCaseRuntimeUnavailable(error)) return createApiError("SERVICE_UNAVAILABLE");
+  if (!isAssessmentServiceError(error)) return error;
 
   switch (error.code) {
     case "ASSESSMENT_ANSWER_INVALID":
@@ -37,7 +37,6 @@ export function mapAssessmentError(error: unknown): ApiContractError | unknown {
       return createApiError("STALE_VERSION", {
         details: {
           current_version: error.currentRecordVersion ?? 0,
-          ...(error.diffToken ? { diff_token: error.diffToken } : {}),
         },
       });
     case "ASSESSMENT_ANSWER_IDEMPOTENCY_KEY_REUSED":

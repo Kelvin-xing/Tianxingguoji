@@ -115,7 +115,7 @@ test("DOC-01 works through PostgreSQL 17 and the real local Next Dev HTTP API", 
       dependencies: baselineDependencies(target),
     });
     assert.equal(baseline.status, "pass");
-    assert.equal(baseline.generated_files, 35);
+    assert.equal(baseline.generated_files, 36);
     assertDatabaseContract(await inspectBaselineWithNewClient(target), target, manifestSha256);
     assert.equal((await seedNeonTestRelease1(target, "apply")).status, "pass");
 
@@ -143,7 +143,7 @@ test("DOC-01 works through PostgreSQL 17 and the real local Next Dev HTTP API", 
 
     stage = "founder_case";
     const founderCaseId = await createCase(baseUrl, cookies.get("founder")!,
-      NEON_TEST_STUDENTS[0]!.id, FOUNDER.roleBindingId, 2051, "doc01-founder-case");
+      NEON_TEST_STUDENTS[0]!.id, ADVISOR.roleBindingId, 2051, "doc01-founder-case");
     stage = "advisor_case";
     const advisorCaseId = await createCase(baseUrl, cookies.get("advisor")!,
       NEON_TEST_STUDENTS[1]!.id, ADVISOR.roleBindingId, 2052, "doc01-advisor-case");
@@ -293,7 +293,7 @@ test("DOC-01 works through PostgreSQL 17 and the real local Next Dev HTTP API", 
       applicationPassword, ...passwords.values(), ...NEON_TEST_PRINCIPALS.map((value) => value.email),
       founderName, advisorName, "postgresql://", "tx_session=",
     ]);
-    evidence.baseline = { source_migrations: 34, generated_files: 35, postgres_version: 17 };
+    evidence.baseline = { source_migrations: 35, generated_files: 36, postgres_version: 17 };
     evidence.http = {
       founder_create_read: 201,
       advisor_create_read: 201,
@@ -351,9 +351,17 @@ async function createCase(baseUrl: string, cookie: string, studentId: string,
   });
   assert.equal(result.response.status, 200);
   const data = requiredRecord(result.body.data);
-  const created = requiredRecord(data.case);
-  const id = requiredString(created.id);
+  assert.deepEqual(Object.keys(data).sort(), ["id", "record_version"]);
+  const id = requiredString(data.id);
+  assert.equal(data.record_version, 2);
+  const authority = await getJson(baseUrl, `/api/v1/cases/${id}`, cookie);
+  assert.equal(authority.response.status, 200);
+  const created = requiredRecord(requiredRecord(authority.body.data).case);
+  assert.equal(created.id, id);
   assert.equal(created.studentId, studentId);
+  assert.equal(created.stage, "background_collection");
+  assert.equal(created.workflowStatus, "active");
+  assert.equal(created.recordVersion, 2);
   return id;
 }
 
@@ -550,12 +558,19 @@ async function assertRepositoryTenantScope(
 
 async function insertClosedFixture(target: OneRoleBaselineTarget): Promise<void> {
   await tenantQuery(target, NEON_TEST_ORGANIZATION.id, FOUNDER.userId, async (client) => {
+    await client.query("ALTER TABLE cases_service_cases DISABLE TRIGGER USER");
     await client.query(`INSERT INTO cases_service_cases
       (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
-       primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage)
-      VALUES ($1,$2,$3,'DOC01-CLOSED','k12',2053,'transfer',$4,$5,$6,'founder','closed')`,
+       primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
+       workflow_status,record_version)
+      VALUES ($1,$2,$3,'DOC01-CLOSED','k12',2053,'transfer',$4,$5,$6,'advisor','closed',
+        'closed',1)`,
     [CLOSED_CASE_ID, NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[0]!.id,
-      FOUNDER.roleBindingId, FOUNDER.membershipId, FOUNDER.userId]);
+      ADVISOR.roleBindingId, ADVISOR.membershipId, ADVISOR.userId]);
+    await client.query("ALTER TABLE cases_service_cases ENABLE TRIGGER USER");
+    const triggerState = await client.query<{ all_enabled: boolean }>(`SELECT bool_and(tgenabled = 'O') AS all_enabled
+      FROM pg_trigger WHERE tgrelid = 'cases_service_cases'::regclass AND NOT tgisinternal`);
+    assert.equal(triggerState.rows[0]?.all_enabled, true);
     await client.query(`INSERT INTO documents_documents
       (id,organization_id,owner_kind,service_case_id,display_name,classification,lifecycle_state,legal_hold)
       VALUES ($1,$2,'case',$3,'Synthetic Closed Evidence','operational_attachment','active',false)`,

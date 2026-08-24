@@ -406,7 +406,7 @@ test('CRM-06 ReferralSource management and Case assignment work through a real l
     stage = 'baseline_seed'
     const build = await verifyCommittedOneRoleBaseline()
     evidence.baseline_generated_files = build.files.length
-    assert.equal(evidence.baseline_generated_files, 35)
+    assert.equal(evidence.baseline_generated_files, 36)
     const baseline = await executeOneRoleBaselineRun({ mode: 'apply', target, build, dependencies: baselineDependencies(target) })
     assert.equal(baseline.status, 'pass')
     assert.equal(baseline.baseline_id, ONE_ROLE_BASELINE_ID)
@@ -633,7 +633,7 @@ test('CRM-06 ReferralSource management and Case assignment work through a real l
     assert.equal(evidence.source_inactivated, true)
 
     stage = 'case_fixture_first_submit'
-    const founderFixture = await createCaseFixture(page, FOUNDER.roleBindingId, 2037)
+    const founderFixture = await createCaseFixture(page, ADVISOR.roleBindingId, 2037)
     evidence.case_fixture_first = founderFixture.evidence
     assert.equal(founderFixture.evidence.request_started, true)
     assert.equal(founderFixture.evidence.response_received, true)
@@ -1285,32 +1285,51 @@ async function createCaseFixture(
       }
       const dataRecord = data as Record<string, unknown>
       if (
-        Object.keys(dataRecord).length !== 1 ||
-        !Object.hasOwn(dataRecord, 'case') ||
-        typeof dataRecord.case !== 'object' ||
-        dataRecord.case === null ||
-        Array.isArray(dataRecord.case)
+        Object.keys(dataRecord).length !== 2 ||
+        !Object.hasOwn(dataRecord, 'id') ||
+        !Object.hasOwn(dataRecord, 'record_version')
       ) {
         return { case: null, evidence }
       }
-      const record = dataRecord.case as Record<string, unknown>
-      const exactKeys = [
-        'id', 'caseNumber', 'studentId', 'assessmentId', 'intakeYear',
-        'admissionType', 'stage', 'manifestId', 'recordVersion',
-      ] as const
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      if (typeof dataRecord.id !== 'string' || !uuid.test(dataRecord.id) || dataRecord.record_version !== 2) {
+        return { case: null, evidence }
+      }
+      const caseId = dataRecord.id
+      const authorityResponse = await fetch(`/api/v1/cases/${caseId}`)
+      const authorityEnvelope = await authorityResponse.json() as unknown
+      if (authorityResponse.status !== 200 || typeof authorityEnvelope !== 'object' || authorityEnvelope === null || Array.isArray(authorityEnvelope)) {
+        return { case: null, evidence }
+      }
+      const authorityRoot = authorityEnvelope as Record<string, unknown>
+      const authorityData = authorityRoot.data
+      if (typeof authorityData !== 'object' || authorityData === null || Array.isArray(authorityData)) {
+        return { case: null, evidence }
+      }
+      const authorityDataRecord = authorityData as Record<string, unknown>
+      if (Object.keys(authorityDataRecord).length !== 1 || typeof authorityDataRecord.case !== 'object' ||
+          authorityDataRecord.case === null || Array.isArray(authorityDataRecord.case)) {
+        return { case: null, evidence }
+      }
+      const record = authorityDataRecord.case as Record<string, unknown>
+      const exactKeys = [
+        'id', 'caseNumber', 'studentId', 'studentName', 'intakeYear', 'admissionType',
+        'stage', 'workflowStatus', 'recordVersion', 'availableWorkflowActions', 'updatedAt',
+        'primaryRole', 'assessmentId', 'assessmentStatus', 'manifestId',
+        'primaryBindingLabel', 'primaryUserId',
+      ] as const
       evidence.exact_case_success_dto =
         Object.keys(record).length === exactKeys.length &&
         exactKeys.every((key) => Object.hasOwn(record, key)) &&
-        typeof record.id === 'string' && uuid.test(record.id) &&
+        record.id === caseId &&
         typeof record.caseNumber === 'string' && record.caseNumber.trim() !== '' &&
         record.studentId === student &&
         typeof record.assessmentId === 'string' && uuid.test(record.assessmentId) &&
         record.intakeYear === year && record.admissionType === 'transfer' &&
-        record.stage === 'signed' && record.manifestId === manifest &&
-        record.recordVersion === 1
+        record.stage === 'background_collection' && record.workflowStatus === 'active' &&
+        record.manifestId === manifest && record.recordVersion === dataRecord.record_version
       return {
-        case: evidence.exact_case_success_dto ? { id: record.id as string } : null,
+        case: evidence.exact_case_success_dto ? { id: caseId } : null,
         evidence,
       }
     } catch {

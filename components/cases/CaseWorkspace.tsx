@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AssessmentEditor } from "@/components/cases/AssessmentEditor";
 import { Icon, type IconName } from "@/components/workspace/Icon";
@@ -31,30 +31,30 @@ export function CaseWorkspace({ projection }: { readonly projection: CaseWorkspa
   const visibleTabs = projection.tabs.filter((tab) => tab.visible);
   const panelHeadingRef = useRef<HTMLHeadingElement>(null);
   const conflictHeadingRef = useRef<HTMLHeadingElement>(null);
-  const [conflict, setConflict] = useState(projection.conflict);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [dismissedConflict, setDismissedConflict] = useState<typeof projection.conflict>(null);
+  const [noticeState, setNoticeState] = useState<Readonly<{
+    activeTab: CaseWorkspaceTab;
+    message: string;
+  }> | null>(null);
+  const conflict = projection.conflict === dismissedConflict ? null : projection.conflict;
+  const notice = noticeState?.activeTab === projection.activeTab ? noticeState.message : null;
 
-  function focusActivePanel() {
+  const focusActivePanel = useCallback(() => {
     const target = projection.activeTab === "assessment"
       ? document.getElementById("assessment-editor-title")
       : panelHeadingRef.current;
     if (target instanceof HTMLElement) target.focus();
-  }
+  }, [projection.activeTab]);
 
-  function dismissConflict(message?: string) {
-    setConflict(null);
-    if (message) setNotice(message);
+  const dismissConflict = useCallback((message?: string) => {
+    setDismissedConflict(conflict);
+    if (message) setNoticeState({ activeTab: projection.activeTab, message });
     requestAnimationFrame(focusActivePanel);
-  }
-
-  useEffect(() => {
-    setConflict(projection.conflict);
-    setNotice(null);
-  }, [projection.activeTab, projection.conflict]);
+  }, [conflict, focusActivePanel, projection.activeTab]);
 
   useEffect(() => {
     focusActivePanel();
-  }, [projection.activeTab]);
+  }, [focusActivePanel]);
 
   useEffect(() => {
     if (!conflict) return;
@@ -67,7 +67,7 @@ export function CaseWorkspace({ projection }: { readonly projection: CaseWorkspa
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [conflict]);
+  }, [conflict, dismissConflict]);
 
   return (
     <div className={styles.workspace} data-testid="case-workspace">
@@ -209,7 +209,7 @@ function WorkspacePanel({
     return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><SurfaceState icon="x" title={panel.title} detail={panel.detail} requestReference={panel.requestReference} retryHref={panel.retryHref} headingRef={headingRef} /></section>;
   }
   if (panel.data.tab === "assessment" && panel.data.editor) {
-    return <div id="case-workspace-panel" role="tabpanel"><AssessmentEditor endpoint={panel.data.editor.endpoint} initialView={panel.data.editor.initialView} /></div>;
+    return <div id="case-workspace-panel" role="tabpanel"><AssessmentEditor caseId={panel.data.editor.caseId} caseStage={panel.data.editor.caseStage} /></div>;
   }
   return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><ReadyPanel data={panel.data} headingRef={headingRef} /></section>;
 }

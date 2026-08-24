@@ -36,32 +36,29 @@ test("production repository fails closed with typed 503 without PostgreSQL adapt
   );
 });
 
-test("case creation preserves request-time authz and cross-CRM/Case atomic ordering", async () => {
+test("retired production Case writer fails closed before opening a transaction", async () => {
   const database = new RecordingAdapter();
   const repository = createProductionCaseCreationRepository(database);
-  const result = await repository.createStudentAndK12Case(createInput());
-
-  assert.equal(database.transactions, 1);
-  assert.deepEqual(database.contexts, [{ organizationId: ids.organization, actorUserId: ids.actor }]);
-  assert.equal(result.serviceCaseId, ids.serviceCase);
-  const sql = database.statements.map((statement) => statement.replace(/\s+/g, " ").trim());
-  assert.match(sql[0], /INSERT INTO shared_idempotency_records.*'in_progress'.*ON CONFLICT/s);
-  assert.match(sql[2], /identity_user_is_active.*access_organization_is_active.*FOR UPDATE OF rb, m/s);
-  assert.match(sql[3], /cases_manifest_is_approved/);
-  assert.deepEqual(
-    sql.slice(4, 9).map((statement) => statement.match(/(?:INSERT INTO) ([a-z_]+)/)?.[1]),
-    ["crm_students", "cases_service_cases", "cases_assessments", "audit_events", "audit_outbox"],
+  await assert.rejects(
+    repository.createStudentAndK12Case(createInput()),
+    /CASE_CREATION_LEGACY_PATH_DISABLED/,
   );
-  assert.match(sql[9], /UPDATE shared_idempotency_records.*record_version = record_version \+ 1/s);
+
+  assert.equal(database.transactions, 0);
+  assert.deepEqual(database.contexts, []);
+  assert.deepEqual(database.statements, []);
 });
 
-test("adapter receives one failed transaction when a cross-module write fails", async () => {
+test("retired production Case writer never reaches an injected database failure", async () => {
   const database = new RecordingAdapter("cases_service_cases");
   const repository = createProductionCaseCreationRepository(database);
-  await assert.rejects(repository.createStudentAndK12Case(createInput()), /injected failure/);
-  assert.equal(database.transactions, 1);
-  assert.equal(database.failedTransactions, 1);
-  assert.equal(database.statements.some((statement) => statement.includes("cases_assessments")), false);
+  await assert.rejects(
+    repository.createStudentAndK12Case(createInput()),
+    /CASE_CREATION_LEGACY_PATH_DISABLED/,
+  );
+  assert.equal(database.transactions, 0);
+  assert.equal(database.failedTransactions, 0);
+  assert.deepEqual(database.statements, []);
 });
 
 class RecordingAdapter implements PostgreSqlAdapter, PostgreSqlTransaction {

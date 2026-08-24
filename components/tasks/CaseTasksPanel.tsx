@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Icon } from "@/components/workspace/Icon";
+import { useCaseWorkflowContext } from "@/components/cases/CaseWorkflowContext";
 import { getWorkspaceAccessSnapshot } from "@/modules/access/client";
 import {
   TaskIdempotencyAttempt,
@@ -21,6 +22,7 @@ type OptionsState = "idle" | "loading" | "ready" | "unavailable";
 type Notice = "success" | "validation" | "conflict" | "denied" | "unavailable" | null;
 
 export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
+  const { workflowStatus } = useCaseWorkflowContext();
   const mounted = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const submitting = useRef(false);
@@ -60,7 +62,8 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
       }
       if (taskResult.audience !== "case_workspace") throw new TypeError("Invalid Case task audience.");
       setTasks(taskResult.tasks);
-      const createAllowed = access.capabilities.some((capability) => String(capability) === "tasks.create");
+      const createAllowed = workflowStatus === "active" &&
+        access.capabilities.some((capability) => String(capability) === "tasks.create");
       setCanCreate(createAllowed);
       setState("ready");
       if (createAllowed) {
@@ -86,7 +89,7 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
     } finally {
       if (controller.current === nextController) controller.current = null;
     }
-  }, [caseId]);
+  }, [caseId, workflowStatus]);
 
   useEffect(() => {
     mounted.current = true;
@@ -176,6 +179,10 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
           </form>
           <CreateNotice notice={notice} />
         </div>
+      ) : null}
+
+      {state === "ready" && workflowStatus === "paused" ? (
+        <div className="inline-callout" role="status"><Icon name="shield" size={15} /><span>案件暫停期間不能建立臨時任務；現有任務仍可查看。</span></div>
       ) : null}
 
       {state === "ready" && tasks.length === 0 ? <TaskPageState title="本案目前沒有任務" detail="建立後的任務會顯示在這裡。" /> : null}

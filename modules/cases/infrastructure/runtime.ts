@@ -3,11 +3,13 @@ import "server-only";
 import { AssessmentService } from "../application/assessment-service.ts";
 import type { CaseService } from "../application/service.ts";
 import { CaseWorkspaceService } from "../application/workspace-service.ts";
+import { CaseWorkflowService } from "../application/workflow-service.ts";
 import { CaseReferralSourceAssignmentService } from "../application/referral-source-assignment-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlCaseWorkspaceRepository } from "./postgresql-workspace-repository.ts";
+import { PostgresqlCaseWorkflowRepository } from "./postgresql-workflow-repository.ts";
 import { PostgresqlAssessmentRepository } from "./postgresql-assessment-repository.ts";
 import { PostgresqlCaseReferralSourceAssignmentRepository } from "./postgresql-referral-source-assignment-repository.ts";
 
@@ -64,6 +66,7 @@ export function getCaseRuntime(): CaseRuntime {
 export interface CaseWorkspaceRuntime {
   readonly service: CaseWorkspaceService;
   readonly assessmentService: AssessmentService;
+  readonly workflowService: CaseWorkflowService;
 }
 
 const globalForCaseWorkspace = globalThis as typeof globalThis & {
@@ -84,6 +87,7 @@ export function getCaseWorkspaceRuntime(): CaseWorkspaceRuntime {
       assessmentService: new AssessmentService({
         repository: new PostgresqlAssessmentRepository(adapter),
       }),
+      workflowService: new CaseWorkflowService(new PostgresqlCaseWorkflowRepository(adapter)),
     });
     runtimes.set(mode, runtime);
   }

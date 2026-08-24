@@ -134,7 +134,7 @@ test("DOC-02 permanent browser gate owns real dependencies without committing a 
   assert.match(browser, /const ORGANIZATION_ID = NEON_TEST_ORGANIZATION\.id/);
   assert.match(browser, /LOCAL_SYNTHETIC_DOCUMENT_WORKER_CONTEXT_ID: WORKER_CONTEXT_ID/);
   assert.match(browser, /waitForProcessLog\(worker, WORKER_READY_MARKER, "document_worker"\)/);
-  assert.match(browser, /assert\.equal\(build\.files\.length, 35\)/);
+  assert.match(browser, /assert\.equal\(build\.files\.length, 36\)/);
   for (const evidence of [
     "validation_zero_post", "uncertain_retry_same_key", "changed_file_rotates_key",
     "synchronous_double_post_count", "version_changed_post_request_started",

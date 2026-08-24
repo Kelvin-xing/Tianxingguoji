@@ -90,6 +90,17 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
   ): Promise<AssessmentSnapshot> {
     this.assertCase(input);
     this.assertReadable(input);
+    const key = accessKey({
+      organizationId: input.organizationId,
+      caseId: input.caseId,
+      userId: input.actorUserId,
+    });
+    const primary = this.primaryAdvisorKeys.has(key);
+    const collaboratorCanEdit = this.educationProfileEditorKeys.has(key);
+    const fullRead = primary || input.actorRole === "founder" || input.actorRole === "admin";
+    const educationFieldIds = this.manifest.fields
+      .filter((field) => field.fieldId.startsWith("education_profile."))
+      .map((field) => field.fieldId);
     return Object.freeze({
       assessmentId: this.assessmentId,
       manifestId: this.manifestId,
@@ -98,6 +109,15 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
       manifestStatus: "approved",
       manifest: this.manifest,
       answers: Object.freeze([...this.answersByField.values()]),
+      access: Object.freeze({
+        mode: fullRead ? "full" as const : "education_profile" as const,
+        canEdit: primary || collaboratorCanEdit,
+        editableFieldIds: Object.freeze(
+          primary ? this.manifest.fields.map((field) => field.fieldId) :
+            collaboratorCanEdit ? educationFieldIds : [],
+        ),
+        canCompleteBackground: primary,
+      }),
     });
   }
 
@@ -124,16 +144,11 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
     if (currentVersion !== input.expectedRecordVersion) {
       throw new AssessmentServiceError("ASSESSMENT_ANSWER_STALE_VERSION", {
         currentRecordVersion: currentVersion,
-        diffToken: `assessment-${this.assessmentId}-${currentVersion}`,
       });
     }
 
     const result: UpdateAssessmentAnswerResult = Object.freeze({
-      assessmentId: this.assessmentId,
-      fieldId: input.field.fieldId,
-      semanticState: input.semanticState,
-      value: input.value,
-      valueType: input.valueType,
+      id: this.assessmentId,
       recordVersion: currentVersion + 1,
     });
     const nextAnswers = new Map(this.answersByField);
@@ -194,7 +209,7 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
       });
     }
     const missingFieldIds = input.requiredBlockingFieldIds.filter(
-      (fieldId) => !this.answersByField.has(fieldId),
+      (fieldId) => this.answersByField.get(fieldId)?.semanticState !== "provided",
     );
     if (missingFieldIds.length > 0) {
       throw new AssessmentServiceError("ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE", {
@@ -203,15 +218,14 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
     }
 
     const result = Object.freeze({
-      assessmentId: this.assessmentId,
-      status: "background_complete" as const,
+      id: this.assessmentId,
       recordVersion: this.recordVersion + 1,
     });
     if (this.failNextCommit) {
       this.failNextCommit = false;
       throw new Error("synthetic transaction failure");
     }
-    this.status = result.status;
+    this.status = "background_complete";
     this.recordVersion = result.recordVersion;
     this.auditIds.add(input.effects.audit.id);
     this.outboxIds.add(input.effects.outbox.id);
@@ -228,13 +242,14 @@ export class InMemoryAssessmentRepository implements AssessmentRepository {
     }
   }
 
-  private assertReadable(input: { readonly organizationId: string; readonly caseId: string; readonly actorUserId: string }): void {
+  private assertReadable(input: { readonly organizationId: string; readonly caseId: string; readonly actorUserId: string; readonly actorRole: string }): void {
     const key = accessKey({
       organizationId: input.organizationId,
       caseId: input.caseId,
       userId: input.actorUserId,
     });
-    if (!this.primaryAdvisorKeys.has(key) && !this.educationProfileReaderKeys.has(key)) {
+    if (input.actorRole !== "founder" && input.actorRole !== "admin" &&
+        !this.primaryAdvisorKeys.has(key) && !this.educationProfileReaderKeys.has(key)) {
       throw new AssessmentServiceError("ASSESSMENT_READ_FORBIDDEN");
     }
   }

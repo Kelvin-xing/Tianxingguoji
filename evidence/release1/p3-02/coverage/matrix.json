@@ -121,12 +121,12 @@
     },
     {
       "id": "authz.founder.case_close",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "allowed",
-      "observed": "allowed",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-04/05",
+      "reason": "Termination and closure remain reserved after CASE-FLOW-01."
     },
     {
       "id": "authz.grant_expired",
@@ -157,120 +157,120 @@
     },
     {
       "id": "case.advance.01",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "background_collection",
-      "observed": "background_collection",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.advance.02",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "school_selection_confirmed",
-      "observed": "school_selection_confirmed",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.advance.03",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "interview_preparation",
-      "observed": "interview_preparation",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.advance.04",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "application_submitted",
-      "observed": "application_submitted",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.advance.05",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "awaiting_result",
-      "observed": "awaiting_result",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.advance.06",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "offer_confirmed",
-      "observed": "offer_confirmed",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.cancel",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "cancelled",
-      "observed": "cancelled",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.cancel_after_submission",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_CANCEL_AFTER_SUBMISSION_DENIED",
-      "observed": "CASE_CANCEL_AFTER_SUBMISSION_DENIED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.cancel_missing_reason",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_REASON_REQUIRED",
-      "observed": "CASE_REASON_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.cancel_wrong_actor",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_FOUNDER_REQUIRED",
-      "observed": "CASE_FOUNDER_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "case.close",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "closed",
-      "observed": "closed",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-04/05",
+      "reason": "Termination and closure remain reserved after CASE-FLOW-01."
     },
     {
       "id": "case.close_with_open_target",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_TARGET_OUTCOMES_REQUIRED",
-      "observed": "CASE_TARGET_OUTCOMES_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-04/05",
+      "reason": "Termination and closure remain reserved after CASE-FLOW-01."
     },
     {
       "id": "case.close_with_open_task",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_OPEN_TASKS_BLOCK_CLOSE",
-      "observed": "CASE_OPEN_TASKS_BLOCK_CLOSE",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-04/05",
+      "reason": "Termination and closure remain reserved after CASE-FLOW-01."
     },
     {
       "id": "case.pause",
@@ -292,12 +292,12 @@
     },
     {
       "id": "case.pause_wrong_actor",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_PRIMARY_ADVISOR_REQUIRED",
-      "observed": "CASE_PRIMARY_ADVISOR_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-01",
+      "reason": "The CASE-FLOW-01 pause/resume authority and resume-null-reason contract supersede this vector."
     },
     {
       "id": "case.resume",
@@ -310,21 +310,21 @@
     },
     {
       "id": "case.resume_missing_reason",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_REASON_REQUIRED",
-      "observed": "CASE_REASON_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-01",
+      "reason": "The CASE-FLOW-01 pause/resume authority and resume-null-reason contract supersede this vector."
     },
     {
       "id": "case.resume_wrong_actor",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_FOUNDER_REQUIRED",
-      "observed": "CASE_FOUNDER_REQUIRED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-01",
+      "reason": "The CASE-FLOW-01 pause/resume authority and resume-null-reason contract supersede this vector."
     },
     {
       "id": "case.rollback_immediate_prior",
@@ -346,12 +346,12 @@
     },
     {
       "id": "case.skip_stage",
-      "disposition": "executed",
-      "locator": "modules/cases/domain/transition-policy.ts#evaluateCaseTransitionPolicy",
+      "disposition": "deferred",
+      "locator": "absent",
       "expected": "CASE_TRANSITION_NOT_ALLOWED",
-      "observed": "CASE_TRANSITION_NOT_ALLOWED",
-      "owner": null,
-      "reason": null
+      "observed": "not_executed",
+      "owner": "CASE-FLOW-02/05",
+      "reason": "The legacy advance/cancel vector is superseded by the five-stage workflow contract."
     },
     {
       "id": "concurrency.stale_write",

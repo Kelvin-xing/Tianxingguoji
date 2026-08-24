@@ -52,7 +52,11 @@ const STAGES = Object.freeze([
   "runtime_preflight", "postgres_setup", "baseline_seed", "identity_provision",
   "next_dev", "canonical_origin", "chrome_launch", ...LOGIN_STAGES, "founder_entry",
   "client_validation", "idempotency_retry", "founder_create", "list_persistence",
-  "detail_refresh", "relogin_persistence", "conflict", "advisor_entry",
+  "detail_refresh", "workflow_controls", "pause_validation", "pause_retry",
+  "pause_submit", "pause_authoritative_refresh", "pause_feedback",
+  "paused_persistence", "relogin_persistence", "resume_submit",
+  "resume_authoritative_refresh", "resume_feedback", "workflow_stale_seed",
+  "workflow_stale_recovery", "conflict", "advisor_entry",
   "advisor_create", "admin_hidden_entry", "admin_direct_403",
   "desktop_viewport", "mobile_viewport", "browser_log_safety", "cleanup", "complete",
 ] as const);
@@ -66,11 +70,36 @@ interface GateEvidence {
   uncertain_retry_same_key: boolean;
   changed_field_new_key: boolean;
   synchronous_double_post_count: number | null;
+  create_receipt_exact: boolean;
+  create_authoritative_get: boolean;
   founder_created: boolean;
   advisor_created: boolean;
   list_persisted: boolean;
   detail_refreshed: boolean;
   relogin_persisted: boolean;
+  workflow_entry: boolean;
+  founder_assessment_read_only: boolean;
+  founder_assessment_full_15: boolean;
+  advisor_assessment_full_editable_15: boolean;
+  legacy_target_writes_absent: boolean;
+  school_targets_read_only: boolean;
+  paused_task_create_absent: boolean;
+  paused_lists_readable: boolean;
+  pause_validation_zero_post: boolean;
+  pause_retry_same_key: boolean;
+  pause_reason_rotated_key: boolean;
+  pause_double_post_count: number | null;
+  pause_receipt_exact: boolean;
+  pause_authoritative_get: boolean;
+  pause_success_visible: boolean;
+  paused_reload_persisted: boolean;
+  paused_relogin_persisted: boolean;
+  resume_reason_absent: boolean;
+  resume_receipt_exact: boolean;
+  resume_authoritative_get: boolean;
+  resume_success_visible: boolean;
+  workflow_stale_visible: boolean;
+  workflow_stale_recovered: boolean;
   conflict_visible: boolean;
   admin_direct_status: number | null;
   admin_direct_forbidden: boolean;
@@ -127,11 +156,36 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
     uncertain_retry_same_key: false,
     changed_field_new_key: false,
     synchronous_double_post_count: null,
+    create_receipt_exact: false,
+    create_authoritative_get: false,
     founder_created: false,
     advisor_created: false,
     list_persisted: false,
     detail_refreshed: false,
     relogin_persisted: false,
+    workflow_entry: false,
+    founder_assessment_read_only: false,
+    founder_assessment_full_15: false,
+    advisor_assessment_full_editable_15: false,
+    legacy_target_writes_absent: false,
+    school_targets_read_only: false,
+    paused_task_create_absent: false,
+    paused_lists_readable: false,
+    pause_validation_zero_post: false,
+    pause_retry_same_key: false,
+    pause_reason_rotated_key: false,
+    pause_double_post_count: null,
+    pause_receipt_exact: false,
+    pause_authoritative_get: false,
+    pause_success_visible: false,
+    paused_reload_persisted: false,
+    paused_relogin_persisted: false,
+    resume_reason_absent: false,
+    resume_receipt_exact: false,
+    resume_authoritative_get: false,
+    resume_success_visible: false,
+    workflow_stale_visible: false,
+    workflow_stale_recovered: false,
     conflict_visible: false,
     admin_direct_status: null,
     admin_direct_forbidden: false,
@@ -190,6 +244,7 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
 
     stage = "baseline_seed";
     const build = await verifyCommittedOneRoleBaseline();
+    assert.equal(build.files.length, 36);
     const baseline = await executeOneRoleBaselineRun({
       mode: "apply", target, build, dependencies: baselineDependencies(target),
     });
@@ -251,7 +306,7 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
       studentId: NEON_TEST_STUDENTS[0]!.id,
       intakeYear: "2027",
       admissionType: "transfer",
-      bindingId: FOUNDER.roleBindingId,
+      bindingId: ADVISOR.roleBindingId,
     });
 
     stage = "idempotency_retry";
@@ -280,14 +335,27 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
     await page.getByRole("button", { name: "下一步", exact: true }).click();
     await page.getByRole("button", { name: "下一步", exact: true }).click();
     const beforeDouble = postCount;
+    const createResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/cases");
+    const createAuthorityResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" && /^\/api\/v1\/cases\/[0-9a-f-]+$/i.test(new URL(response.url()).pathname));
     await createButton.evaluate((button) => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    const createReceipt = await exactCaseReceipt(await createResponse);
+    const createdAuthority = await exactCaseAuthority(await createAuthorityResponse, createReceipt.id);
     await page.waitForURL((url) => /^\/cases\/[0-9a-f-]+$/i.test(url.pathname));
     const founderCasePath = new URL(page.url()).pathname;
+    const founderCaseId = founderCasePath.split("/").at(-1)!;
     evidence.changed_field_new_key = observedKeys[2] !== "" && observedKeys[2] !== observedKeys[1];
     evidence.synchronous_double_post_count = postCount - beforeDouble;
+    evidence.create_receipt_exact = createReceipt.id === founderCaseId;
+    evidence.create_authoritative_get = createdAuthority.id === createReceipt.id &&
+      createdAuthority.recordVersion === createReceipt.recordVersion &&
+      createdAuthority.stage === "background_collection" && createdAuthority.workflowStatus === "active";
     evidence.founder_created = /^\/cases\/[0-9a-f-]+$/i.test(founderCasePath);
     assert.equal(evidence.changed_field_new_key, true);
     assert.equal(evidence.synchronous_double_post_count, 1);
+    assert.equal(evidence.create_receipt_exact, true);
+    assert.equal(evidence.create_authoritative_get, true);
     assert.equal(evidence.founder_created, true);
     await page.unroute("**/api/v1/cases");
     await page.getByRole("heading", { name: "案件身份", exact: true, level: 3 }).waitFor({ state: "visible" });
@@ -312,13 +380,179 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
     await page.getByRole("heading", { name: "案件身份", exact: true, level: 3 }).waitFor({ state: "visible" });
     evidence.detail_refreshed = true;
 
+    const workflowPath = `/api/v1/cases/${founderCaseId}/workflow-actions`;
+    const caseApiPath = `/api/v1/cases/${founderCaseId}`;
+    const workflowSection = page.locator('section[aria-labelledby="case-workflow-command-title"]');
+
+    stage = "workflow_controls";
+    await workflowSection.getByRole("heading", { name: "案件流程", exact: true, level: 3 }).waitFor({ state: "visible" });
+    const pauseReason = workflowSection.getByRole("textbox", { name: "暫停原因", exact: true });
+    const pauseButton = workflowSection.getByRole("button", { name: "暫停案件", exact: true });
+    await pauseReason.waitFor({ state: "visible" });
+    evidence.workflow_entry = await pauseButton.count() === 1;
+    const assessmentReadOnly = page.getByText(
+      "你目前可以查看評估，但沒有編輯權限。",
+      { exact: true },
+    );
+    await assessmentReadOnly.waitFor({ state: "visible" });
+    const founderAssessment = page.locator('section[aria-labelledby="assessment-editor-title"]');
+    await founderAssessment.getByText(/15 項資料/).waitFor({ state: "visible" });
+    evidence.founder_assessment_read_only = await assessmentReadOnly.count() === 1;
+    evidence.founder_assessment_full_15 =
+      await founderAssessment.getByText(/15 項資料/).count() === 1 &&
+      await founderAssessment.getByRole("button", { name: "儲存", exact: true }).count() === 0;
+    await page.getByRole("heading", { name: "學校目標", exact: true, level: 3 }).waitFor({ state: "visible" });
+    evidence.legacy_target_writes_absent =
+      await page.getByRole("button", { name: "建立候選目標", exact: true }).count() === 0 &&
+      await page.getByRole("button", { name: /推進|回退|結果/ }).count() === 0;
+    evidence.school_targets_read_only =
+      await page.getByText("只讀", { exact: true }).count() >= 1 &&
+      await page.getByText("此處只顯示現有目標；新增與流程變更由已核准的選校流程處理。", { exact: true }).count() === 1;
+    assert.equal(evidence.workflow_entry, true);
+    assert.equal(evidence.founder_assessment_read_only, true);
+    assert.equal(evidence.founder_assessment_full_15, true);
+    assert.equal(evidence.legacy_target_writes_absent, true);
+    assert.equal(evidence.school_targets_read_only, true);
+    assert.equal(await workflowSection.getByRole("button", { name: /推進|回退/ }).count(), 0);
+
+    stage = "pause_validation";
+    let validationWorkflowPosts = 0;
+    const countWorkflowValidation = (request: { method(): string; url(): string }) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === workflowPath) {
+        validationWorkflowPosts += 1;
+      }
+    };
+    page.on("request", countWorkflowValidation);
+    await pauseReason.fill(" ");
+    assert.equal(await pauseButton.isDisabled(), true);
+    await pauseButton.evaluate((button) => (button as HTMLButtonElement).click());
+    page.off("request", countWorkflowValidation);
+    evidence.pause_validation_zero_post = validationWorkflowPosts === 0;
+    assert.equal(evidence.pause_validation_zero_post, true);
+
+    stage = "pause_retry";
+    const workflowKeys: string[] = [];
+    let workflowPostCount = 0;
+    await page.route(`**${workflowPath}`, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      workflowPostCount += 1;
+      workflowKeys.push(route.request().headers()["idempotency-key"] ?? "");
+      if (workflowPostCount <= 2) await route.abort("timedout");
+      else await route.continue();
+    });
+    await pauseReason.fill("等待監護人補充資料");
+    await pauseButton.click();
+    await waitUntil(() => workflowPostCount === 1);
+    await workflowUnavailableAlert(page);
+    await pauseButton.click();
+    await waitUntil(() => workflowPostCount === 2);
+    await workflowUnavailableAlert(page);
+    evidence.pause_retry_same_key = workflowKeys[0] !== "" && workflowKeys[0] === workflowKeys[1];
+    assert.equal(evidence.pause_retry_same_key, true);
+
+    await pauseReason.fill("等待監護人補充更新資料");
+    const beforePauseDouble = workflowPostCount;
+    const pauseResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === workflowPath);
+    const pauseAuthorityResponse = page.waitForResponse((response) => isGetPath(response, caseApiPath));
+    stage = "pause_submit";
+    await pauseButton.evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    const pauseReceipt = await exactCaseReceipt(await pauseResponse, founderCaseId);
+    evidence.pause_receipt_exact = true;
+    const pausedAuthority = await exactCaseAuthority(await pauseAuthorityResponse, founderCaseId);
+    stage = "pause_authoritative_refresh";
+    evidence.pause_authoritative_get = pausedAuthority.recordVersion === pauseReceipt.recordVersion &&
+      pausedAuthority.workflowStatus === "paused" &&
+      pausedAuthority.availableWorkflowActions.length === 1 &&
+      pausedAuthority.availableWorkflowActions[0] === "resume";
+    evidence.pause_reason_rotated_key = workflowKeys[2] !== "" && workflowKeys[2] !== workflowKeys[1];
+    evidence.pause_double_post_count = workflowPostCount - beforePauseDouble;
+    assert.equal(evidence.pause_authoritative_get, true);
+    assert.equal(evidence.pause_reason_rotated_key, true);
+    assert.equal(evidence.pause_double_post_count, 1);
+    await page.unroute(`**${workflowPath}`);
+
+    stage = "pause_feedback";
+    const pauseSuccess = workflowSection.getByRole("status").filter({ hasText: "案件已暫停，內容已重新載入。" });
+    await pauseSuccess.waitFor({ state: "visible" });
+    evidence.pause_success_visible = await pauseSuccess.count() === 1;
+    assert.equal(evidence.pause_success_visible, true);
+
+    stage = "paused_persistence";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await workflowSection.getByRole("button", { name: "恢復案件", exact: true }).waitFor({ state: "visible" });
+    evidence.paused_reload_persisted = await workflowSection.getByText("已暫停", { exact: true }).count() >= 1;
+    await page.getByRole("heading", { name: "案件任務", exact: true, level: 3 }).waitFor({ state: "visible" });
+    await page.getByText("案件暫停期間不能建立臨時任務；現有任務仍可查看。", { exact: true }).waitFor({ state: "visible" });
+    evidence.paused_task_create_absent = await page.getByRole("button", { name: "建立任務", exact: true }).count() === 0;
+    evidence.paused_lists_readable =
+      await page.getByRole("heading", { name: "學校目標", exact: true, level: 3 }).count() === 1 &&
+      await page.getByRole("heading", { name: "案件任務", exact: true, level: 3 }).count() === 1;
+    assert.equal(evidence.paused_reload_persisted, true);
+    assert.equal(evidence.paused_task_create_absent, true);
+    assert.equal(evidence.paused_lists_readable, true);
+
     stage = "relogin_persistence";
     await logout(page);
     await login(page, baseUrl, FOUNDER.email, passwords.get("founder")!, "founder", loginEvidence, (value) => { stage = value; });
     stage = "relogin_persistence";
     await page.goto(`${baseUrl}${founderCasePath}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "案件身份", exact: true, level: 3 }).waitFor({ state: "visible" });
-    evidence.relogin_persisted = true;
+    await workflowSection.getByRole("button", { name: "恢復案件", exact: true }).waitFor({ state: "visible" });
+    evidence.paused_relogin_persisted = await workflowSection.getByText("已暫停", { exact: true }).count() >= 1;
+    evidence.relogin_persisted = evidence.paused_relogin_persisted;
+    assert.equal(evidence.relogin_persisted, true);
+
+    const resumeButton = workflowSection.getByRole("button", { name: "恢復案件", exact: true });
+    evidence.resume_reason_absent = await workflowSection.getByRole("textbox", { name: "恢復原因", exact: true }).count() === 0 &&
+      await workflowSection.getByRole("textbox", { name: "暫停原因", exact: true }).count() === 0;
+    assert.equal(evidence.resume_reason_absent, true);
+    const resumeResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === workflowPath);
+    const resumeAuthorityResponse = page.waitForResponse((response) => isGetPath(response, caseApiPath));
+    stage = "resume_submit";
+    await resumeButton.click();
+    const resumeReceipt = await exactCaseReceipt(await resumeResponse, founderCaseId);
+    evidence.resume_receipt_exact = true;
+    const resumedAuthority = await exactCaseAuthority(await resumeAuthorityResponse, founderCaseId);
+    stage = "resume_authoritative_refresh";
+    evidence.resume_authoritative_get = resumedAuthority.recordVersion === resumeReceipt.recordVersion &&
+      resumedAuthority.workflowStatus === "active" && resumedAuthority.availableWorkflowActions.includes("pause");
+    assert.equal(evidence.resume_authoritative_get, true);
+    stage = "resume_feedback";
+    const resumeSuccess = workflowSection.getByRole("status").filter({ hasText: "案件已恢復，內容已重新載入。" });
+    await resumeSuccess.waitFor({ state: "visible" });
+    evidence.resume_success_visible = await resumeSuccess.count() === 1;
+    assert.equal(evidence.resume_success_visible, true);
+
+    stage = "workflow_stale_seed";
+    const staleSeed = await directWorkflowAction(page, {
+      caseId: founderCaseId,
+      action: "pause",
+      expectedRecordVersion: resumedAuthority.recordVersion,
+      reason: "建立陳舊版本驗收狀態",
+    });
+    assert.equal(staleSeed.status, 200);
+    assert.equal(staleSeed.receiptExact, true);
+    const staleResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === workflowPath);
+    const staleAuthorityResponse = page.waitForResponse((response) => isGetPath(response, caseApiPath));
+    await workflowSection.getByRole("textbox", { name: "暫停原因", exact: true }).fill("提交陳舊版本以重新載入");
+    await workflowSection.getByRole("button", { name: "暫停案件", exact: true }).click();
+    const staleResult = await safeApiError(await staleResponse);
+    const staleAuthority = await exactCaseAuthority(await staleAuthorityResponse, founderCaseId);
+    stage = "workflow_stale_recovery";
+    const staleAlert = workflowSection.getByRole("alert").filter({ hasText: "案件已被其他人更新，已重新載入目前版本。" });
+    await staleAlert.waitFor({ state: "visible" });
+    evidence.workflow_stale_visible = staleResult.status === 409 && staleResult.code === "STALE_VERSION" &&
+      await staleAlert.count() === 1;
+    evidence.workflow_stale_recovered = staleAuthority.workflowStatus === "paused" &&
+      await workflowSection.getByRole("button", { name: "恢復案件", exact: true }).count() === 1;
+    assert.equal(evidence.workflow_stale_visible, true);
+    assert.equal(evidence.workflow_stale_recovered, true);
 
     stage = "conflict";
     await openCreateFormDirect(page, baseUrl);
@@ -326,7 +560,7 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
       studentId: NEON_TEST_STUDENTS[0]!.id,
       intakeYear: "2028",
       admissionType: "transfer",
-      bindingId: FOUNDER.roleBindingId,
+      bindingId: ADVISOR.roleBindingId,
     });
     await page.getByRole("button", { name: "建立案件", exact: true }).click();
     const conflict = page.getByRole("alert").filter({ hasText: "已有相同入學設定的進行中案件" });
@@ -354,6 +588,13 @@ test("CASE-01 works through a real local browser and disposable PostgreSQL 17", 
     await page.getByRole("button", { name: "建立案件", exact: true }).click();
     await page.waitForURL((url) => /^\/cases\/[0-9a-f-]+$/i.test(url.pathname));
     await page.getByRole("heading", { name: "案件身份", exact: true, level: 3 }).waitFor({ state: "visible" });
+    const advisorAssessment = page.locator('section[aria-labelledby="assessment-editor-title"]');
+    await advisorAssessment.getByText(/15 項資料/).waitFor({ state: "visible" });
+    evidence.advisor_assessment_full_editable_15 =
+      await advisorAssessment.getByText(/15 項資料/).count() === 1 &&
+      await advisorAssessment.getByRole("button", { name: "儲存", exact: true }).count() === 15 &&
+      await advisorAssessment.getByRole("button", { name: "完成背景收集", exact: true }).count() === 1;
+    assert.equal(evidence.advisor_assessment_full_editable_15, true);
     evidence.advisor_created = true;
 
     stage = "mobile_viewport";
@@ -496,7 +737,7 @@ async function fillCaseWizard(page: Page, input: {
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("spinbutton", { name: "入學年度", exact: true }).fill(input.intakeYear);
   await page.getByRole("combobox", { name: "申請類型", exact: true }).selectOption(input.admissionType);
-  await page.getByRole("combobox", { name: "主要負責人", exact: true }).selectOption(input.bindingId);
+  await page.getByRole("combobox", { name: "主要顧問", exact: true }).selectOption(input.bindingId);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("combobox", { name: "評估表版本", exact: true }).selectOption(NEON_TEST_MANIFEST_ID);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -505,6 +746,110 @@ async function fillCaseWizard(page: Page, input: {
 
 async function unavailableAlert(page: Page): Promise<void> {
   await page.getByRole("alert").filter({ hasText: "案件服務暫時不可用" }).waitFor({ state: "visible" });
+}
+
+async function workflowUnavailableAlert(page: Page): Promise<void> {
+  await page.getByRole("alert").filter({ hasText: "案件流程服務暫時不可用" }).waitFor({ state: "visible" });
+}
+
+async function exactCaseReceipt(
+  response: { status(): number; json(): Promise<unknown> },
+  expectedId?: string,
+): Promise<Readonly<{ id: string; recordVersion: number }>> {
+  assert.equal(response.status(), 200);
+  const root = safeRecord(await response.json());
+  const data = safeRecord(root.data);
+  assert.deepEqual(Object.keys(data).sort(), ["id", "record_version"]);
+  assert.equal(typeof data.id, "string");
+  assert.match(data.id as string, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  if (expectedId) assert.equal(data.id, expectedId);
+  assert.equal(Number.isSafeInteger(data.record_version) && Number(data.record_version) > 0, true);
+  return Object.freeze({ id: data.id as string, recordVersion: data.record_version as number });
+}
+
+async function exactCaseAuthority(
+  response: { status(): number; json(): Promise<unknown> },
+  expectedId: string,
+): Promise<Readonly<{
+  id: string;
+  stage: string;
+  workflowStatus: string;
+  recordVersion: number;
+  availableWorkflowActions: readonly string[];
+}>> {
+  assert.equal(response.status(), 200);
+  const root = safeRecord(await response.json());
+  const data = safeRecord(root.data);
+  assert.deepEqual(Object.keys(data), ["case"]);
+  const item = safeRecord(data.case);
+  assert.deepEqual(Object.keys(item).sort(), [
+    "admissionType", "assessmentId", "assessmentStatus", "availableWorkflowActions",
+    "caseNumber", "id", "intakeYear", "manifestId", "primaryBindingLabel",
+    "primaryRole", "primaryUserId", "recordVersion", "stage", "studentId",
+    "studentName", "updatedAt", "workflowStatus",
+  ].sort());
+  assert.equal(item.id, expectedId);
+  assert.equal(Number.isSafeInteger(item.recordVersion) && Number(item.recordVersion) > 0, true);
+  assert.equal(["signed", "background_collection", "school_selection_confirmed", "application_in_progress", "closed"].includes(String(item.stage)), true);
+  assert.equal(["active", "paused", "termination_pending", "closed"].includes(String(item.workflowStatus)), true);
+  assert.equal(item.primaryRole, "advisor");
+  assert.equal(Array.isArray(item.availableWorkflowActions), true);
+  const actions = item.availableWorkflowActions as readonly unknown[];
+  assert.equal(actions.every((action) => ["pause", "resume"].includes(String(action))), true);
+  assert.deepEqual(actions, ["pause", "resume"].filter((action) => actions.includes(action)));
+  return Object.freeze({
+    id: item.id as string,
+    stage: item.stage as string,
+    workflowStatus: item.workflowStatus as string,
+    recordVersion: item.recordVersion as number,
+    availableWorkflowActions: Object.freeze(actions.map(String)),
+  });
+}
+
+async function directWorkflowAction(page: Page, input: {
+  readonly caseId: string;
+  readonly action: "pause" | "resume";
+  readonly expectedRecordVersion: number;
+  readonly reason: string | null;
+}): Promise<Readonly<{ status: number; receiptExact: boolean }>> {
+  const result = await page.evaluate(async (command) => {
+    const response = await fetch(`/api/v1/cases/${command.caseId}/workflow-actions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": `case-flow-seed-${crypto.randomUUID()}`,
+      },
+      body: JSON.stringify({
+        action: command.action,
+        expected_record_version: command.expectedRecordVersion,
+        reason: command.reason,
+      }),
+    });
+    return { status: response.status, body: await response.json() as unknown };
+  }, input);
+  const root = safeRecord(result.body);
+  const data = safeRecord(root.data);
+  const receiptExact = Object.keys(data).sort().join(",") === "id,record_version" &&
+    data.id === input.caseId && Number.isSafeInteger(data.record_version) && Number(data.record_version) > 0;
+  return Object.freeze({ status: result.status, receiptExact });
+}
+
+async function safeApiError(
+  response: { status(): number; json(): Promise<unknown> },
+): Promise<Readonly<{ status: number; code: "STALE_VERSION" | "OTHER" }>> {
+  const root = safeRecord(await response.json());
+  const error = safeRecord(root.error);
+  return Object.freeze({
+    status: response.status(),
+    code: error.code === "STALE_VERSION" ? "STALE_VERSION" : "OTHER",
+  });
+}
+
+function safeRecord(value: unknown): Readonly<Record<string, unknown>> {
+  assert.equal(typeof value, "object");
+  assert.notEqual(value, null);
+  assert.equal(Array.isArray(value), false);
+  return value as Readonly<Record<string, unknown>>;
 }
 
 async function login(

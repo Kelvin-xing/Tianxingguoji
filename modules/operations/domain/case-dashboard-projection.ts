@@ -16,10 +16,7 @@ const CASE_STAGES = new Set<ServiceCaseStage>([
   "signed",
   "background_collection",
   "school_selection_confirmed",
-  "interview_preparation",
-  "application_submitted",
-  "awaiting_result",
-  "offer_confirmed",
+  "application_in_progress",
   "closed",
 ]);
 
@@ -398,8 +395,8 @@ function assertStoredProjection(
     previousCaseId = item.caseId;
   }
 
-  const { contentHash: _contentHash, ...withoutHash } = projection;
-  if (hashProjection(withoutHash) !== projection.contentHash) {
+  const { contentHash, ...withoutHash } = projection;
+  if (hashProjection(withoutHash) !== contentHash) {
     throw new CaseDashboardProjectionError("CASE_DASHBOARD_PROJECTION_INVALID");
   }
 }

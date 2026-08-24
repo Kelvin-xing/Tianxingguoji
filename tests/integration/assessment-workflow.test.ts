@@ -95,7 +95,7 @@ test("resolves one serializable four-layer schema for the assessment read model"
         blockingStages: ["background_collection"],
       },
       {
-        fieldId: "fixture.stage.year",
+        fieldId: "education_profile.current_year_level",
         layer: "education_stage",
         valueType: "text",
         visibility: "case",
@@ -131,14 +131,7 @@ test("updates one typed answer atomically and exposes the same answer through th
     command: command(),
   });
 
-  assert.deepEqual(result, {
-    assessmentId: ASSESSMENT_ID,
-    fieldId: "fixture.base.intent",
-    semanticState: "provided",
-    value: { type: "text", value: "S1 entry" },
-    valueType: "text",
-    recordVersion: 1,
-  });
+  assert.deepEqual(result, { id: ASSESSMENT_ID, recordVersion: 1 });
   assert.deepEqual(repository.snapshot(), { answers: 1, audits: 1, outbox: 1 });
 
   const view = await service.getCaseAssessment({ actor: ADVISOR, caseId: CASE_ID });
@@ -166,14 +159,7 @@ test("accepts explicit non-value semantic states without converting them to empt
     }),
   });
 
-  assert.deepEqual(result, {
-    assessmentId: ASSESSMENT_ID,
-    fieldId: "fixture.base.intent",
-    semanticState: "declined_to_provide",
-    value: null,
-    valueType: null,
-    recordVersion: 1,
-  });
+  assert.deepEqual(result, { id: ASSESSMENT_ID, recordVersion: 1 });
 });
 
 test("uses the answer version as a compare-and-set token instead of last-write-wins", async () => {
@@ -193,7 +179,7 @@ test("uses the answer version as a compare-and-set token instead of last-write-w
       assert.ok(error instanceof AssessmentServiceError);
       assert.equal(error.code, "ASSESSMENT_ANSWER_STALE_VERSION");
       assert.equal(error.currentRecordVersion, 1);
-      assert.match(error.diffToken ?? "", /^assessment-[A-Za-z0-9._-]+$/);
+      assert.equal("diffToken" in error, false);
       return true;
     },
   );
@@ -210,7 +196,7 @@ test("permits current education-profile capabilities and rejects invalid fields 
   await service.getCaseAssessment({ actor: COLLABORATOR, caseId: CASE_ID });
   await assert.rejects(
     service.updateAssessmentAnswer({ actor: COLLABORATOR, caseId: CASE_ID, command: command() }),
-    hasCode("ASSESSMENT_WRITE_FORBIDDEN"),
+    hasCode("ASSESSMENT_CASE_NOT_FOUND"),
   );
   repository.grantEducationProfileEdit({
     organizationId: ADVISOR.organizationId,
@@ -218,7 +204,11 @@ test("permits current education-profile capabilities and rejects invalid fields 
     userId: COLLABORATOR.userId,
   });
 
-  await service.updateAssessmentAnswer({ actor: COLLABORATOR, caseId: CASE_ID, command: command() });
+  await service.updateAssessmentAnswer({
+    actor: COLLABORATOR,
+    caseId: CASE_ID,
+    command: command({ fieldId: "education_profile.current_year_level" }),
+  });
   await assert.rejects(
     service.updateAssessmentAnswer({
       actor: ADVISOR,
@@ -295,6 +285,22 @@ test("completes background collection only after every background blocker has an
     requestId: "assessment.complete",
     idempotencyKey: "assessment-complete-002",
   };
+  await assert.rejects(
+    service.completeBackgroundCollection({
+      actor: ADVISOR,
+      caseId: CASE_ID,
+      command: completionCommand,
+    }),
+    hasCode("ASSESSMENT_STATUS_BLOCKERS_INCOMPLETE"),
+  );
+  await service.updateAssessmentAnswer({
+    actor: ADVISOR,
+    caseId: CASE_ID,
+    command: command({
+      expectedRecordVersion: 1,
+      idempotencyKey: "assessment-update-provided-002",
+    }),
+  });
   const completed = await service.completeBackgroundCollection({
     actor: ADVISOR,
     caseId: CASE_ID,
@@ -306,13 +312,9 @@ test("completes background collection only after every background blocker has an
     command: completionCommand,
   });
 
-  assert.deepEqual(completed, {
-    assessmentId: ASSESSMENT_ID,
-    status: "background_complete",
-    recordVersion: 2,
-  });
+  assert.deepEqual(completed, { id: ASSESSMENT_ID, recordVersion: 2 });
   assert.deepEqual(replay, completed);
-  assert.deepEqual(repository.snapshot(), { answers: 1, audits: 2, outbox: 2 });
+  assert.deepEqual(repository.snapshot(), { answers: 1, audits: 3, outbox: 3 });
   assert.equal(
     (await service.getCaseAssessment({ actor: ADVISOR, caseId: CASE_ID })).status,
     "background_complete",
@@ -334,7 +336,7 @@ test("rejects assessment reads and writes for roles outside the internal assessm
 function fixtureManifest() {
   return composeK12Manifest([
     module("base", "base", "fixture.base.intent", ["background_collection"]),
-    module("education_stage", "stage", "fixture.stage.year", []),
+    module("education_stage", "k12-education-profile", "education_profile.current_year_level", []),
     module("school_system", "system", "fixture.system.preference", ["school_selection_confirmed"]),
     module("admission_route", "route", "fixture.route.entry", []),
   ]);

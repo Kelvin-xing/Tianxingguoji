@@ -4,16 +4,12 @@ import test from "node:test";
 
 import { ApiClientError } from "../../../lib/api/client.ts";
 import {
-  SchoolTargetIdempotencyAttempt,
   classifySchoolTargetFailure,
-  createSchoolTarget,
   getSchoolTargets,
-  hasSchoolTarget,
 } from "../../../modules/cases/client.ts";
 
 const CASE_ID = "10000000-0000-4000-8000-000000000001";
 const SCHOOL_ID = "20000000-0000-4000-8000-000000000001";
-const OTHER_SCHOOL_ID = "20000000-0000-4000-8000-000000000002";
 const TARGET_ID = "30000000-0000-4000-8000-000000000001";
 const REVISION_ID = "40000000-0000-4000-8000-000000000001";
 const HASH = "a".repeat(64);
@@ -33,56 +29,27 @@ test("GET decodes the frozen SchoolTarget view and uses a cancellable same-origi
 
   const result = await getSchoolTargets(CASE_ID, controller.signal);
   assert.equal(result.case_id, CASE_ID);
-  assert.equal(result.can_create, true);
+  assert.equal(result.can_create, false);
+  assert.equal(result.create_blocked_reason, "selection_workflow_required");
   assert.equal(result.items.length, 0);
-  assert.deepEqual(result.school_options.map(({ school_id }) => school_id), [SCHOOL_ID]);
+  assert.deepEqual(result.school_options, []);
 });
 
-test("POST sends only school identity and expected resolved hash", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-
-  globalThis.fetch = async (input, init) => {
-    assert.equal(input, `/api/v1/cases/${CASE_ID}/school-targets`);
-    assert.equal(init?.method, "POST");
-    assert.equal(new Headers(init?.headers).get("idempotency-key"), "school-target-attempt-1");
-    assert.deepEqual(JSON.parse(String(init?.body)), {
-      school_id: SCHOOL_ID,
-      expected_resolution_sha256: HASH,
-    });
-    assert.equal(String(init?.body).includes("intake_year"), false);
-    assert.equal(String(init?.body).includes("admission_type"), false);
-    return apiResponse({ case_id: CASE_ID, item: itemFixture() });
-  };
-
-  const result = await createSchoolTarget(
-    CASE_ID,
-    { school_id: SCHOOL_ID, expected_resolution_sha256: HASH },
-    "school-target-attempt-1",
-  );
-  assert.equal(result.item.target_id, TARGET_ID);
-  assert.equal(result.item.state, "candidate");
-});
-
-test("strict decoders reject malformed, excessive, overlapping, and mismatched data", async (context) => {
+test("strict decoder rejects any SchoolTarget create advertisement or identity drift", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
 
   const malformedViews = [
     { ...viewFixture(), unexpected: true },
-    {
-      ...viewFixture(),
-      school_options: [1, 2, 3, 4].map((index) => optionFixture(
-        `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-      )),
-    },
-    {
-      ...viewFixture(),
-      items: [itemFixture()],
-      school_options: [optionFixture(SCHOOL_ID)],
-    },
     { ...viewFixture(), case_id: "10000000-0000-4000-8000-000000000099" },
-    { ...viewFixture(), can_create: false, create_blocked_reason: null },
+    { ...viewFixture(), can_create: true },
+    { ...viewFixture(), create_blocked_reason: null },
+    { ...viewFixture(), create_blocked_reason: "case_stage_not_allowed" },
+    { ...viewFixture(), school_options: [optionFixture(SCHOOL_ID)] },
+    {
+      ...viewFixture(),
+      items: [{ ...itemFixture(), intake_year: 2028 }],
+    },
   ] as const;
 
   for (const malformed of malformedViews) {
@@ -93,36 +60,6 @@ test("strict decoders reject malformed, excessive, overlapping, and mismatched d
     );
   }
 
-  globalThis.fetch = async () => apiResponse({
-    case_id: CASE_ID,
-    item: { ...itemFixture(), resolution_sha256: HASH.toUpperCase() },
-  });
-  await assert.rejects(
-    createSchoolTarget(
-      CASE_ID,
-      { school_id: SCHOOL_ID, expected_resolution_sha256: HASH },
-      "school-target-attempt-2",
-    ),
-    (error: unknown) => error instanceof ApiClientError && error.code === "MALFORMED_RESPONSE",
-  );
-});
-
-test("idempotency attempt preserves uncertain retries and rotates for selection or stale changes", () => {
-  let sequence = 0;
-  const attempt = new SchoolTargetIdempotencyAttempt(() => `attempt-${++sequence}`);
-
-  const first = attempt.keyFor(SCHOOL_ID);
-  assert.equal(attempt.keyFor(SCHOOL_ID), first, "network and 503 retries reuse the same key");
-
-  attempt.rotate();
-  const afterStale = attempt.keyFor(SCHOOL_ID);
-  assert.notEqual(afterStale, first);
-
-  const afterSelectionChange = attempt.keyFor(OTHER_SCHOOL_ID);
-  assert.notEqual(afterSelectionChange, afterStale);
-
-  attempt.complete();
-  assert.notEqual(attempt.keyFor(OTHER_SCHOOL_ID), afterSelectionChange);
 });
 
 test("failure classification covers unauthenticated, forbidden, stale, conflict, and unavailable states", () => {
@@ -135,20 +72,13 @@ test("failure classification covers unauthenticated, forbidden, stale, conflict,
   assert.equal(classifySchoolTargetFailure(new Error("private detail")), "unavailable");
 });
 
-test("duplicate state is derived only after an authoritative refreshed item exists", () => {
-  assert.equal(hasSchoolTarget(viewFixture(), SCHOOL_ID), false);
-  assert.equal(hasSchoolTarget({
-    ...viewFixture(),
-    can_create: false,
-    create_blocked_reason: "no_school_options",
-    items: [itemFixture()],
-    school_options: [],
-  }, SCHOOL_ID), true);
-});
-
-test("SchoolTargetsPanel does not expose implementation terms in user-facing copy", () => {
+test("SchoolTargetsPanel is a read-only Case detail projection without legacy writes", () => {
   const panelSource = readFileSync(
     new URL("../../../components/cases/SchoolTargetsPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const clientSource = readFileSync(
+    new URL("../../../modules/cases/client.ts", import.meta.url),
     "utf8",
   );
 
@@ -164,13 +94,18 @@ test("SchoolTargetsPanel does not expose implementation terms in user-facing cop
 
   for (const businessCopy of [
     "正在讀取本案的學校目標。",
-    "入學年度和申請類型沿用本案設定。",
-    "選擇學校",
-    "目前沒有可新增的學校。",
-    "請稍後重試；重試不會重複建立目標。",
+    "此處只顯示現有目標；新增與流程變更由已核准的選校流程處理。",
+    "尚未建立學校目標",
   ]) {
     assert.equal(panelSource.includes(businessCopy), true, businessCopy);
   }
+  assert.match(panelSource, /getSchoolTargets/);
+  assert.doesNotMatch(panelSource, /createSchoolTarget|transitionSchoolTarget|recordSchoolTargetOutcome/);
+  assert.doesNotMatch(panelSource, /<form|>建立學校目標<|>推進狀態<|>記錄結果</);
+  assert.match(clientSource, /SCHOOL_TARGET_CREATE_BLOCKED_REASON = "selection_workflow_required"/);
+  assert.match(clientSource, /readonly can_create: false/);
+  assert.match(clientSource, /readonly school_options: readonly \[\]/);
+  assert.doesNotMatch(clientSource, /export (?:async function createSchoolTarget|class SchoolTargetIdempotencyAttempt)/);
 });
 
 function viewFixture() {
@@ -179,10 +114,10 @@ function viewFixture() {
     case_stage: "background_collection",
     intake_year: 2027,
     admission_type: "hk_k12_standard_v1",
-    can_create: true,
-    create_blocked_reason: null,
+    can_create: false,
+    create_blocked_reason: "selection_workflow_required",
     items: [],
-    school_options: [optionFixture(SCHOOL_ID)],
+    school_options: [],
   } as const;
 }
 

@@ -32,8 +32,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         },
       });
       return {
-        assessment_id: result.assessmentId,
-        status: result.status,
+        id: result.id,
         record_version: result.recordVersion,
       };
     } catch (error) {
@@ -53,6 +52,8 @@ async function parseExpectedRecordVersion(request: Request): Promise<number> {
     typeof body !== "object" ||
     body === null ||
     Array.isArray(body) ||
+    Object.keys(body).length !== 1 ||
+    !Object.hasOwn(body, "expected_record_version") ||
     typeof (body as Record<string, unknown>).expected_record_version !== "number"
   ) {
     throw createApiError("VALIDATION_FAILED");

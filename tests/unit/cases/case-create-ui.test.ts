@@ -44,7 +44,11 @@ test("case directory separates the desktop table from a complete mobile case lis
   assert.match(directory, /<Link href=\{`\/cases\/\$\{item\.id\}`\} className="table-primary break-words">\{item\.caseNumber\}<\/Link>/);
   assert.match(directory, /<Link href=\{`\/students\/\$\{item\.studentId\}`\} className="table-primary break-words">\{item\.studentName\}<\/Link>/);
   assert.match(directory, /\{caseStageLabels\[item\.stage\]\}/);
-  assert.match(directory, /item\.primaryRole === 'advisor' \? '顧問' : '創辦人'/);
+  assert.match(directory, /\{workflowStatusLabels\[item\.workflowStatus\]\}/);
+  assert.match(directory, /paused: '已暫停'/);
+  assert.doesNotMatch(directory, /offer_received|closed_won|closed_lost/);
+  assert.doesNotMatch(directory, /創辦人/);
+  assert.match(directory, />主要顧問</);
   assert.match(directory, /\{formatDate\(item\.updatedAt\)\}/);
 });
 
@@ -56,7 +60,13 @@ test("case create has a synchronous lock, retry-safe key lifecycle and authorita
   assert.match(form, /finally \{[\s\S]*submissionLocked\.current = false/);
   assert.match(form, /attempt\.current\.keyForSubmission\(\)/);
   assert.match(form, /attempt\.current\.markBusinessFieldChanged\(\)/);
-  assert.match(form, /router\.push\(`\/cases\/\$\{created\.id\}`\)/);
+  assert.match(form, /const receipt = await createExistingStudentCase/);
+  assert.match(form, /const authoritative = await getCase\(receipt\.id\)/);
+  assert.match(form, /authoritative\.id !== receipt\.id/);
+  assert.match(form, /authoritative\.recordVersion !== receipt\.record_version/);
+  assert.match(form, /authoritative\.stage !== 'background_collection'/);
+  assert.match(form, /authoritative\.workflowStatus !== 'active'/);
+  assert.match(form, /router\.push\(`\/cases\/\$\{authoritative\.id\}`\)/);
   assert.match(form, /router\.refresh\(\)/);
   assert.match(form, /disabled=\{pending\}/);
   assert.match(form, /aria-busy=\{pending\}/);
@@ -68,7 +78,7 @@ test("case create exposes accessible controls and complete bounded states", asyn
     ["學生", "case-student"],
     ["入學年度", "case-intake-year"],
     ["申請類型", "case-admission-type"],
-    ["主要負責人", "case-primary-binding"],
+    ["主要顧問", "case-primary-binding"],
     ["評估表版本", "case-manifest"],
   ]) {
     assert.match(form, new RegExp(`<Field label=["']${label}["'] id=["']${id}["']`));
