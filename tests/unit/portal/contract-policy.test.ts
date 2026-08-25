@@ -125,7 +125,7 @@ test("contract validation rejects unsafe timestamps, malformed IDs, and unknown 
   );
 });
 
-test("DP-03 denies from current facts at request time and never infers past_due denial", () => {
+test("DP-03 denies from current Release 1 facts without a Subscription input", () => {
   assert.deepEqual(evaluatePortalEffectiveAccess(effective()), { allowed: true });
   const denials: readonly [Partial<PortalEffectiveAccessInput>, string][] = [
     [{ grantStatus: "revoked" }, "PORTAL_GRANT_REVOKED"],
@@ -145,7 +145,6 @@ test("DP-03 denies from current facts at request time and never infers past_due 
   for (const [override, code] of denials) {
     assert.deepEqual(evaluatePortalEffectiveAccess(effective(override)), { allowed: false, code });
   }
-  assert.deepEqual(evaluatePortalEffectiveAccess(effective({ subscriptionStatus: "past_due" })), { allowed: true });
 });
 
 test("DP-04 builds only the exact portal_case_read_v1 positive allowlist", () => {

@@ -1,4 +1,3 @@
-export * from "./domain/decision-guards.ts";
 export {
   IDEMPOTENCY_KEY_PATTERN,
   canonicalizeJson,
@@ -17,4 +16,5 @@ export type {
   IdempotencyState,
 } from "./domain/idempotency.ts";
 export * from "./presentation/api-contract.ts";
+export * from "./presentation/release-one-entry-boundary.ts";
 export * from "./presentation/request-context.ts";

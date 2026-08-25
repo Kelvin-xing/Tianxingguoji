@@ -12,8 +12,8 @@ export interface FutureFeatureContract {
   readonly id: FutureFeatureId;
   readonly decisionIds: readonly string[];
   readonly releaseOneState: "disabled_by_contract";
-  readonly permittedSurfaces: readonly ["navigation_placeholder"];
-  readonly prohibitedSurfaces: readonly ["route", "job", "credential", "data_write"];
+  readonly permittedSurfaces: readonly [];
+  readonly prohibitedSurfaces: readonly ["navigation", "route", "job", "credential", "data_write"];
 }
 
 export interface ReleaseOneNavigationPlaceholder {
@@ -50,8 +50,8 @@ function defineDisabledFutureFeature(
     id,
     decisionIds: Object.freeze([...decisionIds]),
     releaseOneState: "disabled_by_contract" as const,
-    permittedSurfaces: Object.freeze(["navigation_placeholder"] as const),
-    prohibitedSurfaces: Object.freeze(["route", "job", "credential", "data_write"] as const),
+    permittedSurfaces: Object.freeze([] as const),
+    prohibitedSurfaces: Object.freeze(["navigation", "route", "job", "credential", "data_write"] as const),
   });
 }
 
@@ -68,28 +68,9 @@ export const FUTURE_FEATURE_CONTRACTS = Object.freeze({
   retention_support: defineDisabledFutureFeature("retention_support", ["DEC-054", "DEC-060"]),
 } as const satisfies Readonly<Record<FutureFeatureId, FutureFeatureContract>>);
 
-export const RELEASE_ONE_NAVIGATION_PLACEHOLDERS = Object.freeze([
-  {
-    featureId: "non_k12_services",
-    label: "非 K12 服務",
-    statusLabel: "正在開發中",
-  },
-  {
-    featureId: "ai_reports",
-    label: "AI 報告",
-    statusLabel: "正在開發中",
-  },
-  {
-    featureId: "data_import",
-    label: "Excel / CSV 匯入",
-    statusLabel: "正在開發中",
-  },
-  {
-    featureId: "multi_tenant",
-    label: "多組織管理",
-    statusLabel: "正在開發中",
-  },
-] as const satisfies readonly ReleaseOneNavigationPlaceholder[]);
+export const RELEASE_ONE_NAVIGATION_PLACEHOLDERS = Object.freeze(
+  [] as const satisfies readonly ReleaseOneNavigationPlaceholder[],
+);
 
 /**
  * Future routes, jobs, providers, and mutations must call this guard until a

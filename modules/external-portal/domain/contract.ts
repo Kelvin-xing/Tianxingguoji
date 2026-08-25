@@ -14,11 +14,10 @@ export const PORTAL_FORBIDDEN_ACTIONS = Object.freeze([
 ] as const);
 
 export type PortalCapabilitySetVersion = typeof PORTAL_CAPABILITY_SET_VERSION;
-export type PortalActorRole = "founder" | "admin" | "advisor" | "data_reviewer" | "contractor";
+export type PortalActorRole = "founder" | "admin" | "advisor" | "contractor";
 export type PortalGrantStatus = "active" | "pending_approval" | "revoked" | "expired";
 export type PortalSessionStatus = "active" | "revoked" | "expired";
 export type PortalCaseStatus = "active" | "closed" | "cancelled" | "pending_delete";
-export type PortalSubscriptionStatus = "active" | "past_due";
 
 export type PortalErrorCode =
   | "PORTAL_INPUT_INVALID"
@@ -91,7 +90,6 @@ export interface PortalEffectiveAccessInput {
   readonly issuerActive: boolean;
   readonly issuerStillAuthorized: boolean;
   readonly organizationActive: boolean;
-  readonly subscriptionStatus?: PortalSubscriptionStatus;
 }
 
 export interface PortalSessionCreationInput {
@@ -162,11 +160,10 @@ export interface PortalPublicErrorResponse {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTOR_ROLES: readonly PortalActorRole[] = ["founder", "admin", "advisor", "data_reviewer", "contractor"];
+const ACTOR_ROLES: readonly PortalActorRole[] = ["founder", "admin", "advisor", "contractor"];
 const GRANT_STATUSES: readonly PortalGrantStatus[] = ["active", "pending_approval", "revoked", "expired"];
 const SESSION_STATUSES: readonly PortalSessionStatus[] = ["active", "revoked", "expired"];
 const CASE_STATUSES: readonly PortalCaseStatus[] = ["active", "closed", "cancelled", "pending_delete"];
-const SUBSCRIPTION_STATUSES: readonly PortalSubscriptionStatus[] = ["active", "past_due"];
 
 export function isPortalUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);
@@ -221,7 +218,6 @@ export function assertPortalPolicyInput(input: PortalEffectiveAccessInput): void
     !GRANT_STATUSES.includes(input.grantStatus) ||
     !SESSION_STATUSES.includes(input.sessionStatus) ||
     !CASE_STATUSES.includes(input.caseStatus) ||
-    (input.subscriptionStatus !== undefined && !SUBSCRIPTION_STATUSES.includes(input.subscriptionStatus)) ||
     ![
       input.viewerRelationshipActive,
       input.issuerActive,

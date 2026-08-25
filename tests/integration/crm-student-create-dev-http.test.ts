@@ -185,7 +185,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const access = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
     assert.equal(access.response.status, 200);
     assert.equal(access.body.data?.role, "advisor");
-    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v12");
+    assert.equal(access.body.data?.policy_version, "release1-bootstrap-v13");
     assert.equal((access.body.data?.capabilities as unknown[])?.includes("students.create"), true);
 
     const initialCounts = await readScopedCounts(target);

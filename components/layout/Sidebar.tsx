@@ -5,12 +5,8 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NAVIGATION_REGISTRY, type NavigationRegistryItem } from '@/components/layout/navigation-registry'
-import { Icon, type IconName } from '@/components/workspace/Icon'
+import { Icon } from '@/components/workspace/Icon'
 import { getWorkspaceAccessSnapshot, type WorkspaceAccessSnapshot } from '@/modules/access/client'
-import {
-  RELEASE_ONE_NAVIGATION_PLACEHOLDERS,
-  type ReleaseOneNavigationPlaceholder,
-} from '@/modules/future/public'
 
 export function Sidebar({
   desktopOpen = true,
@@ -98,8 +94,6 @@ export function Sidebar({
           <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Administration</div>
           {administrationItems.map((item) => <NavItem key={item.route} item={{ ...item, label: t(item.labelKey) }} active={isActive(item)} onNavigate={mobileOpen ? onCloseMobile : undefined} />)}
         </> : null}
-        <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>Future</div>
-        {RELEASE_ONE_NAVIGATION_PLACEHOLDERS.map((placeholder) => <FuturePlaceholder key={placeholder.featureId} placeholder={placeholder} />)}
       </nav>
 
       <div className="px-3 pb-3">
@@ -154,26 +148,4 @@ function NavItem({ item, active, onNavigate }: { item: NavigationRegistryItem & 
       {active && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: '#bfdbfe' }} />}
     </Link>
   )
-}
-
-function FuturePlaceholder({ placeholder }: { placeholder: ReleaseOneNavigationPlaceholder }) {
-  return (
-    <div
-      aria-disabled="true"
-      className="flex items-center gap-3 px-3 py-2.5 text-[13px] opacity-60 cursor-not-allowed"
-      title={`${placeholder.label} - ${placeholder.statusLabel}`}
-      style={{ color: 'var(--sidebar-text-muted)' }}
-    >
-      <Icon name={futurePlaceholderIcon(placeholder.featureId)} size={16} />
-      <span className="sidebar-item-label">{placeholder.label}</span>
-      <span className="ml-auto text-[10px] whitespace-nowrap">{placeholder.statusLabel}</span>
-    </div>
-  )
-}
-
-function futurePlaceholderIcon(featureId: ReleaseOneNavigationPlaceholder['featureId']): IconName {
-  if (featureId === 'ai_reports') return 'sparkles'
-  if (featureId === 'data_import') return 'file-text'
-  if (featureId === 'multi_tenant') return 'users'
-  return 'book-open'
 }

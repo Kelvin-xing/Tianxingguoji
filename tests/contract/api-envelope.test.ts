@@ -9,6 +9,13 @@ import {
   POST as postHealth,
   PUT as putHealth,
 } from "../../app/api/v1/health/route.ts";
+import { GET as getExcludedReconstruction, POST as postExcludedReconstruction } from "../../app/api/v1/cases/reconstructions/route.ts";
+import { GET as getExcludedDuplicateCandidates, POST as postExcludedDuplicateCandidates } from "../../app/api/v1/crm/duplicate-candidates/route.ts";
+import { GET as getExcludedDuplicateCandidate } from "../../app/api/v1/crm/duplicate-candidates/[candidateId]/route.ts";
+import { POST as postExcludedDuplicateMerge } from "../../app/api/v1/crm/duplicate-candidates/[candidateId]/merges/route.ts";
+import { POST as postExcludedDuplicateCorrection } from "../../app/api/v1/crm/duplicate-merges/[mergeId]/corrections/route.ts";
+import { GET as getExcludedDuplicateSearch, POST as postExcludedDuplicateSearch } from "../../app/api/v1/crm/duplicate-records/search/route.ts";
+import { GET as getExcludedPlatformBilling } from "../../app/api/v1/platform/billing/overview/route.ts";
 import {
   API_VERSION,
   createApiError,
@@ -283,5 +290,43 @@ test("health route explicitly maps every unsupported body-capable method", async
     assert.equal(body.api_version, API_VERSION);
     assert.equal(body.error.code, "METHOD_NOT_ALLOWED");
     assert.equal(body.error.retryable, false);
+  }
+});
+
+test("Release 1 excluded formal APIs fail closed with the shared 404 envelope", async () => {
+  const handlers = [
+    ["GET", "/api/v1/platform/billing/overview", getExcludedPlatformBilling],
+    ["GET", "/api/v1/cases/reconstructions", getExcludedReconstruction],
+    ["POST", "/api/v1/cases/reconstructions", postExcludedReconstruction],
+    ["GET", "/api/v1/crm/duplicate-candidates", getExcludedDuplicateCandidates],
+    ["POST", "/api/v1/crm/duplicate-candidates", postExcludedDuplicateCandidates],
+    ["GET", "/api/v1/crm/duplicate-candidates/00000000-0000-4000-8000-000000000001", getExcludedDuplicateCandidate],
+    ["POST", "/api/v1/crm/duplicate-candidates/00000000-0000-4000-8000-000000000001/merges", postExcludedDuplicateMerge],
+    ["POST", "/api/v1/crm/duplicate-merges/00000000-0000-4000-8000-000000000001/corrections", postExcludedDuplicateCorrection],
+    ["POST", "/api/v1/crm/duplicate-records/search", postExcludedDuplicateSearch],
+    ["GET", "/api/v1/crm/duplicate-records/search", getExcludedDuplicateSearch],
+  ] as const;
+
+  for (const [method, path, handler] of handlers) {
+    const response = await handler(new Request(`https://erp.example.test${path}`, {
+      method,
+      headers: { "x-request-id": "caller-controlled" },
+    }));
+    const body = await response.json();
+
+    assert.equal(response.status, 404, `${method} ${path}`);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.match(response.headers.get("x-request-id") ?? "", /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+    assert.notEqual(response.headers.get("x-request-id"), "caller-controlled");
+    assert.deepEqual(body, {
+      api_version: API_VERSION,
+      error: {
+        code: "NOT_FOUND",
+        message: "The requested resource was not found.",
+        request_id: response.headers.get("x-request-id"),
+        retryable: false,
+        details: {},
+      },
+    });
   }
 });
