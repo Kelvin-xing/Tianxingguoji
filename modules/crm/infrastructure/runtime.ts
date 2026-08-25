@@ -4,7 +4,6 @@ import { GuardianRelationshipService } from "../application/guardian-relationshi
 import { StudentReadService } from "../application/read-service.ts";
 import { StudentCreateService } from "../application/student-create-service.ts";
 import { ProfileMaintenanceService } from "../application/profile-maintenance-service.ts";
-import { DuplicateReviewService } from "../application/duplicate-review-service.ts";
 import { DeletionReviewService } from "../application/deletion-review-service.ts";
 import { ReferralSourceService } from "../application/referral-source-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
@@ -13,7 +12,6 @@ import { PostgresqlStudentReadRepository } from "./postgresql-read-repository.ts
 import { PostgresqlStudentCreateRepository } from "./postgresql-student-create-repository.ts";
 import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-relationship-repository.ts";
 import { PostgresqlProfileMaintenanceRepository } from "./postgresql-profile-maintenance-repository.ts";
-import { PostgresqlDuplicateReviewRepository } from "./postgresql-duplicate-review-repository.ts";
 import { PostgresqlDeletionReviewRepository } from "./postgresql-deletion-review-repository.ts";
 import { PostgresqlReferralSourceRepository } from "./postgresql-referral-source-repository.ts";
 
@@ -56,28 +54,6 @@ export function getDeletionReviewRuntime(): DeletionReviewRuntime {
     try { runtime = Object.freeze({ service: new DeletionReviewService(
       new PostgresqlDeletionReviewRepository(getApplicationTenantRunner())) }); }
     catch { throw new DeletionReviewRuntimeUnavailable(); }
-    runtimes.set(mode, runtime);
-  }
-  return runtime;
-}
-
-export interface DuplicateReviewRuntime { readonly service: DuplicateReviewService }
-export class DuplicateReviewRuntimeUnavailable extends Error {
-  constructor() { super("Duplicate review runtime is not configured."); this.name = "DuplicateReviewRuntimeUnavailable"; }
-}
-export function isDuplicateReviewRuntimeUnavailable(value: unknown): value is DuplicateReviewRuntimeUnavailable {
-  return value instanceof Error && value.name === "DuplicateReviewRuntimeUnavailable";
-}
-export function getDuplicateReviewRuntime(): DuplicateReviewRuntime {
-  const mode = loadRuntimeEnvironment().appRuntimeMode;
-  if (mode === "production-aws") throw new DuplicateReviewRuntimeUnavailable();
-  const runtimes = globalForCrm.__txDuplicateReviewRuntimes ?? new Map<string, DuplicateReviewRuntime>();
-  globalForCrm.__txDuplicateReviewRuntimes = runtimes;
-  let runtime = runtimes.get(mode);
-  if (!runtime) {
-    try { runtime = Object.freeze({ service: new DuplicateReviewService(
-      new PostgresqlDuplicateReviewRepository(getApplicationTenantRunner())) }); }
-    catch { throw new DuplicateReviewRuntimeUnavailable(); }
     runtimes.set(mode, runtime);
   }
   return runtime;
@@ -149,7 +125,6 @@ export class StudentCreateRuntimeUnavailable extends Error {
 const globalForCrm = globalThis as typeof globalThis & {
   __txReferralSourceRuntimes?: Map<string, ReferralSourceRuntime>;
   __txGuardianRelationshipRuntimes?: Map<string, GuardianRelationshipRuntime>;
-  __txDuplicateReviewRuntimes?: Map<string, DuplicateReviewRuntime>;
   __txDeletionReviewRuntimes?: Map<string, DeletionReviewRuntime>;
   __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
   __txStudentCreateRuntimes?: Map<string, StudentCreateRuntime>;

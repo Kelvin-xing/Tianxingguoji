@@ -1,5 +1,5 @@
-import { DuplicateCandidatesQueue } from '@/components/crm/DuplicateCandidatesQueue'
+import { notFound } from "next/navigation";
 
-export default function DuplicateCandidatesPage() {
-  return <DuplicateCandidatesQueue />
+export default function DuplicateCandidatesPage(): never {
+  notFound();
 }

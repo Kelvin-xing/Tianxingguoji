@@ -12,8 +12,8 @@ import {
 test("future AI, import, and multi-tenant capabilities remain disabled by contract in Release 1", () => {
   for (const contract of Object.values(FUTURE_FEATURE_CONTRACTS)) {
     assert.equal(contract.releaseOneState, "disabled_by_contract");
-    assert.deepEqual(contract.permittedSurfaces, ["navigation_placeholder"]);
-    assert.deepEqual(contract.prohibitedSurfaces, ["route", "job", "credential", "data_write"]);
+    assert.deepEqual(contract.permittedSurfaces, []);
+    assert.deepEqual(contract.prohibitedSurfaces, ["navigation", "route", "job", "credential", "data_write"]);
 
     assert.throws(
       () => assertFutureFeatureDisabled(contract.id),
@@ -31,16 +31,8 @@ test("future AI, import, and multi-tenant capabilities remain disabled by contra
   }
 });
 
-test("only the approved visible Release 1 placeholders are exposed to navigation", () => {
-  assert.deepEqual(
-    RELEASE_ONE_NAVIGATION_PLACEHOLDERS.map((placeholder) => placeholder.featureId),
-    ["non_k12_services", "ai_reports", "data_import", "multi_tenant"],
-  );
-
-  for (const placeholder of RELEASE_ONE_NAVIGATION_PLACEHOLDERS) {
-    assert.equal(placeholder.statusLabel, "正在開發中");
-    assert.equal(FUTURE_FEATURE_CONTRACTS[placeholder.featureId].releaseOneState, "disabled_by_contract");
-  }
+test("Future exposes no Release 1 navigation placeholders", () => {
+  assert.deepEqual(RELEASE_ONE_NAVIGATION_PLACEHOLDERS, []);
 });
 
 test("the future contract introduces no Release 1 execution dependency or secret-backed adapter", async () => {
@@ -55,14 +47,13 @@ test("the future contract introduces no Release 1 execution dependency or secret
   assert.doesNotMatch(source, /from\s+["'](?:node:|@\/modules\/)/);
 });
 
-test("sidebar renders future capability labels as disabled placeholders rather than links", async () => {
+test("sidebar has no Future module dependency or placeholder surface", async () => {
   const source = await readFile(
     new URL("../../components/layout/Sidebar.tsx", import.meta.url),
     "utf8",
   );
 
-  assert.match(source, /RELEASE_ONE_NAVIGATION_PLACEHOLDERS/);
-  assert.match(source, /<FuturePlaceholder/);
-  assert.match(source, /aria-disabled="true"/);
-  assert.doesNotMatch(source, /href=\{placeholder\./);
+  assert.doesNotMatch(source, /modules\/future/);
+  assert.doesNotMatch(source, /RELEASE_ONE_NAVIGATION_PLACEHOLDERS/);
+  assert.doesNotMatch(source, /FuturePlaceholder/);
 });

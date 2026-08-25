@@ -8,6 +8,7 @@ import ts from "typescript";
 import {
   MODULE_REGISTRY,
   ModuleBoundaryError,
+  RELEASE_ONE_ACTIVE_MODULE_IDS,
   type ModuleId,
   assertModuleImportAllowed,
   assertModuleWriteAllowed,
@@ -30,19 +31,48 @@ test("registers one owner for every authoritative resource", () => {
   assert.equal(owners.get("ResolvedSchoolRevision"), "schools");
   assert.equal(owners.get("Task"), "tasks");
   assert.equal(owners.get("DocumentVersion"), "documents");
-  assert.equal(owners.get("AuditEvent"), "audit_operations");
-  assert.equal(owners.get("PortalAccessGrant"), "external_portal_access");
-  assert.equal(owners.get("PlatformBillingActor"), "platform_billing");
-  assert.equal(owners.get("CustomerContract"), "platform_billing");
+  assert.equal(owners.get("AuditEvent"), "audit");
+  assert.equal(owners.get("PortalAccessGrant"), "external_portal");
+  assert.equal(owners.has("PlatformBillingActor"), false);
+  assert.equal(owners.has("CustomerContract"), false);
+  assert.equal(owners.has("Subscription"), false);
+  assert.equal(owners.has("MergeRevision"), false);
+  assert.equal(owners.has("CaseReconstruction"), false);
+});
+
+test("freezes the approved Release 1 active module snapshot", () => {
+  assert.deepEqual(RELEASE_ONE_ACTIVE_MODULE_IDS, [
+    "shared",
+    "identity",
+    "access",
+    "crm",
+    "schools",
+    "cases",
+    "tasks",
+    "documents",
+    "notifications",
+    "audit",
+    "operations",
+    "external_portal",
+  ]);
+  assert.deepEqual(
+    Object.values(MODULE_REGISTRY)
+      .filter((definition) => definition.releaseOneState === "active")
+      .map((definition) => definition.id)
+      .sort(),
+    [...RELEASE_ONE_ACTIVE_MODULE_IDS].sort(),
+  );
+  assert.equal(MODULE_REGISTRY.platform_billing.releaseOneState, "historical_isolated");
+  assert.equal(MODULE_REGISTRY.future.releaseOneState, "historical_isolated");
 });
 
 test("resolves files to the module owning their longest source root", () => {
   assert.equal(getModuleForPath("modules/cases/application/service.ts")?.id, "cases");
-  assert.equal(getModuleForPath("@/modules/audit/query.ts")?.id, "audit_operations");
+  assert.equal(getModuleForPath("@/modules/audit/query.ts")?.id, "audit");
   assert.equal(getModuleForPath("app/api/v1/cases/route.ts")?.id, "adapters");
   assert.equal(getModuleForPath("workers/deliver-in-app.ts")?.id, "adapters");
   assert.equal(getModuleForPath("components/layout/Sidebar.tsx")?.id, "adapters");
-  assert.equal(getModuleForPath("modules/external-portal/infrastructure/runtime.ts")?.id, "external_portal_access");
+  assert.equal(getModuleForPath("modules/external-portal/infrastructure/runtime.ts")?.id, "external_portal");
   assert.equal(getModuleForPath("modules/platform-billing/infrastructure/runtime.ts")?.id, "platform_billing");
 });
 
@@ -145,7 +175,7 @@ test("registers every governed source file and every declared public entrypoint"
     .map(toRepositoryPath)
     .filter((filePath) => getModuleForPath(filePath) === undefined);
   const missingEntrypoints = Object.values(MODULE_REGISTRY)
-    .flatMap((definition) => definition.publicEntrypoints)
+    .flatMap((definition) => [...definition.publicEntrypoints, ...definition.historicalEntrypoints])
     .filter((entrypoint) => !existsSync(resolve(REPOSITORY_ROOT, entrypoint)));
 
   assert.deepEqual(unregistered, [], `Unregistered governed files:\n${unregistered.join("\n")}`);
@@ -301,8 +331,7 @@ test("marks repositories, database adapters, and runtime wiring as server-only",
 test("allows only the owning module to write an authoritative resource", () => {
   assert.doesNotThrow(() => assertModuleWriteAllowed("crm", "Student"));
   assert.doesNotThrow(() => assertModuleWriteAllowed("cases", "ServiceCase"));
-  assert.doesNotThrow(() => assertModuleWriteAllowed("external_portal_access", "PortalSession"));
-  assert.doesNotThrow(() => assertModuleWriteAllowed("platform_billing", "MonthlyTenantMetric"));
+  assert.doesNotThrow(() => assertModuleWriteAllowed("external_portal", "PortalSession"));
 
   assertBoundaryError(
     () => assertModuleWriteAllowed("cases", "Student"),
@@ -320,14 +349,29 @@ test("allows only the owning module to write an authoritative resource", () => {
     { resource: "UnregisteredRecord" },
   );
   assertBoundaryError(
-    () => assertModuleWriteAllowed("platform_billing", "Subscription"),
-    "CROSS_MODULE_WRITE",
-    { writerModule: "platform_billing", resource: "Subscription", ownerModule: "access" },
+    () => assertModuleWriteAllowed("platform_billing", "MonthlyTenantMetric"),
+    "RELEASE_ONE_MODULE_INACTIVE",
+    { moduleId: "platform_billing" },
   );
   assertBoundaryError(
-    () => assertModuleWriteAllowed("external_portal_access", "ServiceCase"),
+    () => assertModuleWriteAllowed("access", "Subscription"),
+    "RELEASE_ONE_RESOURCE_INACTIVE",
+    { resource: "Subscription", ownerModule: "access" },
+  );
+  assertBoundaryError(
+    () => assertModuleWriteAllowed("crm", "MergeRevision"),
+    "RELEASE_ONE_RESOURCE_INACTIVE",
+    { resource: "MergeRevision", ownerModule: "crm" },
+  );
+  assertBoundaryError(
+    () => assertModuleWriteAllowed("cases", "CaseReconstruction"),
+    "RELEASE_ONE_RESOURCE_INACTIVE",
+    { resource: "CaseReconstruction", ownerModule: "cases" },
+  );
+  assertBoundaryError(
+    () => assertModuleWriteAllowed("external_portal", "ServiceCase"),
     "CROSS_MODULE_WRITE",
-    { writerModule: "external_portal_access", resource: "ServiceCase", ownerModule: "cases" },
+    { writerModule: "external_portal", resource: "ServiceCase", ownerModule: "cases" },
   );
 });
 
@@ -479,8 +523,9 @@ function tableOwner(table: string): ModuleId | "shared" | undefined {
   if (table.startsWith("schools_")) return "schools";
   if (table.startsWith("documents_")) return "documents";
   if (table.startsWith("notifications_")) return "notifications";
-  if (table.startsWith("audit_") || table.startsWith("operations_")) return "audit_operations";
-  if (table.startsWith("portal_")) return "external_portal_access";
+  if (table.startsWith("audit_")) return "audit";
+  if (table.startsWith("operations_")) return "operations";
+  if (table.startsWith("portal_")) return "external_portal";
   if (table.startsWith("platform_")) return "platform_billing";
   return undefined;
 }

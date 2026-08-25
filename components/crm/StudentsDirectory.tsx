@@ -18,7 +18,6 @@ export function StudentsDirectory() {
   const [search, setSearch] = useState('')
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [canCreate, setCanCreate] = useState(false)
-  const [canReviewDuplicates, setCanReviewDuplicates] = useState(false)
   const [canReviewDeletionRequests, setCanReviewDeletionRequests] = useState(false)
   const [canReadReferralSources, setCanReadReferralSources] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
@@ -32,7 +31,6 @@ export function StudentsDirectory() {
       .then(([records, access]) => {
         setStudents(records)
         setCanCreate(access.capabilities.some((capability) => String(capability) === 'students.create'))
-        setCanReviewDuplicates(access.capabilities.some((capability) => String(capability) === 'students.duplicates.review'))
         setCanReviewDeletionRequests(access.capabilities.some((capability) => String(capability) === 'students.deletion.review'))
         setCanReadReferralSources(access.capabilities.some((capability) => String(capability) === 'referral_sources.read'))
         setLoadState('ready')
@@ -69,11 +67,6 @@ export function StudentsDirectory() {
           {loadState === 'ready' && canReviewDeletionRequests ? (
             <Link href="/students/deletion-requests" className="secondary-button">
               <Icon name="shield" size={16} />查看待刪除審查
-            </Link>
-          ) : null}
-          {loadState === 'ready' && canReviewDuplicates ? (
-            <Link href="/students/duplicates" className="secondary-button">
-              <Icon name="users" size={16} />審查疑似重複資料
             </Link>
           ) : null}
           {loadState === 'ready' && canCreate ? (

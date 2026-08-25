@@ -1,10 +1,5 @@
-import { DuplicateCandidateReview } from '@/components/crm/DuplicateCandidateReview'
+import { notFound } from "next/navigation";
 
-export default async function DuplicateCandidatePage({
-  params,
-}: {
-  readonly params: Promise<{ readonly candidateId: string }>
-}) {
-  const { candidateId } = await params
-  return <DuplicateCandidateReview candidateId={candidateId} />
+export default function DuplicateCandidatePage(): never {
+  notFound();
 }
