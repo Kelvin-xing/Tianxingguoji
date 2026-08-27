@@ -294,12 +294,22 @@ async function createCaseInTransaction(
     `INSERT INTO cases_service_cases
       (id, organization_id, student_id, case_number, application_type, intake_year,
        admission_type, primary_role_binding_id, primary_membership_id, primary_user_id,
-       primary_role, stage, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,$10,'signed',
-       to_timestamp($11 / 1000.0),to_timestamp($11 / 1000.0))`,
+       primary_role, current_primary_advisor_assignment_id, stage, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,$10,$11,'signed',
+       to_timestamp($12 / 1000.0),to_timestamp($12 / 1000.0))`,
     [input.serviceCaseId, input.organizationId, input.studentId, input.caseNumber,
       input.intakeYear, input.admissionType, selectedBinding.id,
       selectedBinding.membership_id, selectedBinding.user_id, selectedBinding.role,
+      input.primaryAdvisorAssignmentId, input.createdAtMs],
+  );
+  await transaction.query(
+    `INSERT INTO cases_primary_advisor_assignments
+      (id, organization_id, service_case_id, advisor_role_binding_id, membership_id,
+       advisor_user_id, advisor_role, starts_at, assignment_reason, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,'advisor',to_timestamp($7 / 1000.0),
+       'case_creation',to_timestamp($7 / 1000.0),to_timestamp($7 / 1000.0))`,
+    [input.primaryAdvisorAssignmentId, input.organizationId, input.serviceCaseId,
+      selectedBinding.id, selectedBinding.membership_id, selectedBinding.user_id,
       input.createdAtMs],
   );
   await transaction.query(

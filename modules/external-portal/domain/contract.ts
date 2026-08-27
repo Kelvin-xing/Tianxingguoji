@@ -15,9 +15,9 @@ export const PORTAL_FORBIDDEN_ACTIONS = Object.freeze([
 
 export type PortalCapabilitySetVersion = typeof PORTAL_CAPABILITY_SET_VERSION;
 export type PortalActorRole = "founder" | "admin" | "advisor" | "contractor";
-export type PortalGrantStatus = "active" | "pending_approval" | "revoked" | "expired";
+export type PortalGrantStatus = "active" | "revoked" | "expired";
 export type PortalSessionStatus = "active" | "revoked" | "expired";
-export type PortalCaseStatus = "active" | "closed" | "cancelled" | "pending_delete";
+export type PortalCaseStatus = "active" | "paused" | "termination_pending" | "closed" | "cancelled" | "pending_delete";
 
 export type PortalErrorCode =
   | "PORTAL_INPUT_INVALID"
@@ -38,7 +38,10 @@ export type PortalErrorCode =
   | "PORTAL_CAPABILITY_UNSUPPORTED"
   | "PORTAL_RATE_LIMITED"
   | "PORTAL_VERSION_CONFLICT"
-  | "PORTAL_RUNTIME_UNAVAILABLE";
+  | "PORTAL_RUNTIME_UNAVAILABLE"
+  | "PORTAL_CASE_NOT_FOUND"
+  | "PORTAL_GRANT_NOT_FOUND"
+  | "PORTAL_CONTEXT_MISMATCH";
 
 export type PortalPolicyDecision<T = undefined> =
   | (T extends undefined ? { readonly allowed: true } : { readonly allowed: true; readonly value: T })
@@ -92,6 +95,20 @@ export interface PortalEffectiveAccessInput {
   readonly organizationActive: boolean;
 }
 
+/** Request-time Access union used by internal grant commands; role labels are not authorization facts. */
+export interface PortalRequestAccessActor {
+  readonly userId: string;
+  readonly organizationId: string;
+  readonly workspaceCapabilities: readonly string[];
+  readonly roles?: readonly string[];
+}
+
+export interface PortalGrantCommandAccessInput {
+  readonly actor: PortalRequestAccessActor;
+  readonly isCurrentPrimaryAdvisor: boolean;
+  readonly isFounder: boolean;
+}
+
 export interface PortalSessionCreationInput {
   readonly nowMs: number;
   readonly grantExpiresAtMs: number;
@@ -123,7 +140,6 @@ export interface PortalMessageSource {
 }
 
 export interface PortalWorkspaceSource {
-  readonly caseNumber: string;
   readonly customerFacingStage: string;
   readonly lastCustomerVisibleUpdateAt: string;
   readonly schoolTargets: readonly PortalSchoolTargetSource[];
@@ -133,7 +149,6 @@ export interface PortalWorkspaceSource {
 
 export interface PortalCaseReadV1 {
   readonly capabilitySetVersion: PortalCapabilitySetVersion;
-  readonly caseNumber: string;
   readonly customerFacingStage: string;
   readonly lastCustomerVisibleUpdateAt: string;
   readonly schoolTargets: readonly { readonly name: string; readonly status: string }[];
@@ -161,9 +176,9 @@ export interface PortalPublicErrorResponse {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTOR_ROLES: readonly PortalActorRole[] = ["founder", "admin", "advisor", "contractor"];
-const GRANT_STATUSES: readonly PortalGrantStatus[] = ["active", "pending_approval", "revoked", "expired"];
+const GRANT_STATUSES: readonly PortalGrantStatus[] = ["active", "revoked", "expired"];
 const SESSION_STATUSES: readonly PortalSessionStatus[] = ["active", "revoked", "expired"];
-const CASE_STATUSES: readonly PortalCaseStatus[] = ["active", "closed", "cancelled", "pending_delete"];
+const CASE_STATUSES: readonly PortalCaseStatus[] = ["active", "paused", "termination_pending", "closed", "cancelled", "pending_delete"];
 
 export function isPortalUuid(value: unknown): value is string {
   return typeof value === "string" && UUID.test(value);

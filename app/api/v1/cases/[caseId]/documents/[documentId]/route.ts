@@ -1,5 +1,4 @@
-import { requireIdentityActor } from "@/modules/identity/web";
-import { getDocumentWorkspaceRuntime } from "@/modules/documents/server";
+import { getDocumentWorkspaceRuntime, requireDocumentActor } from "@/modules/documents/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 import {
@@ -21,7 +20,7 @@ export function GET(request: Request, context: Context): Promise<Response> {
       assertNoDocumentQuery(request);
       const { caseId, documentId } = await context.params;
       const result = await getDocumentWorkspaceRuntime().service.detail(
-        await requireIdentityActor(),
+        await requireDocumentActor(),
         caseId,
         documentId,
       );

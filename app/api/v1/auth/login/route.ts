@@ -71,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       throw error;
     }
-    const response = NextResponse.redirect(new URL("/today", request.url), 303);
+    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
     response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
     return response;
   } catch (error) {
@@ -97,7 +97,7 @@ async function databaseTestLogin(request: Request): Promise<Response> {
     const login = getIdentityRuntime().databaseTestLogin;
     if (!login) return loginError(request, "configuration");
     const session = await login.createSession(credentials);
-    const response = NextResponse.redirect(new URL("/today", request.url), 303);
+    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
     response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
     return response;
   } catch (error) {
@@ -128,6 +128,10 @@ function loginError(
   code: "authentication_failed" | "configuration" | "service_unavailable",
 ): Response {
   return NextResponse.redirect(new URL(`/login?error=${code}`, request.url), 303);
+}
+
+function loginDestination(role: string): "/today" | "/tasks" {
+  return role === "contractor" ? "/tasks" : "/today";
 }
 
 function beginCognitoLogin(request: Request): Response {

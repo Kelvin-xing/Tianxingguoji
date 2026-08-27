@@ -20,18 +20,26 @@ export interface NotificationRecord {
   readonly effectIdempotencyKey: string;
   readonly status: NotificationStatus;
   readonly createdAt: string;
+  readonly readAt?: string | null;
+  readonly recordVersion?: number;
+  readonly targetKind?: string | null;
+  readonly targetOpaqueId?: string | null;
+  readonly targetAction?: string | null;
 }
 
 export interface DeliveryReceipt {
   readonly id: string;
   readonly organizationId: string;
   readonly outboxId: string;
-  readonly notificationId: string;
+  readonly notificationId: string | null;
+  readonly recipientUserId?: string;
   readonly effectType: string;
   readonly effectIdempotencyKey: string;
   readonly outcome: DeliveryOutcome;
   readonly attemptCount: number;
   readonly createdAt: string;
+  readonly suppressionCode?: string | null;
+  readonly failureCode?: string | null;
 }
 
 export type NotificationDenialCode =
@@ -68,6 +76,11 @@ export function buildPendingItemNotification(
     readonly contentCode?: string;
     readonly text?: string;
     readonly status?: NotificationStatus;
+    readonly readAt?: string | null;
+    readonly recordVersion?: number;
+    readonly targetKind?: string | null;
+    readonly targetOpaqueId?: string | null;
+    readonly targetAction?: string | null;
   },
 ): NotificationRecord {
   requireUuid(input.id);
@@ -104,6 +117,11 @@ export function buildPendingItemNotification(
     effectIdempotencyKey: input.effectIdempotencyKey,
     status: input.status ?? "unread",
     createdAt: input.createdAt,
+    ...(input.readAt !== undefined ? { readAt: input.readAt } : {}),
+    ...(input.recordVersion !== undefined ? { recordVersion: input.recordVersion } : {}),
+    ...(input.targetKind !== undefined ? { targetKind: input.targetKind } : {}),
+    ...(input.targetOpaqueId !== undefined ? { targetOpaqueId: input.targetOpaqueId } : {}),
+    ...(input.targetAction !== undefined ? { targetAction: input.targetAction } : {}),
   });
 }
 
@@ -111,16 +129,21 @@ export function buildDeliveryReceipt(input: {
   readonly id: string;
   readonly organizationId: string;
   readonly outboxId: string;
-  readonly notificationId: string;
+  readonly notificationId: string | null;
+  readonly recipientUserId?: string;
   readonly effectType: string;
   readonly effectIdempotencyKey: string;
   readonly outcome: DeliveryOutcome;
   readonly attemptCount: number;
   readonly createdAt: string;
+  readonly suppressionCode?: string | null;
+  readonly failureCode?: string | null;
 }): DeliveryReceipt {
-  for (const id of [input.id, input.organizationId, input.outboxId, input.notificationId]) {
+  for (const id of [input.id, input.organizationId, input.outboxId]) {
     requireUuid(id);
   }
+  if (input.recipientUserId !== undefined) requireUuid(input.recipientUserId);
+  if (input.notificationId !== null) requireUuid(input.notificationId);
   requireEffectType(input.effectType);
   validateIdempotencyKey(input.effectIdempotencyKey);
   if (!Number.isSafeInteger(input.attemptCount) || input.attemptCount < 1) {

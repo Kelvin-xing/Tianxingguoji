@@ -25,6 +25,7 @@ const INITIAL_DRAFT: StudentCreateDraft = {
   student: {
     display_name: '',
     date_of_birth: '',
+    gender: '',
     contact_email: '',
     contact_phone: '',
   },
@@ -32,8 +33,14 @@ const INITIAL_DRAFT: StudentCreateDraft = {
     display_name: '',
     email: '',
     phone: '',
+    date_of_birth: '',
+    gender: '',
     relationship_type: 'father',
+    relationship_description: '',
     is_legal_guardian: true,
+    is_emergency_contact: false,
+    is_billing_contact: false,
+    notification_consent: false,
   },
 }
 
@@ -178,6 +185,11 @@ export function StudentCreateForm() {
           <input type="checkbox" name="is_legal_guardian" checked={draft.primary_guardian.is_legal_guardian} onChange={(event) => changeGuardian('is_legal_guardian', event.target.checked)} className="mt-1" />
           <span><strong className="block" style={{ color: 'var(--text-primary)' }}>法定監護人</strong><span className="text-xs">預設為是；如實際情況不同，請取消勾選。</span></span>
         </label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.primary_guardian.is_emergency_contact} onChange={(event) => changeGuardian('is_emergency_contact', event.target.checked)} />緊急聯絡人</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.primary_guardian.is_billing_contact} onChange={(event) => changeGuardian('is_billing_contact', event.target.checked)} />帳務聯絡人</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.primary_guardian.notification_consent} onChange={(event) => changeGuardian('notification_consent', event.target.checked)} />接收通知</label>
+        </div>
       </section>
 
       <SubmitFeedback state={submitState} />

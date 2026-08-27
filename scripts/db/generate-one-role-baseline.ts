@@ -11,9 +11,9 @@ import {
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
 export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v3" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
-export const ONE_ROLE_SOURCE_COUNT = 35;
+export const ONE_ROLE_SOURCE_COUNT = 50;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
-  "4bea80c40b394a3b00864d51f51f7b7b4ad4b2f2feaa40ee4a0aa2b8791be3b0";
+  "82dadc1a453f16343a7a87c6529de341edeb2cb266e4d5757e3603b280597f96";
 export const ONE_ROLE_BASELINE_DIRECTORY = "db/baselines/one-role";
 export const ONE_ROLE_GENERATED_DIRECTORY = `${ONE_ROLE_BASELINE_DIRECTORY}/generated`;
 export const ONE_ROLE_MANIFEST_PATH = `${ONE_ROLE_BASELINE_DIRECTORY}/manifest.json`;
@@ -37,6 +37,12 @@ export const ONE_ROLE_TRANSFORM_SOURCES = Object.freeze({
     "93a22834efb861714d2cdff965a9d5feb8f3e152d7c5e0f810050fb13671dcf5",
   "202608180120_028_expand_database_test_identity.sql":
     "a03e584fac57648abdc4049dbd05e00c35d2ec1a3fc3b06297b4b757574332bb",
+  "202608260030_039_expand_crm_case_assessment.sql":
+    "8e9a3a95ce79aaa155f375abfb8f7f39af13b3a17748165021168507df3645da",
+  "202608260050_041_expand_school_target_task_events.sql":
+    "a9419bd59dd5f23dd1bbdb64d9968fb317191294aad2628e7af4f259bace0920",
+  "202608260060_042_access_session_locator.sql":
+    "dbcbd71b768140d461bfd75e362b40d79126968cc33119d4e12f4b809aa71f2d",
 } as const);
 
 const LEGACY_DATABASE_ROLE_IDENTIFIERS = Object.freeze([
@@ -57,6 +63,9 @@ export type OneRoleTransformName =
   | "case-billing-projection-v1"
   | "case-stage-trigger-bootstrap-v1"
   | "database-test-identity-v1"
+  | "crm-case-assessment-baseline-rls-v1"
+  | "school-target-task-events-baseline-privilege-window-v1"
+  | "identity-session-locator-rls-v1"
   | "hardening-v2";
 
 export type OneRoleGeneratedFile = Readonly<{
@@ -295,9 +304,121 @@ function transformOneRoleMigrationWithVerifiedHash(
       });
     case "202608180120_028_expand_database_test_identity.sql":
       return Object.freeze({ transform: "database-test-identity-v1", sql: transform028(source) });
+    case "202608260030_039_expand_crm_case_assessment.sql":
+      return Object.freeze({
+        transform: "crm-case-assessment-baseline-rls-v1",
+        sql: transform039(source),
+      });
+    case "202608260050_041_expand_school_target_task_events.sql":
+      return Object.freeze({
+        transform: "school-target-task-events-baseline-privilege-window-v1",
+        sql: transform041(source),
+      });
+    case "202608260060_042_access_session_locator.sql":
+      return Object.freeze({
+        transform: "identity-session-locator-rls-v1",
+        sql: transform042(source),
+      });
     default:
       return Object.freeze({ transform: "copy-v1", sql: source });
   }
+}
+
+function transform039(source: string): string {
+  const update = [
+    "UPDATE cases_service_cases AS service_case",
+    "   SET current_primary_advisor_assignment_id = assignment.id",
+    "  FROM cases_primary_advisor_assignments AS assignment",
+    " WHERE assignment.service_case_id = service_case.id",
+    "   AND assignment.organization_id = service_case.organization_id AND assignment.ends_at IS NULL;",
+  ].join("\n");
+  return replaceExactOnce(
+    source,
+    update,
+    [
+      "-- one-role baseline: this legacy backfill runs before tenant context exists.",
+      "ALTER TABLE cases_service_cases NO FORCE ROW LEVEL SECURITY;",
+      "ALTER TABLE cases_service_cases DISABLE ROW LEVEL SECURITY;",
+      "GRANT UPDATE (current_primary_advisor_assignment_id)",
+      "  ON TABLE cases_service_cases TO tianxing_app;",
+      update,
+      "REVOKE UPDATE (current_primary_advisor_assignment_id)",
+      "  ON TABLE cases_service_cases FROM tianxing_app;",
+      "ALTER TABLE cases_service_cases ENABLE ROW LEVEL SECURITY;",
+      "ALTER TABLE cases_service_cases FORCE ROW LEVEL SECURITY;",
+    ].join("\n"),
+    "039 primary advisor backfill RLS window",
+  );
+}
+
+function transform041(source: string): string {
+  const trigger = [
+    "DROP TRIGGER IF EXISTS cases_candidate_confirmed_preparing_trg ON cases_candidate_school_list_versions;",
+    "CREATE CONSTRAINT TRIGGER cases_candidate_confirmed_preparing_trg",
+    "AFTER UPDATE OF status ON cases_candidate_school_list_versions DEFERRABLE INITIALLY DEFERRED",
+    "FOR EACH ROW EXECUTE FUNCTION cases_promote_confirmed_targets_to_preparing();",
+  ].join("\n");
+  return replaceExactOnce(
+    source,
+    trigger,
+    [
+      "GRANT TRIGGER ON TABLE cases_candidate_school_list_versions TO tianxing_app;",
+      trigger,
+      "REVOKE TRIGGER ON TABLE cases_candidate_school_list_versions FROM tianxing_app;",
+    ].join("\n"),
+    "041 candidate-list trigger privilege window",
+  );
+}
+
+function transform042(source: string): string {
+  const wrapper = [
+    "CREATE FUNCTION identity_resolve_session_principal(p_secret_hash bytea, p_now timestamptz, p_sensitive_action boolean)",
+    "RETURNS TABLE (allowed boolean, user_id uuid, session_id uuid, captured_session_version bigint,",
+    "  reauthenticated_at timestamptz, organization_id uuid, membership_id uuid, denial_code text)",
+    "LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public AS $$",
+    "  SELECT principal.allowed, principal.user_id, principal.session_id, principal.captured_session_version,",
+    "         principal.reauthenticated_at, session.organization_id, session.membership_id, principal.denial_code",
+    "    FROM identity_resolve_session_principal_legacy_042(p_secret_hash, p_now, p_sensitive_action) principal",
+    "    LEFT JOIN identity_sessions session ON session.id = principal.session_id;",
+    "$$;",
+  ].join("\n");
+  const locatorSetting = "current_setting('app.identity_session_secret_hash', true)";
+  const locatorPredicate = [
+    "(",
+    "    organization_id::text = current_setting('app.organization_id', true)",
+    "    OR (",
+    `      ${locatorSetting} ~ '^[0-9a-f]{64}$'`,
+    `      AND encode(secret_hash, 'hex') = ${locatorSetting}`,
+    "    )",
+    "  )",
+  ].join("\n");
+  const replacement = [
+    "-- one-role baseline: raw session lookup precedes tenant discovery. The locator",
+    "-- is transaction-local, exact-secret scoped, and cleared by the only executable wrapper.",
+    "DROP POLICY IF EXISTS tianxing_tenant_boundary ON identity_sessions;",
+    "CREATE POLICY tianxing_tenant_boundary ON identity_sessions",
+    "  FOR ALL TO tianxing_app",
+    `  USING ${locatorPredicate}`,
+    `  WITH CHECK ${locatorPredicate};`,
+    "CREATE FUNCTION identity_resolve_session_principal(p_secret_hash bytea, p_now timestamptz, p_sensitive_action boolean)",
+    "RETURNS TABLE (allowed boolean, user_id uuid, session_id uuid, captured_session_version bigint,",
+    "  reauthenticated_at timestamptz, organization_id uuid, membership_id uuid, denial_code text)",
+    "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$",
+    "BEGIN",
+    "  PERFORM set_config('app.identity_session_secret_hash',",
+    "    coalesce(encode(p_secret_hash, 'hex'), ''), true);",
+    "  RETURN QUERY SELECT principal.allowed, principal.user_id, principal.session_id, principal.captured_session_version,",
+    "         principal.reauthenticated_at, session.organization_id, session.membership_id, principal.denial_code",
+    "    FROM identity_resolve_session_principal_legacy_042(p_secret_hash, p_now, p_sensitive_action) principal",
+    "    LEFT JOIN identity_sessions session ON session.id = principal.session_id;",
+    "  PERFORM set_config('app.identity_session_secret_hash', '', true);",
+    "EXCEPTION WHEN OTHERS THEN",
+    "  PERFORM set_config('app.identity_session_secret_hash', '', true);",
+    "  RAISE;",
+    "END;",
+    "$$;",
+  ].join("\n");
+  return replaceExactOnce(source, wrapper, replacement, "042 one-role session locator wrapper");
 }
 
 function transform008(source: string): string {
@@ -598,7 +719,8 @@ function replaceFromOnce(source: string, start: string, replacement: string, lab
 
 function replaceExactOnce(source: string, search: string, replacement: string, label: string): string {
   assertOccurrenceCount(source, search, 1, label);
-  return source.replace(search, replacement);
+  const index = source.indexOf(search);
+  return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}`;
 }
 
 function assertOccurrenceCount(source: string, search: string, expected: number, label: string): void {

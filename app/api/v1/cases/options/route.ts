@@ -1,5 +1,5 @@
 import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { handleApiRequest, type JsonValue } from "@/modules/shared/public";
 
 import { mapCaseWorkspaceCollectionError } from "../route-contract.ts";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   return handleApiRequest(request, async () => {
     try {
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const options = await getCaseWorkspaceRuntime().service.listOptions(actor);
       return {
         options: {

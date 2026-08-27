@@ -8,6 +8,7 @@ import { getWorkspaceAccessSnapshot } from '@/modules/access/client'
 import {
   ReferralSourceIdempotencyAttempt,
   classifyReferralSourceFailure,
+  deactivateReferralSource,
   getReferralSource,
   referralSourceUpdateFingerprint,
   updateReferralSource,
@@ -32,6 +33,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
   const [canManage, setCanManage] = useState(false)
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState('')
+  const [description, setDescription] = useState('')
   const [inactivate, setInactivate] = useState(false)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
@@ -55,6 +57,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
       setSource(nextSource)
       setCanManage(access.capabilities.some((item) => String(item) === 'referral_sources.manage'))
       setDisplayName(nextSource.display_name)
+      setDescription(nextSource.description ?? '')
       setInactivate(false)
       setState('ready')
     } catch (error) {
@@ -86,6 +89,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
     if (saving || source === null) return
     attempt.current!.complete()
     setDisplayName(source.display_name)
+    setDescription(source.description ?? '')
     setInactivate(false)
     setNotice(null)
     setEditing(false)
@@ -96,33 +100,44 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
     event.preventDefault()
     if (inFlight.current || saving || source === null || !canManage) return
     const nextName = displayName.trim()
-    const nextStatus = source.status === 'active' && inactivate ? 'inactive' : source.status
-    if (nextName.length < 1 || nextName.length > 200 || (nextName === source.display_name && nextStatus === source.status)) {
+    const nextDescription = source.source_type === 'other' ? description.trim() : null
+    const profileChanged = nextName !== source.display_name || nextDescription !== source.description
+    if (nextName.length < 1 || nextName.length > 200 ||
+        (source.source_type === 'other' && description.trim().length === 0) ||
+        (!profileChanged && !inactivate) || (profileChanged && inactivate)) {
       setNotice('validation')
       return
     }
     const draft = {
       expected_record_version: source.record_version,
       display_name: nextName,
-      status: nextStatus,
+      source_type: source.source_type,
+      description: nextDescription,
     } as const
     inFlight.current = true
     setSaving(true)
     setNotice(null)
     try {
-      const receipt = await updateReferralSource(
-        source.id,
-        draft,
-        attempt.current!.keyFor(referralSourceUpdateFingerprint(source.id, draft)),
-      )
+      const receipt = inactivate
+        ? await deactivateReferralSource(
+            source.id,
+            { expected_record_version: source.record_version, reason_code: 'record.lifecycle.referral_source_deactivated' },
+            attempt.current!.keyFor(JSON.stringify({ source_id: source.id, action: 'deactivate', expected_record_version: source.record_version })),
+          )
+        : await updateReferralSource(
+            source.id,
+            draft,
+            attempt.current!.keyFor(referralSourceUpdateFingerprint(source.id, draft)),
+          )
       const authoritative = await getReferralSource(source.id)
-      if (authoritative.record_version !== receipt.record_version) {
+      if (authoritative.record_version !== receipt.referral_source.record_version) {
         throw new TypeError('ReferralSource authority mismatch.')
       }
       if (!mounted.current) return
       attempt.current!.complete()
       setSource(authoritative)
       setDisplayName(authoritative.display_name)
+      setDescription(authoritative.description ?? '')
       setInactivate(false)
       setEditing(false)
       setNotice('success')
@@ -137,6 +152,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
           if (!mounted.current) return
           setSource(authoritative)
           setDisplayName(authoritative.display_name)
+          setDescription(authoritative.description ?? '')
           setInactivate(false)
           setEditing(false)
           setNotice(failure)
@@ -191,6 +207,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
           <form onSubmit={submit} className="space-y-4">
             <label className="field-label">顯示名稱<input ref={nameInput} value={displayName} maxLength={200} required disabled={saving} onChange={(event) => { setDisplayName(event.target.value); setNotice(null) }} /></label>
             <div><div className="field-label">來源類型</div><div className="locked-field mt-2">{sourceTypeLabel(source.source_type)}</div></div>
+            {source.source_type === 'other' ? <label className="field-label">其他來源說明<input value={description} maxLength={500} required disabled={saving} onChange={(event) => { setDescription(event.target.value); setNotice(null) }} /></label> : null}
             {source.status === 'active' ? (
               <label className="inline-callout warning">
                 <input type="checkbox" aria-label="停用此來源" checked={inactivate} disabled={saving} onChange={(event) => { setInactivate(event.target.checked); setNotice(null) }} />
@@ -217,7 +234,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
 function NoticeView({ notice }: { readonly notice: Exclude<Notice, null> }) {
   const success = notice === 'success'
   const message = success ? '推薦來源已更新，資料已重新載入。'
-    : notice === 'validation' ? '請輸入有效名稱，並至少修改一項資料。'
+    : notice === 'validation' ? '請輸入有效資料並只執行一項變更；其他來源必須保留說明。'
       : notice === 'stale' ? '資料已有較新版本，已重新載入，請再次確認。'
         : notice === 'conflict' ? '目前狀態不接受這項變更，資料已重新載入。'
           : notice === 'denied' ? '目前帳號不能更新推薦來源。'
@@ -230,5 +247,10 @@ function Info({ label, value }: { readonly label: string; readonly value: string
 }
 
 function sourceTypeLabel(type: ReferralSourceType): string {
-  return type === 'bank' ? '銀行' : type === 'insurance' ? '保險公司' : '其他合作來源'
+  const labels: Readonly<Record<ReferralSourceType, string>> = {
+    customer_referral: '客戶推薦', employee_referral: '員工推薦', school_referral: '學校推薦',
+    partner_referral: '合作夥伴推薦', website: '網站', social_media: '社交媒體',
+    paid_advertising: '付費廣告', event: '活動', walk_in: '直接查詢', other: '其他', unknown: '未知',
+  }
+  return labels[type]
 }

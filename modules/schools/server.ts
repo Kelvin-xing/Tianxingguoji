@@ -9,3 +9,6 @@ export * from "./infrastructure/postgresql-resolved-view-transaction.ts";
 export * from "./infrastructure/resolved-view-runtime.ts";
 export * from "./infrastructure/runtime.ts";
 export * from "./infrastructure/school-governance-runtime.ts";
+export * from "./application/portal-read-port.ts";
+export * from "./infrastructure/postgresql-portal-read-adapter.ts";
+export * from "./infrastructure/postgresql-directory-repository.ts";

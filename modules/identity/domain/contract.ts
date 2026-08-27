@@ -1,6 +1,6 @@
 export const SESSION_POLICY = Object.freeze({
-  idleTimeoutMs: 15 * 60 * 1_000,
-  absoluteTimeoutMs: 8 * 60 * 60 * 1_000,
+  idleTimeoutMs: 8 * 60 * 60 * 1_000,
+  absoluteTimeoutMs: 24 * 60 * 60 * 1_000,
   sensitiveReauthenticationMaxAgeMs: 5 * 60 * 1_000,
   maximumActiveSessions: 3,
 } as const);
@@ -8,7 +8,7 @@ export const SESSION_POLICY = Object.freeze({
 export const INVITE_POLICY = Object.freeze({
   activationCredentialVersion: "v1",
   activationSecretBytes: 32,
-  expiresInMs: 24 * 60 * 60 * 1_000,
+  expiresInMs: 72 * 60 * 60 * 1_000,
   deliveryChannelPolicyId: "hk_dpa_reviewed_transactional",
 } as const);
 
@@ -50,6 +50,48 @@ export interface SessionEvaluationInput {
   readonly idleExpiresAtMs: number;
   readonly absoluteExpiresAtMs: number;
   readonly reauthenticatedAtMs: number | null;
+}
+
+export interface IdentitySessionEvaluationInput {
+  readonly nowMs: number;
+  readonly sensitiveAction: boolean;
+  readonly userStatus: UserStatus;
+  readonly currentSessionVersion: number;
+  readonly sessionStatus: SessionStatus;
+  readonly capturedSessionVersion: number;
+  readonly idleExpiresAtMs: number;
+  readonly absoluteExpiresAtMs: number;
+  readonly reauthenticatedAtMs: number | null;
+}
+
+export function evaluateIdentitySession(
+  input: IdentitySessionEvaluationInput,
+): SessionDecision {
+  if (input.userStatus !== "active") {
+    return { allowed: false, code: "USER_DISABLED" };
+  }
+  if (input.sessionStatus !== "active") {
+    return { allowed: false, code: "SESSION_NOT_ACTIVE" };
+  }
+  if (input.capturedSessionVersion !== input.currentSessionVersion) {
+    return { allowed: false, code: "SESSION_VERSION_STALE" };
+  }
+  if (input.nowMs >= input.absoluteExpiresAtMs) {
+    return { allowed: false, code: "SESSION_ABSOLUTE_EXPIRED" };
+  }
+  if (input.nowMs >= input.idleExpiresAtMs) {
+    return { allowed: false, code: "SESSION_IDLE_EXPIRED" };
+  }
+  if (
+    input.sensitiveAction &&
+    (input.reauthenticatedAtMs === null ||
+      input.reauthenticatedAtMs > input.nowMs ||
+      input.nowMs - input.reauthenticatedAtMs >
+        SESSION_POLICY.sensitiveReauthenticationMaxAgeMs)
+  ) {
+    return { allowed: false, code: "SENSITIVE_REAUTH_REQUIRED" };
+  }
+  return { allowed: true };
 }
 
 export function selectAvailableSessionSlot(

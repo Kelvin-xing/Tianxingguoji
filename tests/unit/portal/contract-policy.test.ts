@@ -13,12 +13,14 @@ import {
   assertPortalPolicyInput,
   type PortalEffectiveAccessInput,
   type PortalGrantActorFacts,
+  type PortalGrantCommandAccessInput,
   type PortalWorkspaceSource,
 } from "../../../modules/external-portal/domain/contract.ts";
 import {
   buildPortalCaseReadV1,
   evaluatePortalEffectiveAccess,
   evaluatePortalGrantAuthorization,
+  evaluatePortalGrantCommandAccess,
   evaluatePortalSessionCreation,
   mapPortalErrorToPublicResponse,
 } from "../../../modules/external-portal/domain/policy.ts";
@@ -147,9 +149,26 @@ test("DP-03 denies from current Release 1 facts without a Subscription input", (
   }
 });
 
+test("P5-BE-08 uses request-time capability union and invalidates paused/termination states", () => {
+  const command: PortalGrantCommandAccessInput = {
+    actor: { userId: ids.actor, organizationId: ids.organization, workspaceCapabilities: ["cases.workflow.manage"] },
+    isCurrentPrimaryAdvisor: true,
+    isFounder: false,
+  };
+  assert.deepEqual(evaluatePortalGrantCommandAccess(command), { allowed: true });
+  assert.deepEqual(evaluatePortalGrantCommandAccess({ ...command, actor: { ...command.actor, workspaceCapabilities: [] } }), {
+    allowed: false,
+    code: "PORTAL_ISSUER_UNAUTHORIZED",
+  });
+  assert.deepEqual(evaluatePortalEffectiveAccess(effective({ caseStatus: "paused" })), { allowed: true });
+  assert.deepEqual(evaluatePortalEffectiveAccess(effective({ caseStatus: "termination_pending" })), {
+    allowed: false,
+    code: "PORTAL_CASE_INACTIVE",
+  });
+});
+
 test("DP-04 builds only the exact portal_case_read_v1 positive allowlist", () => {
   const source: PortalWorkspaceSource = {
-    caseNumber: "K12-2026-0042",
     customerFacingStage: "Interview preparation",
     lastCustomerVisibleUpdateAt: "2026-08-13T09:00:00.000Z",
     schoolTargets: [{ name: "Example School", status: "shortlisted", customerVisible: true }, { name: "Hidden", status: "draft", customerVisible: false }],
@@ -159,7 +178,6 @@ test("DP-04 builds only the exact portal_case_read_v1 positive allowlist", () =>
   const projection = buildPortalCaseReadV1(source);
   assert.deepEqual(projection, {
     capabilitySetVersion: "portal_case_read_v1",
-    caseNumber: "K12-2026-0042",
     customerFacingStage: "Interview preparation",
     lastCustomerVisibleUpdateAt: "2026-08-13T09:00:00.000Z",
     schoolTargets: [{ name: "Example School", status: "shortlisted" }],
@@ -167,6 +185,10 @@ test("DP-04 builds only the exact portal_case_read_v1 positive allowlist", () =>
     messages: [{ body: "Interview confirmed", publishedAt: "2026-08-13T08:00:00.000Z" }],
   });
   assert.deepEqual(PORTAL_FORBIDDEN_ACTIONS, ["document", "download", "export", "comment", "edit", "delete"]);
+  assert.deepEqual(Object.keys(projection).sort(), [
+    "actionItems", "capabilitySetVersion", "customerFacingStage",
+    "lastCustomerVisibleUpdateAt", "messages", "schoolTargets",
+  ]);
   assert.equal(Object.hasOwn(projection, "documents"), false);
 });
 
@@ -210,12 +232,11 @@ test("public authentication maps every credential-state failure to one generic r
     "PORTAL_GRANT_REVOKED",
     "PORTAL_SESSION_INVALID",
     "PORTAL_SESSION_EXPIRED",
+    "PORTAL_VIEWER_RELATIONSHIP_INACTIVE",
   ] as const) {
     assert.deepEqual(mapPortalErrorToPublicResponse(code), expected, code);
   }
   for (const code of [
-    "PORTAL_SCOPE_DENIED",
-    "PORTAL_VIEWER_RELATIONSHIP_INACTIVE",
     "PORTAL_ISSUER_UNAUTHORIZED",
     "PORTAL_ORGANIZATION_INACTIVE",
   ] as const) {

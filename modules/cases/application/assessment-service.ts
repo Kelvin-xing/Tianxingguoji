@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  compatibilityRoleForRepository,
+  type RequestAccessActor,
+  type WorkspaceCapability,
+} from "../../access/public.ts";
+import {
   buildAtomicMutationEffects,
   buildAuditEvent,
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
-import { evaluateBootstrapAuthorization } from "../../access/public.ts";
 import {
   hashRequestPayload,
   validateIdempotencyKey,
@@ -120,7 +123,7 @@ export interface AssessmentRepository {
   readCaseAssessment(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
-    readonly actorRole: IdentitySessionActor["role"];
+    readonly actorRole: string;
     readonly caseId: string;
   }): Promise<AssessmentSnapshot>;
   /**
@@ -131,7 +134,7 @@ export interface AssessmentRepository {
   updateAssessmentAnswer(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
-    readonly actorRole: IdentitySessionActor["role"];
+    readonly actorRole: string;
     readonly caseId: string;
     readonly assessmentId: string;
     readonly manifestId: string;
@@ -150,7 +153,7 @@ export interface AssessmentRepository {
   completeBackgroundCollection(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
-    readonly actorRole: IdentitySessionActor["role"];
+    readonly actorRole: string;
     readonly caseId: string;
     readonly assessmentId: string;
     readonly manifestId: string;
@@ -241,7 +244,7 @@ export class AssessmentService {
   }
 
   async getCaseAssessment(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly caseId: string;
   }): Promise<AssessmentView> {
     assertActorAndCase(input.actor, input.caseId);
@@ -249,14 +252,14 @@ export class AssessmentService {
     const snapshot = await this.repository.readCaseAssessment({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
-      actorRole: input.actor.role,
+      actorRole: repositoryRole(input.actor, "cases.assessments.read", "read"),
       caseId: input.caseId,
     });
     return projectAssessment(snapshot);
   }
 
   async updateAssessmentAnswer(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly caseId: string;
     readonly command: UpdateAssessmentAnswerCommand;
   }): Promise<UpdateAssessmentAnswerResult> {
@@ -267,7 +270,7 @@ export class AssessmentService {
     const snapshot = await this.repository.readCaseAssessment({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
-      actorRole: input.actor.role,
+      actorRole: repositoryRole(input.actor, "cases.assessments.manage", "write"),
       caseId: input.caseId,
     });
     if (!snapshot.access.canEdit) {
@@ -296,7 +299,7 @@ export class AssessmentService {
 
     const value = normalizeAnswerValue(input.command, field);
     const prior = snapshot.answers.find((answer) => answer.fieldId === input.command.fieldId);
-    const answerId = prior?.id ?? this.createId();
+    const answerId = this.createId();
     const auditId = this.createId();
     const outboxId = this.createId();
     for (const id of [answerId, auditId, outboxId]) assertUuid(id);
@@ -357,7 +360,7 @@ export class AssessmentService {
     return this.repository.updateAssessmentAnswer({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
-      actorRole: input.actor.role,
+      actorRole: repositoryRole(input.actor, "cases.assessments.manage", "write"),
       caseId: input.caseId,
       assessmentId: snapshot.assessmentId,
       manifestId: snapshot.manifestId,
@@ -383,7 +386,7 @@ export class AssessmentService {
   }
 
   async completeBackgroundCollection(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly caseId: string;
     readonly command: CompleteAssessmentBackgroundCommand;
   }): Promise<AssessmentCompletionResult> {
@@ -394,7 +397,7 @@ export class AssessmentService {
     const snapshot = await this.repository.readCaseAssessment({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
-      actorRole: input.actor.role,
+      actorRole: repositoryRole(input.actor, "cases.assessments.manage", "write"),
       caseId: input.caseId,
     });
     if (!snapshot.access.canCompleteBackground) {
@@ -485,7 +488,7 @@ export class AssessmentService {
     return this.repository.completeBackgroundCollection({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
-      actorRole: input.actor.role,
+      actorRole: repositoryRole(input.actor, "cases.assessments.manage", "write"),
       caseId: input.caseId,
       assessmentId: snapshot.assessmentId,
       manifestId: snapshot.manifestId,
@@ -560,7 +563,7 @@ function projectAssessment(snapshot: AssessmentSnapshot): AssessmentView {
   });
 }
 
-function assertActorAndCase(actor: IdentitySessionActor, caseId: string): void {
+function assertActorAndCase(actor: RequestAccessActor, caseId: string): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !UUID.test(caseId)) {
     throw new AssessmentServiceError("ASSESSMENT_ANSWER_INVALID");
   }
@@ -600,19 +603,28 @@ function assertCompletionCommand(command: CompleteAssessmentBackgroundCommand): 
 }
 
 function assertAssessmentRole(
-  actor: IdentitySessionActor,
+  actor: RequestAccessActor,
   capability: "read" | "write",
 ): void {
-  const decision = evaluateBootstrapAuthorization(actor.role, {
-    capability: capability === "read"
-      ? "cases.assessments.read"
-      : "cases.assessments.manage",
-  });
-  if (!decision.allowed) {
+  const requested = capability === "read"
+    ? "cases.assessments.read" as const
+    : "cases.assessments.manage" as const;
+  if (!compatibilityRoleForRepository(actor, requested)) {
     throw new AssessmentServiceError(
       capability === "read" ? "ASSESSMENT_READ_FORBIDDEN" : "ASSESSMENT_WRITE_FORBIDDEN",
     );
   }
+}
+
+function repositoryRole(actor: RequestAccessActor, capability: WorkspaceCapability,
+  mode: "read" | "write"): string {
+  const role = compatibilityRoleForRepository(actor, capability);
+  if (!role) {
+    throw new AssessmentServiceError(
+      mode === "read" ? "ASSESSMENT_READ_FORBIDDEN" : "ASSESSMENT_WRITE_FORBIDDEN",
+    );
+  }
+  return role;
 }
 
 function normalizeAnswerValue(

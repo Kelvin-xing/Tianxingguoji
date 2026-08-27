@@ -52,7 +52,7 @@ export function CaseReferralSourcePanel({ caseId }: { readonly caseId: string })
       ])
       if (!mounted.current || nextController.signal.aborted) return
       const nextCanAssign = access.capabilities.some((item) => String(item) === 'cases.referral_sources.assign')
-      const sources = nextCanAssign ? await listReferralSources('active', nextController.signal) : []
+      const sources = nextCanAssign ? (await listReferralSources('active', nextController.signal)).items : []
       if (!mounted.current || nextController.signal.aborted) return
       setView(assignments)
       setCanAssign(nextCanAssign)
@@ -231,7 +231,12 @@ function NoticeView({ notice }: { readonly notice: Exclude<Notice, null> }) {
 }
 
 function sourceTypeLabel(type: ReferralSourceType): string {
-  return type === 'bank' ? '銀行' : type === 'insurance' ? '保險公司' : '其他合作來源'
+  const labels: Readonly<Record<ReferralSourceType, string>> = {
+    customer_referral: '客戶推薦', employee_referral: '員工推薦', school_referral: '學校推薦',
+    partner_referral: '合作夥伴推薦', website: '網站', social_media: '社交媒體',
+    paid_advertising: '付費廣告', event: '活動', walk_in: '直接查詢', other: '其他', unknown: '未知',
+  }
+  return labels[type]
 }
 
 function formatDate(value: string): string {

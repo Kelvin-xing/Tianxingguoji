@@ -11,6 +11,7 @@ import {
   type PortalEffectiveAccessInput,
   type PortalErrorCode,
   type PortalGrantActorFacts,
+  type PortalGrantCommandAccessInput,
   type PortalPolicyDecision,
   type PortalPublicErrorResponse,
   type PortalSessionCreationInput,
@@ -45,6 +46,33 @@ export function evaluatePortalGrantAuthorization(
     return { allowed: true };
   }
   return { allowed: false, code: "PORTAL_SCOPE_DENIED" };
+}
+
+export function evaluatePortalGrantCommandAccess(
+  input: PortalGrantCommandAccessInput,
+): PortalPolicyDecision {
+  if (!input || !input.actor || !Array.isArray(input.actor.workspaceCapabilities)) {
+    return { allowed: false, code: "PORTAL_INPUT_INVALID" };
+  }
+  if (!input.actor.workspaceCapabilities.includes("cases.workflow.manage")) {
+    return { allowed: false, code: "PORTAL_ISSUER_UNAUTHORIZED" };
+  }
+  if (input.isCurrentPrimaryAdvisor) return { allowed: true };
+  return { allowed: false, code: "PORTAL_ISSUER_UNAUTHORIZED" };
+}
+
+/** Revoke is the only grant command that Founder may perform. */
+export function evaluatePortalGrantRevokeAccess(
+  input: PortalGrantCommandAccessInput,
+): PortalPolicyDecision {
+  if (!input || !input.actor || !Array.isArray(input.actor.workspaceCapabilities)) {
+    return { allowed: false, code: "PORTAL_INPUT_INVALID" };
+  }
+  if (!input.actor.workspaceCapabilities.includes("cases.workflow.manage")) {
+    return { allowed: false, code: "PORTAL_ISSUER_UNAUTHORIZED" };
+  }
+  if (input.isCurrentPrimaryAdvisor || input.isFounder) return { allowed: true };
+  return { allowed: false, code: "PORTAL_ISSUER_UNAUTHORIZED" };
 }
 
 export function evaluatePortalEffectiveAccess(
@@ -82,7 +110,7 @@ export function evaluatePortalEffectiveAccess(
   if (!input.viewerRelationshipActive) {
     return { allowed: false, code: "PORTAL_VIEWER_RELATIONSHIP_INACTIVE" };
   }
-  if (input.caseStatus !== "active") {
+  if (["closed", "cancelled", "pending_delete", "termination_pending"].includes(input.caseStatus)) {
     return { allowed: false, code: "PORTAL_CASE_INACTIVE" };
   }
   if (!input.issuerActive || !input.issuerStillAuthorized) {
@@ -128,7 +156,6 @@ function assertIsoTimestamp(value: unknown): asserts value is string {
 }
 
 export function buildPortalCaseReadV1(source: PortalWorkspaceSource): PortalCaseReadV1 {
-  assertText(source.caseNumber, 128);
   assertText(source.customerFacingStage, 256);
   assertIsoTimestamp(source.lastCustomerVisibleUpdateAt);
   if (!Array.isArray(source.schoolTargets) || !Array.isArray(source.actionItems) || !Array.isArray(source.messages)) {
@@ -165,7 +192,6 @@ export function buildPortalCaseReadV1(source: PortalWorkspaceSource): PortalCase
 
   return Object.freeze({
     capabilitySetVersion: PORTAL_CAPABILITY_SET_VERSION,
-    caseNumber: source.caseNumber,
     customerFacingStage: source.customerFacingStage,
     lastCustomerVisibleUpdateAt: source.lastCustomerVisibleUpdateAt,
     schoolTargets: Object.freeze(schoolTargets),
@@ -182,6 +208,11 @@ export function mapPortalErrorToPublicResponse(code: PortalErrorCode): PortalPub
     "PORTAL_GRANT_REVOKED",
     "PORTAL_SESSION_INVALID",
     "PORTAL_SESSION_EXPIRED",
+    "PORTAL_VIEWER_RELATIONSHIP_INACTIVE",
+    "PORTAL_CASE_NOT_FOUND",
+    "PORTAL_GRANT_NOT_FOUND",
+    "PORTAL_CONTEXT_MISMATCH",
+    "PORTAL_ACTOR_INACTIVE",
   ].includes(code)) {
     return { httpStatus: 401, code: "PORTAL_ACCESS_INVALID", message: "Portal access is invalid." };
   }

@@ -111,7 +111,7 @@ test("Founder issues a one-display 24-hour invite through Cognito SUPPRESS and r
   assert.deepEqual(invite, {
     inviteId: "00000000-0000-4000-8000-000000000004",
     targetUserId: ADVISOR.userId,
-    expiresAtMs: 1_754_352_000_000,
+    expiresAtMs: 1_754_524_800_000,
     deliveryReceipt: {
       channelPolicyId: "hk_dpa_reviewed_transactional",
       receiptReference: "delivery-receipt-001",
@@ -199,7 +199,7 @@ test("expired invites and identities that did not complete TOTP fail closed", as
   );
 
   const second = await createSecondInvite(service, deliveryChannel);
-  clock.advance(24 * 60 * 60 * 1_000);
+  clock.advance(72 * 60 * 60 * 1_000);
   await assert.rejects(
     service.claimInviteActivation({ activationCredential: second }),
     identityError("INVITE_EXPIRED"),

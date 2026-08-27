@@ -6,7 +6,7 @@
 | Run ID | `R1X-05-PLATFORM-BILLING-CORE-20260813` |
 | Date | 2026-08-13 (Asia/Hong_Kong) |
 | Status | `implemented_local_contract`; runtime and production use remain unavailable |
-| Authority | `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md`, DP-06 through DP-12, `DEC-060`, `DEC-064`, `DEC-066` |
+| Business authority | `txgj-doc/business-requirements/80-portal-billing.zh-CN.md` (`BR-061`, `BR-062`) and `70-notifications-audit.zh-CN.md` (`BR-071`) |
 | Git repository | `erp-frontend/` |
 
 ## 1. Outcome And Scope

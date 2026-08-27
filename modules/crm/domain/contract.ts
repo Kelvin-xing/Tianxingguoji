@@ -6,25 +6,23 @@ export const CRM_FORBIDDEN_LEGAL_ID_FIELDS = Object.freeze([
   "government_id",
 ] as const);
 
-export const PRIMARY_GUARDIAN_RELATIONSHIP_TYPES = Object.freeze([
-  "father",
-  "mother",
-  "other_guardian",
-] as const);
+import { STUDENT_GUARDIAN_RELATIONSHIP_TYPES } from "./approved-p2-contract.ts";
+export { STUDENT_GUARDIAN_RELATIONSHIP_TYPES as PRIMARY_GUARDIAN_RELATIONSHIP_TYPES };
 
 export type PrimaryGuardianRelationshipType =
-  (typeof PRIMARY_GUARDIAN_RELATIONSHIP_TYPES)[number];
+  (typeof STUDENT_GUARDIAN_RELATIONSHIP_TYPES)[number];
 
 export function isPrimaryGuardianRelationshipType(
   value: unknown,
 ): value is PrimaryGuardianRelationshipType {
   return typeof value === "string" &&
-    (PRIMARY_GUARDIAN_RELATIONSHIP_TYPES as readonly string[]).includes(value);
+    (STUDENT_GUARDIAN_RELATIONSHIP_TYPES as readonly string[]).includes(value);
 }
 
-export type CrmLifecycleStatus = "active" | "pending_delete" | "purged";
+export type CrmLifecycleStatus = "active" | "pending_delete" | "deleted";
+export type LegacyCrmLifecycleStatus = CrmLifecycleStatus | "purged";
 export type GuardianStatus = CrmLifecycleStatus;
-export type CrmActorRole = "founder" | "admin" | "advisor" | "data_reviewer";
+export type CrmActorRole = "founder" | "admin" | "advisor" | "contractor";
 
 export type PrimaryContactDenialCode =
   | "PRIMARY_CONTACT_MISSING"
@@ -109,7 +107,7 @@ export function evaluatePrimaryContacts(
   if (currentPrimaryContacts.length > 1) {
     return { allowed: false, code: "MULTIPLE_PRIMARY_CONTACTS" };
   }
-  if (!["active", "pending_delete"].includes(currentPrimaryContacts[0]?.guardianStatus ?? "purged")) {
+  if (!["active", "pending_delete"].includes(currentPrimaryContacts[0]?.guardianStatus ?? "deleted")) {
     return { allowed: false, code: "PRIMARY_GUARDIAN_INACTIVE" };
   }
 
@@ -126,7 +124,7 @@ export function evaluateCrmDeletionTransition(
     return { allowed: true };
   }
 
-  if (input.currentStatus === "pending_delete" && input.targetStatus === "purged") {
+  if (input.currentStatus === "pending_delete" && input.targetStatus === "deleted") {
     if (input.actorRole !== "founder" || !input.founderApproved) {
       return { allowed: false, code: "FOUNDER_APPROVAL_REQUIRED" };
     }

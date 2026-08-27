@@ -1,5 +1,5 @@
 import { getReferralSourceRuntime } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { createApiError, createRequestContext, errorResponse, handleApiRequest,
   successResponse } from "@/modules/shared/public";
 
@@ -14,7 +14,7 @@ export function GET(request: Request, context: Context): Promise<Response> {
   return handleApiRequest(request, async () => {
     try {
       const { sourceId } = await context.params;
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const source = await getReferralSourceRuntime().service.find(actor, sourceId);
       if (!source) throw createApiError("NOT_FOUND");
       return sourceData(source);
@@ -26,7 +26,7 @@ export async function PATCH(request: Request, context: Context): Promise<Respons
   try {
     const { sourceId } = await context.params;
     const command = await parseReferralSourceUpdate(request, sourceId, requestContext.requestId);
-    const actor = await requireIdentityActor();
+    const actor = await requireApiRequestAccessContext();
     const result = await getReferralSourceRuntime().service.update({ actor, command });
     return successResponse(requestContext, acknowledgementData(result));
   } catch (error) { return errorResponse(requestContext, mapReferralSourceError(error)); }

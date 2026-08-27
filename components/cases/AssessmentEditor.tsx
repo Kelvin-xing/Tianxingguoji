@@ -1,25 +1,50 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Icon } from "@/components/workspace/Icon";
-import {
-  CaseAssessmentIdempotencyAttempt,
-  classifyCaseRequestFailure,
-  completeCaseAssessmentBackground,
-  getCaseAssessment,
-  updateCaseAssessmentAnswer,
-  type AssessmentAnswerView,
-  type AssessmentSemanticState,
-  type AssessmentValueType,
-  type CaseAssessmentView,
-  type CaseWorkspaceStage,
-} from "@/modules/cases/client";
+import { ApiClientError, expectRecord, requestApi, type ApiRequestBody } from "@/lib/api/client";
 
-export type AssessmentEditorView = CaseAssessmentView;
+type SemanticState = "provided" | "unknown" | "not_applicable" | "declined_to_provide";
+type AssessmentValueType = "text" | "date" | "integer" | "enum" | "enum_set";
+
+export interface AssessmentEditorView {
+  readonly assessment_id: string;
+  readonly manifest_id: string;
+  readonly record_version: number;
+  readonly status: "draft" | "background_complete" | "selection_ready";
+  readonly access: {
+    readonly mode: "full" | "education_profile";
+    readonly can_edit: boolean;
+    readonly editable_field_ids: readonly string[];
+    readonly can_complete_background: boolean;
+  };
+  readonly schema: {
+    readonly manifest_id: string;
+    readonly composition_version: "k12-structural-v1" | "k12-catalogue-v1";
+    readonly fields: readonly {
+      readonly field_id: string;
+      readonly label?: string;
+      readonly layer: "base" | "education_stage" | "school_system" | "admission_route";
+      readonly module_id?: string;
+      readonly module_version?: string;
+      readonly value_type: AssessmentValueType;
+      readonly enum_values?: readonly string[];
+      readonly visibility: string;
+      readonly blocking_stages: readonly string[];
+    }[];
+  };
+  readonly answers: readonly {
+    readonly field_id: string;
+    readonly semantic_state: SemanticState;
+    readonly value: { readonly type: string; readonly value: unknown } | null;
+    readonly value_type: string | null;
+    readonly record_version: number;
+  }[];
+}
 
 interface DraftAnswer {
-  readonly semanticState: AssessmentSemanticState;
+  readonly semanticState: SemanticState;
   readonly value: string | readonly string[];
   readonly recordVersion: number;
 }
@@ -35,174 +60,117 @@ interface ConflictState {
  * local state so a stale response cannot discard an operator's changes.
  */
 export function AssessmentEditor({
-  caseId,
-  caseStage,
+  endpoint,
+  initialView,
 }: {
-  readonly caseId: string;
-  readonly caseStage: CaseWorkspaceStage;
+  readonly endpoint: string;
+  readonly initialView: AssessmentEditorView;
 }) {
-  const submissionLocks = useRef(new Set<string>());
-  const answerAttempts = useRef(new Map<string, CaseAssessmentIdempotencyAttempt>());
-  const completionAttempt = useRef(new CaseAssessmentIdempotencyAttempt());
-  const [view, setView] = useState<AssessmentEditorView | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, DraftAnswer>>({});
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
+  const [view, setView] = useState(initialView);
+  const [drafts, setDrafts] = useState(() => createDrafts(initialView));
   const [savingFieldId, setSavingFieldId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (controller.signal.aborted) return;
-      setLoadState("loading");
-      setNotice(null);
-      getCaseAssessment(caseId, controller.signal)
-        .then((latest) => {
-          setView(latest);
-          setDrafts(createDrafts(latest));
-          setLoadState("ready");
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return;
-          const failure = classifyCaseRequestFailure(error);
-          setLoadState(failure === "forbidden" || failure === "not_found" ? "denied" : "unavailable");
-        });
-    });
-    return () => controller.abort();
-  }, [caseId]);
-
-  if (!view || loadState !== "ready") {
-    return (
-      <section className="workspace-section" aria-labelledby="assessment-editor-title" aria-busy={loadState === "loading"}>
-        <h3 id="assessment-editor-title" tabIndex={-1} className="section-title">學生評估</h3>
-        {loadState === "loading" ? <div className="inline-callout mt-4"><Icon name="clock" size={15} /><span>正在載入評估內容。</span></div> : null}
-        {loadState === "denied" ? <div className="inline-callout warning mt-4" role="alert"><Icon name="shield" size={15} /><span>無法查看這份評估。</span></div> : null}
-        {loadState === "unavailable" ? <div className="inline-callout warning mt-4" role="alert"><Icon name="x" size={15} /><span>評估服務暫時不可用。</span></div> : null}
-      </section>
-    );
-  }
-
-  const editableFieldIds = new Set(view.access.editable_field_ids);
-  const blockerSatisfiedFieldIds = new Set(view.answers
-    .filter((answer) => answer.semantic_state === "provided")
-    .map((answer) => answer.field_id));
+  const answeredFieldIds = new Set(view.answers.map((answer) => answer.field_id));
   const blockingFieldIds = view.schema.fields
     .filter((field) => field.blocking_stages.includes("background_collection"))
     .map((field) => field.field_id);
-  const completedBlockers = blockingFieldIds.filter(
-    (fieldId) => blockerSatisfiedFieldIds.has(fieldId),
-  ).length;
-  const canComplete = caseStage === "background_collection" &&
-    view.access.can_complete_background && view.status === "draft" &&
-    completedBlockers === blockingFieldIds.length;
+  const completedBlockers = blockingFieldIds.filter((fieldId) => answeredFieldIds.has(fieldId)).length;
+  const canComplete = view.access.can_complete_background &&
+    view.status === "draft" && completedBlockers === blockingFieldIds.length;
 
   async function save(field: AssessmentEditorView["schema"]["fields"][number]) {
     const draft = drafts[field.field_id];
-    if (!draft || !editableFieldIds.has(field.field_id) || submissionLocks.current.has(field.field_id)) return;
-    const typedValue = draft.semanticState === "provided" ? toTypedValue(field, draft.value) : null;
-    const command = {
-      field_id: field.field_id,
-      semantic_state: draft.semanticState,
-      value: typedValue,
-      value_type: draft.semanticState === "provided" ? field.value_type : null,
-      expected_record_version: draft.recordVersion,
-    } as const;
-    const attempt = answerAttempts.current.get(field.field_id) ?? new CaseAssessmentIdempotencyAttempt();
-    answerAttempts.current.set(field.field_id, attempt);
-    submissionLocks.current.add(field.field_id);
+    if (!draft) return;
     setNotice(null);
     setSavingFieldId(field.field_id);
     try {
-      const receipt = await updateCaseAssessmentAnswer(
-        caseId,
-        command,
-        attempt.keyFor(assessmentCommandFingerprint(command)),
-      );
-      const latestView = await getCaseAssessment(caseId);
-      const savedAnswer = latestView.answers.find((answer) => answer.field_id === field.field_id);
-      if (
-        receipt.id !== latestView.assessment_id ||
-        savedAnswer?.record_version !== receipt.record_version ||
-        savedAnswer.semantic_state !== command.semantic_state ||
-        savedAnswer.value_type !== command.value_type ||
-        !assessmentValueEquals(savedAnswer.value, command.value)
-      ) {
-        throw new TypeError("Assessment receipt does not match authoritative GET.");
+      const typedValue = draft.semanticState === "provided" ? toTypedValue(field, draft.value) : null;
+      const payload = await requestApi({
+        path: endpoint as `/${string}`,
+        method: "PATCH",
+        idempotencyKey: globalThis.crypto.randomUUID(),
+        body: {
+          field_id: field.field_id,
+          semantic_state: draft.semanticState,
+          value: typedValue,
+          value_type: draft.semanticState === "provided" ? field.value_type : null,
+          expected_record_version: draft.recordVersion,
+        } as ApiRequestBody,
+      }, expectRecord);
+      if (!payload.record_version) {
+        throw new Error("UPDATE_FAILED");
       }
-      attempt.complete();
-      setView(latestView);
-      setDrafts(createDrafts(latestView));
+      const savedRecordVersion = Number(payload.record_version);
+      const savedAnswer = {
+        field_id: typeof payload.field_id === "string" ? payload.field_id : field.field_id,
+        semantic_state: payload.semantic_state as SemanticState ?? draft.semanticState,
+        value:
+          payload.value as { readonly type: string; readonly value: unknown } | null ??
+          typedValue,
+        value_type:
+          (payload.value_type as string | null | undefined) ??
+          (draft.semanticState === "provided" ? field.value_type : null),
+        record_version: savedRecordVersion,
+      };
+      setView((current) => ({
+        ...current,
+        answers: [
+          ...current.answers.filter((answer) => answer.field_id !== field.field_id),
+          savedAnswer,
+        ],
+      }));
+      setDrafts((current) => ({
+        ...current,
+        [field.field_id]: { ...draft, recordVersion: savedRecordVersion },
+      }));
       setConflict(null);
       setNotice("已儲存。");
-    } catch (error: unknown) {
-      if (classifyCaseRequestFailure(error) === "stale") {
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === "STALE_VERSION") {
         try {
-          const latestView = await getCaseAssessment(caseId);
-          const current = createDrafts(latestView)[field.field_id];
-          attempt.complete();
-          setView(latestView);
-          setDrafts((currentDrafts) => mergeDrafts(currentDrafts, latestView));
-          if (current) setConflict({ fieldId: field.field_id, current, draft });
-          setNotice("此欄位已被更新；請比較目前值與草稿後再確認。");
-        } catch {
-          setNotice("無法重新載入此欄位，草稿已保留。");
-        }
+          const latestView = await fetchCurrentView(endpoint);
+          const latestAnswer = latestView.answers.find((answer) => answer.field_id === field.field_id);
+          if (latestAnswer) { setView(latestView); setConflict({ fieldId: field.field_id, current: toDraft(latestAnswer), draft }); }
+        } catch { /* preserve the local draft when refresh is unavailable */ }
+        setNotice("此欄位已被更新；請比較目前值與草稿後再確認。 ");
       } else {
         setNotice("無法儲存此欄位，草稿已保留。");
       }
     } finally {
-      submissionLocks.current.delete(field.field_id);
       setSavingFieldId(null);
     }
   }
 
   async function completeBackgroundCollection() {
-    const lockKey = "background-completion";
-    if (!canComplete || submissionLocks.current.has(lockKey)) return;
-    const currentView = view;
-    if (currentView === null) return;
-    submissionLocks.current.add(lockKey);
+    if (!canComplete) return;
     setNotice(null);
     setCompleting(true);
     try {
-      const receipt = await completeCaseAssessmentBackground(
-        caseId,
-        currentView.record_version,
-        completionAttempt.current.keyFor(`complete:${currentView.record_version}`),
-      );
-      const latestView = await getCaseAssessment(caseId);
-      if (
-        receipt.id !== latestView.assessment_id ||
-        receipt.record_version !== latestView.record_version ||
-        latestView.status !== "background_complete"
-      ) {
-        throw new TypeError("Assessment completion receipt does not match authoritative GET.");
+      const payload = await requestApi({
+        path: `${endpoint}/background-completion` as `/${string}`,
+        method: "POST",
+        idempotencyKey: globalThis.crypto.randomUUID(),
+        body: { expected_record_version: view.record_version },
+      }, expectRecord);
+      if (payload.status !== "background_complete" || typeof payload.record_version !== "number") {
+        throw new Error("COMPLETION_FAILED");
       }
-      completionAttempt.current.complete();
-      setView(latestView);
-      setDrafts(createDrafts(latestView));
+      setView((current) => ({
+        ...current,
+        status: "background_complete",
+        record_version: Number(payload.record_version),
+      }));
       setNotice("背景資料收集已完成。");
-    } catch (error: unknown) {
-      const failure = classifyCaseRequestFailure(error);
-      if (failure === "stale" || failure === "validation") {
-        try {
-          const latestView = await getCaseAssessment(caseId);
-          completionAttempt.current.complete();
-          setView(latestView);
-          setDrafts((current) => mergeDrafts(current, latestView));
-          setNotice(failure === "stale"
-            ? "評估狀態已更新，已重新載入目前版本。"
-            : "仍有背景資料尚未儲存，已重新計算進度。");
-        } catch {
-          setNotice("目前無法重新載入評估，已儲存的答案不受影響。");
-        }
-      } else {
-        setNotice("目前無法完成背景資料收集，已儲存的答案不受影響。");
+    } catch (error) {
+      if (error instanceof ApiClientError && (error.code === "STALE_VERSION" || error.code === "VALIDATION_FAILED")) {
+        try { const latestView = await fetchCurrentView(endpoint); setView(latestView); setDrafts((current) => mergeDrafts(current, latestView)); } catch { /* retain current state */ }
+        setNotice(error.code === "STALE_VERSION" ? "評估狀態已更新，已重新載入目前版本。" : "仍有背景資料尚未儲存，已重新計算進度。");
+        return;
       }
+      setNotice("目前無法完成背景資料收集，已儲存的答案不受影響。");
     } finally {
-      submissionLocks.current.delete(lockKey);
       setCompleting(false);
     }
   }
@@ -212,7 +180,7 @@ export function AssessmentEditor({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
         <div>
           <h3 id="assessment-editor-title" tabIndex={-1} className="section-title">學生評估</h3>
-          <p className="section-detail">{view.schema.fields.length} 項資料 · {assessmentStatusLabel(view.status)} · 評估版本 {view.record_version}</p>
+          <p className="section-detail">15 項資料 · {assessmentStatusLabel(view.status)} · 評估版本 {view.record_version}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="status-pill">已儲存 {view.answers.length} / {view.schema.fields.length}</span>
@@ -221,12 +189,13 @@ export function AssessmentEditor({
           </span>
         </div>
       </div>
-      {!view.access.can_edit ? <div className="inline-callout mb-4"><Icon name="shield" size={15} /><span>你目前可以查看評估，但沒有編輯權限。</span></div> : null}
+      {!view.access.can_edit ? (
+        <div className="inline-callout" role="status">你目前可以查看評估，但沒有編輯權限。</div>
+      ) : null}
       {notice && <div className="inline-callout mb-4" role="status"><Icon name="activity" size={15} /><span>{notice}</span></div>}
       <div className="space-y-4">
         {view.schema.fields.map((field) => {
           const draft = drafts[field.field_id];
-          const canEditField = editableFieldIds.has(field.field_id);
           if (!draft) return null;
           return (
             <div key={field.field_id} className="border-b pb-4 last:border-b-0 last:pb-0" style={{ borderColor: "var(--border-subtle)" }}>
@@ -244,7 +213,7 @@ export function AssessmentEditor({
                 <AssessmentValueControl
                   field={field}
                   draft={draft}
-                  readOnly={!canEditField}
+                  disabled={!view.access.can_edit || !view.access.editable_field_ids.includes(field.field_id)}
                   onChange={(value) => setDrafts((current) => ({
                     ...current,
                     [field.field_id]: { ...draft, value },
@@ -253,13 +222,13 @@ export function AssessmentEditor({
                 <select
                   aria-label={`${field.field_id} semantic state`}
                   className="assessment-control"
+                  disabled={!view.access.can_edit || !view.access.editable_field_ids.includes(field.field_id)}
                   value={draft.semanticState}
-                  disabled={!canEditField}
                   onChange={(event) => setDrafts((current) => ({
                     ...current,
                     [field.field_id]: {
                       ...draft,
-                      semanticState: event.target.value as AssessmentSemanticState,
+                      semanticState: event.target.value as SemanticState,
                     },
                   }))}
                 >
@@ -268,15 +237,17 @@ export function AssessmentEditor({
                   <option value="not_applicable">不適用</option>
                   <option value="declined_to_provide">拒絕提供</option>
                 </select>
-                {canEditField ? <button
-                  type="button"
-                  className="primary-button"
-                  disabled={savingFieldId === field.field_id}
-                  onClick={() => void save(field)}
-                >
-                  <Icon name={savingFieldId === field.field_id ? "clock" : "check"} size={15} />
-                  {savingFieldId === field.field_id ? "儲存中" : "儲存"}
-                </button> : null}
+                {view.access.can_edit && view.access.editable_field_ids.includes(field.field_id) ? (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={savingFieldId === field.field_id}
+                    onClick={() => void save(field)}
+                  >
+                    <Icon name={savingFieldId === field.field_id ? "clock" : "check"} size={15} />
+                    {savingFieldId === field.field_id ? "儲存中" : "儲存"}
+                  </button>
+                ) : null}
               </div>
               {conflict?.fieldId === field.field_id && (
                 <div className="inline-callout warning mt-3" role="alert">
@@ -328,42 +299,28 @@ export function AssessmentEditor({
               : `目前狀態：${assessmentStatusLabel(view.status)}`}
           </div>
         </div>
-        {caseStage === "background_collection" && view.access.can_complete_background ? <button
-          type="button"
-          className="primary-button"
-          disabled={!canComplete || completing}
-          onClick={() => void completeBackgroundCollection()}
-        >
-          <Icon name={completing ? "clock" : "check-circle"} size={15} />
-          {completing ? "處理中" : view.status === "draft" ? "完成背景收集" : "背景收集已完成"}
-        </button> : null}
+        {view.access.can_complete_background ? (
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!canComplete || completing}
+            onClick={() => void completeBackgroundCollection()}
+          >
+            <Icon name={completing ? "clock" : "check-circle"} size={15} />
+            {completing ? "處理中" : view.status === "draft" ? "完成背景收集" : "背景收集已完成"}
+          </button>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function assessmentCommandFingerprint(value: unknown): string {
-  const fingerprint = JSON.stringify(value);
-  if (typeof fingerprint !== "string" || fingerprint.length < 1) {
-    throw new TypeError("Assessment command fingerprint is invalid.");
-  }
-  return fingerprint;
-}
-
-function assessmentValueEquals(
-  current: AssessmentAnswerView["value"],
-  submitted: AssessmentAnswerView["value"],
-): boolean {
-  if (current === null || submitted === null) return current === submitted;
-  if (current.type !== submitted.type) return false;
-  const currentArray = Array.isArray(current.value) ? current.value as readonly string[] : null;
-  const submittedArray = Array.isArray(submitted.value) ? submitted.value as readonly string[] : null;
-  if (currentArray !== null || submittedArray !== null) {
-    return currentArray !== null && submittedArray !== null &&
-      currentArray.length === submittedArray.length &&
-      currentArray.every((value, index) => value === submittedArray[index]);
-  }
-  return current.value === submitted.value;
+async function fetchCurrentView(endpoint: string): Promise<AssessmentEditorView> {
+  return requestApi({ path: endpoint as `/${string}` }, (value) => {
+    const payload = expectRecord(value);
+    if (!Array.isArray(payload.answers)) throw new Error("CURRENT_VIEW_UNAVAILABLE");
+    return payload as unknown as AssessmentEditorView;
+  });
 }
 
 function createDrafts(view: AssessmentEditorView): Record<string, DraftAnswer> {
@@ -418,12 +375,12 @@ function describeDraft(draft: DraftAnswer): string {
 function AssessmentValueControl({
   field,
   draft,
-  readOnly,
+  disabled: readOnly,
   onChange,
 }: {
   readonly field: AssessmentEditorView["schema"]["fields"][number];
   readonly draft: DraftAnswer;
-  readonly readOnly: boolean;
+  readonly disabled: boolean;
   readonly onChange: (value: string | readonly string[]) => void;
 }) {
   const disabled = readOnly || draft.semanticState !== "provided";
@@ -471,7 +428,7 @@ function AssessmentValueControl({
 function toTypedValue(
   field: AssessmentEditorView["schema"]["fields"][number],
   value: DraftAnswer["value"],
-): { readonly type: AssessmentValueType; readonly value: string | number | readonly string[] } {
+): { readonly type: AssessmentValueType; readonly value: unknown } {
   if (field.value_type === "enum_set") {
     return { type: field.value_type, value: Array.isArray(value) ? value : [] };
   }
@@ -565,7 +522,7 @@ function layerLabel(layer: AssessmentEditorView["schema"]["fields"][number]["lay
   }
 }
 
-function semanticStateLabel(state: AssessmentSemanticState): string {
+function semanticStateLabel(state: SemanticState): string {
   switch (state) {
     case "provided": return "已提供";
     case "unknown": return "暫時未知";

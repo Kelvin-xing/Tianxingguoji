@@ -6,7 +6,7 @@ import {
   DOCUMENT_SCAN_TIMEOUT_MS,
 } from "../domain/contract.ts";
 import type { DocumentScanner } from "./scan-runtime.ts";
-import type { DocumentObjectReader } from "./local-object-store.ts";
+import type { DocumentObjectReader } from "./object-transport-port.ts";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const MAX_RESPONSE_BYTES = 4_096;

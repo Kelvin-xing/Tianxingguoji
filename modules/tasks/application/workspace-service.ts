@@ -123,7 +123,7 @@ export class TaskWorkspaceService {
     if (!UUID.test(input.taskId) || !(TASK_STATES as readonly string[]).includes(command.to) ||
         !Number.isSafeInteger(command.expectedRecordVersion) || command.expectedRecordVersion < 1 ||
         command.reason !== command.reason.trim() || command.reason.length > 4_000 || !REQUEST_ID.test(command.requestId)) invalid();
-    if (command.to === "reassigned") { if (!command.nextAssigneeUserId || !UUID.test(command.nextAssigneeUserId)) invalid(); }
+    if (command.to === "assigned") { if (!command.nextAssigneeUserId || !UUID.test(command.nextAssigneeUserId)) invalid(); }
     else if (command.nextAssigneeUserId !== null) invalid();
     validateKey(command.idempotencyKey);
     const effects = mutationEffects({ actor: input.actor, resourceId: input.taskId, requestId: command.requestId,

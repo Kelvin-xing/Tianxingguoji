@@ -157,18 +157,20 @@ test("returns a deterministic replay for the same idempotency request and confli
   const record = createIdempotencyRecord({
     id: IDEMPOTENCY_ID,
     organizationId: ORGANIZATION_ID,
-    actorUserId: ACTOR_ID,
+    actorKind: "user",
+    actorOpaqueId: ACTOR_ID,
     operation: "case.update",
     key: "case-update-201",
     requestHash,
     createdAt: CREATED_AT,
   });
 
-  assert.deepEqual(evaluateIdempotency({ key: record.key, requestHash, existing: null }), {
+  const scope = { actorKind: record.actorKind, actorOpaqueId: record.actorOpaqueId };
+  assert.deepEqual(evaluateIdempotency({ ...scope, key: record.key, requestHash, existing: null }), {
     action: "start",
   });
   assert.deepEqual(
-    evaluateIdempotency({ key: record.key, requestHash, existing: record }),
+    evaluateIdempotency({ ...scope, key: record.key, requestHash, existing: record }),
     { action: "in_progress", code: "IDEMPOTENCY_IN_PROGRESS" },
   );
 
@@ -178,15 +180,18 @@ test("returns a deterministic replay for the same idempotency request and confli
     updatedAt: "2026-08-02T00:00:01.000Z",
   });
   assert.deepEqual(
-    evaluateIdempotency({ key: record.key, requestHash, existing: completed }),
+    evaluateIdempotency({ ...scope, key: record.key, requestHash, existing: completed }),
     {
       action: "replay",
       state: "completed",
       resultReference: "audit-receipt-201",
+      responseHash: "c".repeat(64),
+      recordVersion: 2,
     },
   );
   assert.deepEqual(
     evaluateIdempotency({
+      ...scope,
       key: record.key,
       requestHash: "d".repeat(64),
       existing: completed,

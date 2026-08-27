@@ -7,6 +7,7 @@ import {
   type PrimaryGuardianHandoffResult,
 } from "../../../../../../modules/crm/server.ts";
 import { isPrimaryGuardianRelationshipType } from "../../../../../../modules/crm/public.ts";
+import { validateRelationshipDescription } from "../../../../../../modules/crm/public.ts";
 import { createApiError } from "../../../../../../modules/shared/public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -16,6 +17,7 @@ export async function parseAttachCommand(request: Request, studentId: string, re
   const body = await exactJson(request, [
     "guardian_id",
     "relationship_type",
+    "relationship_description",
     "is_legal_guardian",
     "is_emergency_contact",
     "is_billing_contact",
@@ -23,6 +25,8 @@ export async function parseAttachCommand(request: Request, studentId: string, re
   ]);
   if (typeof body.guardian_id !== "string" || !UUID.test(body.guardian_id) ||
       !isPrimaryGuardianRelationshipType(body.relationship_type) ||
+      (body.relationship_description !== null && typeof body.relationship_description !== "string") ||
+      !validateRelationshipDescription({ relationshipType: body.relationship_type, relationshipDescription: body.relationship_description as string | null }) ||
       [body.is_legal_guardian, body.is_emergency_contact, body.is_billing_contact,
         body.notification_consent].some((value) => typeof value !== "boolean")) {
     throw createApiError("VALIDATION_FAILED");
@@ -31,6 +35,7 @@ export async function parseAttachCommand(request: Request, studentId: string, re
     studentId,
     guardianId: body.guardian_id,
     relationshipType: body.relationship_type,
+    relationshipDescription: body.relationship_description as string | null,
     isLegalGuardian: body.is_legal_guardian as boolean,
     isEmergencyContact: body.is_emergency_contact as boolean,
     isBillingContact: body.is_billing_contact as boolean,
@@ -71,6 +76,18 @@ export async function parseHandoffCommand(request: Request, studentId: string, r
   });
 }
 
+export async function parseEndCommand(request: Request, studentId: string, relationshipId: string, requestId: string) {
+  const idempotencyKey = requiredIdempotencyKey(request, studentId);
+  assertStudentId(studentId); if (!UUID.test(relationshipId)) throw createApiError("INVALID_REQUEST");
+  const body = await exactJson(request, ["expected_record_version"]);
+  if (typeof body.expected_record_version !== "number" || !Number.isSafeInteger(body.expected_record_version) || body.expected_record_version < 1) throw createApiError("VALIDATION_FAILED");
+  return { studentId, relationshipId, expectedRecordVersion: body.expected_record_version, requestId, idempotencyKey } as const;
+}
+
+export function toEndData(result: { relationshipId:string; studentId:string; status:"ended"; endsAt:string; recordVersion:number; occurredAt:string }) {
+  return { relationship: { id: result.relationshipId, student_id: result.studentId, status: result.status, ends_at: result.endsAt, record_version: result.recordVersion }, occurred_at: result.occurredAt } as const;
+}
+
 export function mapGuardianRelationshipError(error: unknown): unknown {
   if (error instanceof GuardianRelationshipRuntimeUnavailable) {
     return createApiError("SERVICE_UNAVAILABLE");
@@ -80,10 +97,12 @@ export function mapGuardianRelationshipError(error: unknown): unknown {
     case "GUARDIAN_RELATIONSHIP_FORBIDDEN": return createApiError("FORBIDDEN");
     case "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND":
     case "GUARDIAN_RELATIONSHIP_GUARDIAN_NOT_FOUND": return createApiError("NOT_FOUND");
+    case "GUARDIAN_RELATIONSHIP_NOT_FOUND": return createApiError("NOT_FOUND");
     case "GUARDIAN_RELATIONSHIP_STALE_VERSION": return createApiError("STALE_VERSION");
     case "GUARDIAN_RELATIONSHIP_PRIMARY_REQUIRED":
     case "GUARDIAN_RELATIONSHIP_CURRENT_PAIR_EXISTS":
     case "GUARDIAN_RELATIONSHIP_PRIMARY_CONFLICT":
+    case "GUARDIAN_RELATIONSHIP_PRIMARY_CANNOT_END":
     case "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_KEY_REUSED":
     case "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS": return createApiError("CONFLICT");
     case "GUARDIAN_RELATIONSHIP_INVALID": return createApiError("VALIDATION_FAILED");
@@ -98,6 +117,7 @@ export function toCurrentRelationshipsData(view: GuardianRelationshipsView) {
       relationship_id: relationship.relationshipId,
       guardian: toGuardianHintData(guardian),
       relationship_type: relationship.relationshipType,
+      relationship_description: relationship.relationshipDescription ?? null,
       is_legal_guardian: relationship.isLegalGuardian,
       is_primary_contact: relationship.isPrimaryContact,
       is_emergency_contact: relationship.isEmergencyContact,
@@ -123,6 +143,7 @@ export function toRelationshipData(relationship: GuardianRelationshipResult) {
     relationship_id: relationship.relationshipId,
     guardian_id: relationship.guardianId,
     relationship_type: relationship.relationshipType,
+    relationship_description: relationship.relationshipDescription ?? null,
     is_legal_guardian: relationship.isLegalGuardian,
     is_primary_contact: relationship.isPrimaryContact,
     is_emergency_contact: relationship.isEmergencyContact,

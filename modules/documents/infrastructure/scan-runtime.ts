@@ -1,20 +1,17 @@
 import "server-only";
 
-import { loadLocalSyntheticConfig } from "../../../lib/runtime/local-synthetic-config.ts";
-import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
+import { loadDocumentTransportConfig } from "../../../lib/runtime/document-transport-config.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { DocumentObjectReceiptService } from "../application/object-receipt-service.ts";
-import { DocumentScanService } from "../application/scan-service.ts";
-import { LocalClamavDocumentScanner } from "./clamav-scanner.ts";
-import { LocalSyntheticDocumentObjectStore } from "./local-object-store.ts";
-import { LocalSyntheticDocumentScanRequeuePublisher } from "./local-scan-requeue-publisher.ts";
+import { DocumentScanService, type DocumentScanEvent } from "../application/scan-service.ts";
+import { DOCUMENT_SCAN_POLICY_VERSION } from "../domain/contract.ts";
+import { DeterministicFakeDocumentScanner } from "./deterministic-fake-scanner.ts";
+import { getDeterministicFakeDocumentTransport } from "./deterministic-fake-transport.ts";
+import type { DocumentObjectCleaner, DocumentObjectReader } from "./object-transport-port.ts";
 import { PostgresqlDocumentScanRepository } from "./postgresql-scan-repository.ts";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const RELEASE1_SYNTHETIC_ORGANIZATION_ID = "51000000-0000-4000-8000-000000000001";
-const LOCAL_WORKER_CONTEXT_ID = "10000000-0000-4000-8000-000000000901";
-
 export interface DocumentScanner {
+  readonly scannerVersion?: "clamav-release1" | "deterministic-fake-release1";
   scan(input: {
     readonly requestId: string;
     readonly objectKey: string;
@@ -32,7 +29,8 @@ export interface DocumentScanRuntime {
   readonly receiptService: DocumentObjectReceiptService;
   readonly service: DocumentScanService;
   readonly scanner: DocumentScanner;
-  readonly objectStore: LocalSyntheticDocumentObjectStore;
+  readonly objectStore: DocumentObjectReader & DocumentObjectCleaner;
+  readonly queue: DeterministicFakeDocumentScanQueue;
 }
 
 export class DocumentScanRuntimeUnavailable extends Error {
@@ -42,58 +40,108 @@ export class DocumentScanRuntimeUnavailable extends Error {
   }
 }
 
+export class DeterministicFakeDocumentScanQueue {
+  private readonly runtime: Omit<DocumentScanRuntime, "queue">;
+
+  constructor(runtime: Omit<DocumentScanRuntime, "queue">) {
+    this.runtime = runtime;
+  }
+
+  async publish(event: DocumentScanEvent): Promise<"available" | "rejected" | "duplicate"> {
+    const receipt = await this.runtime.receiptService.receive(event, (signal) =>
+      this.runtime.objectStore.headExact({
+        bucket: event.bucket,
+        key: event.key,
+        providerVersionId: event.versionId,
+        signal,
+      }));
+    if (receipt.status === "abandoned_cleanup" ||
+        receipt.status === "unbound_provider_version_cleanup") {
+      await this.runtime.objectStore.deleteExact({
+        bucket: event.bucket,
+        key: event.key,
+        providerVersionId: event.versionId,
+      });
+      if (receipt.status === "abandoned_cleanup") {
+        await this.runtime.receiptService.recordAbandonedObjectRemoval(event, receipt.documentVersionId);
+      } else {
+        await this.runtime.receiptService.recordUnboundProviderVersionRemoval(
+          event,
+          receipt.documentVersionId,
+        );
+      }
+      return "rejected";
+    }
+    if (receipt.status === "in_progress") throw new DocumentScanRuntimeUnavailable();
+    if (receipt.status === "rejected") return "rejected";
+
+    const claim = await this.runtime.service.claimScanWork(event);
+    if (claim.status === "duplicate") {
+      if (claim.terminalState === "clean") return "available";
+      if (claim.terminalState === "rejected") return "rejected";
+      throw new DocumentScanRuntimeUnavailable();
+    }
+    let scan;
+    try {
+      scan = await this.runtime.scanner.scan({
+        requestId: event.requestId,
+        objectKey: event.key,
+        objectVersionId: event.versionId,
+      });
+    } catch {
+      await this.runtime.service.failScanWork({
+        event,
+        work: claim.work,
+        scannerEngine: "deterministic-fake-release1",
+      });
+      throw new DocumentScanRuntimeUnavailable();
+    }
+    if (scan.scannerVersion !== "deterministic-fake-release1" || scan.verdict === "failed") {
+      await this.runtime.service.failScanWork({
+        event,
+        work: claim.work,
+        scannerEngine: "deterministic-fake-release1",
+      });
+      throw new DocumentScanRuntimeUnavailable();
+    }
+    const completed = await this.runtime.service.completeScanWork({
+      event,
+      work: claim.work,
+      verdict: scan.verdict,
+      scannerEngine: "deterministic-fake-release1",
+    });
+    return completed.status;
+  }
+}
+
 const globalForDocumentScan = globalThis as typeof globalThis & {
-  __txDocumentScanRuntime?: DocumentScanRuntime;
+  __txDocumentScanRuntime?: Readonly<{ signature: string; runtime: DocumentScanRuntime }>;
 };
 
 export function getDocumentScanRuntime(): DocumentScanRuntime {
   try {
-    if (loadRuntimeEnvironment().appRuntimeMode !== "local-synthetic") {
-      throw new DocumentScanRuntimeUnavailable();
+    const config = loadDocumentTransportConfig();
+    if (config.mode !== "deterministic-fake") throw new DocumentScanRuntimeUnavailable();
+    const signature = `${config.bucket}\0${config.organizationId}\0${config.workerContextId}`;
+    if (globalForDocumentScan.__txDocumentScanRuntime?.signature === signature) {
+      return globalForDocumentScan.__txDocumentScanRuntime.runtime;
     }
-    const organizationId = requiredUuid(
-      "LOCAL_SYNTHETIC_ORGANIZATION_ID",
-      RELEASE1_SYNTHETIC_ORGANIZATION_ID,
-    );
-    const workerContextId = requiredUuid(
-      "LOCAL_SYNTHETIC_DOCUMENT_WORKER_CONTEXT_ID",
-      LOCAL_WORKER_CONTEXT_ID,
-    );
-    if (workerContextId === organizationId) throw new DocumentScanRuntimeUnavailable();
-    if (globalForDocumentScan.__txDocumentScanRuntime) {
-      return globalForDocumentScan.__txDocumentScanRuntime;
-    }
-    const config = loadLocalSyntheticConfig();
-    const objectStore = new LocalSyntheticDocumentObjectStore({
-      endpoint: config.localstack.endpoint,
-      bucket: config.localstack.bucket,
-      requestTimeoutMs: config.dependencyTimeoutMs,
+    const objectStore = getDeterministicFakeDocumentTransport();
+    const repository = new PostgresqlDocumentScanRepository(getApplicationTenantRunner(), {
+      organizationId: config.organizationId,
+      workerContextId: config.workerContextId,
     });
-    const repository = new PostgresqlDocumentScanRepository(
-      getApplicationTenantRunner(),
-      { organizationId, workerContextId },
-    );
-    const runtime = Object.freeze({
+    const base = Object.freeze({
       objectStore,
-      receiptService: new DocumentObjectReceiptService({ repository, organizationId }),
-      service: new DocumentScanService({
+      receiptService: new DocumentObjectReceiptService({
         repository,
-        requeuePublisher: new LocalSyntheticDocumentScanRequeuePublisher({
-          endpoint: config.localstack.endpoint,
-          region: config.localstack.region,
-          queue: config.localstack.queue,
-          bucket: config.localstack.bucket,
-          requestTimeoutMs: config.dependencyTimeoutMs,
-        }),
+        organizationId: config.organizationId,
       }),
-      scanner: new LocalClamavDocumentScanner({
-        reader: objectStore,
-        bucket: config.localstack.bucket,
-        host: config.clamav.host,
-        port: config.clamav.port,
-      }),
+      service: new DocumentScanService({ repository }),
+      scanner: new DeterministicFakeDocumentScanner({ reader: objectStore, bucket: config.bucket }),
     });
-    globalForDocumentScan.__txDocumentScanRuntime = runtime;
+    const runtime = Object.freeze({ ...base, queue: new DeterministicFakeDocumentScanQueue(base) });
+    globalForDocumentScan.__txDocumentScanRuntime = Object.freeze({ signature, runtime });
     return runtime;
   } catch (error) {
     if (error instanceof DocumentScanRuntimeUnavailable) throw error;
@@ -101,10 +149,20 @@ export function getDocumentScanRuntime(): DocumentScanRuntime {
   }
 }
 
-function requiredUuid(variable: string, expected?: string): string {
-  const value = process.env[variable]?.trim();
-  if (!value || !UUID.test(value) || (expected !== undefined && value !== expected)) {
-    throw new DocumentScanRuntimeUnavailable();
-  }
-  return value;
+export function deterministicFakeScanEvent(input: {
+  readonly bucket: string;
+  readonly key: string;
+  readonly providerVersionId: string;
+  readonly eventId: string;
+  readonly requestId: string;
+}): DocumentScanEvent {
+  return Object.freeze({
+    eventId: input.eventId,
+    requestId: input.requestId,
+    bucket: input.bucket,
+    key: input.key,
+    versionId: input.providerVersionId,
+    scanPolicyVersion: DOCUMENT_SCAN_POLICY_VERSION,
+    deliveryAttempt: 1,
+  });
 }

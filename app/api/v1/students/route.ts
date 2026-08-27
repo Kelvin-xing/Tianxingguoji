@@ -5,7 +5,7 @@ import {
   StudentCreateRuntimeUnavailable,
   isStudentCreateError,
 } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import {
   createApiError,
   createRequestContext,
@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   return handleApiRequest(request, async () => {
     try {
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const students = await getStudentReadRuntime().service.listStudents(actor);
       return { students: students.map((student) => ({ ...student })) } satisfies JsonValue;
     } catch (error) {
@@ -40,20 +40,20 @@ export async function POST(request: Request): Promise<Response> {
   const context = createRequestContext(request);
   try {
     const command = await parseStudentCreateRequest(request, context.requestId);
-    const actor = await requireIdentityActor();
+    const actor = await requireApiRequestAccessContext();
     const created = await getStudentCreateRuntime().service.create({ actor, command });
     return successResponse(context, {
       student: {
         id: created.student.id,
-        display_name: created.student.displayName,
+        record_version: created.student.recordVersion,
       },
       primary_guardian: {
         id: created.primaryGuardian.id,
-        display_name: created.primaryGuardian.displayName,
+        record_version: created.primaryGuardian.recordVersion,
       },
       relationship: {
         id: created.relationship.id,
-        relationship_type: created.relationship.relationshipType,
+        record_version: created.relationship.recordVersion,
       },
     }, 201);
   } catch (error) {
@@ -68,6 +68,7 @@ function mapCreateError(error: unknown): unknown {
   }
   if (!isStudentCreateError(error)) return error;
   switch (error.code) {
+    case "STUDENT_CREATE_DUPLICATE_WARNING_REQUIRED": return createApiError("CONFLICT", { details: { code: "DUPLICATE_WARNING_REQUIRED" } });
     case "STUDENT_CREATE_FORBIDDEN": return createApiError("FORBIDDEN");
     case "STUDENT_CREATE_INVALID": return createApiError("VALIDATION_FAILED");
     case "STUDENT_CREATE_IDEMPOTENCY_CONFLICT":

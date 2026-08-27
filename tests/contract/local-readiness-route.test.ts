@@ -22,9 +22,7 @@ test("local readiness returns a versioned dependency report only in local mode",
       postgresql: "ready",
       postgresql_identity: "ready",
       postgresql_application: "ready",
-      localstack_s3: "ready",
-      localstack_sqs: "ready",
-      clamav: "ready",
+      document_transport: "ready",
     },
   });
 });
@@ -59,9 +57,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
         postgresql: "ready",
         postgresql_identity: "ready",
         postgresql_application: "ready",
-        localstack_s3: "ready",
-        localstack_sqs: "unavailable",
-        clamav: "unavailable",
+        document_transport: "unavailable",
       },
     }),
   });
@@ -75,9 +71,7 @@ test("local readiness maps unavailable services to a safe 503", async () => {
       postgresql: "ready",
       postgresql_identity: "ready",
       postgresql_application: "ready",
-      localstack_s3: "ready",
-      localstack_sqs: "unavailable",
-      clamav: "unavailable",
+      document_transport: "unavailable",
     },
   });
   assert.equal(JSON.stringify(body).includes("127.0.0.1"), false);
@@ -104,9 +98,7 @@ function report(status: "ready" | "not_ready"): LocalSyntheticReadinessReport {
       postgresql: "ready",
       postgresql_identity: "ready",
       postgresql_application: "ready",
-      localstack_s3: "ready",
-      localstack_sqs: "ready",
-      clamav: "ready",
+      document_transport: "ready",
     },
   };
 }

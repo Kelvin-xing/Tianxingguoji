@@ -70,6 +70,35 @@ test("generates a deterministic executable baseline from all 35 frozen sources",
   await assert.doesNotReject(verifyCommittedOneRoleBaseline());
 });
 
+test("039 baseline backfill grants only the new column and immediately revokes it", async () => {
+  const build = await buildOneRoleBaseline();
+  const file = build.files.find(({ name }) => name.includes("039_expand_crm_case_assessment"));
+  assert.ok(file);
+  assert.match(file.contents, /GRANT UPDATE \(current_primary_advisor_assignment_id\)[\s\S]*TO tianxing_app/);
+  assert.match(file.contents, /REVOKE UPDATE \(current_primary_advisor_assignment_id\)[\s\S]*FROM tianxing_app/);
+  assert.match(file.contents, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(file.contents, /FORCE ROW LEVEL SECURITY/);
+});
+
+test("042 one-role session locator preserves FORCE RLS and clears its exact-secret context", async () => {
+  const build = await buildOneRoleBaseline();
+  const file = build.files.find(({ name }) => name.includes("042_access_session_locator"));
+  assert.ok(file);
+  assert.match(file.contents, /CREATE POLICY tianxing_tenant_boundary ON identity_sessions/);
+  assert.match(file.contents, /encode\(secret_hash, 'hex'\) = current_setting\('app\.identity_session_secret_hash', true\)/);
+  assert.match(file.contents, /LANGUAGE plpgsql SECURITY DEFINER/);
+  assert.match(file.contents, /coalesce\(encode\(p_secret_hash, 'hex'\), ''\), true/);
+  assert.equal(
+    occurrenceCount(
+      file.contents,
+      "PERFORM set_config('app.identity_session_secret_hash', '', true);",
+    ),
+    2,
+  );
+  assert.match(file.contents, /EXCEPTION WHEN OTHERS THEN/);
+  assert.match(file.contents, /REVOKE ALL ON FUNCTION identity_resolve_session_principal_legacy_042[\s\S]*FROM PUBLIC, tianxing_app/);
+});
+
 test("seeds Release1 before the primary-contact invariant and reuses its active organization", async () => {
   const source = await readFile("tests/integration/one-role-baseline-postgresql.test.ts", "utf8");
   const seedApply = source.indexOf('seedNeonTestRelease1(target, "apply")');
@@ -306,14 +335,14 @@ test("executes all generated SQL under one lock and rolls dry-run back", async (
   assert.equal(client.commands.filter((command) => command.includes("schema_migrations")).length, 0);
   assert.ok(client.commands.some((command) => command.includes("CREATE SCHEMA tianxing_baseline")));
   for (const file of build.files) {
-    if (file.name !== "035_202608240020_036_complete_case_workflow_foundation.sql") {
-      assert.ok(client.commands.includes(file.contents));
-      continue;
+    const groupStart = client.commands.findIndex((command) => file.contents.startsWith(command));
+    assert.ok(groupStart >= 0, file.name);
+    let executed = "";
+    for (let index = groupStart; index < client.commands.length; index += 1) {
+      executed += client.commands[index];
+      if (executed.length >= file.contents.length) break;
     }
-    const groupStart = client.commands.findIndex((command) =>
-      command.startsWith("ALTER TABLE cases_service_cases NO FORCE ROW LEVEL SECURITY"));
-    assert.ok(groupStart >= 0);
-    assert.equal(client.commands.slice(groupStart, groupStart + 6).join(""), file.contents);
+    assert.equal(executed, file.contents, file.name);
   }
 });
 

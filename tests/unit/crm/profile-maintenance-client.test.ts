@@ -30,6 +30,7 @@ test("Student and Guardian profile PATCH requests send only normalized frozen fi
       assert.deepEqual(JSON.parse(String(init?.body)), {
         display_name: "Updated Student",
         date_of_birth: null,
+        gender: null,
         contact_email: "student@example.invalid",
         contact_phone: null,
         expected_record_version: 1,
@@ -42,6 +43,8 @@ test("Student and Guardian profile PATCH requests send only normalized frozen fi
       display_name: "Updated Guardian",
       email: "guardian@example.invalid",
       phone: null,
+      date_of_birth: null,
+      gender: null,
       expected_record_version: 2,
     });
     return apiResponse({ guardian: guardianResult() });
@@ -98,6 +101,7 @@ test("profile validation enforces the frozen field constraints", () => {
   assert.deepEqual(validateStudentProfileDraft({
     display_name: " ",
     date_of_birth: "2026-02-31",
+    gender: "",
     contact_email: "invalid",
     contact_phone: "x".repeat(65),
     expected_record_version: 1,
@@ -111,6 +115,8 @@ test("profile validation enforces the frozen field constraints", () => {
     display_name: " ",
     email: "",
     phone: "",
+    date_of_birth: "",
+    gender: "",
     expected_record_version: 1,
   }), {
     displayName: "監護人姓名必須為 1 至 512 個字元。",
@@ -159,6 +165,7 @@ function studentDraft(): StudentProfileDraft {
   return {
     display_name: " Updated Student ",
     date_of_birth: "",
+    gender: "",
     contact_email: " Student@Example.Invalid ",
     contact_phone: "",
     expected_record_version: 1,
@@ -170,6 +177,8 @@ function guardianDraft(): GuardianProfileDraft {
     display_name: " Updated Guardian ",
     email: " Guardian@Example.Invalid ",
     phone: "",
+    date_of_birth: "",
+    gender: "",
     expected_record_version: 2,
   };
 }

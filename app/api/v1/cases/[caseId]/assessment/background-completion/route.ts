@@ -1,5 +1,5 @@
 import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 import {
   assertAssessmentCaseId,
@@ -21,7 +21,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       assertAssessmentCaseId(caseId);
       const idempotencyKey = requireAssessmentIdempotencyKey(request);
       const expectedRecordVersion = await parseExpectedRecordVersion(request);
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const result = await getCaseWorkspaceRuntime().assessmentService.completeBackgroundCollection({
         actor,
         caseId,

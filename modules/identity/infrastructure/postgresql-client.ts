@@ -1,5 +1,8 @@
 import { Pool } from '@neondatabase/serverless'
+import { Pool as NodePool } from 'pg'
 import { getDatabaseUrl } from './auth-config.ts'
+import { loadRuntimeEnvironment, type RuntimeEnvironment } from '../../../lib/runtime/runtime-environment.ts'
+import { loadTestDatabaseConfiguration } from '../../../lib/runtime/test-database-config.ts'
 
 export interface DatabaseResult<Row> {
   rows: Row[]
@@ -20,9 +23,31 @@ const globalForAuth = globalThis as typeof globalThis & {
 
 export function getAuthPool(): AuthPool {
   if (!globalForAuth.__txAuthPool) {
-    globalForAuth.__txAuthPool = new Pool({ connectionString: getDatabaseUrl() }) as unknown as AuthPool
+    const config = resolveAuthPoolConfiguration(process.env)
+    globalForAuth.__txAuthPool = config.kind === 'node-pg'
+      ? new NodePool(config.options) as unknown as AuthPool
+      : new Pool(config.options) as unknown as AuthPool
   }
   return globalForAuth.__txAuthPool
+}
+
+export function resolveAuthPoolConfiguration(environment: RuntimeEnvironment):
+  | { readonly kind: 'node-pg'; readonly options: ConstructorParameters<typeof NodePool>[0] }
+  | { readonly kind: 'neon'; readonly options: ConstructorParameters<typeof Pool>[0] } {
+  const runtime = loadRuntimeEnvironment(environment)
+  if (runtime.authMode === 'database-test') {
+    const test = loadTestDatabaseConfiguration(environment)
+    return Object.freeze({ kind: 'node-pg' as const, options: Object.freeze({
+      connectionString: test.database.connectionString,
+      connectionTimeoutMillis: test.connectionTimeoutMs,
+      statement_timeout: test.statementTimeoutMs,
+      max: 1,
+      ssl: test.ssl,
+    }) })
+  }
+  return Object.freeze({ kind: 'neon' as const, options: Object.freeze({
+    connectionString: getDatabaseUrl(environment),
+  }) })
 }
 
 export async function withAuthTransaction<T>(

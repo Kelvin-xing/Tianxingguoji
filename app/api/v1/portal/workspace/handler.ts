@@ -3,15 +3,13 @@ import {
   mapPortalErrorToPublicResponse,
   type PortalCaseReadV1,
 } from "../../../../../modules/external-portal/public.ts";
-import { PortalRuntimeUnavailable } from "../../../../../modules/external-portal/server.ts";
+import { PortalRepositoryError, PortalRuntimeUnavailable } from "../../../../../modules/external-portal/server.ts";
 
 const NO_STORE = { "Cache-Control": "private, no-store, max-age=0", Pragma: "no-cache" };
 
 export interface PortalWorkspaceRouteDependencies {
   getSessionSecret(request?: Request): Promise<string | null>;
-  readWorkspace(input: { readonly sessionSecret: string }): Promise<
-    PortalCaseReadV1 & Record<string, unknown>
-  >;
+  readWorkspace(input: { readonly sessionSecret: string }): Promise<PortalCaseReadV1>;
 }
 
 export function createPortalWorkspaceGetHandler(deps: PortalWorkspaceRouteDependencies) {
@@ -22,7 +20,6 @@ export function createPortalWorkspaceGetHandler(deps: PortalWorkspaceRouteDepend
       const value = await deps.readWorkspace({ sessionSecret });
       return json({
         capability_set_version: value.capabilitySetVersion,
-        case_number: value.caseNumber,
         customer_facing_stage: value.customerFacingStage,
         last_customer_visible_update_at: value.lastCustomerVisibleUpdateAt,
         school_targets: value.schoolTargets.map((item) => ({
@@ -46,6 +43,9 @@ export function createPortalWorkspaceGetHandler(deps: PortalWorkspaceRouteDepend
       if (error instanceof PortalPolicyError) {
         const mapped = mapPortalErrorToPublicResponse(error.code);
         return json({ error: { code: mapped.code } }, mapped.httpStatus);
+      }
+      if (error instanceof PortalRepositoryError) {
+        return json({ error: { code: "PORTAL_ACCESS_INVALID" } }, 401);
       }
       return json({ error: { code: "PORTAL_RUNTIME_UNAVAILABLE" } }, 503);
     }

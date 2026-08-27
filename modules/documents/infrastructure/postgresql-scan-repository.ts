@@ -326,12 +326,19 @@ implements DocumentObjectReceiptRepository, DocumentScanRepository {
       const versionState = input.verdict === "clean" ? "available" : "rejected";
       const scanUpdated = await transaction.query({
         text: `UPDATE documents_scan_results
-          SET state=$4,engine='clamav-release1',signature=NULL,
+          SET state=$4,engine=$6,signature=NULL,
               completed_at=transaction_timestamp(),record_version=record_version+1,
               updated_at=transaction_timestamp()
          WHERE id=$1 AND organization_id=$2 AND document_version_id=$3
            AND state='running' AND scan_policy_version=$5`,
-        values: [row.scan_id, this.organizationId, row.version_id, scanState, DOCUMENT_SCAN_POLICY_VERSION],
+        values: [
+          row.scan_id,
+          this.organizationId,
+          row.version_id,
+          scanState,
+          DOCUMENT_SCAN_POLICY_VERSION,
+          input.scannerEngine ?? "clamav-release1",
+        ],
       });
       if (scanUpdated.rowCount !== 1) scanTransition();
       const versionUpdated = await transaction.query({
@@ -372,12 +379,18 @@ implements DocumentObjectReceiptRepository, DocumentScanRepository {
       }
       const scanUpdated = await transaction.query({
         text: `UPDATE documents_scan_results
-          SET state='failed',engine='clamav-release1',signature=NULL,
+          SET state='failed',engine=$5,signature=NULL,
               completed_at=transaction_timestamp(),record_version=record_version+1,
               updated_at=transaction_timestamp()
          WHERE id=$1 AND organization_id=$2 AND document_version_id=$3
            AND state='running' AND scan_policy_version=$4`,
-        values: [row.scan_id, this.organizationId, row.version_id, DOCUMENT_SCAN_POLICY_VERSION],
+        values: [
+          row.scan_id,
+          this.organizationId,
+          row.version_id,
+          DOCUMENT_SCAN_POLICY_VERSION,
+          input.scannerEngine ?? "clamav-release1",
+        ],
       });
       if (scanUpdated.rowCount !== 1) scanTransition();
       const versionUpdated = await transaction.query({

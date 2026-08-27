@@ -9,12 +9,10 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
-import { loadLocalSyntheticConfig } from "../lib/runtime/local-synthetic-config.ts";
 import {
   DOCUMENT_SCAN_POLICY_VERSION,
   isOpaqueDocumentObjectKey,
 } from "../modules/documents/public.ts";
-import { getDocumentScanRuntime } from "../modules/documents/server.ts";
 import {
   DocumentScanDeadLetterWorkerError,
   DocumentScanRetryableWorkerError,
@@ -29,7 +27,6 @@ const QUEUE_NAME = /^[A-Za-z0-9_-]{1,80}$/;
 const LOCAL_QUEUE_REGION = "ap-east-1" as const;
 const LOCAL_QUEUE_ACCOUNT_ID = "000000000000";
 const LOCALSTACK_DEFAULT_QUEUE_ORIGIN = "http://localhost.localstack.cloud:4566";
-const STALE_SCAN_AFTER_MS = 90_000;
 const S3_TEST_EVENT_KEYS = Object.freeze([
   "Bucket",
   "Event",
@@ -54,87 +51,9 @@ export class DocumentWorkerUnavailable extends Error {
 }
 
 export async function runDocumentWorker(
-  signal: Readonly<{ readonly stopped: () => boolean }> = processSignal(),
+  _signal: Readonly<{ readonly stopped: () => boolean }> = processSignal(),
 ): Promise<void> {
-  const config = loadLocalSyntheticConfig();
-  const client = new SQSClient({
-    region: config.localstack.region,
-    endpoint: config.localstack.endpoint,
-    useQueueUrlAsEndpoint: false,
-    credentials: { accessKeyId: "test", secretAccessKey: "test" },
-  });
-  try {
-    const queueUrl = await resolveQueueUrl(
-      client,
-      config.localstack.endpoint,
-      config.localstack.region,
-      config.localstack.queue,
-      config.dependencyTimeoutMs,
-    );
-    const deadLetterQueueUrl = await resolveQueueUrl(
-      client,
-      config.localstack.endpoint,
-      config.localstack.region,
-      config.localstack.deadLetterQueue,
-      config.dependencyTimeoutMs,
-    );
-    const scanRuntime = getDocumentScanRuntime();
-    process.stdout.write("document-worker-ready\n");
-    while (!signal.stopped()) {
-      await scanRuntime.service.reconcileDocumentScans({
-        staleAfterMs: STALE_SCAN_AFTER_MS,
-        limit: 10,
-      });
-      const received = await runBounded(
-        (abortSignal) => client.send(new ReceiveMessageCommand({
-          QueueUrl: queueUrl,
-          MessageSystemAttributeNames: ["ApproximateReceiveCount"],
-          MaxNumberOfMessages: 1,
-          VisibilityTimeout: 180,
-          WaitTimeSeconds: 10,
-        }), { abortSignal }),
-        10_000 + config.dependencyTimeoutMs,
-      );
-      const message = received.Messages?.[0];
-      if (message) {
-        const disposition = await documentMessageDisposition(message, config.localstack.bucket);
-        if (disposition === "delete") {
-          emitDocumentWorkerSafeEvidence(DOCUMENT_WORKER_MAIN_DELETE_REQUESTED_MARKER);
-          await deleteMessage(client, queueUrl, message, config.dependencyTimeoutMs);
-          emitDocumentWorkerSafeEvidence(DOCUMENT_WORKER_MAIN_DELETE_COMPLETED_MARKER);
-        }
-      }
-
-      const deadLetter = await runBounded(
-        (abortSignal) => client.send(new ReceiveMessageCommand({
-          QueueUrl: deadLetterQueueUrl,
-          MessageSystemAttributeNames: ["ApproximateReceiveCount"],
-          MaxNumberOfMessages: 1,
-          VisibilityTimeout: 180,
-          WaitTimeSeconds: 0,
-        }), { abortSignal }),
-        config.dependencyTimeoutMs,
-      );
-      const deadLetterMessage = deadLetter.Messages?.[0];
-      if (deadLetterMessage &&
-          await documentDeadLetterMessageDisposition(
-            deadLetterMessage,
-            config.localstack.bucket,
-          ) === "delete") {
-        await deleteMessage(
-          client,
-          deadLetterQueueUrl,
-          deadLetterMessage,
-          config.dependencyTimeoutMs,
-        );
-      }
-    }
-  } catch (error) {
-    if (error instanceof DocumentWorkerUnavailable) throw error;
-    throw new DocumentWorkerUnavailable();
-  } finally {
-    client.destroy();
-  }
+  throw new DocumentWorkerUnavailable();
 }
 
 export function emitDocumentWorkerSafeEvidence(

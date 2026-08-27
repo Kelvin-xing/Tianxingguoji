@@ -1,4 +1,4 @@
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireDocumentActor } from "@/modules/documents/server";
 import { getDocumentTransferRuntime } from "@/modules/documents/server";
 import {
   createRequestContext,
@@ -26,7 +26,7 @@ export async function POST(request: Request, context: Context): Promise<Response
     assertNoDocumentQuery(request);
     const { caseId, documentId } = await context.params;
     const result = await getDocumentTransferRuntime().service.createVersion({
-      actor: await requireIdentityActor(),
+      actor: await requireDocumentActor(),
       caseId,
       documentId,
       command: await parseDocumentVersionCreate(request, requestContext.requestId),

@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TicketModal } from '@/components/crawler/TicketModal'
-import { crawlerApi } from '@/modules/schools/client'
+import { listSchoolDirectory, type SchoolDirectoryItem } from '@/modules/schools/client'
 import type { AdmissionRecord } from '@/types'
 
 const CONFIDENCE_STYLES: Record<string, { bg: string; color: string }> = {
@@ -30,13 +29,11 @@ export default function SchoolsPage() {
   const [confidenceFilter, setConfidenceFilter] = useState('all')
   const [reviewFilter, setReviewFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [ticketSchool, setTicketSchool] = useState<AdmissionRecord | null>(null)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    crawlerApi
-      .schools()
-      .then(setSchools)
+    listSchoolDirectory()
+      .then((items) => setSchools(items.map(toAdmissionRecord)))
       .catch((err) => setError(err instanceof Error ? err.message : '載入學校資料失敗'))
       .finally(() => setLoading(false))
   }, [])
@@ -53,11 +50,6 @@ export default function SchoolsPage() {
       }),
     [confidenceFilter, reviewFilter, schools, search, typeFilter],
   )
-
-  async function submitTicket(input: { field: string; description: string; reporter: string }) {
-    if (!ticketSchool) return
-    await crawlerApi.createTicket({ school_key: ticketSchool.school_key, school_name_zh: ticketSchool.school_name_zh, ...input })
-  }
 
   if (loading) return <div className="text-sm" style={{ color: 'var(--text-muted)' }}>{t('common.loading')}</div>
   if (error) return <div className="text-sm" style={{ color: '#dc2626' }}>{error}</div>
@@ -76,22 +68,64 @@ export default function SchoolsPage() {
         <table className="w-full min-w-[1100px] text-sm">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {['學校', '地區/類型', '招生', '信心', '審核', '申請日期', '操作'].map((h) => <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{h}</th>)}
+              {['學校', '地區/類型', '招生', '信心', '審核', '申請日期'].map((h) => <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {filtered.map((school) => (
-              <FragmentRow key={school.school_key} school={school} expanded={expanded === school.school_key} onToggle={() => setExpanded(expanded === school.school_key ? null : school.school_key)} onTicket={() => setTicketSchool(school)} />
+              <FragmentRow key={school.school_key} school={school} expanded={expanded === school.school_key} onToggle={() => setExpanded(expanded === school.school_key ? null : school.school_key)} />
             ))}
           </tbody>
         </table>
       </div>
-      {ticketSchool && <TicketModal school={ticketSchool} onClose={() => setTicketSchool(null)} onSubmit={submitTicket} />}
     </div>
   )
 }
 
-function FragmentRow({ school, expanded, onToggle, onTicket }: { school: AdmissionRecord; expanded: boolean; onToggle: () => void; onTicket: () => void }) {
+function toAdmissionRecord(item: SchoolDirectoryItem): AdmissionRecord {
+  const fields = item.fields
+  const text = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
+  const list = (value: unknown): string[] => Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean)
+    : text(value).split(/\n+/).map((entry) => entry.trim()).filter(Boolean)
+  const admissionType = text(fields.admission_type)
+  const confidence = text(fields.confidence)
+  const reviewStatus = text(fields.review_status)
+  const website = text(fields.official_website || fields.website)
+  return {
+    school_key: item.source_school_key,
+    school_name_zh: text(fields.school_name_zh) || item.source_school_key,
+    school_name_en: text(fields.school_name_en),
+    website,
+    official_website: website,
+    final_admission_url: text(fields.final_admission_url),
+    admission_type: admissionType === 'transfer' || admissionType === 's1_admission' ? admissionType : 'unknown',
+    confidence: confidence === 'high' || confidence === 'medium' || confidence === 'low' ? confidence : 'missing',
+    application_dates: text(fields.application_dates || fields.application_period || fields.submission_deadline),
+    application_open: text(fields.application_open),
+    application_period: text(fields.application_period),
+    submission_deadline: text(fields.submission_deadline),
+    exam_date: text(fields.exam_date),
+    interview_date: text(fields.interview_date),
+    result_notification_date: text(fields.result_notification_date),
+    required_materials: text(fields.required_materials),
+    application_form_links: list(fields.application_form_links),
+    evidence_urls: list(fields.evidence_urls),
+    review_status: reviewStatus === 'approved' || reviewStatus === 'needs_review' || reviewStatus === 'rejected' || reviewStatus === 'auto_selected' ? reviewStatus : 'unknown',
+    notes: text(fields.notes),
+    district: text(fields.district),
+    school_level: text(fields.school_level),
+    school_type: text(fields.school_type),
+    finance_type: text(fields.finance_type),
+    address: text(fields.address),
+    phone: text(fields.phone),
+    tuition_info: text(fields.tuition_info),
+    dormitory_info: text(fields.dormitory_info),
+    is_sen: fields.is_sen === true,
+  }
+}
+
+function FragmentRow({ school, expanded, onToggle }: { school: AdmissionRecord; expanded: boolean; onToggle: () => void }) {
   return (
     <>
       <tr className="transition-colors cursor-pointer" style={{ borderBottom: '1px solid var(--border-subtle)' }} onClick={onToggle}>
@@ -101,11 +135,10 @@ function FragmentRow({ school, expanded, onToggle, onTicket }: { school: Admissi
         <td className="px-4 py-3"><Badge value={school.confidence} styles={CONFIDENCE_STYLES} /></td>
         <td className="px-4 py-3"><Badge value={school.review_status} styles={REVIEW_STYLES} /></td>
         <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{school.application_dates || school.submission_deadline || '—'}</td>
-        <td className="px-4 py-3 text-xs"><button onClick={(event) => { event.stopPropagation(); onTicket() }} className="px-2 py-1 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>報錯</button></td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} className="px-4 py-4" style={{ background: 'var(--accent-subtle)', borderBottom: '1px solid var(--border)' }}>
+          <td colSpan={6} className="px-4 py-4" style={{ background: 'var(--accent-subtle)', borderBottom: '1px solid var(--border)' }}>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
               <Detail label="所需文件" value={school.required_materials} />
               <Detail label="學費" value={school.tuition_info} />

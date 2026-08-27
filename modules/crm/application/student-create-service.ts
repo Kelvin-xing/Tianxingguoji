@@ -1,18 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization } from "../../access/public.ts";
+import { hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 import {
   isPrimaryGuardianRelationshipType,
   type PrimaryGuardianRelationshipType,
 } from "../domain/contract.ts";
+import { validateRelationshipDescription } from "../domain/approved-p2-contract.ts";
+import type { CrmGender, StudentGuardianRelationshipType } from "../domain/approved-p2-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -23,26 +24,46 @@ export interface StudentCreateCommand {
   readonly student: {
     readonly displayName: string;
     readonly dateOfBirth: string | null;
+    readonly gender?: CrmGender | null;
     readonly contactEmail: string | null;
     readonly contactPhone: string | null;
+    readonly warningToken?: string | null;
   };
   readonly primaryGuardian: {
+    readonly kind: "new";
     readonly displayName: string;
     readonly email: string | null;
     readonly phone: string | null;
-    readonly relationshipType: PrimaryGuardianRelationshipType;
+    readonly dateOfBirth?: string | null;
+    readonly gender?: CrmGender | null;
+    readonly warningToken?: string | null;
+    readonly relationshipType: StudentGuardianRelationshipType;
+    readonly relationshipDescription: string | null;
     readonly isLegalGuardian: boolean;
+    readonly isEmergencyContact: boolean;
+    readonly isBillingContact: boolean;
+    readonly notificationConsent: boolean;
+  } | {
+    readonly kind: "existing";
+    readonly guardianId: string;
+    readonly relationshipType: PrimaryGuardianRelationshipType;
+    readonly relationshipDescription: string | null;
+    readonly isLegalGuardian: boolean;
+    readonly isEmergencyContact: boolean;
+    readonly isBillingContact: boolean;
+    readonly notificationConsent: boolean;
+    readonly warningToken?: never;
   };
   readonly requestId: string;
   readonly idempotencyKey: string;
 }
 
 export interface CreatedStudentAggregate {
-  readonly student: Readonly<{ id: string; displayName: string }>;
-  readonly primaryGuardian: Readonly<{ id: string; displayName: string }>;
+  readonly student: Readonly<{ id: string; recordVersion: number }>;
+  readonly primaryGuardian: Readonly<{ id: string; recordVersion: number }>;
   readonly relationship: Readonly<{
     id: string;
-    relationshipType: PrimaryGuardianRelationshipType;
+    recordVersion: number;
   }>;
 }
 
@@ -63,6 +84,7 @@ export interface StudentCreateRepository {
 }
 
 export type StudentCreateErrorCode =
+  | "STUDENT_CREATE_DUPLICATE_WARNING_REQUIRED"
   | "STUDENT_CREATE_FORBIDDEN"
   | "STUDENT_CREATE_INVALID"
   | "STUDENT_CREATE_IDEMPOTENCY_CONFLICT"
@@ -80,6 +102,7 @@ export class StudentCreateError extends Error {
 }
 
 const STUDENT_CREATE_ERROR_CODES = new Set<StudentCreateErrorCode>([
+  "STUDENT_CREATE_DUPLICATE_WARNING_REQUIRED",
   "STUDENT_CREATE_FORBIDDEN",
   "STUDENT_CREATE_INVALID",
   "STUDENT_CREATE_IDEMPOTENCY_CONFLICT",
@@ -103,7 +126,7 @@ export function isStudentCreateError(
 }
 
 export class StudentCreateRepositoryError extends Error {
-  readonly code: Exclude<StudentCreateErrorCode, "STUDENT_CREATE_FORBIDDEN" | "STUDENT_CREATE_INVALID">;
+  readonly code: StudentCreateErrorCode;
 
   constructor(code: StudentCreateRepositoryError["code"]) {
     super(`Student create repository rejected ${code}.`);
@@ -128,15 +151,17 @@ export class StudentCreateService {
   }
 
   async create(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: StudentCreateCommand;
   }): Promise<CreatedStudentAggregate> {
     assertAuthorizedActor(input.actor);
     const command = normalizeCommand(input.command);
-    const [studentId, guardianId, relationshipId, auditId, outboxId] = Array.from(
-      { length: 5 },
-      () => this.createId(),
-    );
+    const generated = Array.from({ length: input.command.primaryGuardian.kind === "new" ? 5 : 4 }, () => this.createId());
+    const studentId = generated[0]!;
+    const guardianId = input.command.primaryGuardian.kind === "new" ? generated[1]! : input.command.primaryGuardian.guardianId;
+    const relationshipId = input.command.primaryGuardian.kind === "new" ? generated[2]! : generated[1]!;
+    const auditId = input.command.primaryGuardian.kind === "new" ? generated[3]! : generated[2]!;
+    const outboxId = input.command.primaryGuardian.kind === "new" ? generated[4]! : generated[3]!;
     for (const id of [studentId, guardianId, relationshipId, auditId, outboxId]) {
       if (!UUID.test(id)) throw new StudentCreateError("STUDENT_CREATE_INVALID");
     }
@@ -145,10 +170,7 @@ export class StudentCreateService {
       throw new StudentCreateError("STUDENT_CREATE_INVALID");
     }
     const occurredAt = new Date(createdAtMs).toISOString();
-    const requestHash = hashRequestPayload({
-      primaryGuardian: command.primaryGuardian,
-      student: command.student,
-    });
+    const requestHash = hashRequestPayload(JSON.parse(JSON.stringify({ primaryGuardian: command.primaryGuardian, student: command.student })));
     const audit = buildAuditEvent({
       id: auditId,
       organizationId: input.actor.organizationId,
@@ -212,32 +234,45 @@ export class StudentCreateService {
   }
 }
 
-function assertAuthorizedActor(actor: IdentitySessionActor): void {
+function assertAuthorizedActor(actor: RequestAccessActor): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId)) {
     throw new StudentCreateError("STUDENT_CREATE_FORBIDDEN");
   }
-  const decision = evaluateBootstrapAuthorization(actor.role, { capability: "students.create" });
-  if (!decision.allowed) throw new StudentCreateError("STUDENT_CREATE_FORBIDDEN");
+  if (!hasRequestCapability(actor, "students.create")) {
+    throw new StudentCreateError("STUDENT_CREATE_FORBIDDEN");
+  }
 }
 
 function normalizeCommand(command: StudentCreateCommand): StudentCreateCommand {
   const student = Object.freeze({
     displayName: normalizeRequired(command.student.displayName, 512),
     dateOfBirth: normalizeDate(command.student.dateOfBirth),
+    gender: normalizeGender(command.student.gender),
     contactEmail: normalizeEmail(command.student.contactEmail),
     contactPhone: normalizeOptional(command.student.contactPhone, 64),
+    warningToken: command.student.warningToken ?? null,
   });
-  const primaryGuardian = Object.freeze({
-    displayName: normalizeRequired(command.primaryGuardian.displayName, 512),
-    email: normalizeEmail(command.primaryGuardian.email),
-    phone: normalizeOptional(command.primaryGuardian.phone, 64),
-    relationshipType: command.primaryGuardian.relationshipType,
-    isLegalGuardian: command.primaryGuardian.isLegalGuardian,
+  const guardianInput = command.primaryGuardian;
+  const primaryGuardian = guardianInput.kind === "existing" ? Object.freeze({
+    kind: "existing" as const, guardianId: guardianInput.guardianId,
+    relationshipType: guardianInput.relationshipType, relationshipDescription: guardianInput.relationshipDescription ?? null,
+    isLegalGuardian: guardianInput.isLegalGuardian, isEmergencyContact: guardianInput.isEmergencyContact,
+    isBillingContact: guardianInput.isBillingContact, notificationConsent: guardianInput.notificationConsent,
+  }) : Object.freeze({
+    kind: "new" as const,
+    displayName: normalizeRequired(guardianInput.displayName, 512),
+    email: normalizeEmail(guardianInput.email), phone: normalizeOptional(guardianInput.phone, 64),
+    dateOfBirth: normalizeDate(guardianInput.dateOfBirth), gender: normalizeGender(guardianInput.gender),
+    relationshipType: guardianInput.relationshipType, relationshipDescription: guardianInput.relationshipDescription,
+    isLegalGuardian: guardianInput.isLegalGuardian, isEmergencyContact: guardianInput.isEmergencyContact,
+    isBillingContact: guardianInput.isBillingContact, notificationConsent: guardianInput.notificationConsent,
+    warningToken: guardianInput.warningToken ?? null,
   });
   if (
-    !isPrimaryGuardianRelationshipType(primaryGuardian.relationshipType) ||
+    !isPrimaryGuardianRelationshipType(primaryGuardian.relationshipType as never) ||
+    !validateRelationshipDescription(primaryGuardian) ||
     typeof primaryGuardian.isLegalGuardian !== "boolean" ||
-    (primaryGuardian.email === null && primaryGuardian.phone === null) ||
+    (primaryGuardian.kind === "new" && primaryGuardian.email === null && primaryGuardian.phone === null) ||
     !REQUEST_ID.test(command.requestId)
   ) {
     throw new StudentCreateError("STUDENT_CREATE_INVALID");
@@ -265,7 +300,7 @@ function normalizeRequired(value: unknown, maximumLength: number): string {
 }
 
 function normalizeOptional(value: unknown, maximumLength: number): string | null {
-  if (value === null) return null;
+  if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new StudentCreateError("STUDENT_CREATE_INVALID");
   const result = value.trim();
   if (!result) return null;
@@ -281,7 +316,16 @@ function normalizeEmail(value: unknown): string | null {
   return result;
 }
 
+function normalizeGender(value: unknown): CrmGender | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || !["male", "female", "other", "not_disclosed"].includes(value)) {
+    throw new StudentCreateError("STUDENT_CREATE_INVALID");
+  }
+  return value as CrmGender;
+}
+
 function normalizeDate(value: unknown): string | null {
+  if (value === undefined) return null;
   if (value === null) return null;
   if (typeof value !== "string" || !DATE.test(value)) {
     throw new StudentCreateError("STUDENT_CREATE_INVALID");

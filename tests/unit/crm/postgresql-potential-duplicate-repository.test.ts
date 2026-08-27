@@ -1,0 +1,7 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { PostgresqlPotentialDuplicateRepository, findPotentialDuplicateCandidatesInTransaction } from "../../../modules/crm/infrastructure/postgresql-potential-duplicate-repository.ts";
+import type { TenantTransactionRunner } from "../../../modules/shared/server.ts";
+const input={organizationId:"61000000-0000-4000-8000-000000000001",actorUserId:"61000000-0000-4000-8000-000000000002",kind:"student" as const,name:"A",email:null,phone:null};
+test("class query is unlocked and unbounded",async()=>{let q:any;const runner={async run(_c:any,op:any){return op({query:async(x:any)=>{q=x;return {rows:[{id:"a",display_name:"A",email:null,phone:null,record_version:2}]}}})}} as TenantTransactionRunner;const r=await new PostgresqlPotentialDuplicateRepository(runner).findCandidates(input);assert.equal(r.candidateVersion,"a:2");assert.doesNotMatch(q.text,/FOR SHARE|LIMIT/);});
+test("helper locks rows and preserves complete candidate version",async()=>{let q:any;const tx={query:async(x:any)=>{q=x;return {rows:[{id:"a",display_name:"A",email:null,phone:null,record_version:2},{id:"b",display_name:"B",email:null,phone:null,record_version:3}]}}};const r=await findPotentialDuplicateCandidatesInTransaction(tx as any,input,true);assert.match(q.text,/ORDER BY id FOR SHARE/);assert.doesNotMatch(q.text,/LIMIT/);assert.equal(r.candidateVersion,"a:2,b:3");assert.equal(r.candidates[1]?.displayName,"B");});

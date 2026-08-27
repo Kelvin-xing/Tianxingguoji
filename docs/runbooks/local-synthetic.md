@@ -1,8 +1,37 @@
 # Local Synthetic Runtime Runbook
 
+> **Current file-runtime boundary (2026-08-26).** LocalStack、ClamAV、本地文档
+> Worker 和本地 S3/SQS 初始化已经停用。当前本地 Compose 只启动 PostgreSQL；
+> 本地与 Vercel test/preview 共用同一组文档 API、版本、能力 URL、扫描状态和
+> fail-closed 语义。由于真实 S3 尚未接入，非生产环境必须显式使用
+> `DOCUMENT_TRANSPORT_MODE=deterministic-fake`，该假传输/假扫描只用于开发验证，
+> 不代表生产存储或病毒扫描能力。
+
+下方旧的 LocalStack/ClamAV 启动、资源核验和 Worker 命令仅作为历史记录保留，
+不可再执行；它们不再是当前本地运行流程。
+
+如果 `docker ps` 仍显示旧的 LocalStack 或 ClamAV 容器，那是变更前 Compose
+创建的存量容器；修改 Compose 文件不会自动删除它们。确认无其他任务使用后，
+再单独执行受控的容器清理。
+
+## 当前启动流程
+
+```sh
+cp .env.local.example .env.local
+pnpm local:up
+pnpm local:ps
+pnpm dev
+```
+
+`.env.local.example` 中的 `DOCUMENT_FAKE_*` 配置必须保留。文档接口会通过进程内
+确定性假对象传输和假扫描器工作；未明确启用假模式时，传输、扫描和下载均失败关闭。
+真实 S3 接入前，不得把假配置当作生产凭据或部署配置。
+
+## 历史执行记录（已停用）
+
 ## 目的与边界
 
-本手册用于在开发机器上启动 Release 1 的本地依赖：PostgreSQL 17、
+本节原用于在开发机器上启动 Release 1 的本地依赖：PostgreSQL 17、
 LocalStack S3/SQS 和 ClamAV。环境只允许确定性合成数据，不连接 Neon、
 AWS、Vercel 或其他外部业务系统。
 

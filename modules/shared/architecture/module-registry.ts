@@ -120,6 +120,7 @@ export const MODULE_REGISTRY = Object.freeze({
       "Organization",
       "OrganizationMembership",
       "RoleBinding",
+      "EmployeeProfile",
       "CaseCollaborator",
       "ScopeGrant",
     ],
@@ -134,6 +135,7 @@ export const MODULE_REGISTRY = Object.freeze({
     publicEntrypoints: [
       "modules/crm/public.ts",
       "modules/crm/server.ts",
+      "modules/crm/potential-duplicates-server.ts",
       "modules/crm/client.ts",
     ],
     historicalEntrypoints: ["modules/crm/legacy-server.ts"],

@@ -1,10 +1,2 @@
-import { redirect } from "next/navigation";
-
-interface PageProps {
-  readonly params: Promise<{ readonly taskId: string }>;
-}
-
-export default async function ContractorTaskPage({ params }: PageProps) {
-  const { taskId } = await params;
-  redirect(`/tasks/${taskId}`);
-}
+import { F3TaskWorkspace } from '@/components/tasks/F3TaskWorkspace'
+export default async function ContractorTaskPage({ params }: { params: Promise<{ taskId: string }> }) { const { taskId } = await params; return <F3TaskWorkspace taskId={taskId} contractor /> }

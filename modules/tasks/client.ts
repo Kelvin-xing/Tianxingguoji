@@ -321,7 +321,7 @@ function decodeAvailableTransitions(value: unknown): readonly AvailableTaskTrans
     const to = oneOf(record.to, TASK_STATES, "transition.to");
     const requiresReason = expectBooleanValue(record.requires_reason, "transition.requires_reason");
     const requiresAssignee = expectBooleanValue(record.requires_assignee, "transition.requires_assignee");
-    if (requiresAssignee !== (to === "reassigned")) {
+    if (requiresAssignee !== (to === "assigned")) {
       throw new TypeError("Invalid Task transition assignee requirement.");
     }
     return Object.freeze({
@@ -368,7 +368,7 @@ function normalizeTransitionTaskInput(input: TransitionTaskInput): TransitionTas
   const reason = input.reason.trim();
   if (reason.length > 4_000) throw new TypeError("Invalid reason.");
   const nextAssigneeUserId = input.next_assignee_user_id;
-  if (to === "reassigned") {
+  if (to === "assigned") {
     if (nextAssigneeUserId === null) throw new TypeError("Reassignment requires an assignee.");
     assertUuid(nextAssigneeUserId, "next_assignee_user_id");
   } else if (nextAssigneeUserId !== null) {

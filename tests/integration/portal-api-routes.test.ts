@@ -29,7 +29,7 @@ function internalDependencies(overrides: Partial<PortalGrantRouteDependencies> =
       grantId: GRANT_ID,
       rawSecretOnce: "portal-secret-once",
       fingerprint: "ABC123",
-      expiresAt: input.expiresAt,
+      expiresAt: "2026-08-20T10:00:00.000Z",
       status: "active",
       recordVersion: 1,
     }),
@@ -38,7 +38,7 @@ function internalDependencies(overrides: Partial<PortalGrantRouteDependencies> =
       grantId: "55555555-5555-4555-8555-555555555555",
       rawSecretOnce: "rotated-secret-once",
       fingerprint: "DEF456",
-      expiresAt: input.expiresAt,
+      expiresAt: "2026-08-20T10:00:00.000Z",
       status: "active",
       recordVersion: 1,
     }),
@@ -57,15 +57,15 @@ test("internal grant routes require idempotency and expected versions and expose
   const issue = await collection.POST(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-grants`, {
     method: "POST",
     headers: { "content-type": "application/json", "idempotency-key": "issue-1", origin: "https://app.test" },
-    body: JSON.stringify({ portal_viewer_id: VIEWER_ID, expires_at: "2026-08-16T10:00:00.000Z" }),
+    body: JSON.stringify({ portal_viewer_id: VIEWER_ID }),
   }), context);
   assert.equal(issue.status, 201);
   assert.equal((await issue.json() as { raw_secret_once: string }).raw_secret_once, "portal-secret-once");
   assert.deepEqual(issueInput, {
     actorUserId: "44444444-4444-4444-8444-444444444444",
+    actor: { actorUserId: "44444444-4444-4444-8444-444444444444" },
     caseId: CASE_ID,
     portalViewerId: VIEWER_ID,
-    expiresAt: "2026-08-16T10:00:00.000Z",
     idempotencyKey: "issue-1",
   });
 
@@ -93,7 +93,7 @@ test("internal grant routes require idempotency and expected versions and expose
   const rotated = await rotate(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-grants/${GRANT_ID}/rotate`, {
     method: "POST",
     headers: { "content-type": "application/json", "idempotency-key": "rotate-1", origin: "https://app.test" },
-    body: JSON.stringify({ expected_version: 7, expires_at: "2026-08-17T10:00:00.000Z" }),
+    body: JSON.stringify({ expected_version: 7 }),
   }), itemContext);
   assert.equal(rotated.status, 201);
   assert.equal((await rotated.json() as { raw_secret_once: string }).raw_secret_once, "rotated-secret-once");
@@ -123,7 +123,7 @@ test("portal redemption uses one generic 401 and sets a separate secure session 
       revokeSession: async () => undefined,
     });
     const response = await handlers.POST(new Request("https://app.test/api/v1/portal/sessions", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ access_key: "credential-shape-test-key" }),
+      method: "POST", headers: { "content-type": "application/json", "idempotency-key": "redeem-error" }, body: JSON.stringify({ access_key: "x".repeat(96) }),
     }));
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: { code: "PORTAL_ACCESS_INVALID" } });
@@ -134,7 +134,7 @@ test("portal redemption uses one generic 401 and sets a separate secure session 
     revokeSession: async () => undefined,
   });
   const response = await handlers.POST(new Request("https://app.test/api/v1/portal/sessions", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ access_key: "valid-credential-shape-key" }),
+    method: "POST", headers: { "content-type": "application/json", "idempotency-key": "redeem-valid" }, body: JSON.stringify({ access_key: "x".repeat(96) }),
   }));
   assert.equal(response.status, 201);
   const cookie = response.headers.get("set-cookie") ?? "";
@@ -161,7 +161,7 @@ test("internal grant mutations reject missing and cross-origin requests before a
   const requests = [
     collection.POST(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-grants`, {
       method: "POST", headers: { "content-type": "application/json", "idempotency-key": "missing-origin" },
-      body: JSON.stringify({ portal_viewer_id: VIEWER_ID, expires_at: "2026-08-16T10:00:00.000Z" }),
+      body: JSON.stringify({ portal_viewer_id: VIEWER_ID }),
     }), context),
     item.DELETE(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-grants/${GRANT_ID}`, {
       method: "DELETE", headers: { "content-type": "application/json", "idempotency-key": "wrong-origin", origin: "https://evil.test" },
@@ -169,7 +169,7 @@ test("internal grant mutations reject missing and cross-origin requests before a
     }), itemContext),
     rotate(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-grants/${GRANT_ID}/rotate`, {
       method: "POST", headers: { "content-type": "application/json", "idempotency-key": "wrong-origin", origin: "https://evil.test" },
-      body: JSON.stringify({ expected_version: 1, expires_at: "2026-08-16T10:00:00.000Z" }),
+      body: JSON.stringify({ expected_version: 1 }),
     }), itemContext),
   ];
 
@@ -201,7 +201,6 @@ test("workspace is no-store, reconstructs the allowlist, and rejects missing ses
     getSessionSecret: async () => "opaque-session",
     readWorkspace: async () => ({
       capabilitySetVersion: "portal_case_read_v1",
-      caseNumber: "CASE-001",
       customerFacingStage: "Documents in review",
       lastCustomerVisibleUpdateAt: "2026-08-13T10:00:00.000Z",
       schoolTargets: [{ name: "School A", status: "submitted" }],

@@ -1,5 +1,4 @@
-import { requireIdentityActor } from "@/modules/identity/web";
-import { getDocumentWorkspaceRuntime } from "@/modules/documents/server";
+import { getDocumentWorkspaceRuntime, requireDocumentActor } from "@/modules/documents/server";
 import {
   createApiError,
   createRequestContext,
@@ -27,7 +26,7 @@ export function GET(request: Request, context: Context): Promise<Response> {
       assertNoDocumentQuery(request);
       const { caseId } = await context.params;
       const result = await getDocumentWorkspaceRuntime().service.listCase(
-        await requireIdentityActor(),
+        await requireDocumentActor(),
         caseId,
       );
       if (!result) throw createApiError("NOT_FOUND");
@@ -44,7 +43,7 @@ export async function POST(request: Request, context: Context): Promise<Response
     assertNoDocumentQuery(request);
     const { caseId } = await context.params;
     const result = await getDocumentWorkspaceRuntime().service.register({
-      actor: await requireIdentityActor(),
+      actor: await requireDocumentActor(),
       caseId,
       command: await parseDocumentRegistration(request, requestContext.requestId),
     });

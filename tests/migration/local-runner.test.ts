@@ -68,11 +68,11 @@ test("verifies the committed ordered migration manifest", async () => {
   const manifest = await verifyMigrationManifest();
 
   assert.equal(manifest.manifestVersion, 1);
-  assert.equal(manifest.migrations.length, 35);
+  assert.equal(manifest.migrations.length, 40);
   assert.equal(manifest.migrations[0]?.name, "202608021330_001_expand_identity_access.sql");
   assert.equal(
     manifest.migrations.at(-1)?.name,
-    "202608240020_036_complete_case_workflow_foundation.sql",
+    "202608260050_041_expand_school_target_task_events.sql",
   );
 });
 

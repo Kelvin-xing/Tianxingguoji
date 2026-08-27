@@ -1,11 +1,14 @@
 import "server-only";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
+import { IdempotencyExecutionError, runIdempotentTransaction } from "../../shared/server.ts";
+import { hashRequestPayload } from "../../shared/public.ts";
 import type { TenantTransaction, TenantTransactionRunner } from "../../shared/server.ts";
 import {
   GuardianRelationshipError,
   type GuardianContactHint,
   type GuardianRelationshipRepository,
+  type EndGuardianRelationshipResult,
   type GuardianRelationshipResult,
   type GuardianRelationshipsView,
   type PrimaryGuardianHandoffResult,
@@ -14,6 +17,7 @@ import type { PrimaryGuardianRelationshipType } from "../domain/contract.ts";
 
 const ATTACH_OPERATION = "crm.attach_student_guardian";
 const HANDOFF_OPERATION = "crm.handoff_student_primary_guardian";
+const END_OPERATION = "crm.end_student_guardian_relationship";
 const POSTGRES_SEVERITIES = new Set([
   "ERROR", "FATAL", "PANIC", "WARNING", "NOTICE", "DEBUG", "INFO", "LOG",
 ]);
@@ -27,12 +31,14 @@ interface RelationshipRow extends Record<string, unknown> {
   student_id: string;
   guardian_id: string;
   relationship_type: PrimaryGuardianRelationshipType;
+  relationship_description: string | null;
   is_legal_guardian: boolean;
   is_primary_contact: boolean;
   is_emergency_contact: boolean;
   is_billing_contact: boolean;
   notification_consent: boolean;
   starts_at: Date | string;
+  ends_at?: Date | string | null;
   record_version: string | number;
 }
 
@@ -68,10 +74,61 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   listCurrent(input: Parameters<GuardianRelationshipRepository["listCurrent"]>[0]) {
     return this.run(input, (transaction) => listCurrent(transaction, input.studentId));
   }
+  listHistory(input: Parameters<GuardianRelationshipRepository["listHistory"]>[0]) { return this.run(input, tx => listHistory(tx, input.organizationId, input.studentId)); }
+
+  endRelationship(input: Parameters<GuardianRelationshipRepository["endRelationship"]>[0]): Promise<EndGuardianRelationshipResult> {
+    const context = {
+      organizationId: input.organizationId,
+      actorKind: "user" as const,
+      actorOpaqueId: input.actorUserId,
+      actorUserId: input.actorUserId,
+      requestId: input.command.requestId,
+    };
+    return runIdempotentTransaction({
+      runner: this.runner,
+      context,
+      claim: {
+        id: input.idempotencyRecordId, organizationId: input.organizationId,
+        actorKind: "user", actorOpaqueId: input.actorUserId, operation: END_OPERATION,
+        key: input.command.idempotencyKey, requestHash: input.requestHash, createdAt: input.occurredAt,
+      },
+      revalidate: (transaction) => assertActiveGuardianManager(adaptTransaction(transaction), input.organizationId, input.actorUserId),
+      execute: async (transaction) => {
+        const value = await endRelationshipInTransaction(transaction, input);
+        await appendAtomicMutationEffects(adaptTransaction(transaction), input.effects);
+        return {
+          state: "completed" as const, resultReference: value.relationshipId,
+          responseHash: hashRequestPayload(endReceiptJson(value)), updatedAt: input.occurredAt, value,
+        };
+      },
+    }).then(async (result) => {
+      if (result.status === "executed") return result.value;
+      return this.runner.run(context, async (transaction) => {
+        const value = await selectEndedRelationship(transaction, input);
+        if (!value || value.relationshipId !== result.resultReference ||
+            hashRequestPayload(endReceiptJson(value)) !== result.responseHash) {
+          throw error("GUARDIAN_RELATIONSHIP_UNAVAILABLE");
+        }
+        return value;
+      });
+    }).catch((cause) => {
+      if (cause instanceof IdempotencyExecutionError) {
+        throw error(cause.code === "IDEMPOTENCY_IN_PROGRESS"
+          ? "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS"
+          : cause.code === "IDEMPOTENCY_KEY_REUSED"
+            ? "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_KEY_REUSED"
+            : "GUARDIAN_RELATIONSHIP_UNAVAILABLE");
+      }
+      if (cause instanceof GuardianRelationshipError) throw cause;
+      const postgresCode = readConcurrencyPostgresCode(cause);
+      if (postgresCode) this.reportPostgresFailure(Object.freeze({ postgresCode }));
+      throw error("GUARDIAN_RELATIONSHIP_UNAVAILABLE");
+    });
+  }
 
   searchGuardians(input: Parameters<GuardianRelationshipRepository["searchGuardians"]>[0]) {
     return this.run(input, async (transaction) => {
-      await assertActiveAdvisor(transaction, input.organizationId, input.actorUserId);
+      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
       const student = await lockActiveStudent(transaction, input.studentId, false);
       if (!student) return null;
       const result = await transaction.query<GuardianHintRow>(
@@ -109,7 +166,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   createRelationship(input: Parameters<GuardianRelationshipRepository["createRelationship"]>[0]) {
     return this.run(input, async (transaction) => {
       const receipt = await claimReceipt(transaction, input, ATTACH_OPERATION);
-      await assertActiveAdvisor(transaction, input.organizationId, input.actorUserId);
+      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
       if (receipt.replayReference) {
         const replay = await selectRelationship(transaction, receipt.replayReference);
         if (!replay) throw error("GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS");
@@ -131,15 +188,15 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
       if (pair.rows[0]?.exists) throw error("GUARDIAN_RELATIONSHIP_CURRENT_PAIR_EXISTS");
       const inserted = await transaction.query<RelationshipRow>(
         `INSERT INTO crm_student_guardian_relationships
-          (id, organization_id, student_id, guardian_id, relationship_type,
+          (id, organization_id, student_id, guardian_id, relationship_type, relationship_description,
            is_legal_guardian, is_primary_contact, is_emergency_contact,
            is_billing_contact, notification_consent, starts_at)
-         VALUES ($1,$2,$3,$4,$5,$6,false,$7,$8,$9,transaction_timestamp())
-         RETURNING id AS relationship_id, student_id, guardian_id, relationship_type,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,transaction_timestamp())
+         RETURNING id AS relationship_id, student_id, guardian_id, relationship_type, relationship_description,
                    is_legal_guardian, is_primary_contact, is_emergency_contact,
                    is_billing_contact, notification_consent, starts_at, record_version`,
         [input.relationshipId, input.organizationId, input.studentId, input.guardianId,
-          input.relationshipType, input.isLegalGuardian, input.isEmergencyContact,
+          input.relationshipType, input.relationshipDescription, input.isLegalGuardian, input.isEmergencyContact,
           input.isBillingContact, input.notificationConsent],
       );
       const relationship = inserted.rows[0];
@@ -153,7 +210,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   handoffPrimaryContact(input: Parameters<GuardianRelationshipRepository["handoffPrimaryContact"]>[0]) {
     return this.run(input, async (transaction) => {
       const receipt = await claimReceipt(transaction, input, HANDOFF_OPERATION);
-      await assertActiveAdvisor(transaction, input.organizationId, input.actorUserId);
+      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
       if (receipt.replayReference) {
         const replay = await selectHandoff(transaction, receipt.replayReference);
         if (!replay) throw error("GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS");
@@ -164,7 +221,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
       }
       const locked = await transaction.query<LockedRelationshipRow>(
         `SELECT relationship.id AS relationship_id, relationship.student_id,
-                relationship.guardian_id, relationship.relationship_type,
+                relationship.guardian_id, relationship.relationship_type, relationship.relationship_description,
                 relationship.is_legal_guardian, relationship.is_primary_contact,
                 relationship.is_emergency_contact, relationship.is_billing_contact,
                 relationship.notification_consent, relationship.starts_at,
@@ -193,7 +250,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
       if (!timestamp) throw error("GUARDIAN_RELATIONSHIP_UNAVAILABLE");
       const closed = await transaction.query(
         `UPDATE crm_student_guardian_relationships
-            SET ends_at = $3, ended_by_user_id = $4, end_reason = $5,
+            SET ends_at = $3, ended_by_user_id = $4, end_reason_code = $5,
                 record_version = record_version + 1, updated_at = $3
           WHERE student_id = $1 AND id = ANY($2::uuid[]) AND ends_at IS NULL`,
         [input.studentId, [primary.relationship_id, successor.relationship_id], timestamp,
@@ -203,16 +260,16 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
       const nextVersion = input.expectedPrimaryRecordVersion + 1;
       const inserted = await transaction.query<RelationshipRow>(
         `INSERT INTO crm_student_guardian_relationships
-          (id, organization_id, student_id, guardian_id, relationship_type,
+          (id, organization_id, student_id, guardian_id, relationship_type, relationship_description,
            is_legal_guardian, is_primary_contact, is_emergency_contact,
            is_billing_contact, notification_consent, starts_at, record_version,
            created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$10,$10)
-         RETURNING id AS relationship_id, student_id, guardian_id, relationship_type,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$11,$11)
+         RETURNING id AS relationship_id, student_id, guardian_id, relationship_type, relationship_description,
                    is_legal_guardian, is_primary_contact, is_emergency_contact,
                    is_billing_contact, notification_consent, starts_at, record_version`,
         [input.relationshipId, input.organizationId, input.studentId, successor.guardian_id,
-          successor.relationship_type, successor.is_legal_guardian,
+          successor.relationship_type, successor.relationship_description, successor.is_legal_guardian,
           successor.is_emergency_contact, successor.is_billing_contact,
           successor.notification_consent, timestamp, nextVersion],
       );
@@ -234,7 +291,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
     input: { readonly organizationId: string; readonly actorUserId: string },
     operation: (transaction: CrmTransaction) => Promise<Result>,
   ): Promise<Result> {
-    return this.runner.run(input, async (tenantTransaction) => {
+    return this.runner.run({ organizationId: input.organizationId, actorUserId: input.actorUserId }, async (tenantTransaction) => {
       try {
         return await operation(adaptTransaction(tenantTransaction));
       } catch (cause) {
@@ -268,7 +325,7 @@ async function listCurrent(
   if (!studentRow) return null;
   const relationships = await transaction.query<CurrentRelationshipRow>(
     `SELECT relationship.id AS relationship_id, relationship.student_id,
-            relationship.guardian_id, relationship.relationship_type,
+            relationship.guardian_id, relationship.relationship_type, relationship.relationship_description,
             relationship.is_legal_guardian, relationship.is_primary_contact,
             relationship.is_emergency_contact, relationship.is_billing_contact,
             relationship.notification_consent, relationship.starts_at,
@@ -306,7 +363,53 @@ async function listCurrent(
   });
 }
 
-async function assertActiveAdvisor(
+async function listHistory(transaction: CrmTransaction, organizationId: string, studentId: string): Promise<GuardianRelationshipsView | null> {
+  const student = await transaction.query<{id:string;display_name:string}>(`SELECT id,display_name FROM crm_students WHERE id=$1 AND organization_id=$2 AND status IN ('active','pending_delete')`, [studentId, organizationId]);
+  if (!student.rows[0]) return null;
+  const rows = await transaction.query<CurrentRelationshipRow>(`SELECT relationship.id AS relationship_id,relationship.student_id,relationship.guardian_id,relationship.relationship_type,relationship.relationship_description,relationship.is_legal_guardian,relationship.is_primary_contact,relationship.is_emergency_contact,relationship.is_billing_contact,relationship.notification_consent,relationship.starts_at,relationship.ends_at,relationship.record_version,CASE WHEN guardian.status='deleted' THEN 'Deleted guardian' ELSE guardian.display_name END AS guardian_display_name,NULL::text AS email_hint,NULL::text AS phone_hint FROM crm_student_guardian_relationships relationship JOIN crm_guardians guardian ON guardian.id=relationship.guardian_id AND guardian.organization_id=relationship.organization_id JOIN crm_students student ON student.id=relationship.student_id AND student.organization_id=relationship.organization_id WHERE relationship.student_id=$1 AND relationship.organization_id=$2 AND student.status IN ('active','pending_delete') ORDER BY relationship.starts_at DESC,relationship.id DESC`, [studentId, organizationId]);
+  return {student:{id:student.rows[0].id,displayName:student.rows[0].display_name},relationships:rows.rows.map(row=>({relationship:toRelationship(row),guardian:toGuardianHint({id:row.guardian_id,display_name:row.guardian_display_name,email_hint:row.email_hint,phone_hint:row.phone_hint})}))};
+}
+
+interface EndRelationshipRow extends Record<string, unknown> {
+  relationship_id: string;
+  student_id: string;
+  is_primary_contact: boolean;
+  ends_at: Date | string | null;
+  record_version: number | string;
+}
+
+async function endRelationshipInTransaction(
+  transaction: TenantTransaction,
+  input: Parameters<GuardianRelationshipRepository["endRelationship"]>[0],
+): Promise<EndGuardianRelationshipResult> {
+  const student = await transaction.query<{ id: string }>({ text: `SELECT id FROM crm_students WHERE organization_id=$1 AND id=$2 AND status IN ('active','pending_delete') FOR UPDATE`, values: [input.organizationId, input.command.studentId] });
+  if (student.rows.length === 0) throw error("GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND");
+  const locked = await transaction.query<EndRelationshipRow>({ text: `SELECT id AS relationship_id, student_id, is_primary_contact, ends_at, record_version FROM crm_student_guardian_relationships WHERE organization_id=$1 AND student_id=$2 AND id=$3 AND ends_at IS NULL FOR UPDATE`, values: [input.organizationId, input.command.studentId, input.command.relationshipId] });
+  const relationship = locked.rows[0];
+  if (!relationship) throw error("GUARDIAN_RELATIONSHIP_NOT_FOUND");
+  if (toVersion(relationship.record_version) !== input.command.expectedRecordVersion) throw error("GUARDIAN_RELATIONSHIP_STALE_VERSION");
+  if (relationship.is_primary_contact) throw error("GUARDIAN_RELATIONSHIP_PRIMARY_CANNOT_END");
+  const updated = await transaction.query<EndRelationshipRow>({ text: `UPDATE crm_student_guardian_relationships SET ends_at=$6, updated_at=$6, ended_by_user_id=$4, end_reason_code=$5, record_version=record_version+1 WHERE organization_id=$1 AND student_id=$2 AND id=$3 AND ends_at IS NULL AND record_version=$7 RETURNING id AS relationship_id, student_id, is_primary_contact, ends_at, record_version`, values: [input.organizationId, input.command.studentId, input.command.relationshipId, input.actorUserId, input.reason, input.occurredAt, input.command.expectedRecordVersion] });
+  if (updated.rows.length !== 1) throw error("GUARDIAN_RELATIONSHIP_STALE_VERSION");
+  return toEndResult(updated.rows[0]!, input.occurredAt);
+}
+
+async function selectEndedRelationship(transaction: TenantTransaction, input: Parameters<GuardianRelationshipRepository["endRelationship"]>[0]): Promise<EndGuardianRelationshipResult | null> {
+  const result = await transaction.query<EndRelationshipRow>({ text: `SELECT id AS relationship_id, student_id, is_primary_contact, ends_at, record_version FROM crm_student_guardian_relationships WHERE organization_id=$1 AND student_id=$2 AND id=$3 AND ends_at IS NOT NULL`, values: [input.organizationId, input.command.studentId, input.command.relationshipId] });
+  return result.rows[0] ? toEndResult(result.rows[0], input.occurredAt) : null;
+}
+
+function toEndResult(row: EndRelationshipRow, occurredAt: string): EndGuardianRelationshipResult {
+  if (row.ends_at === null) throw error("GUARDIAN_RELATIONSHIP_UNAVAILABLE");
+  const endedAt = toIso(row.ends_at);
+  return Object.freeze({ relationshipId: row.relationship_id, studentId: row.student_id, status: "ended" as const, endsAt: endedAt, recordVersion: toVersion(row.record_version), occurredAt: endedAt });
+}
+
+function endReceiptJson(value: EndGuardianRelationshipResult) {
+  return { relationship_id: value.relationshipId, student_id: value.studentId, status: value.status, ends_at: value.endsAt, record_version: value.recordVersion, occurred_at: value.occurredAt };
+}
+
+async function assertActiveGuardianManager(
   transaction: CrmTransaction,
   organizationId: string,
   actorUserId: string,
@@ -322,11 +425,11 @@ async function assertActiveAdvisor(
        JOIN access_organizations AS organization ON organization.id = membership.organization_id
       WHERE actor.id = $2 AND actor.status = 'active'
         AND organization.status = 'active' AND membership.status = 'active'
-        AND binding.status = 'active' AND binding.role = 'advisor'
+        AND binding.status = 'active' AND binding.role IN ('founder','advisor')
       FOR SHARE OF actor, membership, binding, organization`,
     [organizationId, actorUserId],
   );
-  if (result.rows.length !== 1) throw error("GUARDIAN_RELATIONSHIP_FORBIDDEN");
+  if (result.rows.length === 0) throw error("GUARDIAN_RELATIONSHIP_FORBIDDEN");
 }
 
 async function lockActiveStudent(
@@ -407,7 +510,7 @@ async function selectRelationship(
   relationshipId: string,
 ): Promise<GuardianRelationshipResult | null> {
   const result = await transaction.query<RelationshipRow>(
-    `SELECT id AS relationship_id, student_id, guardian_id, relationship_type,
+    `SELECT id AS relationship_id, student_id, guardian_id, relationship_type, relationship_description,
             is_legal_guardian, is_primary_contact, is_emergency_contact,
             is_billing_contact, notification_consent, starts_at, record_version
        FROM crm_student_guardian_relationships WHERE id = $1`,
@@ -448,12 +551,14 @@ function toRelationship(row: RelationshipRow): GuardianRelationshipResult {
     studentId: row.student_id,
     guardianId: row.guardian_id,
     relationshipType: row.relationship_type,
+    relationshipDescription: row.relationship_description,
     isLegalGuardian: row.is_legal_guardian,
     isPrimaryContact: row.is_primary_contact,
     isEmergencyContact: row.is_emergency_contact,
     isBillingContact: row.is_billing_contact,
     notificationConsent: row.notification_consent,
     startsAt: toIso(row.starts_at),
+    endsAt: row.ends_at ? toIso(row.ends_at) : null,
     recordVersion: toVersion(row.record_version),
   });
 }

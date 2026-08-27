@@ -20,6 +20,30 @@ test("decodes the v1 envelope and sends same-origin request metadata", async (co
   assert.equal(result, "ok");
 });
 
+test("adds command idempotency and expected-version metadata without changing caller input", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let observedHeaders: Headers | undefined;
+  let observedBody: unknown;
+  globalThis.fetch = async (_input, init) => {
+    observedHeaders = new Headers(init?.headers);
+    observedBody = JSON.parse(String(init?.body));
+    return Response.json(
+      { api_version: "v1", request_id: "server-request", data: { ok: true } },
+      { headers: { "x-request-id": "server-request" } },
+    );
+  };
+  const body = { decision: "approve" } as const;
+  await requestApi(
+    { path: "/api/v1/commands", method: "POST", body, idempotencyKey: "command-1", expectedRecordVersion: 4 },
+    expectRecord,
+  );
+  assert.equal(observedHeaders?.get("idempotency-key"), "command-1");
+  assert.equal(observedHeaders?.get("cache-control"), null);
+  assert.deepEqual(observedBody, { decision: "approve", expected_record_version: 4 });
+  assert.deepEqual(body, { decision: "approve" });
+});
+
 test("normalizes API errors without retaining messages or response bodies", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

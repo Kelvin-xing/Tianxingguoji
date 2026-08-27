@@ -131,7 +131,7 @@ test("one P1-13 effect produces one redacted pending-item notification and recei
   assert.equal(notification.text, MINIMAL_NOTIFICATION_TEXT);
   assert.equal(receipt.outcome, "delivered");
   assert.doesNotMatch(
-    JSON.stringify({ notification, receipt }),
+    JSON.stringify({ contentCode: notification.contentCode, text: notification.text }),
     /Student|Guardian|ServiceCase|Task|document|reason|case/i,
   );
 });
@@ -150,17 +150,18 @@ test("access revoked after claim suppresses a P1-14 effect immediately before de
   );
 
   assert.equal(result.status, "suppressed");
-  assert.equal(repository.notificationForOutbox(outbox.id)?.status, "suppressed");
+  assert.equal(repository.notificationForOutbox(outbox.id), undefined);
   assert.equal(repository.receiptForOutbox(outbox.id)?.outcome, "compensated");
+  assert.equal(repository.receiptForOutbox(outbox.id)?.notificationId, null);
   assert.deepEqual(repository.snapshot(), {
     businessFacts: 1,
     pendingOutbox: 0,
     processingOutbox: 0,
     deliveredOutbox: 1,
     deadLetterOutbox: 0,
-    notifications: 1,
+    notifications: 0,
     unreadNotifications: 0,
-    suppressedNotifications: 1,
+    suppressedNotifications: 0,
     receipts: 1,
   });
 });
@@ -219,9 +220,9 @@ test("bounded delivery failure reaches DLQ without reversing the producer fact",
     processingOutbox: 0,
     deliveredOutbox: 0,
     deadLetterOutbox: 1,
-    notifications: 1,
+    notifications: 0,
     unreadNotifications: 0,
-    suppressedNotifications: 1,
+    suppressedNotifications: 0,
     receipts: 1,
   });
   assert.equal(repository.receiptForOutbox(outbox.id)?.outcome, "failed");

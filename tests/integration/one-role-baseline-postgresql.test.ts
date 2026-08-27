@@ -570,7 +570,7 @@ async function assertPrimaryContactLifecycleInvariant(
     stage = "zero_primary_rejection";
     await expectRejectedTransaction(client, organizationId, actorId, async () => {
       await client.query(`UPDATE crm_student_guardian_relationships
-        SET ends_at=transaction_timestamp(),ended_by_user_id=$2,end_reason='local invariant test',
+        SET ends_at=transaction_timestamp(),ended_by_user_id=$2,end_reason_code='local invariant test',
             record_version=record_version+1,updated_at=transaction_timestamp()
         WHERE id=$1`, [relationshipId, actorId]);
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
@@ -648,7 +648,7 @@ async function assertCaseFlowFoundationInvariant(
   let stage: CaseFlowInvariantStage = "connection";
   const founder = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
   const advisor = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
-  const otherAdvisor = NEON_TEST_PRINCIPALS.find(({ role }) => role === "data_reviewer")!;
+  const otherAdvisor = NEON_TEST_PRINCIPALS.filter(({ role }) => role === "advisor")[1]!;
   const caseId = "66000000-0000-4000-8000-000000000101";
   const assessmentId = "66000000-0000-4000-8000-000000000102";
   const transitionFactId = "66000000-0000-4000-8000-000000000103";

@@ -1,4 +1,4 @@
-import type { CaseWorkspaceStage } from "@/modules/cases/client";
+import type { AssessmentEditorView } from "./AssessmentEditor";
 
 export const CASE_WORKSPACE_TABS = [
   "overview",
@@ -80,8 +80,8 @@ export type WorkspacePanelData =
       readonly tab: "assessment";
       readonly answeredLabel: string;
       readonly editor: {
-        readonly caseId: string;
-        readonly caseStage: CaseWorkspaceStage;
+        readonly endpoint: `/${string}`;
+        readonly initialView: AssessmentEditorView;
       } | null;
     }
   | {

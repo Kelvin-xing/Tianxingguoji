@@ -174,6 +174,9 @@ function sanitizeErrorDetails(
   if (code === "SERVICE_UNAVAILABLE") {
     return sanitizeDependencyReadiness(details.dependencies);
   }
+  if (code === "VALIDATION_FAILED") {
+    return sanitizeValidationDetails(details);
+  }
   if (code !== "STALE_VERSION") {
     return Object.freeze({});
   }
@@ -197,6 +200,32 @@ function sanitizeErrorDetails(
   return Object.freeze(safeDetails);
 }
 
+function sanitizeValidationDetails(
+  details: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  const raw = details.field_errors;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return Object.freeze({});
+  }
+  const allowedFields = new Set([
+    "student_id",
+    "primary_advisor_role_binding_id",
+    "referral_source_id",
+    "intake_year",
+    "admission_type",
+    "signed_at",
+  ]);
+  const fieldErrors: Record<string, JsonValue> = {};
+  for (const [field, value] of Object.entries(raw)) {
+    if (!allowedFields.has(field) || typeof value !== "string" ||
+        !/^[a-z][a-z0-9_.:-]{0,63}$/.test(value)) {
+      return Object.freeze({});
+    }
+    fieldErrors[field] = value;
+  }
+  return Object.freeze({ field_errors: Object.freeze(fieldErrors) });
+}
+
 function sanitizeDependencyReadiness(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return Object.freeze({});
@@ -207,9 +236,7 @@ function sanitizeDependencyReadiness(value: JsonValue | undefined): Readonly<Rec
     "postgresql",
     "postgresql_identity",
     "postgresql_application",
-    "localstack_s3",
-    "localstack_sqs",
-    "clamav",
+    "document_transport",
   ] as const;
   const dependencies: Record<string, JsonValue> = {};
   for (const name of allowedDependencies) {

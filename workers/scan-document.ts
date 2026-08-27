@@ -3,6 +3,8 @@ import {
   type DocumentObjectReader,
   type DocumentObjectReceiptService,
   type DocumentScanEvent,
+  DOCUMENT_SCANNER_ENGINES,
+  type DocumentScannerEngine,
   type DocumentScanService,
 } from "../modules/documents/server.ts";
 import {
@@ -195,17 +197,25 @@ export async function processDocumentScanEvent(
     scan.requestId !== event.requestId ||
     scan.objectKey !== event.key ||
     scan.objectVersionId !== event.versionId ||
-    scan.scannerVersion !== "clamav-release1" ||
+    !(DOCUMENT_SCANNER_ENGINES as readonly string[]).includes(scan.scannerVersion) ||
     (scan.verdict !== "clean" && scan.verdict !== "malicious" && scan.verdict !== "failed")
   ) {
     return handleFailure(event, claim.work, dependencies.service);
   }
-  if (scan.verdict === "failed") return handleFailure(event, claim.work, dependencies.service);
+  if (scan.verdict === "failed") {
+    return handleFailure(
+      event,
+      claim.work,
+      dependencies.service,
+      scan.scannerVersion as DocumentScannerEngine,
+    );
+  }
 
   const result = await dependencies.service.completeScanWork({
     event,
     work: claim.work,
     verdict: scan.verdict,
+    scannerEngine: scan.scannerVersion as DocumentScannerEngine,
   });
   return { status: result.status, workId: result.workId };
 }
@@ -214,8 +224,9 @@ async function handleFailure(
   event: DocumentScanEvent,
   work: Parameters<DocumentScanService["failScanWork"]>[0]["work"],
   service: DocumentScanService,
+  scannerEngine: DocumentScannerEngine = "clamav-release1",
 ): Promise<never> {
-  const failure = await service.failScanWork({ event, work });
+  const failure = await service.failScanWork({ event, work, scannerEngine });
   if (failure.status === "dead_letter") throw new DocumentScanDeadLetterWorkerError();
   throw new DocumentScanRetryableWorkerError();
 }

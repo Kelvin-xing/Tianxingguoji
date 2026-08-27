@@ -14,6 +14,12 @@ import { PostgresqlGuardianRelationshipRepository } from "./postgresql-guardian-
 import { PostgresqlProfileMaintenanceRepository } from "./postgresql-profile-maintenance-repository.ts";
 import { PostgresqlDeletionReviewRepository } from "./postgresql-deletion-review-repository.ts";
 import { PostgresqlReferralSourceRepository } from "./postgresql-referral-source-repository.ts";
+import { PostgresqlCustomerDeletionGuard } from "../../cases/server.ts";
+import { PotentialDuplicateService } from "../application/potential-duplicate-service.ts";
+import { PostgresqlPotentialDuplicateRepository } from "./postgresql-potential-duplicate-repository.ts";
+import { potentialDuplicateTokenCodec } from "./potential-duplicate-token-codec.ts";
+export interface PotentialDuplicateRuntime { readonly service: PotentialDuplicateService }
+export function getPotentialDuplicateRuntime(): PotentialDuplicateRuntime { const mode = loadRuntimeEnvironment().appRuntimeMode; if (mode === "production-aws") throw new Error("Potential duplicate unavailable"); const map = globalForCrm.__txPotentialDuplicateRuntimes ?? new Map<string, PotentialDuplicateRuntime>(); globalForCrm.__txPotentialDuplicateRuntimes = map; let runtime = map.get(mode); if (!runtime) { runtime = Object.freeze({ service: new PotentialDuplicateService(new PostgresqlPotentialDuplicateRepository(getApplicationTenantRunner()), potentialDuplicateTokenCodec) }); map.set(mode, runtime); } return runtime; }
 
 export interface ReferralSourceRuntime { readonly service: ReferralSourceService }
 export class ReferralSourceRuntimeUnavailable extends Error {
@@ -52,7 +58,8 @@ export function getDeletionReviewRuntime(): DeletionReviewRuntime {
   let runtime = runtimes.get(mode);
   if (!runtime) {
     try { runtime = Object.freeze({ service: new DeletionReviewService(
-      new PostgresqlDeletionReviewRepository(getApplicationTenantRunner())) }); }
+      new PostgresqlDeletionReviewRepository(getApplicationTenantRunner(),
+        new PostgresqlCustomerDeletionGuard())) }); }
     catch { throw new DeletionReviewRuntimeUnavailable(); }
     runtimes.set(mode, runtime);
   }
@@ -129,6 +136,7 @@ const globalForCrm = globalThis as typeof globalThis & {
   __txStudentReadRuntimes?: Map<string, StudentReadRuntime>;
   __txStudentCreateRuntimes?: Map<string, StudentCreateRuntime>;
   __txProfileMaintenanceRuntimes?: Map<string, ProfileMaintenanceRuntime>;
+  __txPotentialDuplicateRuntimes?: Map<string, PotentialDuplicateRuntime>;
 };
 
 export function getStudentReadRuntime(): StudentReadRuntime {

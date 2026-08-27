@@ -59,6 +59,10 @@ import {
 } from "../../scripts/db/run-one-role-baseline.ts";
 
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
+const P2_BE_03_SCOPED = process.env.TIANXING_P2_BE_03_SCOPED === "1";
+const RELEASE1_PRINCIPALS = NEON_TEST_PRINCIPALS.filter((principal) =>
+  principal.role !== "advisor" || principal.roleBindingId === "51000000-0000-4000-8000-000000000303",
+);
 const FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
 const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
 const CONTRACTOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "contractor")!;
@@ -251,7 +255,8 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
   const containerName = `tianxing-case01-pg17-${suffix}`;
   const credentialVolumeName = `tianxing-case01-credential-${suffix}`;
   const applicationPassword = randomBytes(32).toString("hex");
-  const passwords = new Map(NEON_TEST_PRINCIPALS.map((principal) => [
+  const activePrincipals = P2_BE_03_SCOPED ? RELEASE1_PRINCIPALS : NEON_TEST_PRINCIPALS;
+  const passwords = new Map(activePrincipals.map((principal) => [
     principal.role,
     randomBytes(32).toString("base64url"),
   ]));
@@ -308,7 +313,9 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assert.equal(baseline.generated_files, ONE_ROLE_SOURCE_COUNT + 1);
     assertDatabaseContract(await inspectBaselineWithNewClient(target), target, manifestSha256);
 
-    const seed = await seedNeonTestRelease1(target, "apply");
+    const seed = await seedNeonTestRelease1(target, "apply", {
+      includeTaskPolicy: !P2_BE_03_SCOPED,
+    });
     assert.equal(seed.status, "pass");
     assert.equal(seed.baseline.id, ONE_ROLE_BASELINE_ID);
     assert.equal(seed.baseline.transform_version, ONE_ROLE_TRANSFORM_VERSION);
@@ -321,9 +328,9 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     });
     assert.equal(assessmentSchema.fields.length, 15);
     await assertAssessmentWriteDependencies(target);
-    await assertDirectCaseCreateSucceedsAndRollsBack(target);
+    if (!P2_BE_03_SCOPED) await assertDirectCaseCreateSucceedsAndRollsBack(target);
     await prepareOtherAdvisor(target);
-    for (const principal of NEON_TEST_PRINCIPALS) {
+    for (const principal of activePrincipals) {
       assert.equal(await provision(target, principal.email, passwords.get(principal.role)!), "created");
     }
     assert.equal(await provision(target, OTHER_ADVISOR.email, otherAdvisorPassword), "created");
@@ -334,7 +341,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     await waitForNextDev(baseUrl, devServer);
 
     const cookies = new Map<string, string>();
-    for (const principal of NEON_TEST_PRINCIPALS) {
+    for (const principal of activePrincipals) {
       cookies.set(principal.role, await login(
         baseUrl,
         principal.email,
@@ -343,12 +350,40 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     }
     cookies.set("other_advisor", await login(baseUrl, OTHER_ADVISOR.email, otherAdvisorPassword));
 
+    if (P2_BE_03_SCOPED) {
+      const scopedEvidence = await assertP2CaseIntakeFlow({
+        target,
+        baseUrl,
+        cookies,
+        assessmentSchema,
+        advisorPassword: passwords.get("advisor")!,
+      });
+      evidence = Object.freeze({
+        status: "pass",
+        scope: "P2-BE-03",
+        postgres_major: 17,
+        baseline_id: baseline.baseline_id,
+        active_roles: Object.freeze(["founder", "admin", "advisor", "contractor"]),
+        data_reviewer_active: false,
+        case_create: scopedEvidence.caseCreate,
+        assessment: scopedEvidence.assessment,
+        excluded: Object.freeze(["candidate_list", "school_target", "task", "document", "portal"]),
+      });
+      process.stdout.write(`${JSON.stringify(evidence)}\n`);
+      return;
+    }
+
     const founderOptions = await readOptions(baseUrl, cookies.get("founder")!);
     const advisorOptions = await readOptions(baseUrl, cookies.get("advisor")!);
     assert.equal(founderOptions.students.length, 2);
     assertSensitiveEqual(
       founderOptions.primaryBindings.map(({ id }) => id).sort(),
-      [ADVISOR.roleBindingId, OTHER_ADVISOR.roleBindingId].sort(),
+      [
+        ...NEON_TEST_PRINCIPALS
+          .filter(({ role }) => role === "advisor")
+          .map(({ roleBindingId }) => roleBindingId),
+        OTHER_ADVISOR.roleBindingId,
+      ].sort(),
       "case_options_founder_primary_bindings",
     );
     assertSensitiveEqual(
@@ -356,7 +391,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       [ADVISOR.roleBindingId],
       "case_options_advisor_primary_binding",
     );
-    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+    for (const role of ["admin", "contractor"] as const) {
       assertApiError(
         await getJson(baseUrl, "/api/v1/cases/options", cookies.get(role)!),
         403,
@@ -430,10 +465,10 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assertApiError(advisorOtherPrimary, 422, "VALIDATION_FAILED");
     assert.deepEqual(await readCaseCounts(target), afterAllowed);
 
-    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+    for (const role of ["admin", "contractor"] as const) {
       const deniedBody = createBody(
         NEON_TEST_STUDENTS[1]!.id,
-        role === "admin" ? 2032 : role === "data_reviewer" ? 2033 : 2034,
+        role === "admin" ? 2032 : 2034,
         "transfer",
         ADVISOR.roleBindingId,
       );
@@ -456,7 +491,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       [advisorCaseId],
       "case_list_advisor_ids",
     );
-    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+    for (const role of ["admin", "contractor"] as const) {
       assertApiError(
         await getJson(baseUrl, "/api/v1/cases", cookies.get(role)!),
         403,
@@ -475,7 +510,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assert.equal((await getJson(
       baseUrl, `/api/v1/cases/${advisorCaseId}`, cookies.get("advisor")!,
     )).response.status, 200);
-    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+    for (const role of ["admin", "contractor"] as const) {
       assertApiError(
         await getJson(baseUrl, `/api/v1/cases/${founderCaseId}`, cookies.get(role)!),
         403,
@@ -490,6 +525,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       caseId: advisorCaseId,
       expectedSchema: assessmentSchema,
       advisorPassword: passwords.get("advisor")!,
+      release1FourRole: P2_BE_03_SCOPED,
     });
 
     const logout = await fetch(`${baseUrl}/api/v1/auth/logout`, {
@@ -506,6 +542,28 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assert.equal((await getJson(
       baseUrl, `/api/v1/cases/${founderCaseId}`, founderRelogin,
     )).response.status, 200);
+
+    if (P2_BE_03_SCOPED) {
+      evidence = Object.freeze({
+        status: "pass",
+        scope: "P2-BE-03",
+        postgres_major: 17,
+        baseline_id: baseline.baseline_id,
+        active_roles: Object.freeze(["founder", "admin", "advisor", "contractor"]),
+        data_reviewer_active: false,
+        case_create: Object.freeze({
+          background: true,
+          primary_advisor_history: true,
+          exact_replay: "same_result_no_new_rows",
+          changed_payload: "conflict_no_new_rows",
+          transaction_effects: caseDelta(initialCounts, afterAllowed),
+        }),
+        assessment: assessmentEvidence,
+        excluded: Object.freeze(["candidate_list", "school_target", "task", "document", "portal"]),
+      });
+      process.stdout.write(`${JSON.stringify(evidence)}\n`);
+      return;
+    }
 
     const taskCountsBefore = await readTaskCounts(target);
     const founderTaskBody = taskCreateBody(founderCaseId, ADVISOR.userId, "Founder synthetic task");
@@ -540,7 +598,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assertTaskReceipt(founderOtherCaseTask, 201, 1);
     assertApiError(await createTask(baseUrl, cookies.get("advisor")!, "task01-advisor-not-primary",
       taskCreateBody(founderCaseId, ADVISOR.userId, "Invisible synthetic task")), 404, "NOT_FOUND");
-    for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+    for (const role of ["admin", "contractor"] as const) {
       assertApiError(await createTask(baseUrl, cookies.get(role)!, `task01-create-denied-${role}`,
         taskCreateBody(founderCaseId, ADVISOR.userId, "Denied synthetic task")), 403, "FORBIDDEN");
     }
@@ -557,7 +615,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
     assert.deepEqual(Object.keys(contractorItem).sort(), ["available_transitions","due_at","id","record_version",
       "state","task_brief","title","updated_at"].sort());
     assertSensitiveEqual(contractorItem.id, contractorTaskId, "task_contractor_item_id");
-    for (const role of ["admin", "data_reviewer"] as const) {
+    for (const role of ["admin"] as const) {
       assertApiError(await getJson(baseUrl, "/api/v1/tasks", cookies.get(role)!), 403, "FORBIDDEN");
     }
     assert.equal((await getJson(baseUrl, `/api/v1/tasks/options?case_id=${founderCaseId}`, founderRelogin)).response.status, 200);
@@ -695,7 +753,7 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
       rls_not_forced_count: baseline.verification.rls_not_forced_count,
       unsafe_security_definer_count: baseline.verification.unsafe_security_definer_count,
       allowed_roles: Object.freeze(["founder", "advisor"]),
-      denied_roles: Object.freeze(["admin", "data_reviewer", "contractor"]),
+      denied_roles: Object.freeze(["admin", "contractor"]),
       case_parent_update_privilege: "five_columns_exact",
       case_parent_key_share: "pass",
       direct_case_updates: "fail_closed",
@@ -728,6 +786,128 @@ test("CASE-01 works through PostgreSQL 17 and the real local Next Dev HTTP API",
 
   process.stdout.write(`${JSON.stringify(evidence)}\n`);
 });
+
+async function assertP2CaseIntakeFlow(input: {
+  readonly target: OneRoleBaselineTarget;
+  readonly baseUrl: string;
+  readonly cookies: Map<string, string>;
+  readonly assessmentSchema: ExpectedAssessmentSchema;
+  readonly advisorPassword: string;
+}): Promise<Readonly<{
+  readonly caseCreate: Readonly<Record<string, unknown>>;
+  readonly assessment: Readonly<Record<string, unknown>>;
+}>> {
+  const advisorCookie = input.cookies.get("advisor")!;
+  const options = await getJson(input.baseUrl, "/api/v1/cases/intake-options", advisorCookie);
+  assert.equal(options.response.status, 200, JSON.stringify(options.body));
+  const optionsData = requiredRecord(options.body.data);
+  assert.deepEqual(Object.keys(optionsData).sort(), ["advisors", "referral_sources", "students"]);
+  assert.equal(requiredArray(optionsData.students).length, 2);
+  assert.ok(requiredArray(optionsData.advisors).length >= 1);
+  assert.ok(requiredArray(optionsData.advisors).length <= 20);
+  assert.ok(requiredArray(optionsData.referral_sources).length <= 20);
+  for (const role of ["founder", "admin", "contractor"] as const) {
+    const denied = await createCase(
+      input.baseUrl,
+      input.cookies.get(role)!,
+      `p2-case-intake-denied-${role}`,
+      {
+        student_id: NEON_TEST_STUDENTS[0]!.id,
+        primary_advisor_role_binding_id: ADVISOR.roleBindingId,
+        intake_year: 2027,
+        admission_type: "transfer",
+        signed_at: "2027-01-15T08:00:00+08:00",
+      },
+    );
+    assertApiError(denied, 403, "FORBIDDEN");
+  }
+
+  const body = Object.freeze({
+    student_id: NEON_TEST_STUDENTS[0]!.id,
+    primary_advisor_role_binding_id: ADVISOR.roleBindingId,
+    intake_year: 2027,
+    admission_type: "transfer",
+    signed_at: "2027-01-15T08:00:00+08:00",
+  });
+  const before = await readCaseCounts(input.target);
+  const created = await createCase(
+    input.baseUrl,
+    advisorCookie,
+    "p2-case-intake-create",
+    body,
+  );
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  const receipt = requiredRecord(created.body.data);
+  assert.deepEqual(Object.keys(receipt).sort(), [
+    "assessment_manifest",
+    "assessment_url",
+    "case_id",
+    "record_version",
+    "stage",
+    "workflow_status",
+  ]);
+  const caseId = assertSensitiveUuid(requiredString(receipt, "case_id"), "case_intake_case_id");
+  assert.equal(receipt.stage, "background_collection");
+  assert.equal(receipt.workflow_status, "active");
+  assert.equal(receipt.record_version, 2);
+  assert.equal(receipt.assessment_url, `/cases/${caseId}/assessment`);
+  const manifest = requiredRecord(receipt.assessment_manifest);
+  assertSensitiveUuid(requiredString(manifest, "id"), "case_intake_manifest_id");
+  assert.equal(typeof manifest.version, "string");
+
+  const after = await readCaseCounts(input.target);
+  assert.deepEqual(caseDelta(before, after), {
+    cases: 1,
+    assessments: 1,
+    idempotency: 1,
+    audit: 1,
+    outbox: 1,
+  });
+  const replay = await createCase(
+    input.baseUrl,
+    advisorCookie,
+    "p2-case-intake-create",
+    body,
+  );
+  assert.equal(replay.response.status, 200);
+  assert.deepEqual(replay.body.data, created.body.data);
+  assert.deepEqual(await readCaseCounts(input.target), after);
+  const conflict = await createCase(
+    input.baseUrl,
+    advisorCookie,
+    "p2-case-intake-create",
+    { ...body, intake_year: 2028 },
+  );
+  assertApiError(conflict, 409, "CONFLICT");
+  assert.deepEqual(await readCaseCounts(input.target), after);
+
+  const detail = await getJson(input.baseUrl, `/api/v1/cases/${caseId}`, advisorCookie);
+  assert.equal(detail.response.status, 200, JSON.stringify(detail.body));
+  const caseDetail = requiredRecord(detail.body.data?.case);
+  assert.equal(caseDetail.id, caseId);
+  assert.equal(caseDetail.stage, "background_collection");
+  assert.equal(caseDetail.workflowStatus, "active");
+  assert.equal(caseDetail.recordVersion, 2);
+
+  const assessment = await assertAssessmentHttpMatrix({
+    target: input.target,
+    baseUrl: input.baseUrl,
+    cookies: input.cookies,
+    caseId,
+    expectedSchema: input.assessmentSchema,
+    advisorPassword: input.advisorPassword,
+    release1FourRole: true,
+  });
+  return Object.freeze({
+    caseCreate: Object.freeze({
+      exact_receipt: true,
+      idempotency_replay: "exact",
+      changed_payload: "conflict",
+      transaction_delta: caseDelta(before, after),
+    }),
+    assessment,
+  });
+}
 
 function createBody(
   studentId: string,
@@ -868,6 +1048,7 @@ async function assertAssessmentHttpMatrix(input: {
   readonly caseId: string;
   readonly expectedSchema: ExpectedAssessmentSchema;
   readonly advisorPassword: string;
+  readonly release1FourRole?: boolean;
 }): Promise<Readonly<Record<string, unknown>>> {
   const primaryCookie = input.cookies.get("advisor")!;
   const fields = input.expectedSchema.fields;
@@ -896,7 +1077,7 @@ async function assertAssessmentHttpMatrix(input: {
     1,
   );
   assert.equal(initial.answers.length, 0);
-  for (const role of ["founder", "admin"] as const) {
+  for (const role of (input.release1FourRole ? ["founder"] as const : ["founder", "admin"] as const)) {
     const view = assertAssessmentAuthority(
       await getJson(input.baseUrl, assessmentPath(input.caseId), input.cookies.get(role)!),
       input.expectedSchema,
@@ -911,7 +1092,7 @@ async function assertAssessmentHttpMatrix(input: {
     404,
     "NOT_FOUND",
   );
-  for (const role of ["data_reviewer", "contractor"] as const) {
+  for (const role of ["admin", "contractor"] as const) {
     assertApiError(
       await getJson(input.baseUrl, assessmentPath(input.caseId), input.cookies.get(role)!),
       403,
@@ -931,7 +1112,7 @@ async function assertAssessmentHttpMatrix(input: {
   assertApiError(invalid, 400, "INVALID_REQUEST");
   assert.deepEqual(await readSliceOneCounts(input.target), countsBefore);
 
-  for (const role of ["founder", "admin"] as const) {
+  for (const role of (input.release1FourRole ? ["founder"] as const : ["founder", "admin"] as const)) {
     const denied = await patchAssessment(
       input.baseUrl,
       input.caseId,
@@ -948,7 +1129,7 @@ async function assertAssessmentHttpMatrix(input: {
     "caseflow-assessment-other-advisor",
     commands[0]!,
   ), 404, "NOT_FOUND");
-  for (const role of ["data_reviewer", "contractor"] as const) {
+  for (const role of ["admin", "contractor"] as const) {
     assertApiError(await patchAssessment(
       input.baseUrl,
       input.caseId,
@@ -1152,14 +1333,16 @@ async function assertAssessmentHttpMatrix(input: {
     outbox: 16,
     privateMatches: 0,
   });
-  const collaborator = await assertAssessmentCollaboratorHttpMatrix({
-    target: input.target,
-    baseUrl: input.baseUrl,
-    cookie: input.cookies.get("other_advisor")!,
-    caseId: input.caseId,
-    assessmentId: initial.assessmentId,
-    expectedSchema: input.expectedSchema,
-  });
+  const collaborator = input.release1FourRole
+    ? Object.freeze({ excluded: "collaborator_scope_out_of_p2_be_03" })
+    : await assertAssessmentCollaboratorHttpMatrix({
+      target: input.target,
+      baseUrl: input.baseUrl,
+      cookie: input.cookies.get("other_advisor")!,
+      caseId: input.caseId,
+      assessmentId: initial.assessmentId,
+      expectedSchema: input.expectedSchema,
+    });
   const foreignTenant = await assertForeignTenantAssessmentHttpMatrix({
     target: input.target,
     baseUrl: input.baseUrl,
@@ -1732,7 +1915,7 @@ async function assertCaseWorkflowHttpMatrix(input: {
   assertApiError(await applyWorkflow(input.baseUrl, input.advisorCaseId, otherAdvisorCookie,
     "caseflow-other-advisor", workflowBody("pause", 2, `${WORKFLOW_PRIVATE_MARKER}-denied`)),
   404, "NOT_FOUND");
-  for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+  for (const role of ["admin", "contractor"] as const) {
     const denied = await applyWorkflow(
       input.baseUrl,
       input.founderCaseId,
@@ -2163,7 +2346,7 @@ async function readCaseCounts(target: OneRoleBaselineTarget): Promise<CaseCounts
         (SELECT count(*)::int FROM cases_service_cases) AS cases,
         (SELECT count(*)::int FROM cases_assessments) AS assessments,
         (SELECT count(*)::int FROM shared_idempotency_records
-          WHERE operation = 'cases.create_existing_student') AS idempotency,
+          WHERE operation IN ('cases.create_existing_student', 'cases.create_k12_case')) AS idempotency,
         (SELECT count(*)::int FROM audit_events
           WHERE event_type = 'cases.service_case_created') AS audit,
         (SELECT count(*)::int FROM audit_outbox
@@ -2925,14 +3108,15 @@ async function prepareOtherAdvisor(target: OneRoleBaselineTarget): Promise<void>
       [NEON_TEST_ORGANIZATION.id, FOUNDER.userId],
     );
     await client.query(
-      `INSERT INTO identity_users (id,normalized_email,status,created_by_user_id)
-       VALUES ($1,$2,'active',$3)`,
+      `INSERT INTO identity_users
+        (id,normalized_email,status,activated_at,created_by_user_id)
+       VALUES ($1,$2,'active',transaction_timestamp(),$3)`,
       [OTHER_ADVISOR.userId, OTHER_ADVISOR.email, FOUNDER.userId],
     );
     await client.query(
       `INSERT INTO access_organization_memberships
-        (id,organization_id,user_id,status,created_by_user_id)
-       VALUES ($1,$2,$3,'active',$4)`,
+        (id,organization_id,user_id,status,activated_at,created_by_user_id)
+       VALUES ($1,$2,$3,'active',transaction_timestamp(),$4)`,
       [OTHER_ADVISOR.membershipId, NEON_TEST_ORGANIZATION.id,
         OTHER_ADVISOR.userId, FOUNDER.userId],
     );
@@ -2957,6 +3141,8 @@ async function prepareAssessmentCollaborator(
   caseId: string,
   capability: "view" | "edit",
 ): Promise<void> {
+  const startsAt = "2027-01-01T00:00:00.000Z";
+  const expiresAt = "2027-01-06T00:00:00.000Z";
   const client = new Client(createOneRoleBaselineClientConfig(target));
   try {
     await client.connect();
@@ -2971,11 +3157,10 @@ async function prepareAssessmentCollaborator(
           (id,organization_id,case_id,user_id,membership_id,advisor_role_binding_id,
            required_role,status,starts_at,expires_at,granted_by_user_id)
          VALUES ($1,$2,$3,$4,$5,$6,'advisor','active',
-           transaction_timestamp() - interval '1 minute',
-           transaction_timestamp() + interval '6 days',$7)`,
+           $7,$8,$9)`,
         [ASSESSMENT_COLLABORATOR.id, NEON_TEST_ORGANIZATION.id, caseId,
           OTHER_ADVISOR.userId, OTHER_ADVISOR.membershipId, OTHER_ADVISOR.roleBindingId,
-          FOUNDER.userId],
+          startsAt, expiresAt, FOUNDER.userId],
       );
     }
     await client.query(
@@ -2983,12 +3168,11 @@ async function prepareAssessmentCollaborator(
         (id,organization_id,case_id,collaborator_id,scope,capability,status,
          starts_at,expires_at,requested_by_user_id)
        VALUES ($1,$2,$3,$4,'education_profile',$5,'active',
-         transaction_timestamp() - interval '1 minute',
-         transaction_timestamp() + interval '6 days',$6)`,
+         $6,$7,$8)`,
       [capability === "view" ? ASSESSMENT_COLLABORATOR.viewGrantId
         : ASSESSMENT_COLLABORATOR.editGrantId,
       NEON_TEST_ORGANIZATION.id, caseId, ASSESSMENT_COLLABORATOR.id, capability,
-      FOUNDER.userId],
+      startsAt, expiresAt, FOUNDER.userId],
     );
     await client.query("COMMIT");
   } catch {
@@ -3027,8 +3211,8 @@ async function prepareForeignAdvisor(target: OneRoleBaselineTarget): Promise<voi
     stage = "membership_insert";
     await client.query(
       `INSERT INTO access_organization_memberships
-        (id,organization_id,user_id,status,created_by_user_id)
-       VALUES ($1,$2,$3,'active',$4)`,
+        (id,organization_id,user_id,status,activated_at,created_by_user_id)
+       VALUES ($1,$2,$3,'active',transaction_timestamp(),$4)`,
       [FOREIGN_ADVISOR.membershipId, FOREIGN_ORGANIZATION_ID,
         ADVISOR.userId, FOUNDER.userId],
     );

@@ -3,6 +3,7 @@ import type {
   PortalCapabilitySetVersion,
   PortalGrantStatus,
   PortalSessionStatus,
+  PortalWorkspaceSource,
 } from "../domain/contract.ts";
 
 export interface PortalAccessGrant {
@@ -42,7 +43,8 @@ export type PortalRepositoryErrorCode =
   | "PORTAL_SECRET_CONFLICT"
   | "PORTAL_SESSION_LIMIT_REACHED"
   | "PORTAL_VERSION_CONFLICT"
-  | "PORTAL_IDEMPOTENCY_KEY_REUSED";
+  | "PORTAL_IDEMPOTENCY_KEY_REUSED"
+  | "PORTAL_SECRET_INVALID";
 
 export class PortalRepositoryError extends Error {
   readonly code: PortalRepositoryErrorCode;
@@ -129,4 +131,36 @@ export interface PortalRepository {
     serviceCaseId: string,
     grantId: string,
   ): Promise<PortalAccessGrant | null>;
+
+  /** Internal summaries are still tenant-scoped and re-authorized per request. */
+  listGrants?(input: Readonly<{
+    organizationId: string;
+    serviceCaseId: string;
+    actorUserId: string;
+  }>): Promise<readonly (PortalAccessGrant & { readonly secretFingerprint: string })[]>;
+
+  /** Public portal operations. Bearer material is accepted only at this boundary. */
+  redeemAccess?(input: Readonly<{
+    accessKey: string;
+    idempotencyKey: string;
+    requestId: string;
+    nowMs: number;
+    sessionId: string;
+    keyedSessionHash: string;
+    sessionSecret: string;
+  }>): Promise<PortalSessionRecord>;
+  readSession?(input: Readonly<{
+    sessionSecret: string;
+    requestId: string;
+    nowMs: number;
+  }>): Promise<Readonly<{
+    session: PortalSessionRecord;
+    grant: PortalAccessGrant;
+    workspace: PortalWorkspaceSource;
+  }>>;
+  revokeSessionBySecret?(input: Readonly<{
+    sessionSecret: string;
+    requestId: string;
+    nowMs: number;
+  }>): Promise<void>;
 }

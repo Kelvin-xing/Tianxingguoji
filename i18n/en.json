@@ -1,17 +1,15 @@
 {
   "nav": {
-    "dashboard": "Dashboard",
-    "today": "Today's Work",
+    "today": "Today",
     "cases": "Cases",
-    "students": "Student CRM",
-    "studentsAndGuardians": "Students & Guardians",
-    "schools": "Admissions",
-    "schoolData": "School Data",
+    "studentsAndGuardians": "Students and guardians",
+    "schoolData": "School data",
     "tasks": "Tasks",
     "documents": "Documents",
-    "access": "Identity & Access",
-    "schoolGovernance": "School Governance",
-    "dataReview": "Data Review",
+    "access": "Identity and access",
+    "dashboard": "Dashboard",
+    "students": "Student CRM",
+    "schools": "Admissions",
     "selector": "School Selector",
     "ai": "AI Assistant",
     "adminCrawler": "Crawler Admin",
@@ -105,16 +103,23 @@
     "search": "Search",
     "clear": "Clear",
     "print": "Print",
-    "lang_toggle": "中文"
+    "lang_toggle": "中文",
+    "sign_out": "Sign out"
   },
   "layout": {
-    "erp_title": "Tianxing Advisory ERP",
+    "erp_title": "Tianxingguoji ERP",
+    "workspace_navigation": "Workspace navigation",
+    "workspace_section": "Workspace",
+    "administration_section": "Administration",
+    "future_section": "Future",
+    "checking_identity": "Checking identity",
+    "organization": "Hong Kong organization",
+    "session_ready": "Session boundary ready",
     "open_navigation": "Open navigation",
-    "close_navigation": "Collapse navigation",
-    "notifications": "Notifications",
-    "notifications_unavailable": "Notifications are temporarily unavailable. Please try again later.",
-    "account_menu": "Account menu",
-    "logout": "Log out"
+    "close_navigation": "Close navigation",
+    "search_placeholder": "Search students, cases or schools",
+    "search_label": "Global search",
+    "notifications_unavailable": "Notifications are not connected yet"
   },
   "admin": {
     "crawler": "Crawler Admin"

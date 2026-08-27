@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { acknowledgementData, mapReferralSourceError, parseReferralSourceCreate,
-  parseReferralSourceListFilter, parseReferralSourceUpdate, sourceData } from
+  parseReferralSourceDeactivate, parseReferralSourceListFilter, parseReferralSourceUpdate, sourceData } from
   "../../app/api/v1/referral-sources/handler.ts";
 import { assignmentAcknowledgementData, assignmentData, assignmentsData,
   mapCaseReferralSourceError, parseCaseReferralSourceAssignment } from
@@ -12,21 +12,31 @@ const CASE_ID = "61000000-0000-4000-8000-000000000001";
 const SOURCE_ID = "61000000-0000-4000-8000-000000000002";
 
 test("CRM-06 source handlers freeze strict request and exact response DTOs", async () => {
-  assert.equal(parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources")), null);
-  assert.equal(parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources?status=active")), "active");
+  assert.deepEqual(parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources")),
+    { query: null, status: null, sourceType: null, limit: 25, cursor: null });
+  assert.equal(parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources?status=active")).status, "active");
   assert.throws(() => parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources?status=active&status=inactive")));
-  assert.throws(() => parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources?q=x")));
+  assert.equal(parseReferralSourceListFilter(new Request("http://localhost/api/v1/referral-sources?q=x")).query, "x");
   const created = await parseReferralSourceCreate(jsonRequest("/api/v1/referral-sources",
-    { display_name: "Synthetic Bank", source_type: "bank" }), "request-id");
-  assert.deepEqual(Object.keys(created).sort(), ["displayName","idempotencyKey","requestId","sourceType"].sort());
+    { display_name: "Synthetic Website", source_type: "website", description: null }), "request-id");
+  assert.deepEqual(Object.keys(created).sort(), ["description","displayName","idempotencyKey","requestId","sourceType"].sort());
   await assert.rejects(() => parseReferralSourceCreate(jsonRequest("/api/v1/referral-sources",
-    { display_name: "Synthetic Bank", source_type: "bank", status: "active" }), "request-id"));
+    { display_name: "Synthetic Website", source_type: "website", description: null, status: "active" }), "request-id"));
+  const updated = await parseReferralSourceUpdate(jsonRequest(`/api/v1/referral-sources/${SOURCE_ID}`,
+    { expected_record_version: 1, display_name: "Updated", source_type: "website", description: null }, "PATCH"),
+  SOURCE_ID, "request-id");
+  assert.equal(updated.sourceType, "website");
   await assert.rejects(() => parseReferralSourceUpdate(jsonRequest(`/api/v1/referral-sources/${SOURCE_ID}`,
-    { expected_record_version: 1, display_name: "Updated", status: "active", source_type: "bank" }, "PATCH"),
+    { expected_record_version: 1, display_name: "Updated", source_type: "website", description: null, status: "active" }, "PATCH"),
   SOURCE_ID, "request-id"));
-  assert.deepEqual(Object.keys(sourceData({ id: SOURCE_ID, displayName: "Synthetic Bank", sourceType: "bank",
-    status: "active", recordVersion: 1 }) as object).sort(), ["display_name","id","record_version","source_type","status"]);
-  assert.deepEqual(acknowledgementData({ id: SOURCE_ID, recordVersion: 2 }), { id: SOURCE_ID, record_version: 2 });
+  assert.deepEqual(Object.keys(sourceData({ id: SOURCE_ID, displayName: "Synthetic Website", sourceType: "website",
+    description: null, status: "active", recordVersion: 1, updatedAt: "2026-08-23T00:00:00.000Z" }) as object).sort(),
+    ["description","display_name","id","record_version","source_type","status","updated_at"]);
+  assert.deepEqual(acknowledgementData({ id: SOURCE_ID, status: "active", recordVersion: 2, updatedAt: "2026-08-23T00:00:00.000Z" }),
+    { referral_source: { id: SOURCE_ID, status: "active", record_version: 2, updated_at: "2026-08-23T00:00:00.000Z" } });
+  const deactivate = await parseReferralSourceDeactivate(jsonRequest(`/api/v1/referral-sources/${SOURCE_ID}/deactivate`,
+    { expected_record_version: 2, reason_code: "record.lifecycle.referral_source_deactivated" }), SOURCE_ID, "request-id");
+  assert.equal(deactivate.expectedRecordVersion, 2);
 });
 
 test("CRM-06 assignment handlers freeze strict command, GET views, and two-key receipt", async () => {
@@ -40,7 +50,7 @@ test("CRM-06 assignment handlers freeze strict command, GET views, and two-key r
     { referral_source_id: SOURCE_ID, expected_current_assignment_record_version: null, role: "founder" }),
   CASE_ID, "request-id"));
   const item = { id: "61000000-0000-4000-8000-000000000003", referralSourceId: SOURCE_ID,
-    sourceDisplayName: "Synthetic Bank", sourceType: "bank" as const, sourceRecordVersion: 1,
+    sourceDisplayName: "Synthetic Website", sourceType: "website" as const, sourceRecordVersion: 1,
     startsAt: "2026-08-23T00:00:00.000Z", endsAt: null, recordVersion: 1 };
   assert.deepEqual(Object.keys(assignmentData(item) as object).sort(), ["ends_at","id","record_version",
     "referral_source_id","source_display_name","source_record_version","source_type","starts_at"]);

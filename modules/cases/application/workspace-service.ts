@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, type WorkspaceCapability } from "../../access/public.ts";
+import {
+  compatibilityRoleForRepository,
+  type RequestAccessActor,
+  type WorkspaceCapability,
+} from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -71,10 +74,11 @@ export interface CaseWorkspaceRepository {
   findCase(input: RepositoryActor & { readonly caseId: string }): Promise<CaseWorkspaceDetail | null>;
   listOptions(input: RepositoryActor): Promise<CaseWorkspaceOptions>;
   createCase(input: RepositoryActor & {
-    readonly actorRole: IdentitySessionActor["role"];
+    readonly actorRole: string;
     readonly studentId: string;
     readonly serviceCaseId: string;
     readonly assessmentId: string;
+    readonly primaryAdvisorAssignmentId: string;
     readonly transitionFactId: string;
     readonly caseNumber: string;
     readonly intakeYear: number;
@@ -92,7 +96,7 @@ export interface CaseWorkspaceRepository {
 interface RepositoryActor {
   readonly organizationId: string;
   readonly actorUserId: string;
-  readonly actorRole: IdentitySessionActor["role"];
+  readonly actorRole: string;
 }
 
 export type CaseWorkspaceErrorCode =
@@ -175,22 +179,22 @@ export class CaseWorkspaceService {
     this.nowMs = nowMs;
   }
 
-  listCases(actor: IdentitySessionActor) {
+  listCases(actor: RequestAccessActor) {
     return this.repository.listCases(repositoryActor(actor, "cases.read"));
   }
 
-  findCase(actor: IdentitySessionActor, caseId: string) {
+  findCase(actor: RequestAccessActor, caseId: string) {
     const context = repositoryActor(actor, "cases.read");
     if (!UUID.test(caseId)) throw new CaseWorkspaceError("CASE_WORKSPACE_INVALID");
     return this.repository.findCase({ ...context, caseId });
   }
 
-  listOptions(actor: IdentitySessionActor) {
+  listOptions(actor: RequestAccessActor) {
     return this.repository.listOptions(repositoryActor(actor, "cases.create"));
   }
 
   async createCase(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: Readonly<{
       studentId: string;
       intakeYear: number;
@@ -205,10 +209,12 @@ export class CaseWorkspaceService {
     assertCommand(input.command);
     const serviceCaseId = this.createId();
     const assessmentId = this.createId();
+    const primaryAdvisorAssignmentId = this.createId();
     const auditId = this.createId();
     const outboxId = this.createId();
     const transitionFactId = this.createId();
-    for (const id of [serviceCaseId, assessmentId, transitionFactId, auditId, outboxId]) {
+    for (const id of [serviceCaseId, assessmentId, primaryAdvisorAssignmentId,
+      transitionFactId, auditId, outboxId]) {
       if (!UUID.test(id)) throw new CaseWorkspaceError("CASE_WORKSPACE_INVALID");
     }
     const createdAtMs = this.nowMs();
@@ -259,6 +265,7 @@ export class CaseWorkspaceService {
         studentId: input.command.studentId,
         serviceCaseId,
         assessmentId,
+        primaryAdvisorAssignmentId,
         transitionFactId,
         caseNumber,
         intakeYear: input.command.intakeYear,
@@ -290,17 +297,17 @@ export class CaseWorkspaceService {
 }
 
 function repositoryActor(
-  actor: IdentitySessionActor,
+  actor: RequestAccessActor,
   capability: WorkspaceCapability,
 ): RepositoryActor {
-  const decision = evaluateBootstrapAuthorization(actor.role, { capability });
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !decision.allowed) {
+  const compatibilityRole = compatibilityRoleForRepository(actor, capability);
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !compatibilityRole) {
     throw new CaseWorkspaceError("CASE_WORKSPACE_FORBIDDEN");
   }
   return {
     organizationId: actor.organizationId,
     actorUserId: actor.userId,
-    actorRole: actor.role,
+    actorRole: compatibilityRole,
   };
 }
 

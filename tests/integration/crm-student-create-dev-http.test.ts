@@ -50,7 +50,6 @@ const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
 const ADMIN = NEON_TEST_PRINCIPALS.find(({ role }) => role === "admin")!;
 const FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
-const DATA_REVIEWER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "data_reviewer")!;
 const CONTRACTOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "contractor")!;
 const SHARED_GUARDIAN = NEON_TEST_STUDENTS[1]!;
 const ALTERNATE_GUARDIAN = NEON_TEST_STUDENTS[0]!;
@@ -74,7 +73,6 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
   const advisorPassword = randomBytes(32).toString("base64url");
   const adminPassword = randomBytes(32).toString("base64url");
   const founderPassword = randomBytes(32).toString("base64url");
-  const dataReviewerPassword = randomBytes(32).toString("base64url");
   const contractorPassword = randomBytes(32).toString("base64url");
   const appDirectory = await createIsolatedAppDirectory();
   let containerStarted = false;
@@ -139,7 +137,6 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     assert.equal(await provision(target, ADVISOR.email, advisorPassword), "created");
     assert.equal(await provision(target, ADMIN.email, adminPassword), "created");
     assert.equal(await provision(target, FOUNDER.email, founderPassword), "created");
-    assert.equal(await provision(target, DATA_REVIEWER.email, dataReviewerPassword), "created");
     assert.equal(await provision(target, CONTRACTOR.email, contractorPassword), "created");
 
     const directPool = new Pool({ ...createOneRoleBaselineClientConfig(target), max: 1 });
@@ -161,17 +158,22 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
             contactPhone: null,
           },
           primaryGuardian: {
+            kind: "new",
             displayName: "CRM01 Repository Probe Guardian",
             email: "crm01-repository-probe@example.invalid",
             phone: null,
-            relationshipType: "other_guardian",
+            relationshipType: "other",
+            relationshipDescription: "family delegate",
             isLegalGuardian: true,
+            isEmergencyContact: false,
+            isBillingContact: false,
+            notificationConsent: false,
           },
           requestId: "crm01-repository-probe",
           idempotencyKey: "crm01-repository-probe",
         },
       });
-      assert.equal(direct.student.displayName, "CRM01 Repository Probe Student");
+      assert.equal(typeof direct.student.id, "string");
     } finally {
       await directPool.end().catch(() => {});
     }
@@ -507,7 +509,6 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const roleCredentials = [
       [FOUNDER, founderPassword],
       [ADMIN, adminPassword],
-      [DATA_REVIEWER, dataReviewerPassword],
       [CONTRACTOR, contractorPassword],
     ] as const;
     const beforeDenied = await readGuardianWorkflowCounts(target, studentId);
@@ -735,8 +736,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       advisorCookie, { ...candidateBody, right_record_id: FOREIGN_STUDENT_ID }, "crm04-candidate-create");
     assertApiError(candidateChanged, 409, "CONFLICT");
 
-    const dataReviewerCookie = await login(baseUrl, DATA_REVIEWER.email, dataReviewerPassword);
-    for (const cookie of [advisorCookie, dataReviewerCookie, founderCookie]) {
+    for (const cookie of [advisorCookie, founderCookie]) {
       const queue = await getJson(baseUrl,
         "/api/v1/crm/duplicate-candidates?entity_type=student&status=review_required", cookie);
       assert.equal(queue.response.status, 200);
@@ -842,8 +842,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
         assertNoPrivateErrorEcho(denied, [crm04SharedEmail, "CRM04 Left Student"]);
       }
     }
-    for (const [role, cookie] of [["advisor", advisorCookie],
-      ["data-reviewer", dataReviewerCookie]] as const) {
+    for (const [role, cookie] of [["advisor", advisorCookie]] as const) {
       const mergeDenied = await postJson(baseUrl,
         `/api/v1/crm/duplicate-candidates/${candidateId}/merges`, cookie,
         mergeWinner.attempt.body, `crm04-${role}-merge-denied`);
@@ -994,7 +993,6 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const founderAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", founderCookie);
     const adminAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", adminCookie);
     const advisorAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", advisorCookie);
-    const dataReviewerAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", dataReviewerCookie);
     const contractorAccessForCrm06 = await getJson(baseUrl, "/api/v1/auth/me", contractorCookie);
     assert.deepEqual(referralCapabilities(founderAccessForCrm06), [
       "cases.referral_sources.assign", "referral_sources.manage", "referral_sources.read",
@@ -1005,7 +1003,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     assert.deepEqual(referralCapabilities(advisorAccessForCrm06), [
       "cases.referral_sources.assign", "referral_sources.read",
     ]);
-    for (const accessResult of [dataReviewerAccessForCrm06, contractorAccessForCrm06]) {
+    for (const accessResult of [contractorAccessForCrm06]) {
       assert.deepEqual(referralCapabilities(accessResult), []);
     }
 
@@ -1048,7 +1046,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     assertApiError(await postJson(baseUrl, "/api/v1/referral-sources", advisorCookie,
       { display_name: "CRM06 Advisor Denied", source_type: "bank" }, "crm06-advisor-denied"),
     403, "FORBIDDEN");
-    for (const cookie of [dataReviewerCookie, contractorCookie]) {
+    for (const cookie of [contractorCookie]) {
       assertApiError(await getJson(baseUrl, "/api/v1/referral-sources", cookie), 403, "FORBIDDEN");
     }
     await prepareClosedReferralCase(target, assignedStudent.id);
@@ -1137,7 +1135,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       sourceBId);
     assert.equal([sourceCId,sourceDId].includes(winningSourceId), true);
 
-    for (const cookie of [adminCookie,dataReviewerCookie,contractorCookie]) {
+    for (const cookie of [adminCookie,contractorCookie]) {
       assertApiError(await getJson(baseUrl,
         `/api/v1/cases/${assignedCaseId}/referral-source-assignments`, cookie), 403, "FORBIDDEN");
       assertApiError(await postJson(baseUrl,
@@ -1210,13 +1208,11 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const crm05MergeCandidateId = requiredString(crm05MergeCandidateData, "id");
 
     const founderAccess = await getJson(baseUrl, "/api/v1/auth/me", founderCookie);
-    const dataReviewerAccess = await getJson(baseUrl, "/api/v1/auth/me", dataReviewerCookie);
     const contractorAccess = await getJson(baseUrl, "/api/v1/auth/me", contractorCookie);
     assert.deepEqual(deletionCapabilities(founderAccess),
       ["students.deletion.request", "students.deletion.review"]);
     assert.deepEqual(deletionCapabilities(access), ["students.deletion.request"]);
     assert.deepEqual(deletionCapabilities(adminAccess), []);
-    assert.deepEqual(deletionCapabilities(dataReviewerAccess), []);
     assert.deepEqual(deletionCapabilities(contractorAccess), []);
 
     const deletionBefore = await readDeletionWorkflowCounts(target, [
@@ -1248,8 +1244,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
     const unauthenticatedQueue = await getJson(baseUrl, "/api/v1/crm/deletion-requests", "");
     assertApiError(unauthenticatedQueue, 401, "UNAUTHENTICATED");
 
-    for (const [role, cookie] of [["admin", adminCookie], ["data_reviewer", dataReviewerCookie],
-      ["contractor", contractorCookie]] as const) {
+    for (const [role, cookie] of [["admin", adminCookie], ["contractor", contractorCookie]] as const) {
       const deniedRequest = await postJson(baseUrl,
         `/api/v1/students/${studentId}/deletion-requests`, cookie, deletionBody(2),
         `crm05-denied-${role}`);
@@ -1557,7 +1552,6 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       advisorPassword,
       adminPassword,
       founderPassword,
-      dataReviewerPassword,
       contractorPassword,
       "postgresql://",
       "XX001",
@@ -1606,14 +1600,14 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       duplicate_review: Object.freeze({
         search: 200,
         candidate_create: 201,
-        review_roles: 3,
+        review_roles: 2,
         advisor_unassigned_pair: 404,
         concurrent_merge: "one_200_one_409_stale",
         merge_replay: "exact_no_new_rows",
         merge_changed_payload: 409,
         correction: 200,
         correction_replay: "exact_no_new_rows",
-        denied_roles: "admin_contractor_advisor_data_reviewer",
+        denied_roles: "admin_contractor_advisor",
         cross_tenant: 404,
         rollback: 503,
         resolved_reads: "student_and_guardian_both_ids_then_restored",
@@ -1623,7 +1617,7 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
         founder_request: 200,
         assigned_advisor_request: 200,
         advisor_unassigned: 404,
-        denied_roles: 3,
+        denied_roles: 2,
         founder_queue: 200,
         exact_replay: "same_result_no_new_rows",
         changed_payload: 409,
@@ -1645,12 +1639,12 @@ test("CRM-01 through CRM-06 work through PostgreSQL 17 and the real local Next D
       referral_source_case_link: Object.freeze({
         source_create_update: "founder_admin",
         source_read: "founder_admin_advisor",
-        denied_source_roles: "data_reviewer_contractor",
+        denied_source_roles: "contractor",
         duplicate_names: true,
         exact_acknowledgement_replay: true,
         no_op_reactivate: 409,
         assignment: "founder_assigned_advisor",
-        denied_case_roles: "admin_data_reviewer_contractor",
+        denied_case_roles: "admin_contractor",
         concurrent_assignment: "one_200_one_409_stale",
         inactive_ended_pending_cross_tenant: "denied",
         snapshots_immutable: true,

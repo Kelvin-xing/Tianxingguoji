@@ -1,5 +1,5 @@
 import { getDocumentTransferRuntime } from "@/modules/documents/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireDocumentActor } from "@/modules/documents/server";
 import { handleApiRequest } from "@/modules/shared/public";
 
 import {
@@ -28,7 +28,7 @@ export function POST(request: Request, context: Context): Promise<Response> {
       const command = await parseDocumentVersionAbandonment(request, requestContext.requestId);
       return documentVersionAcknowledgementData(
         await getDocumentTransferRuntime().service.abandonPendingUpload({
-          actor: await requireIdentityActor(),
+          actor: await requireDocumentActor(),
           caseId,
           documentId,
           versionId,

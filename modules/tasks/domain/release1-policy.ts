@@ -18,7 +18,7 @@ export const RELEASE_1_TASK_TRANSITION_RULES = Object.freeze([
   },
   {
     from: "assigned",
-    to: "rejected",
+    to: "awaiting_reassignment",
     actorKind: "assignee",
     allowedActorRoles: Object.freeze(["advisor", "contractor"]),
     requiresReason: true,
@@ -29,12 +29,12 @@ export const RELEASE_1_TASK_TRANSITION_RULES = Object.freeze([
     to: "completed",
     actorKind: "assignee",
     allowedActorRoles: Object.freeze(["advisor", "contractor"]),
-    requiresReason: true,
+    requiresReason: false,
     requiresDifferentActor: false,
   },
   {
     from: "assigned",
-    to: "reassigned",
+    to: "awaiting_reassignment",
     actorKind: "owner",
     allowedActorRoles: Object.freeze(["advisor", "founder"]),
     requiresReason: true,
@@ -42,7 +42,7 @@ export const RELEASE_1_TASK_TRANSITION_RULES = Object.freeze([
   },
   {
     from: "accepted",
-    to: "reassigned",
+    to: "awaiting_reassignment",
     actorKind: "owner",
     allowedActorRoles: Object.freeze(["advisor", "founder"]),
     requiresReason: true,
@@ -65,12 +65,12 @@ export const RELEASE_1_TASK_TRANSITION_RULES = Object.freeze([
     requiresDifferentActor: false,
   },
   {
-    from: "completed",
-    to: "approved",
-    actorKind: "approver",
-    allowedActorRoles: Object.freeze(["founder"]),
+    from: "awaiting_reassignment",
+    to: "assigned",
+    actorKind: "owner",
+    allowedActorRoles: Object.freeze(["advisor", "founder"]),
     requiresReason: true,
-    requiresDifferentActor: true,
+    requiresDifferentActor: false,
   },
 ] as const satisfies readonly TaskTransitionRule[]);
 

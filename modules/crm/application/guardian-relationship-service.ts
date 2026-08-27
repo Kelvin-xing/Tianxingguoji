@@ -1,22 +1,38 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization } from "../../access/public.ts";
+import { hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 import {
   isPrimaryGuardianRelationshipType,
   type PrimaryGuardianRelationshipType,
 } from "../domain/contract.ts";
+import { validateRelationshipDescription } from "../domain/approved-p2-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HANDOFF_REASON = "guardian.primary.handoff" as const;
+const END_REASON = "guardian.relationship.ended" as const;
+export interface EndGuardianRelationshipCommand {
+  readonly studentId: string;
+  readonly relationshipId: string;
+  readonly expectedRecordVersion: number;
+  readonly requestId: string;
+  readonly idempotencyKey: string;
+}
+export interface EndGuardianRelationshipResult {
+  readonly relationshipId: string;
+  readonly studentId: string;
+  readonly status: "ended";
+  readonly endsAt: string;
+  readonly recordVersion: number;
+  readonly occurredAt: string;
+}
 
 export interface GuardianContactHint {
   readonly id: string;
@@ -30,12 +46,14 @@ export interface GuardianRelationshipResult {
   readonly studentId: string;
   readonly guardianId: string;
   readonly relationshipType: PrimaryGuardianRelationshipType;
+  readonly relationshipDescription?: string | null;
   readonly isLegalGuardian: boolean;
   readonly isPrimaryContact: boolean;
   readonly isEmergencyContact: boolean;
   readonly isBillingContact: boolean;
   readonly notificationConsent: boolean;
   readonly startsAt: string;
+  readonly endsAt?: string | null;
   readonly recordVersion: number;
 }
 
@@ -59,6 +77,7 @@ export interface AttachGuardianCommand {
   readonly studentId: string;
   readonly guardianId: string;
   readonly relationshipType: PrimaryGuardianRelationshipType;
+  readonly relationshipDescription?: string | null;
   readonly isLegalGuardian: boolean;
   readonly isEmergencyContact: boolean;
   readonly isBillingContact: boolean;
@@ -76,6 +95,17 @@ export interface HandoffPrimaryContactCommand {
 }
 
 export interface GuardianRelationshipRepository {
+  endRelationship(input: {
+    readonly organizationId: string;
+    readonly actorUserId: string;
+    readonly command: EndGuardianRelationshipCommand;
+    readonly reason: typeof END_REASON;
+    readonly idempotencyRecordId: string;
+    readonly requestHash: string;
+    readonly occurredAt: string;
+    readonly effects: MutationEffectBundle;
+  }): Promise<EndGuardianRelationshipResult>;
+  listHistory(input: { readonly organizationId:string; readonly actorUserId:string; readonly studentId:string }): Promise<GuardianRelationshipsView | null>;
   listCurrent(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
@@ -94,6 +124,7 @@ export interface GuardianRelationshipRepository {
     readonly guardianId: string;
     readonly relationshipId: string;
     readonly relationshipType: PrimaryGuardianRelationshipType;
+    readonly relationshipDescription: string | null;
     readonly isLegalGuardian: boolean;
     readonly isEmergencyContact: boolean;
     readonly isBillingContact: boolean;
@@ -127,7 +158,9 @@ export type GuardianRelationshipErrorCode =
   | "GUARDIAN_RELATIONSHIP_STALE_VERSION"
   | "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_KEY_REUSED"
   | "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS"
-  | "GUARDIAN_RELATIONSHIP_UNAVAILABLE";
+  | "GUARDIAN_RELATIONSHIP_UNAVAILABLE"
+  | "GUARDIAN_RELATIONSHIP_NOT_FOUND"
+  | "GUARDIAN_RELATIONSHIP_PRIMARY_CANNOT_END";
 
 export class GuardianRelationshipError extends Error {
   readonly code: GuardianRelationshipErrorCode;
@@ -151,6 +184,7 @@ const ERROR_CODES = new Set<GuardianRelationshipErrorCode>([
   "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_KEY_REUSED",
   "GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS",
   "GUARDIAN_RELATIONSHIP_UNAVAILABLE",
+  "GUARDIAN_RELATIONSHIP_NOT_FOUND", "GUARDIAN_RELATIONSHIP_PRIMARY_CANNOT_END",
 ]);
 
 export function isGuardianRelationshipError(
@@ -178,7 +212,7 @@ export class GuardianRelationshipService {
     this.nowMs = nowMs;
   }
 
-  async listCurrent(actor: IdentitySessionActor, studentId: string): Promise<GuardianRelationshipsView> {
+  async listCurrent(actor: RequestAccessActor, studentId: string): Promise<GuardianRelationshipsView> {
     assertAuthorized(actor, "students.read");
     assertUuid(studentId);
     const result = await this.repository.listCurrent({
@@ -190,8 +224,61 @@ export class GuardianRelationshipService {
     return result;
   }
 
+  async listHistory(actor: RequestAccessActor, studentId: string): Promise<GuardianRelationshipsView> {
+    assertAuthorized(actor, "students.read"); assertUuid(studentId);
+    const result = await this.repository.listHistory({ organizationId: actor.organizationId, actorUserId: actor.userId, studentId });
+    if (!result) throw new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND");
+    return result;
+  }
+
+  async endRelationship(input: {
+    readonly actor: RequestAccessActor;
+    readonly command: EndGuardianRelationshipCommand;
+  }): Promise<EndGuardianRelationshipResult> {
+    assertAuthorized(input.actor, "students.guardians.manage");
+    assertEndCommand(input.command);
+    const [idempotencyRecordId, auditId, outboxId] = createIds(this.createId, 3) as [string, string, string];
+    const occurredAt = nowIso(this.nowMs);
+    const requestHash = hashRequestPayload({
+      student_id: input.command.studentId,
+      relationship_id: input.command.relationshipId,
+      expected_record_version: input.command.expectedRecordVersion,
+      reason: END_REASON,
+    });
+    const audit = buildAuditEvent({
+      id: auditId, organizationId: input.actor.organizationId, actorUserId: input.actor.userId,
+      actorKind: "user", eventType: "crm.guardian_relationship_ended", eventVersion: 1,
+      action: "end", resourceType: "StudentGuardianRelationship", resourceId: input.command.relationshipId,
+      outcome: "succeeded", requestId: input.command.requestId, occurredAt,
+      metadata: {
+        status: "ended", previous_version: input.command.expectedRecordVersion,
+        next_version: input.command.expectedRecordVersion + 1, reason_code: END_REASON,
+        request_id: input.command.requestId,
+      },
+    });
+    const outbox = buildOutboxMessage({
+      id: outboxId, auditEventId: auditId, organizationId: input.actor.organizationId,
+      aggregateType: "StudentGuardianRelationship", aggregateId: input.command.relationshipId,
+      eventType: "crm.guardian_relationship_ended", eventVersion: 1,
+      idempotencyKey: `guardian-relationship-end-${idempotencyRecordId}`,
+      requestId: input.command.requestId,
+      payload: {
+        aggregate_id: input.command.relationshipId, status: "ended",
+        previous_record_version: input.command.expectedRecordVersion,
+        record_version: input.command.expectedRecordVersion + 1, reason_code: END_REASON,
+        request_id: input.command.requestId,
+      },
+      availableAt: occurredAt, createdAt: occurredAt,
+    });
+    return this.repository.endRelationship({
+      organizationId: input.actor.organizationId, actorUserId: input.actor.userId,
+      command: input.command, reason: END_REASON, idempotencyRecordId, requestHash,
+      occurredAt, effects: buildAtomicMutationEffects({ audit, outbox }),
+    });
+  }
+
   async searchGuardians(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly studentId: string;
     readonly query: string;
   }): Promise<readonly GuardianContactHint[]> {
@@ -212,7 +299,7 @@ export class GuardianRelationshipService {
   }
 
   async attachGuardian(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: AttachGuardianCommand;
   }): Promise<GuardianRelationshipResult> {
     assertAuthorized(input.actor, "students.guardians.manage");
@@ -263,6 +350,7 @@ export class GuardianRelationshipService {
       guardianId: input.command.guardianId,
       relationshipId,
       relationshipType: input.command.relationshipType,
+      relationshipDescription: input.command.relationshipDescription ?? null,
       isLegalGuardian: input.command.isLegalGuardian,
       isEmergencyContact: input.command.isEmergencyContact,
       isBillingContact: input.command.isBillingContact,
@@ -276,6 +364,7 @@ export class GuardianRelationshipService {
         isPrimaryContact: false,
         notificationConsent: input.command.notificationConsent,
         relationshipType: input.command.relationshipType,
+        relationshipDescription: input.command.relationshipDescription ?? null,
         studentId: input.command.studentId,
       }),
       effects: buildAtomicMutationEffects({ audit, outbox }),
@@ -283,7 +372,7 @@ export class GuardianRelationshipService {
   }
 
   async handoffPrimaryContact(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: HandoffPrimaryContactCommand;
   }): Promise<PrimaryGuardianHandoffResult> {
     assertAuthorized(input.actor, "students.guardians.manage");
@@ -354,9 +443,9 @@ export class GuardianRelationshipService {
   }
 }
 
-function assertAuthorized(actor: IdentitySessionActor, capability: "students.read" | "students.guardians.manage"): void {
+function assertAuthorized(actor: RequestAccessActor, capability: "students.read" | "students.guardians.manage"): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability }).allowed) {
+      !hasRequestCapability(actor, capability)) {
     throw new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_FORBIDDEN");
   }
 }
@@ -364,6 +453,8 @@ function assertAuthorized(actor: IdentitySessionActor, capability: "students.rea
 function assertAttachCommand(command: AttachGuardianCommand): void {
   if (!UUID.test(command.studentId) || !UUID.test(command.guardianId) ||
       !isPrimaryGuardianRelationshipType(command.relationshipType) ||
+      !validateRelationshipDescription({ relationshipType: command.relationshipType,
+        relationshipDescription: command.relationshipDescription ?? null }) ||
       !REQUEST_ID.test(command.requestId) ||
       [command.isLegalGuardian, command.isEmergencyContact, command.isBillingContact,
         command.notificationConsent].some((value) => typeof value !== "boolean")) {
@@ -376,6 +467,15 @@ function assertHandoffCommand(command: HandoffPrimaryContactCommand): void {
   if (!UUID.test(command.studentId) || !UUID.test(command.successorGuardianId) ||
       !Number.isSafeInteger(command.expectedPrimaryRecordVersion) ||
       command.expectedPrimaryRecordVersion < 1 || !REQUEST_ID.test(command.requestId)) {
+    throw new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_INVALID");
+  }
+  assertIdempotencyKey(command.idempotencyKey);
+}
+
+function assertEndCommand(command: EndGuardianRelationshipCommand): void {
+  if (!UUID.test(command.studentId) || !UUID.test(command.relationshipId) ||
+      !Number.isSafeInteger(command.expectedRecordVersion) || command.expectedRecordVersion < 1 ||
+      !REQUEST_ID.test(command.requestId)) {
     throw new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_INVALID");
   }
   assertIdempotencyKey(command.idempotencyKey);

@@ -4,120 +4,36 @@ import test from "node:test";
 
 const ROOT = new URL("../..", import.meta.url);
 
-test("local compose pins the approved local dependencies to loopback ports", async () => {
+test("local compose only starts PostgreSQL; file dependencies are retired", async () => {
   const compose = await source("compose.local.yml");
 
   assert.match(compose, /image:\s*postgres:17\.10-alpine3\.24/);
-  assert.match(compose, /image:\s*localstack\/localstack:4\.14\.0/);
-  assert.match(compose, /image:\s*clamav\/clamav:1\.4\.5-debian13-slim/);
   assert.match(compose, /"127\.0\.0\.1:5432:5432"/);
-  assert.match(compose, /"127\.0\.0\.1:4566:4566"/);
-  assert.match(compose, /"127\.0\.0\.1:3310:3310"/);
+  assert.doesNotMatch(compose, /localstack|clamav|4566|3310/i);
   assert.doesNotMatch(compose, /0\.0\.0\.0:/);
 });
 
-test("local compose initializes versioned S3 and a scan queue with a DLQ", async () => {
+test("local compose does not initialize a local S3 or scan queue", async () => {
+  const compose = await source("compose.local.yml");
+  assert.doesNotMatch(compose, /SERVICES:\s*s3,sqs/);
+  assert.doesNotMatch(compose, /localstack|clamav|4566|3310/i);
+});
+
+test("local compose does not expose a document queue", async () => {
+  const compose = await source("compose.local.yml");
+  assert.doesNotMatch(compose, /sqs|queue|localstack/i);
+});
+
+test("local compose does not expose a local document bucket or CORS endpoint", async () => {
+  const compose = await source("compose.local.yml");
+  assert.doesNotMatch(compose, /localstack|LOCALSTACK_BROWSER_ORIGIN|s3|cors/i);
+});
+
+test("legacy LocalStack initialization remains outside the local compose contract", async () => {
   const compose = await source("compose.local.yml");
   const init = await source("infra/local/localstack/init/10-create-document-resources.sh");
-
-  assert.match(compose, /SERVICES:\s*s3,sqs/);
-  assert.match(compose, /SQS_ENDPOINT_STRATEGY:\s*path/);
-  assert.match(compose, /\/etc\/localstack\/init\/ready\.d:ro/);
-  assert.match(compose, /head-bucket/);
-  assert.match(compose, /get-queue-url/);
-  assert.doesNotMatch(compose, /PERSISTENCE:/);
-  assert.doesNotMatch(compose, /LOCALSTACK_AUTH_TOKEN/);
-  assert.match(init, /put-bucket-versioning/);
-  assert.match(init, /Status=Enabled/);
-  assert.match(init, /deadLetterTargetArn/);
-  assert.match(init, /maxReceiveCount[^\n]*3/);
-});
-
-test("local document queue pins the 180-second visibility timeout on create and every initialization", async () => {
-  const init = await source("infra/local/localstack/init/10-create-document-resources.sh");
-  const createQueueStart = init.indexOf(
-    'if ! awslocal sqs get-queue-url --queue-name "${queue}"',
-  );
-  const createQueueEnd = init.indexOf("\ndlq_url=", createQueueStart);
-
-  assert.notEqual(createQueueStart, -1);
-  assert.notEqual(createQueueEnd, -1);
-  assert.match(init, /^queue_visibility_timeout="180"$/m);
-  assert.match(
-    init.slice(createQueueStart, createQueueEnd),
-    /--attributes "VisibilityTimeout=\$\{queue_visibility_timeout\}"/,
-  );
-  assert.match(init, /"VisibilityTimeout":"%s"/);
-  assert.match(init, /--attributes "\$\{queue_attributes\}"/);
-  assert.doesNotMatch(init, /queue_visibility_timeout="\$\{/);
-});
-
-test("local document bucket CORS is limited to the configured loopback browser origin", async () => {
-  const compose = await source("compose.local.yml");
-  const init = await source("infra/local/localstack/init/10-create-document-resources.sh");
-  const cors = jsonHeredoc(init, "cors_configuration_file");
-
-  assert.match(compose, /LOCALSTACK_BROWSER_ORIGIN:\s*"http:\/\/localhost:3000"/);
-  assert.match(init, /LOCALSTACK_BROWSER_ORIGIN:\?LOCALSTACK_BROWSER_ORIGIN is required/);
-  assert.match(init, /http:\/\/127\.0\.0\.1:\*\|http:\/\/localhost:\*/);
-  assert.match(init, /put-bucket-cors/);
-  assert.deepEqual(cors, {
-    CORSRules: [{
-      ID: "local-browser-document-transfer",
-      AllowedHeaders: ["content-type", "x-amz-checksum-sha256"],
-      AllowedMethods: ["GET", "HEAD", "PUT"],
-      AllowedOrigins: ["${browser_origin}"],
-      MaxAgeSeconds: 300,
-    }],
-  });
-});
-
-test("local document queue policy grants only exact S3 delivery and local-synthetic requeue", async () => {
-  const init = await source("infra/local/localstack/init/10-create-document-resources.sh");
-  const queuePolicyAttributes = record(jsonHeredoc(init, "queue_policy_attributes_file"));
-  const queuePolicyText = queuePolicyAttributes.Policy;
-  if (typeof queuePolicyText !== "string") assert.fail("queue policy must be a JSON string attribute");
-  const queuePolicy = JSON.parse(queuePolicyText);
-  const notification = jsonHeredoc(init, "notification_configuration_file");
-
-  assert.deepEqual(Object.keys(queuePolicyAttributes), ["Policy"]);
-  assert.deepEqual(queuePolicy, {
-    Version: "2012-10-17",
-    Statement: [
-      {
-        Sid: "AllowExactDocumentBucketEvents",
-        Effect: "Allow",
-        Principal: { Service: "s3.amazonaws.com" },
-        Action: "sqs:SendMessage",
-        Resource: "${queue_arn}",
-        Condition: {
-          ArnEquals: { "aws:SourceArn": "arn:aws:s3:::${bucket}" },
-          StringEquals: { "aws:SourceAccount": "${account_id}" },
-        },
-      },
-      {
-        Sid: "AllowExactLocalSyntheticRequeue",
-        Effect: "Allow",
-        Principal: { AWS: "arn:aws:iam::${account_id}:root" },
-        Action: "sqs:SendMessage",
-        Resource: "${queue_arn}",
-      },
-    ],
-  });
-  assertNoQueuePolicyWildcards(queuePolicy);
-  assert.match(init, /put-bucket-notification-configuration/);
-  assert.deepEqual(notification, {
-    QueueConfigurations: [{
-      Id: "document-object-created-put",
-      QueueArn: "${queue_arn}",
-      Events: ["s3:ObjectCreated:Put"],
-      Filter: {
-        Key: {
-          FilterRules: [{ Name: "prefix", Value: "documents/" }],
-        },
-      },
-    }],
-  });
+  assert.doesNotMatch(compose, /localstack/i);
+  assert.match(init, /put-bucket-versioning|put-bucket-notification-configuration/);
 });
 
 test("local database bootstrap uses and hardens only the canonical application role", async () => {
@@ -173,10 +89,13 @@ test("the committed environment example is explicit and local-only", async () =>
     example,
     /^LOCAL_SYNTHETIC_ORGANIZATION_ID=51000000-0000-4000-8000-000000000001$/m,
   );
-  assert.match(
-    example,
-    /^LOCAL_SYNTHETIC_DOCUMENT_WORKER_CONTEXT_ID=10000000-0000-4000-8000-000000000901$/m,
-  );
+  assert.match(example, /^DOCUMENT_TRANSPORT_MODE=deterministic-fake$/m);
+  assert.match(example, /^DOCUMENT_FAKE_REGION=ap-east-1$/m);
+  assert.match(example, /^DOCUMENT_FAKE_BUCKET=tianxing-local-documents$/m);
+  assert.match(example, /^DOCUMENT_FAKE_ORIGIN=http:\/\/localhost:3000$/m);
+  assert.match(example, /^DOCUMENT_FAKE_ORGANIZATION_ID=51000000-0000-4000-8000-000000000001$/m);
+  assert.match(example, /^DOCUMENT_FAKE_WORKER_CONTEXT_ID=10000000-0000-4000-8000-000000000901$/m);
+  assert.doesNotMatch(example, /^LOCAL_SYNTHETIC_(LOCALSTACK|AWS_REGION|S3|SQS|CLAMAV|DOCUMENT_WORKER)/m);
   assert.doesNotMatch(example, /^LOCAL_SYNTHETIC_(IDENTITY|APPLICATION)_DATABASE_URL=/m);
   assert.doesNotMatch(example, /\.rds\.amazonaws\.com/);
   assert.match(ignore, /^!\/\.env\.local\.example$/m);

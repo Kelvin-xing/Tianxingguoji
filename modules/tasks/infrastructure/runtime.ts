@@ -4,9 +4,15 @@ import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { TaskWorkspaceService } from "../application/workspace-service.ts";
 import { PostgresqlTaskWorkspaceRepository } from "./postgresql-workspace-repository.ts";
+import { P3TaskService } from "../application/p3-service.ts";
+import { PostgresqlP3TaskRepository } from "./p3-postgresql-repository.ts";
+import { PostgresqlCasesTaskFactsPort } from "../../cases/server.ts";
+import { PostgresqlAccessTaskFactsPort } from "../../access/server.ts";
+import { PostgresqlCleanTaskEvidencePort } from "../../documents/server.ts";
 
 export interface TaskWorkflowRuntime {
   readonly service: TaskWorkspaceService;
+  readonly p3Service: P3TaskService;
 }
 
 export function isTaskWorkflowRuntimeUnavailable(value: unknown): value is TaskWorkflowRuntimeUnavailable {
@@ -36,9 +42,13 @@ export function getTaskWorkflowRuntime(): TaskWorkflowRuntime {
   let runtime = runtimes.get(mode);
   if (!runtime) {
     try {
+      const runner = getApplicationTenantRunner();
       runtime = Object.freeze({ service: new TaskWorkspaceService(
-        new PostgresqlTaskWorkspaceRepository(getApplicationTenantRunner()),
-      ) });
+        new PostgresqlTaskWorkspaceRepository(runner),
+      ), p3Service: new P3TaskService(new PostgresqlP3TaskRepository(
+        runner, new PostgresqlCasesTaskFactsPort(), new PostgresqlAccessTaskFactsPort(),
+        new PostgresqlCleanTaskEvidencePort(),
+      )) });
     } catch { throw new TaskWorkflowRuntimeUnavailable(); }
     runtimes.set(mode, runtime);
   }

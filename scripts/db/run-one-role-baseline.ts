@@ -79,7 +79,17 @@ export type OneRoleBaselineMigrationGroup =
   | "lifecycle"
   | "assessment"
   | "case_functions"
-  | "rls_grants";
+  | "rls_grants"
+  | "crm_profiles"
+  | "crm_relationships"
+  | "crm_referral_sources"
+  | "primary_advisor_schema"
+  | "primary_advisor_backfill_insert"
+  | "primary_advisor_case_column"
+  | "primary_advisor_case_backfill"
+  | "primary_advisor_case_constraint"
+  | "primary_advisor_guard"
+  | "primary_advisor_rls";
 export type OneRoleBaselineFailureEvidence = Readonly<{
   failure_stage: OneRoleBaselineFailureStage;
   migration_name?: string;
@@ -830,19 +840,38 @@ function failureEvidence(
 
 const CASE_FLOW_MIGRATION_NAME =
   "035_202608240020_036_complete_case_workflow_foundation.sql";
+const CRM_CASE_ASSESSMENT_MIGRATION_NAME =
+  "038_202608260030_039_expand_crm_case_assessment.sql";
 
 function readGeneratedSqlGroups(
   migrationName: string,
   sql: string,
 ): readonly Readonly<{ group?: OneRoleBaselineMigrationGroup; sql: string }>[] {
-  if (migrationName !== CASE_FLOW_MIGRATION_NAME) return [Object.freeze({ sql })];
-  const boundaries = [
-    ["schema", "ALTER TABLE cases_service_cases\n  DROP CONSTRAINT"] as const,
-    ["lifecycle", "CREATE TABLE cases_service_case_lifecycle_facts"] as const,
-    ["assessment", "CREATE FUNCTION cases_assert_case_flow_v1_manifest"] as const,
-    ["case_functions", "CREATE OR REPLACE FUNCTION cases_validate_service_case_write"] as const,
-    ["rls_grants", "REVOKE ALL ON TABLE cases_service_case_lifecycle_facts"] as const,
-  ];
+  const boundaries = migrationName === CASE_FLOW_MIGRATION_NAME
+    ? [
+        ["schema", "ALTER TABLE cases_service_cases\n  DROP CONSTRAINT"] as const,
+        ["lifecycle", "CREATE TABLE cases_service_case_lifecycle_facts"] as const,
+        ["assessment", "CREATE FUNCTION cases_assert_case_flow_v1_manifest"] as const,
+        ["case_functions", "CREATE OR REPLACE FUNCTION cases_validate_service_case_write"] as const,
+        ["rls_grants", "REVOKE ALL ON TABLE cases_service_case_lifecycle_facts"] as const,
+      ]
+    : migrationName === CRM_CASE_ASSESSMENT_MIGRATION_NAME
+      ? [
+          ["crm_profiles", "ALTER TABLE crm_students\n  ADD COLUMN gender"] as const,
+          ["crm_relationships", "ALTER TABLE crm_student_guardian_relationships\n  ADD COLUMN relationship_description"] as const,
+          ["crm_referral_sources", "ALTER TABLE crm_referral_sources\n  ADD COLUMN description"] as const,
+          ["primary_advisor_schema", "CREATE TABLE cases_primary_advisor_assignments"] as const,
+          ["primary_advisor_backfill_insert", "INSERT INTO cases_primary_advisor_assignments"] as const,
+          ["primary_advisor_case_column", "ALTER TABLE cases_service_cases ADD COLUMN current_primary_advisor_assignment_id"] as const,
+          ["primary_advisor_case_backfill", "UPDATE cases_service_cases AS service_case"] as const,
+          ["primary_advisor_case_constraint", "ALTER TABLE cases_service_cases\n  ALTER COLUMN current_primary_advisor_assignment_id SET NOT NULL"] as const,
+          ["primary_advisor_guard", "CREATE FUNCTION cases_reject_primary_advisor_assignment_mutation"] as const,
+          ["primary_advisor_rls", "ALTER TABLE cases_primary_advisor_assignments ENABLE ROW LEVEL SECURITY"] as const,
+          ["assessment", "UPDATE cases_assessments SET status = 'background_complete'"] as const,
+          ["rls_grants", "ALTER TABLE crm_students FORCE ROW LEVEL SECURITY"] as const,
+        ]
+      : undefined;
+  if (!boundaries) return [Object.freeze({ sql })];
   const offsets = boundaries.map(([group, marker]) => ({ group, offset: sql.indexOf(marker) }));
   if (
     offsets.some(({ offset }) => offset < 0) ||

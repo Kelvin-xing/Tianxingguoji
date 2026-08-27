@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { redeemPortalAccess } from '@/components/portal/f5-client'
 
 type AccessState = 'empty' | 'loading' | 'denied' | 'expired' | 'unavailable'
 
@@ -14,17 +15,10 @@ export default function PortalAccessPage() {
     event.preventDefault()
     setState('loading')
     try {
-      const response = await fetch('/api/v1/portal/sessions', {
-        method: 'POST', credentials: 'same-origin', cache: 'no-store',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ access_key: accessKey }),
-      })
+      await redeemPortalAccess(accessKey)
       setAccessKey('')
-      if (response.ok) return router.replace('/portal/workspace')
-      if (response.status === 401) return setState('expired')
-      if (response.status === 503) return setState('unavailable')
-      setState('denied')
-    } catch { setState('unavailable') }
+      return router.replace('/portal/workspace')
+    } catch (error) { setState(error instanceof Error && 'status' in error && (error as {status?: number}).status === 401 ? 'expired' : 'unavailable') }
   }
 
   return (

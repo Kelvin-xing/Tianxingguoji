@@ -36,7 +36,8 @@ export function ReferralSourcesDirectory() {
   const [canManage, setCanManage] = useState(false)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [displayName, setDisplayName] = useState('')
-  const [sourceType, setSourceType] = useState<ReferralSourceType>('bank')
+  const [sourceType, setSourceType] = useState<ReferralSourceType>('website')
+  const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
 
@@ -58,7 +59,7 @@ export function ReferralSourcesDirectory() {
         setState('denied')
         return
       }
-      setSources(nextSources)
+      setSources(nextSources.items)
       setCanManage(access.capabilities.some((item) => String(item) === 'referral_sources.manage'))
       setState('ready')
     } catch (error) {
@@ -88,8 +89,13 @@ export function ReferralSourcesDirectory() {
   async function submitCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting.current || saving || !canManage) return
-    const draft = { display_name: displayName.trim(), source_type: sourceType } as const
-    if (draft.display_name.length < 1 || draft.display_name.length > 200) {
+    const draft = {
+      display_name: displayName.trim(),
+      source_type: sourceType,
+      description: sourceType === 'other' ? description.trim() : null,
+    } as const
+    if (draft.display_name.length < 1 || draft.display_name.length > 200 ||
+        (sourceType === 'other' && description.trim().length === 0)) {
       setNotice('validation')
       return
     }
@@ -99,16 +105,17 @@ export function ReferralSourcesDirectory() {
     try {
       const fingerprint = referralSourceCreateFingerprint(draft)
       const receipt = await createReferralSource(draft, attempt.current!.keyFor(fingerprint))
-      const authoritative = await getReferralSource(receipt.id)
-      if (authoritative.record_version !== receipt.record_version) {
+      const authoritative = await getReferralSource(receipt.referral_source.id)
+      if (authoritative.record_version !== receipt.referral_source.record_version) {
         throw new TypeError('ReferralSource authority mismatch.')
       }
       const nextSources = await listReferralSources(filter === 'all' ? undefined : filter)
       if (!mounted.current) return
       attempt.current!.complete()
-      setSources(nextSources)
+      setSources(nextSources.items)
       setDisplayName('')
-      setSourceType('bank')
+      setSourceType('website')
+      setDescription('')
       setNotice('success')
     } catch (error) {
       if (!mounted.current) return
@@ -132,7 +139,7 @@ export function ReferralSourcesDirectory() {
         <div>
           <div className="eyebrow">客戶來源</div>
           <h2 className="page-title">推薦來源</h2>
-          <p className="page-subtitle">維護銀行、保險公司及其他合作來源的安全識別資料。</p>
+          <p className="page-subtitle">維護經批准的客戶推薦、網站、活動及其他來源資料。</p>
         </div>
         <label className="select-field self-start md:self-auto">
           <Icon name="filter" size={15} />
@@ -178,11 +185,22 @@ export function ReferralSourcesDirectory() {
               <select
                 value={sourceType}
                 disabled={saving}
-                onChange={(event) => { setSourceType(event.target.value as ReferralSourceType); setNotice(null) }}
+                onChange={(event) => {
+                  const nextType = event.target.value as ReferralSourceType
+                  setSourceType(nextType)
+                  if (nextType !== 'other') setDescription('')
+                  setNotice(null)
+                }}
               >
                 {REFERRAL_SOURCE_TYPES.map((type) => <option value={type} key={type}>{sourceTypeLabel(type)}</option>)}
               </select>
             </label>
+            {sourceType === 'other' ? (
+              <label className="field-label md:col-span-2">
+                其他來源說明
+                <input value={description} maxLength={500} required disabled={saving} onChange={(event) => { setDescription(event.target.value); setNotice(null) }} />
+              </label>
+            ) : null}
             <button type="submit" className="primary-button" disabled={saving} aria-busy={saving}>
               <Icon name="plus" size={15} />{saving ? '正在建立' : '建立來源'}
             </button>
@@ -224,7 +242,7 @@ export function ReferralSourcesDirectory() {
 function NoticeView({ notice }: { readonly notice: Notice }) {
   if (notice === null) return null
   const message = notice === 'success' ? '推薦來源已建立，名單已重新載入。'
-    : notice === 'validation' ? '請填寫 1 至 200 個字的顯示名稱。'
+    : notice === 'validation' ? '請填寫 1 至 200 個字的顯示名稱；其他來源也必須填寫說明。'
       : notice === 'conflict' ? '資料已改變或本次操作有衝突，請確認後再試。'
         : notice === 'denied' ? '目前帳號不能建立推薦來源。'
           : '結果暫時無法確認，請稍後重試；重試不會重複建立。'
@@ -236,7 +254,12 @@ function State({ title, detail, href, onRetry }: { readonly title: string; reado
 }
 
 function sourceTypeLabel(type: ReferralSourceType): string {
-  return type === 'bank' ? '銀行' : type === 'insurance' ? '保險公司' : '其他合作來源'
+  const labels: Readonly<Record<ReferralSourceType, string>> = {
+    customer_referral: '客戶推薦', employee_referral: '員工推薦', school_referral: '學校推薦',
+    partner_referral: '合作夥伴推薦', website: '網站', social_media: '社交媒體',
+    paid_advertising: '付費廣告', event: '活動', walk_in: '直接查詢', other: '其他', unknown: '未知',
+  }
+  return labels[type]
 }
 
 function statusLabel(status: ReferralSourceStatus): string {

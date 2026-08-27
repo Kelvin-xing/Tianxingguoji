@@ -41,6 +41,7 @@ export function StudentProfileEditor({
   const [draft, setDraft] = useState<StudentProfileDraft>({
     display_name: student.displayName,
     date_of_birth: student.dateOfBirth ?? '',
+    gender: student.gender ?? '',
     contact_email: student.contactEmail ?? '',
     contact_phone: student.contactPhone ?? '',
     expected_record_version: student.recordVersion,
@@ -118,6 +119,8 @@ export function GuardianProfileEditor({
     display_name: guardian.displayName,
     email: guardian.email ?? '',
     phone: guardian.phone ?? '',
+    date_of_birth: guardian.dateOfBirth ?? '',
+    gender: guardian.gender ?? '',
     expected_record_version: guardian.recordVersion,
   })
   const [validation, setValidation] = useState<ProfileValidation>({})

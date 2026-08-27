@@ -2,8 +2,8 @@ import { SESSION_COOKIE_NAME } from "../../../../../../modules/identity/server.t
 import {
   IdentityRuntimeUnavailable,
   IdentityServiceError,
-  getIdentityRuntime,
 } from "../../../../../../modules/identity/server.ts";
+import { resolveRequestAccessContext, RequestAccessContextError } from "../../../../../../modules/access/server.ts";
 import { PortalPolicyError } from "../../../../../../modules/external-portal/public.ts";
 import {
   PortalRepositoryError,
@@ -19,36 +19,46 @@ export interface PortalGrantSummary {
   readonly portalViewerId: string;
   readonly fingerprint: string;
   readonly expiresAt: string;
-  readonly status: "active" | "pending_approval" | "revoked" | "expired";
+  readonly status: "active" | "revoked" | "expired";
   readonly recordVersion: number;
 }
 
 export interface PortalGrantRouteDependencies {
-  authenticateInternal(request?: Request): Promise<{ readonly actorUserId: string } | null>;
+  authenticateInternal(request?: Request): Promise<{
+    readonly actorUserId: string;
+    readonly organizationId?: string;
+    readonly workspaceCapabilities?: readonly string[];
+    readonly roles?: readonly string[];
+  } | null>;
   listGrants(input: {
     readonly actorUserId: string;
+    readonly actor?: { readonly organizationId?: string; readonly workspaceCapabilities?: readonly string[]; readonly roles?: readonly string[] };
     readonly caseId: string;
   }): Promise<readonly PortalGrantSummary[]>;
   issueGrant(input: {
     readonly actorUserId: string;
+    readonly actor?: { readonly organizationId?: string; readonly workspaceCapabilities?: readonly string[]; readonly roles?: readonly string[] };
     readonly caseId: string;
     readonly portalViewerId: string;
-    readonly expiresAt: string;
+    /** Deprecated compatibility field; route ignores client expiry and service fixes seven days. */
+    readonly expiresAt?: string;
     readonly idempotencyKey: string;
   }): Promise<{
     readonly grantId: string;
     readonly rawSecretOnce: string;
     readonly fingerprint: string;
     readonly expiresAt: string;
-    readonly status: "active" | "pending_approval";
+    readonly status: "active";
     readonly recordVersion: number;
   }>;
   revokeGrant(input: {
     readonly actorUserId: string;
+    readonly actor?: { readonly organizationId?: string; readonly workspaceCapabilities?: readonly string[]; readonly roles?: readonly string[] };
     readonly caseId: string;
     readonly grantId: string;
     readonly expectedVersion: number;
     readonly reasonCode: string;
+    readonly expiresAt?: string;
     readonly idempotencyKey: string;
   }): Promise<{
     readonly grantId: string;
@@ -57,17 +67,18 @@ export interface PortalGrantRouteDependencies {
   }>;
   rotateGrant(input: {
     readonly actorUserId: string;
+    readonly actor?: { readonly organizationId?: string; readonly workspaceCapabilities?: readonly string[]; readonly roles?: readonly string[] };
     readonly caseId: string;
     readonly grantId: string;
     readonly expectedVersion: number;
-    readonly expiresAt: string;
+    readonly expiresAt?: string;
     readonly idempotencyKey: string;
   }): Promise<{
     readonly grantId: string;
     readonly rawSecretOnce: string;
     readonly fingerprint: string;
     readonly expiresAt: string;
-    readonly status: "active" | "pending_approval";
+    readonly status: "active";
     readonly recordVersion: number;
   }>;
 }
@@ -83,7 +94,7 @@ export function createPortalGrantCollectionHandlers(deps: PortalGrantRouteDepend
         if (!actor) {
           return portalJson({ error: { code: "PORTAL_AUTHENTICATION_REQUIRED" } }, 401);
         }
-        const grants = await deps.listGrants({ actorUserId: actor.actorUserId, caseId });
+        const grants = await deps.listGrants({ actorUserId: actor.actorUserId, actor, caseId });
         return portalJson({ grants: grants.map(toGrantJson) }, 200);
       } catch (error) {
         return mapInternalError(error);
@@ -95,7 +106,8 @@ export function createPortalGrantCollectionHandlers(deps: PortalGrantRouteDepend
         const caseId = await readCaseId(context);
         const idempotencyKey = readIdempotencyKey(request);
         const body = await readObject(request);
-        if (!UUID.test(String(body.portal_viewer_id ?? "")) || !isIsoDate(body.expires_at)) {
+        assertExactKeys(body, ["portal_viewer_id"]);
+        if (!UUID.test(String(body.portal_viewer_id ?? ""))) {
           throw new RequestInvalid();
         }
         const actor = await deps.authenticateInternal(request);
@@ -104,9 +116,9 @@ export function createPortalGrantCollectionHandlers(deps: PortalGrantRouteDepend
         }
         const result = await deps.issueGrant({
           actorUserId: actor.actorUserId,
+          actor,
           caseId,
           portalViewerId: String(body.portal_viewer_id),
-          expiresAt: String(body.expires_at),
           idempotencyKey,
         });
         return portalJson({
@@ -151,6 +163,12 @@ export function isIsoDate(value: unknown): value is string {
 export class RequestInvalid extends Error {}
 export class UntrustedMutationOrigin extends Error {}
 
+export function assertExactKeys(body: Record<string, unknown>, allowed: readonly string[]): void {
+  const keys = Object.keys(body).sort();
+  const expected = [...allowed].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) throw new RequestInvalid();
+}
+
 export function requireTrustedMutationOrigin(request: Request): void {
   const origin = request.headers.get("origin");
   if (!origin) throw new UntrustedMutationOrigin();
@@ -166,14 +184,16 @@ export function requireTrustedMutationOrigin(request: Request): void {
 
 export async function authenticateInternalPortalRequest(
   request?: Request,
-): Promise<{ readonly actorUserId: string } | null> {
+): Promise<{ readonly actorUserId: string; readonly organizationId: string; readonly workspaceCapabilities: readonly string[]; readonly roles: readonly string[] } | null> {
   const secret = readCookie(request?.headers.get("cookie") ?? null, SESSION_COOKIE_NAME);
   if (!secret) return null;
-  const actor = await getIdentityRuntime().service.requireSession({
-    cookieSecret: secret,
-    sensitiveAction: true,
-  });
-  return { actorUserId: actor.userId };
+  try {
+    const context = await resolveRequestAccessContext({ cookieSecret: secret, sensitiveAction: true });
+    return { actorUserId: context.userId, organizationId: context.organizationId, workspaceCapabilities: context.workspaceCapabilities, roles: context.roles };
+  } catch (error) {
+    if (error instanceof RequestAccessContextError) return null;
+    throw error;
+  }
 }
 
 export function mapInternalError(error: unknown): Response {

@@ -179,7 +179,7 @@ test("fails closed when a completed receipt response hash does not match its ack
 
 function studentInput(): Parameters<ProfileMaintenanceRepository["updateStudent"]>[0] {
   return { organizationId: IDS.organization, actorUserId: IDS.actor, actorRole: "founder",
-    studentId: IDS.student, displayName: "Student", dateOfBirth: "2012-06-01",
+    studentId: IDS.student, displayName: "Student", dateOfBirth: "2012-06-01", gender: null,
     contactEmail: "student@example.invalid", contactPhone: null, expectedRecordVersion: 1,
     idempotencyKey: "student-profile:1", requestHash: HASH, effects: effects(IDS.student) };
 }
@@ -187,7 +187,7 @@ function studentInput(): Parameters<ProfileMaintenanceRepository["updateStudent"
 function guardianInput(): Parameters<ProfileMaintenanceRepository["updateGuardian"]>[0] {
   return { organizationId: IDS.organization, actorUserId: IDS.actor, actorRole: "founder",
     guardianId: IDS.guardian, displayName: "Guardian", email: "guardian@example.invalid",
-    phone: null, expectedRecordVersion: 1, idempotencyKey: "guardian-profile:1",
+    phone: null, dateOfBirth: null, gender: null, expectedRecordVersion: 1, idempotencyKey: "guardian-profile:1",
     requestHash: HASH, effects: effects(IDS.guardian) };
 }
 

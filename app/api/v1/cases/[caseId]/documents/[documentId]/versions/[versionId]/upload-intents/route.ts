@@ -1,4 +1,4 @@
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireDocumentActor } from "@/modules/documents/server";
 import { getDocumentTransferRuntime } from "@/modules/documents/server";
 import { handleApiRequest } from "@/modules/shared/public";
 
@@ -28,7 +28,7 @@ export function POST(request: Request, context: Context): Promise<Response> {
       const command = await parseDocumentUploadIntent(request);
       return documentUploadIntentData(
         await getDocumentTransferRuntime().service.issueUploadIntent({
-          actor: await requireIdentityActor(),
+          actor: await requireDocumentActor(),
           caseId,
           documentId,
           versionId,
