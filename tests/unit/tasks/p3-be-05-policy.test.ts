@@ -21,13 +21,20 @@ test("application receipt validation accepts valid references and rejects invali
     submitted_at: "2026-08-26T00:00:00.000Z",
     submission_channel: "school_portal",
     submitter_user_id: actor.userId,
-    checklist_snapshot: { transcript: true },
+    checklist_snapshot: { all_required_items_complete: true, confirmed_at: "2026-08-26T00:00:00.000Z" },
   };
   assert.equal(isValidApplicationCompletion({ ...base, official_submission_reference: "APP-123", no_reference_declared: false }), true);
   assert.equal(isValidApplicationCompletion({ ...base, official_submission_reference: null, no_reference_declared: true }), true);
   assert.equal(isValidApplicationCompletion({ ...base, official_submission_reference: "APP-123", no_reference_declared: true }), false);
   assert.equal(isValidApplicationCompletion({ ...base, official_submission_reference: null, no_reference_declared: false }), false);
   assert.equal(isValidApplicationCompletion({ ...base, official_submission_reference: "", no_reference_declared: false }), false);
+});
+test("official reference may complete without a document; no-reference requires evidence", () => {
+  const base = { submitted_at:"2026-08-26T00:00:00.000Z",submission_channel:"school_portal",
+    submitter_user_id:actor.userId,checklist_snapshot:{all_required_items_complete:true,
+      confirmed_at:"2026-08-26T00:00:00.000Z"} };
+  assert.equal(isValidApplicationCompletion({...base,official_submission_reference:"APP-123",no_reference_declared:false}),true);
+  assert.equal(isValidApplicationCompletion({...base,official_submission_reference:null,no_reference_declared:true}),true);
 });
 test("paused Case preserves due_at and keeps risk clock meaningful", () => assert.equal(isTaskDueAtStableWhenPaused("2026-09-01T00:00:00.000Z","2026-08-26T00:00:00.000Z"),true));
 

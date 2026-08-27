@@ -1,5 +1,7 @@
 import {
   isCandidateListError,
+  isCandidateListQueryError,
+  isCaseRuntimeUnavailable,
 } from "@/modules/cases/server";
 import { ApiContractError, createApiError } from "@/modules/shared/public";
 
@@ -14,6 +16,28 @@ export function requireCandidateListIdempotencyKey(request: Request): string {
   const value = request.headers.get("idempotency-key")?.trim();
   if (!value || !IDEMPOTENCY_KEY.test(value)) throw createApiError("INVALID_REQUEST");
   return value;
+}
+
+export function parseCandidateListQuery(request: Request): Readonly<{
+  limit: number;
+  cursor: string | null;
+}> {
+  const parameters = new URL(request.url).searchParams;
+  const keys = [...parameters.keys()];
+  if (keys.some((key) => key !== "limit" && key !== "cursor") ||
+      parameters.getAll("limit").length > 1 || parameters.getAll("cursor").length > 1) {
+    throw createApiError("INVALID_REQUEST");
+  }
+  const rawLimit = parameters.get("limit");
+  const cursor = parameters.get("cursor");
+  if ((rawLimit !== null && !/^[1-9][0-9]{0,2}$/.test(rawLimit)) || cursor === "") {
+    throw createApiError("INVALID_REQUEST");
+  }
+  const limit = rawLimit === null ? 25 : Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw createApiError("INVALID_REQUEST");
+  }
+  return Object.freeze({ limit, cursor });
 }
 
 export async function readExactJson<const Fields extends readonly string[]>(
@@ -38,6 +62,15 @@ export async function readExactJson<const Fields extends readonly string[]>(
 
 export function mapCandidateListError(error: unknown): ApiContractError | unknown {
   if (error instanceof ApiContractError) return error;
+  if (isCaseRuntimeUnavailable(error)) return createApiError("SERVICE_UNAVAILABLE");
+  if (isCandidateListQueryError(error)) {
+    switch (error.code) {
+      case "CANDIDATE_LIST_QUERY_INVALID": return createApiError("INVALID_REQUEST");
+      case "CANDIDATE_LIST_QUERY_FORBIDDEN": return createApiError("FORBIDDEN");
+      case "CANDIDATE_LIST_QUERY_NOT_FOUND": return createApiError("NOT_FOUND");
+      case "CANDIDATE_LIST_QUERY_UNAVAILABLE": return createApiError("SERVICE_UNAVAILABLE");
+    }
+  }
   if (!isCandidateListError(error)) return error;
   switch (error.code) {
     case "CANDIDATE_LIST_INVALID": return createApiError("VALIDATION_FAILED");

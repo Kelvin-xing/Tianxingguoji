@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
 import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/AssessmentEditor'
+import { CandidateListWorkspace } from '@/components/cases/CandidateListWorkspace'
 import { CaseWorkflowControls } from '@/components/cases/CaseStageControls'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
@@ -44,6 +45,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   }
   if (!record || !assessment) notFound()
   const stageIndex = stages.findIndex(({ key }) => key === record.stage)
+  const { roles: actorRoles } = actor
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
@@ -72,6 +74,16 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <AssessmentEditor
         endpoint={`/api/v1/cases/${caseId}/assessment`}
         initialView={serializeAssessmentView(assessment)}
+      />
+
+      <CandidateListWorkspace
+        caseId={caseId}
+        initialCaseRecordVersion={record.recordVersion}
+        initialCaseStage={record.stage}
+        initialWorkflowStatus={record.workflowStatus}
+        selectionReady={assessment.status === 'background_complete' || assessment.status === 'selection_ready'}
+        canManageCandidateLists={actorRoles.includes('advisor')}
+        canReviewCandidateLists={actorRoles.includes('founder')}
       />
 
       <div className="preview-notice"><Icon name="shield" size={15} /><span>PostgreSQL authoritative read/write · 每個答案獨立版本控制，完成背景收集時再次驗證權限、阻塞項、評估版本與冪等憑據。</span></div>

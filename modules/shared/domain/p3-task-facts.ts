@@ -45,3 +45,48 @@ export interface TaskCompletionFactsPort {
     organizationId: string; caseId: string; targetId: string; taskId: string; receiptId: string;
   }>): Promise<TaskCompletionFacts | null>;
 }
+
+export interface ApplicationTaskRequestRef {
+  readonly sourceEventId: string;
+  readonly targetId: string;
+}
+
+export interface ApplicationTaskRequestFacts {
+  readonly sourceEventId: string;
+  readonly targetId: string;
+  readonly caseId: string;
+  readonly applicationRound: number;
+  readonly applicationDeadline: string | null;
+  readonly assignmentId: string;
+  readonly assigneeUserId: string;
+  readonly assigneeMembershipId: string;
+  readonly assigneeRoleBindingId: string;
+  readonly ownerUserId: string;
+  readonly sourceActorUserId: string;
+  readonly targetRecordVersion: number;
+}
+
+export interface CasesApplicationTaskRequestFactsPort {
+  listForCandidateVersion(transaction: TaskFactsTransaction, input: Readonly<{
+    organizationId: string; caseId: string; versionId: string;
+  }>): Promise<readonly ApplicationTaskRequestRef[]>;
+  readRequestFacts(transaction: TaskFactsTransaction, input: Readonly<{
+    organizationId: string; targetId: string; sourceEventId: string;
+  }>): Promise<ApplicationTaskRequestFacts | null>;
+}
+
+export interface ApplicationTaskCompletionEventFacts {
+  readonly taskId: string;
+  readonly caseId: string;
+  readonly targetId: string;
+  readonly receiptId: string;
+  readonly actorUserId: string;
+  readonly completionRecord: Readonly<Record<string, unknown>>;
+  readonly evidenceReference: string | null;
+}
+
+export interface TasksApplicationCompletionEventFactsPort {
+  readApplicationCompletionEvent(transaction: TaskFactsTransaction, input: Readonly<{
+    organizationId: string; taskId: string;
+  }>): Promise<ApplicationTaskCompletionEventFacts | null>;
+}

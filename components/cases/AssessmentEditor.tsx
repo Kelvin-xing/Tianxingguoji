@@ -72,7 +72,11 @@ export function AssessmentEditor({
   const [completing, setCompleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
-  const answeredFieldIds = new Set(view.answers.map((answer) => answer.field_id));
+  const answeredFieldIds = new Set(
+    view.answers
+      .filter((answer) => answer.semantic_state === "provided")
+      .map((answer) => answer.field_id),
+  );
   const blockingFieldIds = view.schema.fields
     .filter((field) => field.blocking_stages.includes("background_collection"))
     .map((field) => field.field_id);
@@ -154,7 +158,7 @@ export function AssessmentEditor({
         idempotencyKey: globalThis.crypto.randomUUID(),
         body: { expected_record_version: view.record_version },
       }, expectRecord);
-      if (payload.status !== "background_complete" || typeof payload.record_version !== "number") {
+      if (payload.id !== view.assessment_id || typeof payload.record_version !== "number") {
         throw new Error("COMPLETION_FAILED");
       }
       setView((current) => ({

@@ -7,6 +7,7 @@ import { CaseWorkspaceService } from "../application/workspace-service.ts";
 import { CaseWorkflowService } from "../application/workflow-service.ts";
 import { CaseReferralSourceAssignmentService } from "../application/referral-source-assignment-service.ts";
 import { CandidateListService } from "../application/candidate-list-service.ts";
+import { CandidateListQueryService } from "../application/candidate-list-query-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
@@ -18,6 +19,7 @@ import { PostgresqlCaseWorkflowRepository } from "./postgresql-workflow-reposito
 import { PostgresqlAssessmentRepository } from "./postgresql-assessment-repository.ts";
 import { PostgresqlCaseReferralSourceAssignmentRepository } from "./postgresql-referral-source-assignment-repository.ts";
 import { PostgresqlCandidateListRepository } from "./postgresql-candidate-list-repository.ts";
+import { PostgresqlCandidateListQueryRepository } from "./postgresql-candidate-list-query-repository.ts";
 
 export interface CaseReferralSourceRuntime { readonly service: CaseReferralSourceAssignmentService }
 export class CaseReferralSourceRuntimeUnavailable extends Error {
@@ -75,6 +77,7 @@ export interface CaseWorkspaceRuntime {
   readonly assessmentService: AssessmentService;
   readonly workflowService: CaseWorkflowService;
   readonly candidateListService: CandidateListService;
+  readonly candidateListQueryService: CandidateListQueryService;
 }
 
 const globalForCaseWorkspace = globalThis as typeof globalThis & {
@@ -109,6 +112,9 @@ export function getCaseWorkspaceRuntime(): CaseWorkspaceRuntime {
       workflowService: new CaseWorkflowService(new PostgresqlCaseWorkflowRepository(adapter)),
       candidateListService: new CandidateListService(
         new PostgresqlCandidateListRepository(getApplicationTenantRunner()),
+      ),
+      candidateListQueryService: new CandidateListQueryService(
+        new PostgresqlCandidateListQueryRepository(getApplicationTenantRunner()),
       ),
     });
     runtimes.set(mode, runtime);

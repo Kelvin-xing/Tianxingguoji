@@ -41,18 +41,20 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
       requiredRole: "advisor",
       primaryOnly: true,
       sql: `SELECT decision,result_record_version
-              FROM cases_create_candidate_list_version(
+              FROM cases_create_candidate_list_version_v2(
                 $1,$2,$3,$4,$5,$6,$7::jsonb,$8::timestamptz
               )`,
       values: [input.caseId,input.versionId,input.previousVersionId,
         input.expectedCaseRecordVersion,input.schoolSetSha256,input.changeSummary,
         JSON.stringify(input.items.map((item) => ({ id: item.id,school_id: item.schoolId,
           pinned_resolved_revision_id: item.pinnedResolvedRevisionId,
-          pinned_resolution_sha256: item.pinnedResolutionSha256,ordinal: item.ordinal }))),
+          pinned_resolution_sha256: item.pinnedResolutionSha256,ordinal: item.ordinal,
+          application_deadline: item.applicationDeadline }))),
         input.occurredAt],
       resultReference: input.versionId,
       replayCaseVersion: false,
       replayFounderHash: false,
+      flushDeferredTargetPromotion: true,
     });
   }
 
@@ -87,6 +89,7 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
       resultReference: input.versionId,
       replayCaseVersion: false,
       replayFounderHash: false,
+      flushDeferredTargetPromotion: true,
     });
   }
 
@@ -115,6 +118,7 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
     resultReference: string;
     replayCaseVersion: boolean;
     replayFounderHash: boolean;
+    flushDeferredTargetPromotion?: boolean;
     resultKind?: "version" | "case";
   }>): Promise<CandidateListAcknowledgement> {
     try {
@@ -142,6 +146,11 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
           const row = response.rows[0];
           if (!row) throw new CandidateListError("CANDIDATE_LIST_CONFLICT");
           assertAllowed(row.decision);
+          if (command.flushDeferredTargetPromotion === true) {
+            await transaction.query({
+              text: "SET CONSTRAINTS ALL IMMEDIATE",
+            });
+          }
           const acknowledgement = Object.freeze({
             id: command.resultReference,
             recordVersion: Number(row.result_record_version),

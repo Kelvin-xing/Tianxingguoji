@@ -12,3 +12,6 @@ export * from "./infrastructure/school-governance-runtime.ts";
 export * from "./application/portal-read-port.ts";
 export * from "./infrastructure/postgresql-portal-read-adapter.ts";
 export * from "./infrastructure/postgresql-directory-repository.ts";
+export * from "./application/school-options-service.ts";
+export * from "./infrastructure/postgresql-school-options-repository.ts";
+export * from "./infrastructure/school-options-runtime.ts";

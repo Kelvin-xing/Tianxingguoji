@@ -1,5 +1,6 @@
 import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
+import { getTaskWorkflowRuntime } from "@/modules/tasks/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 import { assertCandidateListId,mapCandidateListError,readExactJson,
   requireCandidateListIdempotencyKey } from "../../route-support";
@@ -37,7 +38,25 @@ export async function POST(request: Request, context: { readonly params: Promise
         boundFounderDecisionSha256: body.bound_founder_decision_sha256,
         requestId: requestContext.requestId,idempotencyKey,
       });
-      return { id: result.id,record_version: result.recordVersion };
+      const automation = body.decision === "confirmed"
+        ? await drainApplicationTasks(actor.organizationId,caseId,versionId,requestContext.requestId)
+        : { applicationTasks:"completed" as const,requestedCount:0,provisionedCount:0 };
+      return { id: result.id,record_version: result.recordVersion,automation:{
+        application_tasks:automation.applicationTasks,
+        requested_count:automation.requestedCount,
+        provisioned_count:automation.provisionedCount,
+      } };
     } catch (error) { throw mapCandidateListError(error); }
   });
+}
+
+async function drainApplicationTasks(organizationId:string,caseId:string,versionId:string,
+  requestId:string) {
+  try {
+    return await getTaskWorkflowRuntime().applicationTaskConsumer.drainForCandidateVersion({
+      organizationId,caseId,versionId,requestId,
+    });
+  } catch {
+    return { applicationTasks:"pending" as const,requestedCount:-1,provisionedCount:0 };
+  }
 }

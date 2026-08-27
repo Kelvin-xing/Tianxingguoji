@@ -40,3 +40,6 @@ export * from "./infrastructure/postgresql-referral-source-repository.ts";
 export * from "./infrastructure/postgresql-case-intake-owner.ts";
 export * from "./application/portal-read-port.ts";
 export * from "./infrastructure/postgresql-portal-read-adapter.ts";
+export * from "./application/guardian-confirmation-options-service.ts";
+export * from "./infrastructure/postgresql-guardian-confirmation-options-repository.ts";
+export * from "./infrastructure/guardian-confirmation-options-runtime.ts";
