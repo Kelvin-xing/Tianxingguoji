@@ -34,6 +34,8 @@ test('FE-02 uses shared typed client and unavailable states for missing APIs', a
   assert.match(assessment, /requestApi/)
   assert.match(assessment, /blockingFieldIds/)
   assert.match(caseDetail, /initialAvailableWorkflowActions/)
+  assert.match(await readFile(new URL('../../../components/crm/CaseIntakeWorkspace.tsx', import.meta.url), 'utf8'), /DeniedState/)
+  assert.match(await readFile(new URL('../../../components/crm/CaseIntakeWorkspace.tsx', import.meta.url), 'utf8'), /FORBIDDEN/)
   assert.doesNotMatch(caseDetail, /actor\.role/)
   assert.doesNotMatch(cases, /preview|mock/i)
 })
