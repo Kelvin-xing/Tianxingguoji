@@ -73,20 +73,29 @@ test("Task UI covers truthful states, redaction, accessibility and responsive co
 });
 
 test("Task detail owns transition success after authoritative refresh without duplicate child status", async () => {
-  const [detail, transitions] = await Promise.all([
+  const [detail, transitions, automatic] = await Promise.all([
     source("components/tasks/TaskDetailView.tsx"),
     source("components/tasks/TaskTransitionControls.tsx"),
+    source("components/tasks/AutomaticTaskTransitionControls.tsx"),
   ]);
   assert.match(transitions, /authoritative\.task\.record_version !== receipt\.record_version/);
   assert.match(transitions, /onAuthoritativeChange\(authoritative, "success"\)/);
   assert.match(transitions, /onAuthoritativeChange\(authoritative, "stale"\)/);
   assert.doesNotMatch(transitions, /resetForm\("success"\)|notice === "success"|任務已更新，內容已重新載入。/);
-  assert.match(detail, /const \[transitionSucceeded, setTransitionSucceeded\] = useState\(false\)/);
-  assert.match(detail, /setTransitionSucceeded\(false\)/);
-  assert.match(detail, /setTransitionSucceeded\(outcome === "success"\)/);
+  assert.match(detail, /const \[transitionOutcome, setTransitionOutcome\]/);
+  assert.match(detail, /setTransitionOutcome\(null\)/);
+  assert.match(detail, /setTransitionOutcome\(outcome\)/);
   assert.match(detail, /role="status"/);
   assert.match(detail, /任務已更新，內容已重新載入。/);
-  assert.match(detail, /transitionSucceeded[\s\S]*canTransition && task\.available_transitions\.length > 0/);
+  assert.match(detail, /canTransition && task\.task_kind === "manual" && task\.available_transitions\.length > 0/);
+  assert.match(detail, /task\.task_kind !== "manual"/);
+  assert.match(automatic, /completeApplicationTask\(/);
+  assert.match(automatic, /transitionAutomaticTask\(/);
+  assert.doesNotMatch(automatic, /\/api\/v1\/tasks\/\$\{task\.id\}\/transitions["']/);
+  assert.match(automatic, /task\.task_kind === "interview_support"/);
+  assert.match(automatic, /面試完成記錄尚未開放/);
+  assert.match(automatic, /submitter_user_id: actorUserId/);
+  assert.match(automatic, /target_pending/);
 });
 
 test("TASK-01 permanent browser gate is isolated, privacy-safe and complete", async () => {

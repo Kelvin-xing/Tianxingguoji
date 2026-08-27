@@ -18,7 +18,11 @@ test('P3 FE task list/detail use the authoritative Task DTO and routes', async (
   assert.match(directory, /listTasks\(/)
   assert.match(detailView, /available_transitions/)
   assert.match(client, /\/api\/v1\/tasks\/\$\{taskId\}/)
-  assert.doesNotMatch(`${list}\n${detail}\n${directory}\n${detailView}`, /f3-client|F3TaskWorkspace|allowed_actions|task_type/)
+  assert.match(client, /task_kind/)
+  assert.match(client, /allowed_actions/)
+  assert.match(client, /reassign/)
+  assert.match(detailView, /AutomaticTaskTransitionControls/)
+  assert.doesNotMatch(`${list}\n${detail}\n${directory}\n${detailView}`, /f3-client|F3TaskWorkspace|task_type/)
 })
 
 test('P3 FE case sections keep applications/interviews/close separate and contractor redacted', async () => {

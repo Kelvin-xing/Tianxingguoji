@@ -21,7 +21,19 @@ export async function POST(request: Request, context: { readonly params: Promise
         completionRecord: body.completion_record ?? null, evidenceReference: body.evidence_reference ?? null,
         requestId: requestContext.requestId, idempotencyKey: key,
       });
-      return { id: result.id, record_version: result.recordVersion, state: result.state, completion_receipt_id: result.completionReceiptId ?? null };
+      if (body.action === "complete" && result.kind === "application_prepare_submit" &&
+          result.completionReceiptId && result.schoolTargetId) {
+        const automation = await getTaskWorkflowRuntime().applicationSubmissionConsumer.drainForTask({
+          organizationId: actor.organizationId,taskId: result.id,requestId: requestContext.requestId,
+        });
+        return { id: result.id,record_version: result.recordVersion,state: result.state,
+          completion_receipt_id: result.completionReceiptId,automation:{
+            target_transition:automation.targetTransition,target_id:automation.targetId || result.schoolTargetId,
+            target_record_version:automation.targetRecordVersion,
+          } } as unknown as import("@/modules/shared/public").JsonValue;
+      }
+      return { id: result.id, record_version: result.recordVersion, state: result.state,
+        completion_receipt_id: result.completionReceiptId ?? null } as unknown as import("@/modules/shared/public").JsonValue;
     } catch (error) { throw mapP3Error(error); }
   });
 }

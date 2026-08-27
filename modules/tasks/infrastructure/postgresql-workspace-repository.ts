@@ -25,10 +25,14 @@ const REFERENCE = /^([0-9a-f-]{36}):(\d{1,16})$/i;
 
 interface ReceiptRow extends Record<string, unknown> { request_hash: string; state: string; result_reference: string | null; response_hash: string | null }
 interface TaskRow extends Record<string, unknown> {
-  id: string; service_case_id: string; case_number: string; title: string; task_brief: string; due_at: Date | string;
+  id: string; service_case_id: string; case_number: string; title: string; school_target_id: string | null; task_brief: string; due_at: Date | string;
+  task_kind: "application_prepare_submit" | "interview_support" | "manual";
   state: TaskState; assignee_user_id: string; assignee_role: TaskAssigneeRole; assignee_redaction_profile: string | null;
   assignee_binding_id: string; owner_user_id: string; primary_user_id: string; primary_role: string;
   record_version: number | string; updated_at: Date | string; student_status: string; case_stage: string;
+  current_assignment_id: string | null; current_assignment_user_id: string | null;
+  current_assignment_role: TaskAssigneeRole | null; current_assignment_status: string | null;
+  is_overdue: boolean;
 }
 interface RuleRow extends Record<string, unknown> { from_state: TaskState; to_state: TaskState; actor_kind: "assignee" | "approver" | "owner"; allowed_actor_roles: TaskActorRole[]; requires_reason: boolean; requires_different_actor: boolean }
 interface ActorRow extends Record<string, unknown> { role: string }
@@ -127,6 +131,9 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       await assertActor(tx, input);
       const rows = await selectVisibleTasks(tx, input, null, input.taskId, true); const task = rows[0];
       if (!task || !isWritableTask(task)) notFound();
+      // Automatic P3 tasks have their own evidence-bearing transition boundary.
+      // The legacy workspace route may only transition explicitly manual tasks.
+      if (task.task_kind !== "manual") forbidden();
       await lockTaskAssignments(tx, task.id);
       if (replay) return replay;
       if (version(task.record_version) !== input.expectedRecordVersion) stale();
@@ -209,15 +216,27 @@ async function locateTaskCase(tx: Db, taskId: string): Promise<string | null> {
 }
 async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: string | null, taskId: string | null, update: boolean): Promise<readonly TaskRow[]> {
   const result = await tx.query<TaskRow>(`SELECT task.id,task.service_case_id,service_case.case_number,task.title,
-      task.task_brief,task.due_at,task.state,task.assignee_user_id,task.assignee_role,
+      task.school_target_id,task.task_kind,task.task_brief,task.due_at,task.state,task.assignee_user_id,task.assignee_role,
       task.assignee_redaction_profile,assignee_binding.id AS assignee_binding_id,task.owner_user_id,
       service_case.primary_user_id,service_case.primary_role,task.record_version,task.updated_at,
-      student.status AS student_status,service_case.stage AS case_stage
+      student.status AS student_status,service_case.stage AS case_stage,
+      (task.due_at < transaction_timestamp() AND task.state NOT IN ('completed','cancelled','rejected')) AS is_overdue,
+      current_assignment.id AS current_assignment_id,
+      current_assignment.assignee_user_id AS current_assignment_user_id,
+      current_assignment.assignee_role AS current_assignment_role,
+      current_assignment.status AS current_assignment_status
     FROM tasks_tasks AS task JOIN cases_service_cases AS service_case ON service_case.id=task.service_case_id
     JOIN crm_students AS student ON student.id=service_case.student_id AND student.organization_id=service_case.organization_id
     JOIN access_role_bindings AS assignee_binding ON assignee_binding.user_id=task.assignee_user_id
       AND assignee_binding.organization_id=task.organization_id AND assignee_binding.role=task.assignee_role
       AND assignee_binding.status='active'
+    LEFT JOIN LATERAL (
+      SELECT assignment.id,assignment.assignee_user_id,assignment.assignee_role,assignment.status
+        FROM tasks_task_assignments AS assignment
+       WHERE assignment.organization_id=task.organization_id
+         AND assignment.task_id=task.id AND assignment.ended_at IS NULL
+       ORDER BY assignment.created_at DESC,assignment.id DESC LIMIT 1
+    ) AS current_assignment ON true
     WHERE ($1::uuid IS NULL OR task.service_case_id=$1) AND ($2::uuid IS NULL OR task.id=$2)
       AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
         OR ($3='contractor' AND task.assignee_user_id=$4 AND task.assignee_role='contractor'
@@ -298,9 +317,24 @@ function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransit
     }
   }
   const transitions = [...transitionsByState.values()];
+  const currentAssignment = row.current_assignment_id ? Object.freeze({
+    id: row.current_assignment_id,
+    assigneeUserId: row.current_assignment_user_id ?? row.assignee_user_id,
+    assigneeRole: row.current_assignment_role ?? row.assignee_role,
+    status: row.current_assignment_status ?? "assigned",
+  }) : null;
+  const allowedActions = actor.actorRole === "contractor" || row.task_kind === "manual" ? Object.freeze([]) : Object.freeze([
+    ...(row.state === "assigned" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["accept", "reject"] as const : []),
+    ...(row.state === "accepted" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["complete"] as const : []),
+    ...(actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&
+        row.task_kind === "application_prepare_submit" && row.primary_user_id === actor.actorUserId ? ["reassign"] as const : []),
+    ...(row.primary_user_id === actor.actorUserId && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
+  ]);
   const base = { id: row.id,title: row.title,taskBrief: row.task_brief,dueAt: new Date(row.due_at).toISOString(),
     state: row.state,recordVersion: version(row.record_version),updatedAt: new Date(row.updated_at).toISOString(),
-    availableTransitions: Object.freeze(transitions) };
+    availableTransitions: Object.freeze(transitions), taskKind: row.task_kind,
+    schoolTargetId: row.school_target_id ?? null, isOverdue: row.is_overdue === true,
+    currentAssignment, allowedActions };
   if (actor.actorRole === "contractor") return Object.freeze(base);
   return Object.freeze({ ...base,caseId: row.service_case_id,caseNumber: row.case_number,
     assignee: assigneeView({ id: row.assignee_binding_id,user_id: row.assignee_user_id,role: row.assignee_role }) });

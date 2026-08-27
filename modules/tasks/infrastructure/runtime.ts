@@ -9,10 +9,16 @@ import { PostgresqlP3TaskRepository } from "./p3-postgresql-repository.ts";
 import { PostgresqlCasesTaskFactsPort } from "../../cases/server.ts";
 import { PostgresqlAccessTaskFactsPort } from "../../access/server.ts";
 import { PostgresqlCleanTaskEvidencePort } from "../../documents/server.ts";
+import { ApplicationTaskRequestConsumer } from "../application/application-task-request-consumer.ts";
+import { PostgresqlCasesApplicationTaskRequestFactsPort } from "../../cases/server.ts";
+import { ApplicationSubmissionConsumer } from "../../cases/server.ts";
+import { PostgresqlTasksApplicationCompletionEventFactsPort } from "./postgresql-application-completion-event-facts.ts";
 
 export interface TaskWorkflowRuntime {
   readonly service: TaskWorkspaceService;
   readonly p3Service: P3TaskService;
+  readonly applicationTaskConsumer: ApplicationTaskRequestConsumer;
+  readonly applicationSubmissionConsumer: ApplicationSubmissionConsumer;
 }
 
 export function isTaskWorkflowRuntimeUnavailable(value: unknown): value is TaskWorkflowRuntimeUnavailable {
@@ -48,7 +54,12 @@ export function getTaskWorkflowRuntime(): TaskWorkflowRuntime {
       ), p3Service: new P3TaskService(new PostgresqlP3TaskRepository(
         runner, new PostgresqlCasesTaskFactsPort(), new PostgresqlAccessTaskFactsPort(),
         new PostgresqlCleanTaskEvidencePort(),
-      )) });
+      )), applicationTaskConsumer: new ApplicationTaskRequestConsumer(
+        runner,new PostgresqlCasesApplicationTaskRequestFactsPort(),
+      ), applicationSubmissionConsumer: new ApplicationSubmissionConsumer(
+        runner,new PostgresqlTasksApplicationCompletionEventFactsPort(),
+        new PostgresqlCleanTaskEvidencePort(),
+      ) });
     } catch { throw new TaskWorkflowRuntimeUnavailable(); }
     runtimes.set(mode, runtime);
   }

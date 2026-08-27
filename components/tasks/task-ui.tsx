@@ -5,6 +5,7 @@ import type {
   AssignedTask,
   CaseWorkspaceTask,
   TaskAudience,
+  TaskKind,
 } from "@/modules/tasks/client";
 import type { TaskState } from "@/modules/tasks/public";
 
@@ -29,6 +30,13 @@ export function TaskAudienceNotice({ audience }: { readonly audience: TaskAudien
   );
 }
 
+export function TaskKindPill({ kind }: { readonly kind: TaskKind }) {
+  const label = kind === "application_prepare_submit" ? "申請提交"
+    : kind === "interview_support" ? "面試支援"
+      : "手工任務";
+  return <span className="status-pill">{label}</span>;
+}
+
 export function TaskListItem({ task }: { readonly task: TaskViewItem }) {
   const internal = "case_id" in task;
   return (
@@ -45,7 +53,11 @@ export function TaskListItem({ task }: { readonly task: TaskViewItem }) {
             {internal ? <span>負責人：{task.assignee.label}</span> : null}
           </div>
         </div>
-        <TaskStatePill state={task.state} />
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <TaskKindPill kind={task.task_kind} />
+          {task.is_overdue ? <span className="status-pill status-warning">已逾期</span> : null}
+          <TaskStatePill state={task.state} />
+        </div>
       </div>
     </li>
   );

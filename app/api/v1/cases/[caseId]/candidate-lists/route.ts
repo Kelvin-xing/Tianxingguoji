@@ -4,6 +4,7 @@ import { createApiError, handleApiRequest } from "@/modules/shared/public";
 import {
   assertCandidateListId,
   mapCandidateListError,
+  parseCandidateListQuery,
   readExactJson,
   requireCandidateListIdempotencyKey,
 } from "./route-support";
@@ -11,7 +12,66 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const BODY_FIELDS = ["change_summary","expected_case_record_version","items","previous_version_id"] as const;
-const ITEM_FIELDS = ["ordinal","pinned_resolution_sha256","pinned_resolved_revision_id","school_id"] as const;
+const ITEM_FIELDS = ["application_deadline","ordinal","pinned_resolution_sha256",
+  "pinned_resolved_revision_id","school_id"] as const;
+
+export async function GET(request: Request, context: {
+  readonly params: Promise<{ readonly caseId: string }>;
+}): Promise<Response> {
+  return handleApiRequest(request, async (requestContext) => {
+    try {
+      const { caseId } = await context.params;
+      assertCandidateListId(caseId);
+      const query = parseCandidateListQuery(request);
+      const actor = await requireApiRequestAccessContext();
+      const result = await getCaseWorkspaceRuntime().candidateListQueryService.list({
+        actor, caseId, requestId: requestContext.requestId,
+        limit: query.limit, cursor: query.cursor,
+      });
+      return {
+        items: result.items.map((version) => ({
+          id: version.id,
+          version_number: version.versionNumber,
+          previous_version_id: version.previousVersionId,
+          school_set_sha256: version.schoolSetSha256,
+          status: version.status,
+          record_version: version.recordVersion,
+          change_summary: version.changeSummary,
+          created_by_user_id: version.createdByUserId,
+          created_at: version.createdAt,
+          submitted_at: version.submittedAt,
+          items: version.items.map((item) => ({
+            id: item.id,
+            school_id: item.schoolId,
+            pinned_resolved_revision_id: item.pinnedResolvedRevisionId,
+            pinned_resolution_sha256: item.pinnedResolutionSha256,
+            ordinal: item.ordinal,
+            school_target_id: item.schoolTargetId,
+            application_deadline: item.applicationDeadline,
+          })),
+          founder_approval: version.founderApproval === null ? null : {
+            decision: version.founderApproval.decision,
+            decided_by_user_id: version.founderApproval.decidedByUserId,
+            decided_at: version.founderApproval.decidedAt,
+            reason: version.founderApproval.reason,
+            decision_sha256: version.founderApproval.decisionSha256,
+          },
+          guardian_decision: version.guardianDecision === null ? null : {
+            guardian_id: version.guardianDecision.guardianId,
+            guardian_relationship_id: version.guardianDecision.guardianRelationshipId,
+            decision: version.guardianDecision.decision,
+            decided_at: version.guardianDecision.decidedAt,
+            channel: version.guardianDecision.channel,
+            recorded_by_user_id: version.guardianDecision.recordedByUserId,
+            recorded_at: version.guardianDecision.recordedAt,
+            bound_founder_decision_sha256: version.guardianDecision.boundFounderDecisionSha256,
+          },
+        })),
+        next_cursor: result.nextCursor,
+      };
+    } catch (error) { throw mapCandidateListError(error); }
+  });
+}
 
 export async function POST(request: Request, context: {
   readonly params: Promise<{ readonly caseId: string }>;
@@ -35,10 +95,14 @@ export async function POST(request: Request, context: {
         if (typeof item.school_id !== "string" ||
             typeof item.pinned_resolved_revision_id !== "string" ||
             typeof item.pinned_resolution_sha256 !== "string" ||
-            typeof item.ordinal !== "number") throw createApiError("VALIDATION_FAILED");
+            typeof item.ordinal !== "number" ||
+            typeof item.application_deadline !== "string") {
+          throw createApiError("VALIDATION_FAILED");
+        }
         return { schoolId: item.school_id,
           pinnedResolvedRevisionId: item.pinned_resolved_revision_id,
-          pinnedResolutionSha256: item.pinned_resolution_sha256, ordinal: item.ordinal };
+          pinnedResolutionSha256: item.pinned_resolution_sha256, ordinal: item.ordinal,
+          applicationDeadline: item.application_deadline };
       });
       const actor = await requireApiRequestAccessContext();
       const result = await getCaseWorkspaceRuntime().candidateListService.createVersion({

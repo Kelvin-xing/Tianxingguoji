@@ -39,4 +39,9 @@ export type {
   TaskFactsTransaction,
   TaskCompletionFacts,
   TaskCompletionFactsPort,
+  ApplicationTaskRequestRef,
+  ApplicationTaskRequestFacts,
+  CasesApplicationTaskRequestFactsPort,
+  ApplicationTaskCompletionEventFacts,
+  TasksApplicationCompletionEventFactsPort,
 } from "./domain/p3-task-facts.ts";

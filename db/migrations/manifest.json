@@ -50,6 +50,7 @@
     { "name": "202608260110_048_complete_notifications_delivery.sql", "sha256": "1abf36845565b80708827136ccd1a6f6433f56c41b028e43ae0078f20b9d9d8c" },
     { "name": "202608260120_049_external_portal_release1_boundary.sql", "sha256": "ceea4e3f565aee4499f3c184694fbd7c1c0219f6ecefd365312892b10bb4f058" },
     { "name": "202608260130_050_allow_awaiting_reassignment_task_rules.sql", "sha256": "4859793a76a52f52cbce75890a1408970dc5572ca9568c088018030411b0c6bc" },
-    { "name": "202608260140_051_allow_task_transition_actor_kind_key.sql", "sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108" }
+    { "name": "202608260140_051_allow_task_transition_actor_kind_key.sql", "sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108" },
+    { "name": "202608280010_052_complete_application_task_delivery.sql", "sha256": "50a3d17b5b0246953d6e369407eb45da7140998455e6c6169102f504c4d436c3" }
   ]
 }

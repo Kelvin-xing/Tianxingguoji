@@ -43,7 +43,11 @@ import {
 
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
+const ADMIN = NEON_TEST_PRINCIPALS.find(({ role }) => role === "admin")!;
 const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+const SECONDARY_ADVISOR = NEON_TEST_PRINCIPALS.find(({ email }) =>
+  email === "advisor-secondary@env01.test.invalid")!;
+const CONTRACTOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "contractor")!;
 const STUDENT = NEON_TEST_STUDENTS[0]!;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
@@ -64,6 +68,9 @@ test("P2-BE-04 self-managed PostgreSQL 17 + Next HTTP candidate-list fixture", {
   const applicationPassword = randomBytes(32).toString("hex");
   const advisorPassword = randomBytes(32).toString("base64url");
   const founderPassword = randomBytes(32).toString("base64url");
+  const adminPassword = randomBytes(32).toString("base64url");
+  const secondaryAdvisorPassword = randomBytes(32).toString("base64url");
+  const contractorPassword = randomBytes(32).toString("base64url");
   const appDirectory = await createIsolatedAppDirectory();
   let initDirectory: string | undefined;
   let containerStarted = false;
@@ -113,12 +120,20 @@ test("P2-BE-04 self-managed PostgreSQL 17 + Next HTTP candidate-list fixture", {
 
     await provision(target, ADVISOR.email, advisorPassword);
     await provision(target, FOUNDER.email, founderPassword);
+    await provision(target, ADMIN.email, adminPassword);
+    await provision(target, SECONDARY_ADVISOR.email, secondaryAdvisorPassword);
+    await provision(target, CONTRACTOR.email, contractorPassword);
     const httpPort = await reserveLoopbackPort();
     devServer = startNextDev(appDirectory, httpPort, target.connectionString);
     const baseUrl = `http://127.0.0.1:${httpPort}`;
     await waitForNextDev(baseUrl, devServer);
     const advisorCookie = await login(baseUrl, ADVISOR.email, advisorPassword);
     const founderCookie = await login(baseUrl, FOUNDER.email, founderPassword);
+    const adminCookie = await login(baseUrl, ADMIN.email, adminPassword);
+    const secondaryAdvisorCookie = await login(
+      baseUrl, SECONDARY_ADVISOR.email, secondaryAdvisorPassword,
+    );
+    const contractorCookie = await login(baseUrl, CONTRACTOR.email, contractorPassword);
 
     const options = await request(baseUrl, "/api/v1/cases/intake-options", advisorCookie);
     assert.equal(options.response.status, 200);
@@ -156,6 +171,7 @@ test("P2-BE-04 self-managed PostgreSQL 17 + Next HTTP candidate-list fixture", {
       school_id: school.id,
       pinned_resolved_revision_id: revisions[index]!.id,
       pinned_resolution_sha256: school.recordSha256,
+      application_deadline: `2027-0${index + 4}-15T12:00:00.000Z`,
     }));
     const countsBefore = await readCandidateCounts(target);
     const createdList = await request(
@@ -210,6 +226,9 @@ test("P2-BE-04 self-managed PostgreSQL 17 + Next HTTP candidate-list fixture", {
     }
     const confirmationData = record(confirmed.body.data);
     assert.equal(number(confirmationData.record_version), 4);
+    assert.equal(record(confirmationData.automation).application_tasks, "completed", JSON.stringify(confirmationData));
+    assert.equal(number(record(confirmationData.automation).requested_count), NEON_TEST_SCHOOLS.length, JSON.stringify(confirmationData));
+    assert.equal(number(record(confirmationData.automation).provisioned_count), NEON_TEST_SCHOOLS.length, JSON.stringify(confirmationData));
     const replay = await request(
       baseUrl, `/api/v1/cases/${caseId}/candidate-lists/${versionId}/guardian-decision`, advisorCookie,
       "POST", guardianBody, "case04-guardian-confirm",
@@ -217,22 +236,59 @@ test("P2-BE-04 self-managed PostgreSQL 17 + Next HTTP candidate-list fixture", {
     assert.equal(replay.response.status, 200);
     assert.deepEqual(replay.body.data, confirmed.body.data);
 
+    const candidateListPath = `/api/v1/cases/${caseId}/candidate-lists`;
+    const advisorRead = await request(baseUrl, candidateListPath, advisorCookie);
+    assert.equal(advisorRead.response.status, 200);
+    const advisorReadData = record(advisorRead.body.data);
+    assert.deepEqual(Object.keys(advisorReadData).sort(),["items","next_cursor"]);
+    assert.equal(advisorReadData.next_cursor,null);
+    const versions = array(advisorReadData.items).map(record);
+    assert.equal(versions.length,1);
+    const persistedVersion = versions[0]!;
+    assert.equal(persistedVersion.id,versionId);
+    assert.equal(number(persistedVersion.version_number),1);
+    assert.equal(number(persistedVersion.record_version),4);
+    assert.equal(persistedVersion.status,"confirmed");
+    assert.equal(array(persistedVersion.items).length,NEON_TEST_SCHOOLS.length);
+    assert.equal(record(persistedVersion.founder_approval).decision,"approved");
+    assert.equal(record(persistedVersion.founder_approval).decision_sha256,founderDecisionHash);
+    assert.equal(record(persistedVersion.guardian_decision).decision,"confirmed");
+    assert.equal(record(persistedVersion.guardian_decision).guardian_id,STUDENT.guardianId);
+    assert.equal(
+      record(persistedVersion.guardian_decision).bound_founder_decision_sha256,
+      founderDecisionHash,
+    );
+    const founderRead = await request(baseUrl, candidateListPath, founderCookie);
+    assert.equal(founderRead.response.status,200);
+    assert.deepEqual(founderRead.body.data,advisorRead.body.data);
+    const nonPrimaryRead = await request(baseUrl,candidateListPath,secondaryAdvisorCookie);
+    assert.equal(nonPrimaryRead.response.status,404);
+    assert.equal(nonPrimaryRead.body.error?.code,"NOT_FOUND");
+    for (const deniedCookie of [adminCookie,contractorCookie]) {
+      const denied = await request(baseUrl,candidateListPath,deniedCookie);
+      assert.equal(denied.response.status,403);
+      assert.equal(denied.body.error?.code,"FORBIDDEN");
+    }
+
     const after = await readCandidateCounts(target);
     assert.equal(after.versions - countsBefore.versions, 1);
     assert.equal(after.items - countsBefore.items, NEON_TEST_SCHOOLS.length);
     assert.equal(after.targets - countsBefore.targets, NEON_TEST_SCHOOLS.length);
-    assert.equal(after.audit - countsBefore.audit, 3);
-    assert.equal(after.outbox - countsBefore.outbox, 3);
+    assert.equal(after.audit - countsBefore.audit, 9);
+    assert.equal(after.outbox - countsBefore.outbox, 9);
     const caseState = await readCaseState(target, caseId);
-    assert.equal(caseState.stage, "school_selection_confirmed");
+    assert.equal(caseState.stage, "application_in_progress");
     assert.equal(caseState.workflow_status, "active");
     assert.notEqual(caseState.workflow_status, "closed");
-    assertNoSensitiveDevLogs(devServer, [applicationPassword, advisorPassword, founderPassword, "postgresql://"]);
+    assertNoSensitiveDevLogs(devServer, [applicationPassword,advisorPassword,founderPassword,
+      adminPassword,secondaryAdvisorPassword,contractorPassword,"postgresql://"]);
 
     process.stdout.write(`${JSON.stringify({
       status: "pass", scope: "P2-BE-04", postgres_major: 17,
-      http: { intake_options: 200, case_create: 200, list_create: 200, founder_approve: 200,
-        guardian_confirm: 200, replay: 200 },
+      http: { intake_options: 200,case_create: 200,list_create: 200,founder_approve: 200,
+        guardian_confirm: 200,replay: 200,candidate_list_read_advisor: 200,
+        candidate_list_read_founder: 200,candidate_list_read_non_primary: 404,
+        candidate_list_read_admin: 403,candidate_list_read_contractor: 403 },
       fixture: { synthetic_only: true, authenticated: true, resolved_revisions: revisions.length,
         targets: after.targets - countsBefore.targets, audit: after.audit - countsBefore.audit,
         outbox: after.outbox - countsBefore.outbox },
@@ -483,23 +539,26 @@ function controlClient(target: OneRoleBaselineTarget, password: string): Client 
   });
 }
 
-async function readCandidateCounts(target: OneRoleBaselineTarget): Promise<Readonly<{ versions: number; items: number; targets: number; audit: number; outbox: number }>> {
+async function readCandidateCounts(target: OneRoleBaselineTarget): Promise<Readonly<{ versions: number; items: number; targets: number; audit: number; outbox: number; preparing: number; requestedAudit: number; requestedOutbox: number }>> {
   const client = new Client(createOneRoleBaselineClientConfig(target));
   try {
     await client.connect();
     await client.query("SELECT set_config('app.organization_id',$1,false)", [NEON_TEST_ORGANIZATION.id]);
-    const result = await client.query<{ versions: string; items: string; targets: string; audit: string; outbox: string }>(
+    const result = await client.query<{ versions: string; items: string; targets: string; audit: string; outbox: string; preparing: string; requested_audit: string; requested_outbox: string }>(
       `SELECT
          (SELECT count(*)::text FROM cases_candidate_school_list_versions WHERE organization_id=$1) AS versions,
          (SELECT count(*)::text FROM cases_candidate_school_list_items WHERE organization_id=$1) AS items,
          (SELECT count(*)::text FROM cases_school_targets WHERE organization_id=$1) AS targets,
          (SELECT count(*)::text FROM audit_events WHERE organization_id=$1) AS audit,
-         (SELECT count(*)::text FROM audit_outbox WHERE organization_id=$1) AS outbox`,
+         (SELECT count(*)::text FROM audit_outbox WHERE organization_id=$1) AS outbox,
+         (SELECT count(*)::text FROM cases_school_targets WHERE organization_id=$1 AND state='preparing') AS preparing,
+         (SELECT count(*)::text FROM audit_events WHERE organization_id=$1 AND event_type='cases.application_task_requested') AS requested_audit,
+         (SELECT count(*)::text FROM audit_outbox WHERE organization_id=$1 AND event_type='cases.application_task_requested') AS requested_outbox`,
       [NEON_TEST_ORGANIZATION.id],
     );
     const row = result.rows[0];
     if (!row) throw new HarnessError("candidate_counts");
-    return Object.freeze({ versions: Number(row.versions), items: Number(row.items), targets: Number(row.targets), audit: Number(row.audit), outbox: Number(row.outbox) });
+    return Object.freeze({ versions: Number(row.versions), items: Number(row.items), targets: Number(row.targets), audit: Number(row.audit), outbox: Number(row.outbox), preparing: Number(row.preparing), requestedAudit: Number(row.requested_audit), requestedOutbox: Number(row.requested_outbox) });
   } catch (error) {
     if (error instanceof HarnessError) throw error;
     throw new HarnessError("candidate_counts");

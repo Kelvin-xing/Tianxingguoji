@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 
 import { createK12Case, listIntakeOptions, type IntakeOptionsDto } from '@/components/crm/f2-contract'
-import { ErrorState, LoadingState, StaleState, SuccessState, UnavailableState } from '@/components/states/WorkspaceState'
+import { DeniedState, ErrorState, LoadingState, StaleState, SuccessState, UnavailableState } from '@/components/states/WorkspaceState'
 import { ApiClientError } from '@/lib/api/client'
 
 export function CaseIntakeWorkspace() {
@@ -15,14 +15,18 @@ export function CaseIntakeWorkspace() {
   const [intakeYear, setIntakeYear] = useState(String(new Date().getFullYear() + 1))
   const [admissionType, setAdmissionType] = useState<'entry' | 'transfer'>('entry')
   const [signedAt, setSignedAt] = useState('')
-  const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'error' | 'stale' | 'success'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'unavailable' | 'error' | 'stale' | 'success'>('loading')
   const [errorCode, setErrorCode] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<{ readonly case_id: string; readonly assessment_url: string } | null>(null)
 
   useEffect(() => {
     const preselected = new URLSearchParams(window.location.search).get('studentId')
     if (preselected) setStudentId(preselected)
-    void listIntakeOptions().then((value) => { setOptions(value); setStudentId((current) => current || value.students[0]?.id || ''); setAdvisorId(value.advisors[0]?.id || ''); setState('ready') }).catch((error: unknown) => { setErrorCode(error instanceof ApiClientError ? error.code : 'UNAVAILABLE'); setState('unavailable') })
+    void listIntakeOptions().then((value) => { setOptions(value); setStudentId((current) => current || value.students[0]?.id || ''); setAdvisorId(value.advisors[0]?.id || ''); setState('ready') }).catch((error: unknown) => {
+      const code = error instanceof ApiClientError ? error.code : 'UNAVAILABLE'
+      setErrorCode(code)
+      setState(code === 'FORBIDDEN' ? 'denied' : 'unavailable')
+    })
   }, [])
 
   const selectedStudent = useMemo(() => options?.students.find((item) => item.id === studentId), [options, studentId])
@@ -38,12 +42,14 @@ export function CaseIntakeWorkspace() {
       setReceipt({ case_id: result.case_id, assessment_url: result.assessment_url }); setState('success')
     } catch (error: unknown) {
       setErrorCode(error instanceof ApiClientError ? error.code : 'CREATE_FAILED')
-      if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setState('stale')
+      if (error instanceof ApiClientError && error.code === 'FORBIDDEN') setState('denied')
+      else if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setState('stale')
       else setState(error instanceof ApiClientError && error.code === 'SERVICE_UNAVAILABLE' ? 'unavailable' : 'error')
     }
   }
 
   if (state === 'loading' && !options) return <LoadingState title="正在载入 Case intake options" detail="只使用服务端 allowlisted active Student、Advisor 与 ReferralSource。" />
+  if (state === 'denied') return <DeniedState title="当前账号无法建立 Case" detail="Case intake 由 Advisor 负责。请使用 Advisor 账号，或为该员工同时分配 Advisor 基础角色；Founder-only、Admin 和 Contractor 不能直接建案。" onRetry={() => window.location.reload()} />
   if (state === 'unavailable') return <UnavailableState title="Case intake 尚未可用" detail={`冻结的 intake-options transport 当前不可用${errorCode ? `（${errorCode}）` : ''}；不会使用旧 manifest picker 或 preview adapter。`} onRetry={() => window.location.reload()} />
   if (state === 'stale') return <StaleState title="Case intake 版本已变化" detail="服务端拒绝了过期提交；请重新载入选项后再试。" onRetry={() => window.location.reload()} />
   if (state === 'success' && receipt) return <SuccessState title="Case 已建立" detail="服务端 receipt 已确认，案件进入 background_collection；Assessment 使用 canonical URL。" action={<div className="flex flex-wrap gap-2"><Link className="primary-button" href={receipt.assessment_url}>打开 Assessment</Link><Link className="secondary-button" href="/cases">返回 Cases</Link></div>} />

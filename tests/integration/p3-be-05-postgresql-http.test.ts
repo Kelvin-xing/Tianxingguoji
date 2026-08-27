@@ -28,8 +28,7 @@ test("P3-BE-05 exercises the HTTP route when a running app is configured", { ski
     headers: { "content-type": "application/json", "idempotency-key": "p3-http-probe" },
     body: JSON.stringify({}),
   });
-  assert.ok(response.status >= 400 && response.status < 600);
-  assert.notEqual(response.status, 500);
+  assert.equal(response.status, 404);
 });
 
 test("P3-BE-05 failure injection is wired to the transaction boundary", async () => {

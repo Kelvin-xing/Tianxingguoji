@@ -59,6 +59,16 @@ test("transition maps a lost task UPDATE race to stale instead of reporting succ
   );
 });
 
+test("legacy transition boundary rejects automatic P3 tasks", async () => {
+  const seam = transitionSeam(1, "application_prepare_submit");
+  await assert.rejects(
+    service(seam.runner).transition({ actor: ACTOR, taskId: TASK_ID, command: command() }),
+    (error: unknown) => error instanceof Error &&
+      error.name === "TaskWorkspaceError" &&
+      (error as Error & { code?: unknown }).code === "TASK_FORBIDDEN",
+  );
+});
+
 function service(runner: TenantTransactionRunner): TaskWorkspaceService {
   let index = 0;
   return new TaskWorkspaceService(
@@ -79,7 +89,7 @@ function command() {
   });
 }
 
-function transitionSeam(updateRowCount: number) {
+function transitionSeam(updateRowCount: number, taskKind: "manual" | "application_prepare_submit" | "interview_support" = "manual") {
   const observedLockOrder: string[] = [];
   let caseLockingQuery = "";
   let taskLockingQuery = "";
@@ -116,7 +126,7 @@ function transitionSeam(updateRowCount: number) {
           if (sql.includes("SELECT task.id,task.service_case_id")) {
             observedLockOrder.push("task");
             taskLockingQuery = sql;
-            return result([taskRow()]) as DatabaseQueryResult<Row>;
+            return result([taskRow(taskKind)]) as DatabaseQueryResult<Row>;
           }
           if (sql.includes("FROM tasks_task_assignments AS assignment")) {
             observedLockOrder.push("assignment");
@@ -174,10 +184,11 @@ function caseRow() {
   });
 }
 
-function taskRow() {
+function taskRow(taskKind: "manual" | "application_prepare_submit" | "interview_support" = "manual") {
   return Object.freeze({
     id: TASK_ID,
     service_case_id: CASE_ID,
+    task_kind: taskKind,
     case_number: "CASE-SYNTHETIC",
     title: "Synthetic task",
     task_brief: "Synthetic task brief",

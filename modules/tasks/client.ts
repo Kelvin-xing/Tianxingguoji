@@ -12,9 +12,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor"] as const);
 const AUDIENCES = Object.freeze(["case_workspace", "assigned_task"] as const);
+const TASK_KINDS = Object.freeze(["application_prepare_submit", "interview_support", "manual"] as const);
+const AUTOMATIC_TASK_ACTIONS = Object.freeze(["accept", "reject", "reassign", "complete", "cancel"] as const);
+const SUBMISSION_CHANNELS = Object.freeze(["school_portal", "email", "courier", "in_person", "other"] as const);
 
 export type TaskAudience = (typeof AUDIENCES)[number];
 export type TaskAssigneeRole = (typeof ASSIGNEE_ROLES)[number];
+export type TaskKind = (typeof TASK_KINDS)[number];
+export type AutomaticTaskAction = (typeof AUTOMATIC_TASK_ACTIONS)[number];
+export type SubmissionChannel = (typeof SUBMISSION_CHANNELS)[number];
 
 export interface TaskAssignee {
   readonly id: string;
@@ -28,6 +34,13 @@ export interface AvailableTaskTransition {
   readonly requires_assignee: boolean;
 }
 
+export interface CurrentTaskAssignment {
+  readonly id: string;
+  readonly assignee_user_id: string;
+  readonly assignee_role: TaskAssigneeRole;
+  readonly status: string;
+}
+
 interface TaskBase {
   readonly id: string;
   readonly title: string;
@@ -37,6 +50,11 @@ interface TaskBase {
   readonly record_version: number;
   readonly updated_at: string;
   readonly available_transitions: readonly AvailableTaskTransition[];
+  readonly task_kind: TaskKind;
+  readonly school_target_id: string | null;
+  readonly is_overdue: boolean;
+  readonly current_assignment: CurrentTaskAssignment | null;
+  readonly allowed_actions: readonly AutomaticTaskAction[];
 }
 
 export interface CaseWorkspaceTask extends TaskBase {
@@ -77,6 +95,43 @@ export interface TransitionTaskInput {
 export interface TaskWriteReceipt {
   readonly id: string;
   readonly record_version: number;
+}
+
+export type AutomaticTaskTransitionInput =
+  | { readonly action: "accept"; readonly expected_record_version: number }
+  | { readonly action: "reject" | "cancel"; readonly expected_record_version: number; readonly reason: string }
+  | { readonly action: "reassign"; readonly expected_record_version: number; readonly reason: string; readonly next_assignee_user_id: string };
+
+export interface ApplicationCompletionRecord {
+  readonly submitted_at: string;
+  readonly submission_channel: SubmissionChannel;
+  readonly submitter_user_id: string;
+  readonly checklist_snapshot: Readonly<{
+    readonly all_required_items_complete: true;
+    readonly confirmed_at: string;
+  }>;
+  readonly official_submission_reference: string | null;
+  readonly no_reference_declared: boolean;
+}
+
+export interface CompleteApplicationTaskInput {
+  readonly action: "complete";
+  readonly expected_record_version: number;
+  readonly completion_record: ApplicationCompletionRecord;
+  readonly evidence_reference: string | null;
+}
+
+export interface AutomaticTaskWriteReceipt extends TaskWriteReceipt {
+  readonly state: TaskState;
+  readonly completion_receipt_id: string | null;
+}
+
+export interface ApplicationTaskCompletionReceipt extends AutomaticTaskWriteReceipt {
+  readonly automation: Readonly<{
+    readonly target_transition: "completed" | "pending";
+    readonly target_id: string;
+    readonly target_record_version: number | null;
+  }>;
 }
 
 export type TaskFailureKind =
@@ -163,6 +218,76 @@ export function transitionTask(
   );
 }
 
+export function transitionAutomaticTask(
+  taskId: string,
+  input: AutomaticTaskTransitionInput,
+  idempotencyKey: string,
+): Promise<AutomaticTaskWriteReceipt> {
+  assertUuid(taskId, "taskId");
+  const normalized = normalizeAutomaticTaskTransitionInput(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/p3-transitions`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: normalized.action === "accept"
+        ? { action: normalized.action, expected_record_version: normalized.expected_record_version }
+        : normalized.action === "reassign"
+          ? { action: normalized.action, expected_record_version: normalized.expected_record_version,
+              reason: normalized.reason, next_assignee_user_id: normalized.next_assignee_user_id }
+        : { action: normalized.action, expected_record_version: normalized.expected_record_version, reason: normalized.reason },
+    },
+    (value) => decodeAutomaticTaskWriteReceipt(
+      value,
+      taskId,
+      normalized.expected_record_version + 1,
+      normalized.action,
+    ),
+  );
+}
+
+export function completeApplicationTask(
+  taskId: string,
+  targetId: string,
+  input: CompleteApplicationTaskInput,
+  idempotencyKey: string,
+): Promise<ApplicationTaskCompletionReceipt> {
+  assertUuid(taskId, "taskId");
+  assertUuid(targetId, "targetId");
+  const normalized = normalizeCompleteApplicationTaskInput(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/p3-transitions`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        action: normalized.action,
+        expected_record_version: normalized.expected_record_version,
+        completion_record: {
+          submitted_at: normalized.completion_record.submitted_at,
+          submission_channel: normalized.completion_record.submission_channel,
+          submitter_user_id: normalized.completion_record.submitter_user_id,
+          checklist_snapshot: {
+            all_required_items_complete: normalized.completion_record.checklist_snapshot.all_required_items_complete,
+            confirmed_at: normalized.completion_record.checklist_snapshot.confirmed_at,
+          },
+          official_submission_reference: normalized.completion_record.official_submission_reference,
+          no_reference_declared: normalized.completion_record.no_reference_declared,
+        },
+        evidence_reference: normalized.evidence_reference,
+      },
+    },
+    (value) => decodeApplicationTaskCompletionReceipt(
+      value,
+      taskId,
+      targetId,
+      normalized.expected_record_version + 1,
+    ),
+  );
+}
+
 export function classifyTaskFailure(error: unknown): TaskFailureKind {
   if (!(error instanceof ApiClientError)) return "unavailable";
   if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
@@ -182,6 +307,17 @@ export function createTaskFingerprint(input: CreateTaskInput): string {
 export function transitionTaskFingerprint(taskId: string, input: TransitionTaskInput): string {
   assertUuid(taskId, "taskId");
   const normalized = normalizeTransitionTaskInput(input);
+  return JSON.stringify({ task_id: taskId, ...normalized });
+}
+
+export function automaticTaskTransitionFingerprint(
+  taskId: string,
+  input: AutomaticTaskTransitionInput | CompleteApplicationTaskInput,
+): string {
+  assertUuid(taskId, "taskId");
+  const normalized = input.action === "complete"
+    ? normalizeCompleteApplicationTaskInput(input)
+    : normalizeAutomaticTaskTransitionInput(input);
   return JSON.stringify({ task_id: taskId, ...normalized });
 }
 
@@ -258,7 +394,15 @@ function decodeCaseWorkspaceTask(value: unknown): CaseWorkspaceTask {
     "record_version",
     "updated_at",
     "available_transitions",
+    "task_kind",
+    "school_target_id",
+    "is_overdue",
+    "current_assignment",
+    "allowed_actions",
   ]);
+  const taskKind = oneOf(record.task_kind, TASK_KINDS, "task.task_kind");
+  const schoolTargetId = nullableUuid(record.school_target_id, "task.school_target_id");
+  assertTaskKindTarget(taskKind, schoolTargetId);
   return Object.freeze({
     id: uuid(record.id, "task.id"),
     case_id: uuid(record.case_id, "task.case_id"),
@@ -271,6 +415,11 @@ function decodeCaseWorkspaceTask(value: unknown): CaseWorkspaceTask {
     record_version: positiveInteger(record.record_version, "task.record_version"),
     updated_at: isoTimestamp(record.updated_at, "task.updated_at"),
     available_transitions: decodeAvailableTransitions(record.available_transitions),
+    task_kind: taskKind,
+    school_target_id: schoolTargetId,
+    is_overdue: expectBooleanValue(record.is_overdue, "task.is_overdue"),
+    current_assignment: decodeCurrentTaskAssignment(record.current_assignment),
+    allowed_actions: decodeAutomaticTaskActions(record.allowed_actions),
   });
 }
 
@@ -284,7 +433,15 @@ function decodeAssignedTask(value: unknown): AssignedTask {
     "record_version",
     "updated_at",
     "available_transitions",
+    "task_kind",
+    "school_target_id",
+    "is_overdue",
+    "current_assignment",
+    "allowed_actions",
   ]);
+  const taskKind = oneOf(record.task_kind, TASK_KINDS, "task.task_kind");
+  const schoolTargetId = nullableUuid(record.school_target_id, "task.school_target_id");
+  assertTaskKindTarget(taskKind, schoolTargetId);
   return Object.freeze({
     id: uuid(record.id, "task.id"),
     title: boundedText(record.title, "task.title", 300),
@@ -294,7 +451,29 @@ function decodeAssignedTask(value: unknown): AssignedTask {
     record_version: positiveInteger(record.record_version, "task.record_version"),
     updated_at: isoTimestamp(record.updated_at, "task.updated_at"),
     available_transitions: decodeAvailableTransitions(record.available_transitions),
+    task_kind: taskKind,
+    school_target_id: schoolTargetId,
+    is_overdue: expectBooleanValue(record.is_overdue, "task.is_overdue"),
+    current_assignment: decodeCurrentTaskAssignment(record.current_assignment),
+    allowed_actions: decodeAutomaticTaskActions(record.allowed_actions),
   });
+}
+
+function decodeCurrentTaskAssignment(value: unknown): CurrentTaskAssignment | null {
+  if (value === null) return null;
+  const record = exactRecord(value, ["id", "assignee_user_id", "assignee_role", "status"]);
+  return Object.freeze({
+    id: uuid(record.id, "assignment.id"),
+    assignee_user_id: uuid(record.assignee_user_id, "assignment.assignee_user_id"),
+    assignee_role: oneOf(record.assignee_role, ASSIGNEE_ROLES, "assignment.assignee_role"),
+    status: boundedText(record.status, "assignment.status", 100),
+  });
+}
+
+function decodeAutomaticTaskActions(value: unknown): readonly AutomaticTaskAction[] {
+  const actions = expectArray(value, (action) => oneOf(action, AUTOMATIC_TASK_ACTIONS, "task.allowed_actions"));
+  assertUnique(actions, "task.allowed_actions");
+  return Object.freeze(actions);
 }
 
 function decodeTaskAssigneeOptions(value: unknown): TaskAssigneeOptions {
@@ -347,6 +526,64 @@ function decodeTaskWriteReceipt(
   return Object.freeze({ id, record_version: recordVersion });
 }
 
+function decodeAutomaticTaskWriteReceipt(
+  value: unknown,
+  expectedId: string,
+  expectedVersion: number,
+  action: AutomaticTaskTransitionInput["action"],
+): AutomaticTaskWriteReceipt {
+  const record = exactRecord(value, ["id", "record_version", "state", "completion_receipt_id"]);
+  const receipt = decodeTaskWriteReceipt(
+    { id: record.id, record_version: record.record_version },
+    expectedId,
+    expectedVersion,
+  );
+  const expectedState = action === "accept" ? "accepted" : action === "cancel" ? "cancelled" : "assigned";
+  const state = oneOf(record.state, TASK_STATES, "receipt.state");
+  if (state !== expectedState || record.completion_receipt_id !== null) {
+    throw new TypeError("Mismatched automatic Task receipt.");
+  }
+  return Object.freeze({ ...receipt, state, completion_receipt_id: null });
+}
+
+function decodeApplicationTaskCompletionReceipt(
+  value: unknown,
+  expectedId: string,
+  expectedTargetId: string,
+  expectedVersion: number,
+): ApplicationTaskCompletionReceipt {
+  const record = exactRecord(value, ["id", "record_version", "state", "completion_receipt_id", "automation"]);
+  const receipt = decodeTaskWriteReceipt(
+    { id: record.id, record_version: record.record_version },
+    expectedId,
+    expectedVersion,
+  );
+  const state = oneOf(record.state, TASK_STATES, "receipt.state");
+  const completionReceiptId = uuid(record.completion_receipt_id, "receipt.completion_receipt_id");
+  if (state !== "completed") throw new TypeError("Mismatched application Task completion state.");
+  const automationRecord = exactRecord(record.automation, ["target_transition", "target_id", "target_record_version"]);
+  const targetTransition = oneOf(automationRecord.target_transition, ["completed", "pending"] as const, "receipt.automation.target_transition");
+  const targetId = uuid(automationRecord.target_id, "receipt.automation.target_id");
+  const targetRecordVersion = automationRecord.target_record_version === null
+    ? null
+    : positiveInteger(automationRecord.target_record_version, "receipt.automation.target_record_version");
+  if (targetId !== expectedTargetId ||
+      (targetTransition === "completed" && targetRecordVersion === null) ||
+      (targetTransition === "pending" && targetRecordVersion !== null)) {
+    throw new TypeError("Mismatched application Task automation receipt.");
+  }
+  return Object.freeze({
+    ...receipt,
+    state,
+    completion_receipt_id: completionReceiptId,
+    automation: Object.freeze({
+      target_transition: targetTransition,
+      target_id: targetId,
+      target_record_version: targetRecordVersion,
+    }),
+  });
+}
+
 function normalizeCreateTaskInput(input: CreateTaskInput): CreateTaskInput {
   assertUuid(input.case_id, "case_id");
   assertUuid(input.assignee_user_id, "assignee_user_id");
@@ -379,6 +616,71 @@ function normalizeTransitionTaskInput(input: TransitionTaskInput): TransitionTas
     expected_record_version: expectedRecordVersion,
     reason,
     next_assignee_user_id: nextAssigneeUserId,
+  });
+}
+
+function normalizeAutomaticTaskTransitionInput(
+  input: AutomaticTaskTransitionInput,
+): AutomaticTaskTransitionInput {
+  const action = oneOf(input.action, ["accept", "reject", "reassign", "cancel"] as const, "action");
+  const expectedRecordVersion = positiveInteger(input.expected_record_version, "expected_record_version");
+  if (action === "accept") {
+    return Object.freeze({ action, expected_record_version: expectedRecordVersion });
+  }
+  if (!("reason" in input)) throw new TypeError("Task transition requires a reason.");
+  const reason = normalizeBoundedText(input.reason, "reason", 4_000);
+  if (action === "reassign") {
+    const nextAssigneeUserId = "next_assignee_user_id" in input ? input.next_assignee_user_id : undefined;
+    if (!nextAssigneeUserId) throw new TypeError("Reassignment requires an assignee.");
+    assertUuid(nextAssigneeUserId, "next_assignee_user_id");
+    return Object.freeze({ action, expected_record_version: expectedRecordVersion, reason,
+      next_assignee_user_id: nextAssigneeUserId });
+  }
+  return Object.freeze({ action, expected_record_version: expectedRecordVersion, reason });
+}
+
+function normalizeCompleteApplicationTaskInput(
+  input: CompleteApplicationTaskInput,
+): CompleteApplicationTaskInput {
+  if (input.action !== "complete") throw new TypeError("Invalid application Task action.");
+  const expectedRecordVersion = positiveInteger(input.expected_record_version, "expected_record_version");
+  const record = input.completion_record;
+  const submittedAt = pastOrPresentIsoTimestamp(record.submitted_at, "completion_record.submitted_at");
+  const confirmedAt = pastOrPresentIsoTimestamp(record.checklist_snapshot.confirmed_at, "completion_record.checklist_snapshot.confirmed_at");
+  const submissionChannel = oneOf(record.submission_channel, SUBMISSION_CHANNELS, "completion_record.submission_channel");
+  assertUuid(record.submitter_user_id, "completion_record.submitter_user_id");
+  if (record.checklist_snapshot.all_required_items_complete !== true) {
+    throw new TypeError("Application checklist is incomplete.");
+  }
+  const noReferenceDeclared = record.no_reference_declared;
+  if (typeof noReferenceDeclared !== "boolean") throw new TypeError("Invalid no_reference_declared.");
+  const officialReference = record.official_submission_reference === null
+    ? null
+    : record.official_submission_reference.trim();
+  if ((noReferenceDeclared && officialReference !== null) ||
+      (!noReferenceDeclared && (officialReference === null || officialReference === ""))) {
+    throw new TypeError("Application reference selection is invalid.");
+  }
+  const evidenceReference = input.evidence_reference;
+  if (evidenceReference !== null) assertUuid(evidenceReference, "evidence_reference");
+  if (noReferenceDeclared && evidenceReference === null) {
+    throw new TypeError("No-reference completion requires evidence.");
+  }
+  return Object.freeze({
+    action: "complete",
+    expected_record_version: expectedRecordVersion,
+    completion_record: Object.freeze({
+      submitted_at: submittedAt,
+      submission_channel: submissionChannel,
+      submitter_user_id: record.submitter_user_id,
+      checklist_snapshot: Object.freeze({
+        all_required_items_complete: true,
+        confirmed_at: confirmedAt,
+      }),
+      official_submission_reference: officialReference,
+      no_reference_declared: noReferenceDeclared,
+    }),
+    evidence_reference: evidenceReference,
   });
 }
 
@@ -422,6 +724,22 @@ function isoTimestamp(value: unknown, field: string): string {
     throw new TypeError(`Invalid ${field}.`);
   }
   return parsed;
+}
+
+function pastOrPresentIsoTimestamp(value: unknown, field: string): string {
+  const parsed = isoTimestamp(value, field);
+  if (Date.parse(parsed) > Date.now()) throw new TypeError(`Future ${field}.`);
+  return parsed;
+}
+
+function nullableUuid(value: unknown, field: string): string | null {
+  return value === null ? null : uuid(value, field);
+}
+
+function assertTaskKindTarget(kind: TaskKind, targetId: string | null): void {
+  if ((kind === "manual") !== (targetId === null)) {
+    throw new TypeError("Task kind and SchoolTarget do not match.");
+  }
 }
 
 function oneOf<const Values extends readonly string[]>(

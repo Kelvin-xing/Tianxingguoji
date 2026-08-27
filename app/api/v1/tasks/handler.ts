@@ -24,10 +24,14 @@ export function detailData(value:TaskDetailView):JsonValue{return{audience:value
 export function optionsData(value:TaskOptionsView):JsonValue{return{assignees:value.assignees.map(assigneeData)};}
 export function acknowledgementData(value:TaskAcknowledgement):JsonValue{return{id:value.id,record_version:value.recordVersion};}
 function taskData(value:TaskView,audience:TaskCollectionView["audience"]):JsonValue{const base={id:value.id,title:value.title,task_brief:value.taskBrief,due_at:value.dueAt,state:value.state,
-  record_version:value.recordVersion,updated_at:value.updatedAt,available_transitions:value.availableTransitions.map((item)=>({to:item.to,requires_reason:item.requiresReason,requires_assignee:item.requiresAssignee}))};
+  record_version:value.recordVersion,updated_at:value.updatedAt,available_transitions:value.availableTransitions.map((item)=>({to:item.to,requires_reason:item.requiresReason,requires_assignee:item.requiresAssignee})),
+  task_kind:value.taskKind,school_target_id:value.schoolTargetId,is_overdue:value.isOverdue,current_assignment:value.currentAssignment ? {
+    id:value.currentAssignment.id,assignee_user_id:value.currentAssignment.assigneeUserId,assignee_role:value.currentAssignment.assigneeRole,status:value.currentAssignment.status,
+  } : null,allowed_actions:[...value.allowedActions]};
   if(audience==="assigned_task")return base;const internal=value as TaskView&{caseId:string;caseNumber:string;assignee:TaskAssigneeView};return{id:base.id,case_id:internal.caseId,
     case_number:internal.caseNumber,title:base.title,task_brief:base.task_brief,due_at:base.due_at,state:base.state,assignee:assigneeData(internal.assignee),record_version:base.record_version,
-    updated_at:base.updated_at,available_transitions:base.available_transitions};}
+    updated_at:base.updated_at,available_transitions:base.available_transitions,task_kind:base.task_kind,school_target_id:base.school_target_id,
+    is_overdue:base.is_overdue,current_assignment:base.current_assignment,allowed_actions:base.allowed_actions};}
 function assigneeData(value:TaskAssigneeView):JsonValue{return{id:value.id,role:value.role,label:value.label};}
 export function mapTaskError(error:unknown):unknown{if(isTaskWorkflowRuntimeUnavailable(error))return createApiError("SERVICE_UNAVAILABLE");if(!isTaskWorkspaceError(error))return error;
   switch(error.code){case"TASK_FORBIDDEN":return createApiError("FORBIDDEN");case"TASK_INVALID":return createApiError("VALIDATION_FAILED");case"TASK_NOT_FOUND":return createApiError("NOT_FOUND");

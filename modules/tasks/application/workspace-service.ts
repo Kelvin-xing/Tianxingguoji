@@ -20,10 +20,17 @@ export interface TaskAssigneeView { readonly id: string; readonly role: TaskAssi
 export interface AvailableTaskTransitionView {
   readonly to: TaskState; readonly requiresReason: boolean; readonly requiresAssignee: boolean;
 }
+export type WorkspaceTaskKind = "application_prepare_submit" | "interview_support" | "manual";
+export type WorkspaceTaskAction = "accept" | "reject" | "reassign" | "complete" | "cancel";
+export interface CurrentTaskAssignmentView {
+  readonly id: string; readonly assigneeUserId: string; readonly assigneeRole: TaskAssigneeRole; readonly status: string;
+}
 export interface TaskBaseView {
   readonly id: string; readonly title: string; readonly taskBrief: string; readonly dueAt: string;
   readonly state: TaskState; readonly recordVersion: number; readonly updatedAt: string;
   readonly availableTransitions: readonly AvailableTaskTransitionView[];
+  readonly taskKind: WorkspaceTaskKind; readonly schoolTargetId: string | null; readonly isOverdue: boolean;
+  readonly currentAssignment: CurrentTaskAssignmentView | null; readonly allowedActions: readonly WorkspaceTaskAction[];
 }
 export interface CaseWorkspaceTaskView extends TaskBaseView {
   readonly caseId: string; readonly caseNumber: string; readonly assignee: TaskAssigneeView;

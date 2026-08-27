@@ -20,18 +20,28 @@ export function canCreateTargetTask(input: Readonly<{
 export function canCompleteTargetTask(input: Readonly<{
   actor: RequestAccessActor; kind: P3TaskKind; isAssignee: boolean;
   targetState: P3TargetState; hasSubmissionReceipt: boolean; hasEvidenceReference: boolean;
+  hasOfficialSubmissionReference?: boolean;
 }>): boolean {
   if (!hasRequestCapability(input.actor, "tasks.transition") || !input.isAssignee) return false;
   if (input.kind === "interview_support") return input.targetState === "interview";
-  return input.targetState === "preparing" && input.hasSubmissionReceipt && input.hasEvidenceReference;
+  return input.targetState === "preparing" && input.hasSubmissionReceipt &&
+    (input.hasEvidenceReference || input.hasOfficialSubmissionReference === true);
 }
 
-export function isValidApplicationCompletion(value: Readonly<Record<string, unknown>>): boolean {
+export function isValidApplicationCompletion(value: Readonly<Record<string, unknown>> | null): boolean {
+  if (!value) return false;
   if (typeof value.submitted_at !== "string" || Number.isNaN(Date.parse(value.submitted_at)) ||
-      typeof value.submission_channel !== "string" || value.submission_channel.trim() === "" ||
+      Date.parse(value.submitted_at) > Date.now() ||
+      !["school_portal", "email", "courier", "in_person", "other"].includes(String(value.submission_channel)) ||
       typeof value.submitter_user_id !== "string" || !value.checklist_snapshot ||
       typeof value.checklist_snapshot !== "object" || Array.isArray(value.checklist_snapshot) ||
-      typeof value.no_reference_declared !== "boolean") return false;
+      typeof value.no_reference_declared !== "boolean" ||
+      !Object.keys(value).every((key) => ["submitted_at","submission_channel","submitter_user_id",
+        "checklist_snapshot","official_submission_reference","no_reference_declared"].includes(key))) return false;
+  const checklist = value.checklist_snapshot as Record<string, unknown>;
+  if (Object.keys(checklist).sort().join(",") !== "all_required_items_complete,confirmed_at" ||
+      checklist.all_required_items_complete !== true || typeof checklist.confirmed_at !== "string" ||
+      Number.isNaN(Date.parse(checklist.confirmed_at)) || Date.parse(checklist.confirmed_at) > Date.now()) return false;
 
   if (value.no_reference_declared) return value.official_submission_reference === null;
   return typeof value.official_submission_reference === "string" &&

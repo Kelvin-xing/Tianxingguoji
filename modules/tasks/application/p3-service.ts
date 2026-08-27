@@ -6,7 +6,7 @@ import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage,
 import { hashRequestPayload, validateIdempotencyKey, type JsonValue } from "../../shared/public.ts";
 
 export type P3TaskKind = "application_prepare_submit" | "interview_support";
-export type P3TaskState = "assigned" | "accepted" | "awaiting_reassignment" | "completed" | "cancelled";
+export type P3TaskState = "assigned" | "accepted" | "completed" | "cancelled";
 export type P3TaskAction = "accept" | "reject" | "reassign" | "cancel" | "complete";
 export type P3CompletionRecord = Readonly<Record<string, unknown>>;
 
@@ -91,7 +91,7 @@ export class P3TaskService {
     const occurredAt = checkedTime(this.now()); const receiptId = this.createId(); uuid(receiptId);
     const auditId = this.createId(); const outboxId = this.createId(); const idempotencyRecordId = this.createId(); uuid(auditId); uuid(outboxId); uuid(idempotencyRecordId);
     const next = input.action === "accept" ? "accepted" : input.action === "complete" ? "completed" :
-      input.action === "cancel" ? "cancelled" : input.action === "reassign" ? "assigned" : "awaiting_reassignment";
+      input.action === "cancel" ? "cancelled" : "assigned";
     const event = input.action === "complete" ? completionEvent(input.completionRecord ?? null) : "tasks.task_transitioned";
     const effects = effectsFor(input.actor, input.taskId, input.requestId, occurredAt, auditId, outboxId,
       event, next, input.expectedRecordVersion + 1);

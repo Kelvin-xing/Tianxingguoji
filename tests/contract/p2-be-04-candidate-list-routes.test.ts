@@ -33,10 +33,37 @@ test("repository stores immutable Audit receipt as idempotency result reference"
 });
 
 test("routes expose only list creation, Founder review and recorded Guardian decision", async () => {
-  const source = (await Promise.all(routes.map((path) => readFile(path,"utf8")))).join("\n");
+  const source = (await Promise.all(routes.filter((path) => !path.includes("guardian-decision"))
+    .map((path) => readFile(path,"utf8")))).join("\n");
+  const guardian = await readFile(
+    "app/api/v1/cases/[caseId]/candidate-lists/[versionId]/guardian-decision/route.ts","utf8");
   assert.match(source,/candidateListService\.createVersion/);
   assert.match(source,/candidateListService\.reviewVersion/);
-  assert.match(source,/candidateListService\.recordGuardianDecision/);
+  assert.match(guardian,/candidateListService\.recordGuardianDecision/);
   assert.match(source,/candidateListService\.closeCase/);
   assert.doesNotMatch(source,/Task|Application|Interview|Document|Portal|Email/);
+  assert.match(guardian,/applicationTaskConsumer\.drainForCandidateVersion/);
+  assert.doesNotMatch(guardian,/tasks\/provision|source_event_id|due_at/);
+});
+
+test("candidate-list GET exposes the frozen read DTO without command or crawler facts", async () => {
+  const source = await readFile("app/api/v1/cases/[caseId]/candidate-lists/route.ts","utf8");
+  const support = await readFile(
+    "app/api/v1/cases/[caseId]/candidate-lists/route-support.ts","utf8");
+  assert.match(source,/export async function GET/);
+  assert.match(source,/candidateListQueryService\.list/);
+  for (const field of ["version_number","record_version","founder_approval",
+    "guardian_decision","next_cursor","pinned_resolved_revision_id"] as const) {
+    assert.match(source,new RegExp(field));
+  }
+  assert.match(support,/key !== "limit" && key !== "cursor"/);
+  for (const mapping of [
+    ["CANDIDATE_LIST_QUERY_INVALID","INVALID_REQUEST"],
+    ["CANDIDATE_LIST_QUERY_FORBIDDEN","FORBIDDEN"],
+    ["CANDIDATE_LIST_QUERY_NOT_FOUND","NOT_FOUND"],
+    ["CANDIDATE_LIST_QUERY_UNAVAILABLE","SERVICE_UNAVAILABLE"],
+  ] as const) {
+    assert.match(support,new RegExp(`${mapping[0]}[^\\n]+${mapping[1]}`));
+  }
+  assert.doesNotMatch(source,/crawler|email|phone_number|document_key|raw/);
 });

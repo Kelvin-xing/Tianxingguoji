@@ -24,6 +24,7 @@ const IDS = {
   version: "10000000-0000-4000-8000-000000000006",
 };
 const HASH = "a".repeat(64);
+const DEADLINE = "2027-03-01T12:00:00.000Z";
 const unionActor = Object.freeze({ userId: IDS.user,organizationId: IDS.organization,
   roles: Object.freeze(["founder","advisor"] as const),
   workspaceCapabilities: Object.freeze(["cases.workflow.manage"] as const) });
@@ -88,11 +89,14 @@ test("Founder manual close rechecks terminal Targets and authoritative Task empt
 
 test("school-set hash is order-stable by ordinal and pins immutable revision", () => {
   const first = { ordinal: 1,schoolId: IDS.school,pinnedResolvedRevisionId: IDS.revision,
-    pinnedResolutionSha256: HASH };
+    pinnedResolutionSha256: HASH,applicationDeadline: DEADLINE };
   const second = { ...first,ordinal: 2,schoolId: IDS.version };
   assert.equal(hashCandidateSchoolSet([second,first]),hashCandidateSchoolSet([first,second]));
   assert.notEqual(hashCandidateSchoolSet([first]),hashCandidateSchoolSet([
     { ...first,pinnedResolutionSha256: "b".repeat(64) },
+  ]));
+  assert.notEqual(hashCandidateSchoolSet([first]),hashCandidateSchoolSet([
+    { ...first,applicationDeadline: "2027-03-02T12:00:00.000Z" },
   ]));
 });
 
@@ -110,13 +114,15 @@ test("service sends canonical hash, atomic effects and no actor.role authorizati
   await service.createVersion({ actor: unionActor,caseId: IDS.case,previousVersionId: null,
     expectedCaseRecordVersion: 2,changeSummary: "initial submitted snapshot",
     items: [{ schoolId: IDS.school,pinnedResolvedRevisionId: IDS.revision,
-      pinnedResolutionSha256: HASH,ordinal: 1 }],requestId: "req-p2-be-04",
+      pinnedResolutionSha256: HASH,ordinal: 1,applicationDeadline: DEADLINE }],
+    requestId: "req-p2-be-04",
     idempotencyKey: "p2-be-04-create" });
   assert.ok(captured);
   assert.match(captured.schoolSetSha256,/^[0-9a-f]{64}$/);
   assert.equal(captured.effects.audit.actorUserId,IDS.user);
   assert.equal(captured.effects.audit.metadata.record_version,2);
   assert.equal(captured.effects.audit.id,captured.effects.outbox.auditEventId);
+  assert.equal(captured.items[0]?.applicationDeadline,DEADLINE);
   assert.equal("actorRole" in captured,false);
 });
 

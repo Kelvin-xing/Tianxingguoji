@@ -27,6 +27,7 @@ export interface CandidateListItemInput {
   readonly pinnedResolvedRevisionId: string;
   readonly pinnedResolutionSha256: string;
   readonly ordinal: number;
+  readonly applicationDeadline: string;
 }
 
 export interface CandidateListAcknowledgement {
@@ -168,6 +169,7 @@ export class CandidateListService {
       case_id: input.caseId, change_summary: input.changeSummary.trim(),
       expected_case_record_version: input.expectedCaseRecordVersion,
       items: items.map(({ id: _id, ...item }) => ({
+        application_deadline: item.applicationDeadline,
         ordinal: item.ordinal, pinned_resolution_sha256: item.pinnedResolutionSha256,
         pinned_resolved_revision_id: item.pinnedResolvedRevisionId, school_id: item.schoolId,
       })), previous_version_id: input.previousVersionId,
@@ -289,9 +291,10 @@ export class CandidateListService {
 }
 
 export function hashCandidateSchoolSet(items: readonly Pick<CandidateListItemInput,
-  "ordinal" | "schoolId" | "pinnedResolvedRevisionId" | "pinnedResolutionSha256">[]): string {
+  "ordinal" | "schoolId" | "pinnedResolvedRevisionId" | "pinnedResolutionSha256" |
+  "applicationDeadline">[]): string {
   const canonical = [...items].sort((a, b) => a.ordinal - b.ordinal).map((item) =>
-    `${item.ordinal}:${item.schoolId}:${item.pinnedResolvedRevisionId}:${item.pinnedResolutionSha256}`,
+    `${item.ordinal}:${item.schoolId}:${item.pinnedResolvedRevisionId}:${item.pinnedResolutionSha256}:${item.applicationDeadline}`,
   ).join("|");
   return createHash("sha256").update(canonical).digest("hex");
 }
@@ -309,8 +312,9 @@ function assertCommon(caseId: string, version: number, requestId: string, key: s
 function validateItem(item: Omit<CandidateListItemInput, "id">) {
   if (!UUID.test(item.schoolId) || !UUID.test(item.pinnedResolvedRevisionId) ||
       !SHA256.test(item.pinnedResolutionSha256) || !Number.isSafeInteger(item.ordinal) ||
-      item.ordinal < 1) invalid();
-  return item;
+      item.ordinal < 1 || !isIsoInstant(item.applicationDeadline)) invalid();
+  return Object.freeze({ ...item,
+    applicationDeadline: new Date(item.applicationDeadline).toISOString() });
 }
 function assertItemsUniqueAndContiguous(items: readonly CandidateListItemInput[]): void {
   const schools = new Set(items.map((item) => item.schoolId));
@@ -343,5 +347,9 @@ function baseMutation(actor: RequestAccessActor, idempotencyKey: string, request
 }
 function checkedId(createId: () => string): string { const id = createId(); if (!UUID.test(id)) invalid(); return id; }
 function checkedTime(now: () => number): string { const value = now(); if (!Number.isSafeInteger(value) || value <= 0) invalid(); return new Date(value).toISOString(); }
+function isIsoInstant(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    !Number.isNaN(Date.parse(value));
+}
 function invalid(): never { throw new CandidateListError("CANDIDATE_LIST_INVALID"); }
 function forbidden(): never { throw new CandidateListError("CANDIDATE_LIST_FORBIDDEN"); }

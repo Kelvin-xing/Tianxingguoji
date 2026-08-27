@@ -7,10 +7,13 @@ import {
   classifyTaskFailure,
   createTask,
   createTaskFingerprint,
+  completeApplicationTask,
   getTask,
   getTaskAssigneeOptions,
   listTasks,
   transitionTask,
+  transitionAutomaticTask,
+  automaticTaskTransitionFingerprint,
   transitionTaskFingerprint,
 } from "../../../modules/tasks/client.ts";
 
@@ -18,6 +21,10 @@ const TASK_ID = "10000000-0000-4000-8000-000000000001";
 const CASE_ID = "20000000-0000-4000-8000-000000000001";
 const ASSIGNEE_ID = "30000000-0000-4000-8000-000000000001";
 const OTHER_ASSIGNEE_ID = "30000000-0000-4000-8000-000000000002";
+const ASSIGNMENT_ID = "30000000-0000-4000-8000-000000000003";
+const TARGET_ID = "50000000-0000-4000-8000-000000000001";
+const COMPLETION_RECEIPT_ID = "60000000-0000-4000-8000-000000000001";
+const EVIDENCE_ID = "70000000-0000-4000-8000-000000000001";
 
 test("Task list and detail strictly decode both audience projections", async (context) => {
   const originalFetch = globalThis.fetch;
@@ -124,6 +131,107 @@ test("Task writes send exact bodies and accept only exact two-key acknowledgemen
   await assert.rejects(transitionTask(TASK_ID, { to: "accepted", expected_record_version: 1, reason: "", next_assignee_user_id: null }, "task:strict"), malformedResponse);
 });
 
+test("Automatic Task writes only use p3-transitions and strictly decode automation", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let request = 0;
+  globalThis.fetch = async (input, init) => {
+    request += 1;
+    assert.equal(input, `/api/v1/tasks/${TASK_ID}/p3-transitions`);
+    assert.doesNotMatch(String(input), /\/transitions$/);
+    if (request === 1) {
+      assert.deepEqual(JSON.parse(String(init?.body)), { action: "accept", expected_record_version: 1 });
+      return apiResponse({ id: TASK_ID, record_version: 2, state: "accepted", completion_receipt_id: null });
+    }
+    assert.deepEqual(JSON.parse(String(init?.body)), completionInput());
+    return apiResponse({
+      id: TASK_ID,
+      record_version: 3,
+      state: "completed",
+      completion_receipt_id: COMPLETION_RECEIPT_ID,
+      automation: { target_transition: "pending", target_id: TARGET_ID, target_record_version: null },
+    });
+  };
+  assert.deepEqual(
+    await transitionAutomaticTask(TASK_ID, { action: "accept", expected_record_version: 1 }, "task:p3-accept"),
+    { id: TASK_ID, record_version: 2, state: "accepted", completion_receipt_id: null },
+  );
+  assert.equal(
+    (await completeApplicationTask(TASK_ID, TARGET_ID, completionInput(), "task:p3-complete")).automation.target_transition,
+    "pending",
+  );
+
+  for (const invalid of [
+    { id: TASK_ID, record_version: 3, state: "completed", completion_receipt_id: COMPLETION_RECEIPT_ID },
+    { id: TASK_ID, record_version: 3, state: "completed", completion_receipt_id: COMPLETION_RECEIPT_ID,
+      automation: { target_transition: "completed", target_id: TARGET_ID, target_record_version: null } },
+    { id: TASK_ID, record_version: 3, state: "completed", completion_receipt_id: COMPLETION_RECEIPT_ID,
+      automation: { target_transition: "pending", target_id: OTHER_ASSIGNEE_ID, target_record_version: null } },
+  ]) {
+    globalThis.fetch = async () => apiResponse(invalid);
+    await assert.rejects(completeApplicationTask(TASK_ID, TARGET_ID, completionInput(), "task:p3-strict"), malformedResponse);
+  }
+});
+
+test("Automatic Task rejection receipt preserves assigned Task state", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input, init) => {
+    assert.equal(input, `/api/v1/tasks/${TASK_ID}/p3-transitions`);
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      action: "reject",
+      expected_record_version: 1,
+      reason: "需要更換處理人",
+    });
+    return apiResponse({ id: TASK_ID, record_version: 2, state: "assigned", completion_receipt_id: null });
+  };
+  assert.deepEqual(
+    await transitionAutomaticTask(TASK_ID, { action: "reject", expected_record_version: 1, reason: "需要更換處理人" }, "task:p3-reject"),
+    { id: TASK_ID, record_version: 2, state: "assigned", completion_receipt_id: null },
+  );
+});
+
+test("Automatic Task reassignment sends the replacement advisor and preserves assigned state", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input, init) => {
+    assert.equal(input, `/api/v1/tasks/${TASK_ID}/p3-transitions`);
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      action: "reassign",
+      expected_record_version: 2,
+      reason: "改派給另一位 Primary Advisor",
+      next_assignee_user_id: OTHER_ASSIGNEE_ID,
+    });
+    return apiResponse({ id: TASK_ID, record_version: 3, state: "assigned", completion_receipt_id: null });
+  };
+  assert.deepEqual(
+    await transitionAutomaticTask(TASK_ID, {
+      action: "reassign", expected_record_version: 2,
+      reason: "改派給另一位 Primary Advisor", next_assignee_user_id: OTHER_ASSIGNEE_ID,
+    }, "task:p3-reassign"),
+    { id: TASK_ID, record_version: 3, state: "assigned", completion_receipt_id: null },
+  );
+});
+
+test("Application Task completion validates reference, evidence, checklist and future time before fetch", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => { throw new Error("fetch must not run"); };
+  const valid = completionInput();
+  for (const input of [
+    { ...valid, completion_record: { ...valid.completion_record, submitted_at: "2999-08-28T01:00:00.000Z" } },
+    { ...valid, completion_record: { ...valid.completion_record, checklist_snapshot: { ...valid.completion_record.checklist_snapshot, all_required_items_complete: false } } },
+    { ...valid, completion_record: { ...valid.completion_record, official_submission_reference: null, no_reference_declared: false } },
+    { ...valid, completion_record: { ...valid.completion_record, official_submission_reference: "REF-1", no_reference_declared: true } },
+    { ...valid, evidence_reference: null },
+  ]) {
+    assert.throws(
+      () => completeApplicationTask(TASK_ID, TARGET_ID, input as Parameters<typeof completeApplicationTask>[2], "task:p3-invalid"),
+      TypeError,
+    );
+  }
+});
+
 test("Task idempotency attempts reuse uncertain retries and rotate for command changes", () => {
   let sequence = 0;
   const attempt = new TaskIdempotencyAttempt(() => `task:${++sequence}`);
@@ -137,6 +245,8 @@ test("Task idempotency attempts reuse uncertain retries and rotate for command c
   assert.notEqual(attempt.keyFor(transition), transitionKey);
   attempt.complete();
   assert.notEqual(attempt.keyFor(create), first);
+  const automatic = automaticTaskTransitionFingerprint(TASK_ID, { action: "accept", expected_record_version: 1 });
+  assert.match(automatic, /"action":"accept"/);
 });
 
 test("Task failure classification remains distinct and fails closed", () => {
@@ -162,7 +272,28 @@ function caseTask() {
     record_version: 1,
     updated_at: "2026-08-23T02:00:00.000Z",
     available_transitions: [{ to: "accepted", requires_reason: false, requires_assignee: false }],
+    task_kind: "manual",
+    school_target_id: null,
+    is_overdue: false,
+    current_assignment: { id: ASSIGNMENT_ID, assignee_user_id: ASSIGNEE_ID, assignee_role: "advisor", status: "assigned" },
+    allowed_actions: [],
   };
+}
+
+function completionInput() {
+  return {
+    action: "complete",
+    expected_record_version: 2,
+    completion_record: {
+      submitted_at: "2026-08-27T02:00:00.000Z",
+      submission_channel: "school_portal",
+      submitter_user_id: ASSIGNEE_ID,
+      checklist_snapshot: { all_required_items_complete: true, confirmed_at: "2026-08-27T02:05:00.000Z" },
+      official_submission_reference: null,
+      no_reference_declared: true,
+    },
+    evidence_reference: EVIDENCE_ID,
+  } as const;
 }
 
 function assignedTask() {
@@ -176,6 +307,11 @@ function assignedTask() {
     record_version: task.record_version,
     updated_at: task.updated_at,
     available_transitions: task.available_transitions,
+    task_kind: task.task_kind,
+    school_target_id: task.school_target_id,
+    is_overdue: task.is_overdue,
+    current_assignment: task.current_assignment,
+    allowed_actions: task.allowed_actions,
   };
 }
 

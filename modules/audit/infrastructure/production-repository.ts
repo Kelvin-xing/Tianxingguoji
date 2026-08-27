@@ -26,6 +26,22 @@ export class SupportingRepositoryError extends Error {
 
 export type SupportingModule = "schools" | "tasks" | "documents" | "audit" | "notifications";
 
+export interface AuditOutboxDeliveryRow extends Record<string, unknown> {
+  readonly id: string;
+  readonly audit_event_id: string;
+  readonly aggregate_id: string;
+  readonly event_type: string;
+  readonly event_version: number | string;
+  readonly request_id: string;
+  readonly status: "pending" | "processing" | "delivered" | "dead_letter";
+  readonly attempt_count: number | string;
+}
+export interface AuditOutboxTransaction {
+  query<Row extends Record<string, unknown>>(query: Readonly<{
+    text: string; values?: readonly unknown[];
+  }>): Promise<Readonly<{ rows: readonly Row[]; rowCount?: number | null }>>;
+}
+
 export interface OwnedSupportingTransaction {
   query<Row = Record<string, unknown>>(query: {
     readonly text: string;
@@ -107,6 +123,78 @@ export async function claimAuditOutboxRow(
             WHERE id=$1 AND organization_id=$3 AND status='pending'
         RETURNING id, organization_id, event_type, idempotency_key, attempt_count, lease_version`,
     values: [input.id, input.leaseUntilMs, input.organizationId],
+  });
+}
+
+/** Locks one exact source event. Callers must verify its authoritative domain
+ * facts before claiming it; no payload field is an authorization fact. */
+export function lockAuditOutboxSource(
+  transaction: OwnedSupportingTransaction,
+  input: Readonly<{
+    organizationId: string;
+    eventType: string;
+    eventVersion: number;
+    aggregateId: string;
+    auditEventId?: string;
+  }>,
+): Promise<readonly AuditOutboxDeliveryRow[]> {
+  return transaction.query<AuditOutboxDeliveryRow>({
+    text: `SELECT id,audit_event_id,aggregate_id,event_type,event_version,request_id,
+                  status,attempt_count
+             FROM audit_outbox
+            WHERE organization_id=$1 AND event_type=$2 AND event_version=$3
+              AND aggregate_id=$4
+              AND ($5::uuid IS NULL OR audit_event_id=$5)
+            ORDER BY created_at,id
+            LIMIT 1
+            FOR UPDATE`,
+    values: [input.organizationId,input.eventType,input.eventVersion,input.aggregateId,
+      input.auditEventId ?? null],
+  });
+}
+
+export function lockAuditOutboxSourceTransaction(
+  transaction: AuditOutboxTransaction,
+  input: Readonly<{
+    organizationId: string; eventType: string; eventVersion: number;
+    aggregateId: string; auditEventId?: string;
+  }>,
+): Promise<Readonly<{ rows: readonly AuditOutboxDeliveryRow[]; rowCount?: number | null }>> {
+  return transaction.query<AuditOutboxDeliveryRow>({
+    text: `SELECT id,audit_event_id,aggregate_id,event_type,event_version,request_id,
+                  status,attempt_count
+             FROM audit_outbox
+            WHERE organization_id=$1 AND event_type=$2 AND event_version=$3
+              AND aggregate_id=$4 AND ($5::uuid IS NULL OR audit_event_id=$5)
+            ORDER BY created_at,id LIMIT 1 FOR UPDATE`,
+    values: [input.organizationId,input.eventType,input.eventVersion,input.aggregateId,
+      input.auditEventId ?? null],
+  });
+}
+
+export function claimAuditOutboxSourceTransaction(
+  transaction: AuditOutboxTransaction,input: Readonly<{ id:string;organizationId:string }>,
+) {
+  return transaction.query<AuditOutboxDeliveryRow>({
+    text: `UPDATE audit_outbox SET status='processing',attempt_count=attempt_count+1,
+                  leased_until=transaction_timestamp()+interval '2 minutes',
+                  lease_version=lease_version+1,updated_at=transaction_timestamp(),
+                  record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='pending' AND attempt_count < 3
+        RETURNING id,audit_event_id,aggregate_id,event_type,event_version,request_id,status,attempt_count`,
+    values:[input.id,input.organizationId],
+  });
+}
+
+export function completeAuditOutboxSourceTransaction(
+  transaction: AuditOutboxTransaction,input: Readonly<{ id:string;organizationId:string }>,
+) {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='delivered',delivered_at=transaction_timestamp(),
+                  leased_until=NULL,last_error_code=NULL,updated_at=transaction_timestamp(),
+                  record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
+    values:[input.id,input.organizationId],
   });
 }
 
