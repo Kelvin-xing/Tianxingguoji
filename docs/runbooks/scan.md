@@ -1,5 +1,14 @@
 # Document Scan And DLQ Alerts
 
+## Current Runtime Boundary
+
+No local, Vercel, or production scan connector is active. LocalStack/ClamAV and the
+local document worker are retired. The deterministic fake scanner is available only
+when the non-production fake transport is explicitly configured. Every unscanned,
+failed, unknown or unavailable version remains non-downloadable. This runbook's S3
+event/DLQ steps describe the retained production contract and are not deployment
+evidence.
+
 ## Trigger
 
 `scan.stuck` fires when the oldest scan age reaches 180 seconds.

@@ -1,15 +1,17 @@
 import "server-only";
 
-import { loadLocalSyntheticConfig } from "../../../lib/runtime/local-synthetic-config.ts";
-import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
+import { loadDocumentTransportConfig } from "../../../lib/runtime/document-transport-config.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { DocumentTransferService } from "../application/transfer-service.ts";
-import { LocalSyntheticDocumentObjectStore } from "./local-object-store.ts";
+import {
+  DeterministicFakeDocumentTransport,
+  getDeterministicFakeDocumentTransport,
+} from "./deterministic-fake-transport.ts";
 import { PostgresqlDocumentTransferRepository } from "./postgresql-transfer-repository.ts";
 
 export interface DocumentTransferRuntime {
   readonly service: DocumentTransferService;
-  readonly objectStore: LocalSyntheticDocumentObjectStore;
+  readonly objectStore: DeterministicFakeDocumentTransport;
 }
 
 export class DocumentTransferRuntimeUnavailable extends Error {
@@ -30,31 +32,26 @@ const globalForDocumentTransfer = globalThis as typeof globalThis & {
 };
 
 export function getDocumentTransferRuntime(): DocumentTransferRuntime {
-  if (loadRuntimeEnvironment().appRuntimeMode !== "local-synthetic") {
-    throw new DocumentTransferRuntimeUnavailable();
-  }
-  if (globalForDocumentTransfer.__txDocumentTransferRuntime) {
-    return globalForDocumentTransfer.__txDocumentTransferRuntime;
-  }
   try {
-    const config = loadLocalSyntheticConfig();
-    const objectStore = new LocalSyntheticDocumentObjectStore({
-      endpoint: config.localstack.endpoint,
-      bucket: config.localstack.bucket,
-      requestTimeoutMs: config.dependencyTimeoutMs,
-    });
+    const config = loadDocumentTransportConfig();
+    if (config.mode !== "deterministic-fake") throw new DocumentTransferRuntimeUnavailable();
+    if (globalForDocumentTransfer.__txDocumentTransferRuntime) {
+      return globalForDocumentTransfer.__txDocumentTransferRuntime;
+    }
+    const objectStore = getDeterministicFakeDocumentTransport();
     const runtime = Object.freeze({
       objectStore,
       service: new DocumentTransferService({
         repository: new PostgresqlDocumentTransferRepository(getApplicationTenantRunner()),
         signer: objectStore,
-        bucket: config.localstack.bucket,
-        allowedHttpOrigin: config.localstack.endpoint,
+        bucket: config.bucket,
+        allowedHttpOrigin: config.origin,
       }),
     });
     globalForDocumentTransfer.__txDocumentTransferRuntime = runtime;
     return runtime;
-  } catch {
+  } catch (error) {
+    if (error instanceof DocumentTransferRuntimeUnavailable) throw error;
     throw new DocumentTransferRuntimeUnavailable();
   }
 }

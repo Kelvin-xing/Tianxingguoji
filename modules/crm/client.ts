@@ -12,22 +12,31 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-export const REFERRAL_SOURCE_TYPES = Object.freeze(["bank", "insurance", "other_partner"] as const);
+export const REFERRAL_SOURCE_TYPES = Object.freeze([
+  "customer_referral", "employee_referral", "school_referral", "partner_referral",
+  "website", "social_media", "paid_advertising", "event", "walk_in", "other", "unknown",
+] as const);
 export const REFERRAL_SOURCE_STATUSES = Object.freeze(["active", "inactive"] as const);
 
 export const RELATIONSHIP_TYPES = Object.freeze([
-  "father",
-  "mother",
-  "other_guardian",
+  "parent", "father", "mother", "step_parent", "stepfather", "stepmother",
+  "adoptive_parent", "adoptive_father", "adoptive_mother", "foster_parent",
+  "foster_father", "foster_mother", "grandparent", "paternal_grandfather",
+  "paternal_grandmother", "maternal_grandfather", "maternal_grandmother",
+  "adult_sibling", "adult_brother", "adult_sister", "uncle", "aunt",
+  "court_appointed_guardian", "institutional_guardian", "other_relative",
+  "non_relative_guardian", "other",
 ] as const);
 
 export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number];
+export type CrmGender = "male" | "female" | "other" | "not_disclosed";
 export type StudentStatus = "active" | "pending_delete";
 
 export interface StudentListItem {
   readonly id: string;
   readonly displayName: string;
   readonly dateOfBirth: string | null;
+  readonly gender: CrmGender | null;
   readonly status: StudentStatus;
   readonly primaryGuardianName: string | null;
   readonly updatedAt: string;
@@ -38,6 +47,8 @@ export interface StudentGuardianItem {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
+  readonly dateOfBirth: string | null;
+  readonly gender: CrmGender | null;
   readonly status: StudentStatus;
   readonly recordVersion: number;
   readonly relationshipType: string;
@@ -58,6 +69,7 @@ export interface StudentDetail extends StudentListItem {
 export interface StudentProfileDraft {
   readonly display_name: string;
   readonly date_of_birth: string;
+  readonly gender: CrmGender | "";
   readonly contact_email: string;
   readonly contact_phone: string;
   readonly expected_record_version: number;
@@ -67,6 +79,8 @@ export interface GuardianProfileDraft {
   readonly display_name: string;
   readonly email: string;
   readonly phone: string;
+  readonly date_of_birth: string;
+  readonly gender: CrmGender | "";
   readonly expected_record_version: number;
 }
 
@@ -94,6 +108,7 @@ export interface StudentCreateDraft {
   readonly student: {
     readonly display_name: string;
     readonly date_of_birth: string;
+    readonly gender: CrmGender | "";
     readonly contact_email: string;
     readonly contact_phone: string;
   };
@@ -101,8 +116,14 @@ export interface StudentCreateDraft {
     readonly display_name: string;
     readonly email: string;
     readonly phone: string;
+    readonly date_of_birth: string;
+    readonly gender: CrmGender | "";
     readonly relationship_type: RelationshipType;
+    readonly relationship_description: string;
     readonly is_legal_guardian: boolean;
+    readonly is_emergency_contact: boolean;
+    readonly is_billing_contact: boolean;
+    readonly notification_consent: boolean;
   };
 }
 
@@ -116,18 +137,9 @@ export interface StudentCreateValidation {
 }
 
 export interface CreatedStudentAggregate {
-  readonly student: {
-    readonly id: string;
-    readonly display_name: string;
-  };
-  readonly primary_guardian: {
-    readonly id: string;
-    readonly display_name: string;
-  };
-  readonly relationship: {
-    readonly id: string;
-    readonly relationship_type: RelationshipType;
-  };
+  readonly student: { readonly id: string; readonly record_version: number };
+  readonly primary_guardian: { readonly id: string; readonly record_version: number };
+  readonly relationship: { readonly id: string; readonly record_version: number };
 }
 
 export interface GuardianContactHint {
@@ -141,6 +153,7 @@ export interface CurrentGuardianRelationship {
   readonly relationship_id: string;
   readonly guardian: GuardianContactHint;
   readonly relationship_type: RelationshipType;
+  readonly relationship_description?: string | null;
   readonly is_legal_guardian: boolean;
   readonly is_primary_contact: boolean;
   readonly is_emergency_contact: boolean;
@@ -161,6 +174,7 @@ export interface GuardianRelationshipsView {
 export interface AttachGuardianRelationshipDraft {
   readonly guardian_id: string;
   readonly relationship_type: RelationshipType;
+  readonly relationship_description: string | null;
   readonly is_legal_guardian: boolean;
   readonly is_emergency_contact: boolean;
   readonly is_billing_contact: boolean;
@@ -171,6 +185,7 @@ export interface GuardianRelationshipCommandResult {
   readonly relationship_id: string;
   readonly guardian_id: string;
   readonly relationship_type: RelationshipType;
+  readonly relationship_description: string | null;
   readonly is_legal_guardian: boolean;
   readonly is_primary_contact: boolean;
   readonly is_emergency_contact: boolean;
@@ -232,24 +247,42 @@ export interface ReferralSource {
   readonly id: string;
   readonly display_name: string;
   readonly source_type: ReferralSourceType;
+  readonly description: string | null;
   readonly status: ReferralSourceStatus;
   readonly record_version: number;
+  readonly updated_at: string;
+}
+
+export interface ReferralSourceListResult {
+  readonly items: readonly ReferralSource[];
+  readonly next_cursor: string | null;
 }
 
 export interface CreateReferralSourceInput {
   readonly display_name: string;
   readonly source_type: ReferralSourceType;
+  readonly description: string | null;
 }
 
 export interface UpdateReferralSourceInput {
   readonly expected_record_version: number;
   readonly display_name: string;
-  readonly status: ReferralSourceStatus;
+  readonly source_type: ReferralSourceType;
+  readonly description: string | null;
+}
+
+export interface DeactivateReferralSourceInput {
+  readonly expected_record_version: number;
+  readonly reason_code: "record.lifecycle.referral_source_deactivated";
 }
 
 export interface ReferralSourceWriteReceipt {
-  readonly id: string;
-  readonly record_version: number;
+  readonly referral_source: {
+    readonly id: string;
+    readonly status: ReferralSourceStatus;
+    readonly record_version: number;
+    readonly updated_at: string;
+  };
 }
 
 export type ReferralSourceFailureKind =
@@ -383,16 +416,33 @@ export type DuplicateRequestFailureKind =
   | "unavailable";
 
 export function listReferralSources(
-  status?: ReferralSourceStatus,
+  statusOrOptions?: ReferralSourceStatus | {
+    readonly q?: string;
+    readonly status?: ReferralSourceStatus;
+    readonly source_type?: ReferralSourceType;
+    readonly limit?: number;
+    readonly cursor?: string;
+  },
   signal?: AbortSignal,
-): Promise<readonly ReferralSource[]> {
-  if (status !== undefined) assertReferralSourceStatus(status, "status");
-  const path = status === undefined
-    ? "/api/v1/referral-sources" as const
-    : `/api/v1/referral-sources?status=${status}` as const;
+): Promise<ReferralSourceListResult> {
+  const options = typeof statusOrOptions === "string"
+    ? { status: statusOrOptions }
+    : (statusOrOptions ?? {});
+  if (options.status !== undefined) assertReferralSourceStatus(options.status, "status");
+  if (options.source_type !== undefined) referralSourceType(options.source_type, "source_type");
+  const limit = options.limit ?? 25;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new TypeError("Invalid ReferralSource limit.");
+  const params = new URLSearchParams();
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  if (options.status) params.set("status", options.status);
+  if (options.source_type) params.set("source_type", options.source_type);
+  params.set("limit", String(limit));
+  if (options.cursor) params.set("cursor", options.cursor);
+  const query = params.toString();
+  const path: `/${string}` = query ? `/api/v1/referral-sources?${query}` : "/api/v1/referral-sources";
   return requestApi(
     { path, signal },
-    (value) => decodeReferralSourceList(value, status),
+    (value) => decodeReferralSourceList(value, options.status),
   );
 }
 
@@ -444,6 +494,26 @@ export function updateReferralSource(
   );
 }
 
+export function deactivateReferralSource(
+  sourceId: string,
+  input: DeactivateReferralSourceInput,
+  idempotencyKey: string,
+): Promise<ReferralSourceWriteReceipt> {
+  assertUuid(sourceId, "sourceId");
+  assertPositiveInteger(input.expected_record_version, "expected_record_version");
+  if (input.reason_code !== "record.lifecycle.referral_source_deactivated") throw new TypeError("Invalid reason_code.");
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/referral-sources/${sourceId}/deactivate`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: { ...input },
+    },
+    (value) => decodeReferralSourceWriteReceipt(value, sourceId, input.expected_record_version + 1),
+  );
+}
+
 export function classifyReferralSourceFailure(error: unknown): ReferralSourceFailureKind {
   if (!(error instanceof ApiClientError)) return "unavailable";
   if (error.code === "UNAUTHENTICATED" || error.status === 401) return "unauthenticated";
@@ -457,13 +527,13 @@ export function classifyReferralSourceFailure(error: unknown): ReferralSourceFai
 
 export function referralSourceCreateFingerprint(input: CreateReferralSourceInput): string {
   const normalized = normalizeReferralSourceCreate(input);
-  return `${normalized.source_type}:${normalized.display_name}`;
+  return JSON.stringify(normalized);
 }
 
 export function referralSourceUpdateFingerprint(sourceId: string, input: UpdateReferralSourceInput): string {
   assertUuid(sourceId, "sourceId");
   const normalized = normalizeReferralSourceUpdate(input);
-  return `${sourceId}:${normalized.expected_record_version}:${normalized.status}:${normalized.display_name}`;
+  return JSON.stringify({ source_id: sourceId, ...normalized });
 }
 
 export class ReferralSourceIdempotencyAttempt {
@@ -1185,15 +1255,23 @@ function normalizeStudentCreateDraft(draft: StudentCreateDraft) {
     student: {
       display_name: draft.student.display_name.trim(),
       date_of_birth: nullable(draft.student.date_of_birth),
+      gender: draft.student.gender || null,
       contact_email: nullable(draft.student.contact_email),
       contact_phone: nullable(draft.student.contact_phone),
     },
     primary_guardian: {
+      kind: "new",
       display_name: draft.primary_guardian.display_name.trim(),
       email: nullable(draft.primary_guardian.email),
       phone: nullable(draft.primary_guardian.phone),
+      date_of_birth: nullable(draft.primary_guardian.date_of_birth),
+      gender: draft.primary_guardian.gender || null,
       relationship_type: draft.primary_guardian.relationship_type,
+      relationship_description: nullable(draft.primary_guardian.relationship_description),
       is_legal_guardian: draft.primary_guardian.is_legal_guardian,
+      is_emergency_contact: draft.primary_guardian.is_emergency_contact,
+      is_billing_contact: draft.primary_guardian.is_billing_contact,
+      notification_consent: draft.primary_guardian.notification_consent,
     },
   } as const;
 }
@@ -1203,6 +1281,7 @@ function normalizeStudentProfileDraft(draft: StudentProfileDraft) {
   return {
     display_name: draft.display_name.trim(),
     date_of_birth: nullable(draft.date_of_birth),
+    gender: draft.gender || null,
     contact_email: email?.toLowerCase() ?? null,
     contact_phone: nullable(draft.contact_phone),
     expected_record_version: draft.expected_record_version,
@@ -1215,6 +1294,8 @@ function normalizeGuardianProfileDraft(draft: GuardianProfileDraft) {
     display_name: draft.display_name.trim(),
     email: email?.toLowerCase() ?? null,
     phone: nullable(draft.phone),
+    date_of_birth: nullable(draft.date_of_birth),
+    gender: draft.gender || null,
     expected_record_version: draft.expected_record_version,
   } as const;
 }
@@ -1222,8 +1303,13 @@ function normalizeGuardianProfileDraft(draft: GuardianProfileDraft) {
 function decodeReferralSourceList(
   value: unknown,
   expectedStatus?: ReferralSourceStatus,
-): readonly ReferralSource[] {
-  const sources = expectArray(value, decodeReferralSource);
+): ReferralSourceListResult {
+  const outer = exactRecord(value, ["items", "next_cursor"]);
+  const sources = expectArray(outer.items, decodeReferralSource);
+  const nextCursor = expectNullableString(outer.next_cursor);
+  if (nextCursor !== null && !/^rs_v1_[A-Za-z0-9_-]+$/.test(nextCursor)) {
+    throw new TypeError("Invalid ReferralSource next_cursor.");
+  }
   if (sources.length > 100) throw new TypeError("Too many ReferralSource records.");
   assertUnique(sources.map(({ id }) => id), "ReferralSource.id");
   if (expectedStatus !== undefined && sources.some(({ status }) => status !== expectedStatus)) {
@@ -1236,7 +1322,7 @@ function decodeReferralSourceList(
       throw new TypeError("Invalid ReferralSource order.");
     }
   }
-  return Object.freeze([...sources]);
+  return Object.freeze({ items: Object.freeze([...sources]), next_cursor: nextCursor });
 }
 
 function decodeReferralSource(value: unknown): ReferralSource {
@@ -1244,15 +1330,19 @@ function decodeReferralSource(value: unknown): ReferralSource {
     "id",
     "display_name",
     "source_type",
+    "description",
     "status",
     "record_version",
+    "updated_at",
   ]);
   return Object.freeze({
     id: uuid(record.id, "ReferralSource.id"),
     display_name: referralSourceDisplayName(record.display_name),
     source_type: referralSourceType(record.source_type, "ReferralSource.source_type"),
+    description: nullableNonEmptyString(record.description, "ReferralSource.description"),
     status: referralSourceStatus(record.status, "ReferralSource.status"),
     record_version: positiveInteger(record.record_version, "ReferralSource.record_version"),
+    updated_at: isoDateTime(record.updated_at, "ReferralSource.updated_at"),
   });
 }
 
@@ -1261,31 +1351,46 @@ function decodeReferralSourceWriteReceipt(
   expectedId: string | undefined,
   expectedVersion: number,
 ): ReferralSourceWriteReceipt {
-  const record = exactRecord(value, ["id", "record_version"]);
+  const outer = exactRecord(value, ["referral_source"]);
+  const record = exactRecord(outer.referral_source, ["id", "status", "record_version", "updated_at"]);
   const id = uuid(record.id, "ReferralSource receipt.id");
+  const status = referralSourceStatus(record.status, "ReferralSource receipt.status");
   const recordVersion = positiveInteger(
     record.record_version,
     "ReferralSource receipt.record_version",
   );
+  const updatedAt = isoDateTime(record.updated_at, "ReferralSource receipt.updated_at");
   if ((expectedId !== undefined && id !== expectedId) || recordVersion !== expectedVersion) {
     throw new TypeError("Mismatched ReferralSource receipt.");
   }
-  return Object.freeze({ id, record_version: recordVersion });
+  return Object.freeze({ referral_source: Object.freeze({ id, status, record_version: recordVersion, updated_at: updatedAt }) });
 }
 
 function normalizeReferralSourceCreate(input: CreateReferralSourceInput) {
+  const sourceType = referralSourceType(input.source_type, "source_type");
+  const description = nullableNonEmptyString(input.description, "description");
+  if ((sourceType === "other") !== (description !== null)) {
+    throw new TypeError("Invalid ReferralSource description.");
+  }
   return Object.freeze({
     display_name: referralSourceDisplayName(input.display_name),
-    source_type: referralSourceType(input.source_type, "source_type"),
+    source_type: sourceType,
+    description,
   });
 }
 
 function normalizeReferralSourceUpdate(input: UpdateReferralSourceInput) {
   assertPositiveInteger(input.expected_record_version, "expected_record_version");
+  const description = nullableNonEmptyString(input.description, "description");
+  const sourceType = referralSourceType(input.source_type, "source_type");
+  if ((sourceType === "other") !== (description !== null)) {
+    throw new TypeError("Invalid ReferralSource description.");
+  }
   return Object.freeze({
     expected_record_version: input.expected_record_version,
     display_name: referralSourceDisplayName(input.display_name),
-    status: referralSourceStatus(input.status, "status"),
+    description,
+    source_type: sourceType,
   });
 }
 
@@ -1321,9 +1426,6 @@ function assertReferralSourceStatus(
 }
 
 function compareReferralSources(left: ReferralSource, right: ReferralSource): number {
-  const leftStatus = REFERRAL_SOURCE_STATUSES.indexOf(left.status);
-  const rightStatus = REFERRAL_SOURCE_STATUSES.indexOf(right.status);
-  if (leftStatus !== rightStatus) return leftStatus - rightStatus;
   if (left.display_name !== right.display_name) return left.display_name < right.display_name ? -1 : 1;
   return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
 }
@@ -1333,6 +1435,7 @@ function decodeStudentListItem(value: unknown): StudentListItem {
     "id",
     "displayName",
     "dateOfBirth",
+    "gender",
     "status",
     "primaryGuardianName",
     "updatedAt",
@@ -1343,6 +1446,7 @@ function decodeStudentListItem(value: unknown): StudentListItem {
     id: uuid(record.id, "id"),
     displayName: nonEmptyString(record.displayName, "displayName"),
     dateOfBirth: nullableDate(record.dateOfBirth),
+    gender: nullableGender(record.gender),
     status,
     primaryGuardianName: nullableNonEmptyString(record.primaryGuardianName, "primaryGuardianName"),
     updatedAt: isoDateTime(record.updatedAt, "updatedAt"),
@@ -1354,6 +1458,7 @@ function decodeStudentDetail(value: unknown): StudentDetail {
     "id",
     "displayName",
     "dateOfBirth",
+    "gender",
     "status",
     "primaryGuardianName",
     "updatedAt",
@@ -1363,7 +1468,7 @@ function decodeStudentDetail(value: unknown): StudentDetail {
     "guardians",
   ]);
   const base = decodeStudentListItem(Object.fromEntries(
-    ["id", "displayName", "dateOfBirth", "status", "primaryGuardianName", "updatedAt"]
+    ["id", "displayName", "dateOfBirth", "gender", "status", "primaryGuardianName", "updatedAt"]
       .map((key) => [key, record[key]]),
   ));
   const guardians = expectArray(record.guardians, decodeGuardian);
@@ -1383,6 +1488,8 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     "displayName",
     "email",
     "phone",
+    "dateOfBirth",
+    "gender",
     "status",
     "recordVersion",
     "relationshipType",
@@ -1397,6 +1504,8 @@ function decodeGuardian(value: unknown): StudentGuardianItem {
     displayName: nonEmptyString(record.displayName, "guardian.displayName"),
     email: nullableNonEmptyString(record.email, "guardian.email"),
     phone: nullableNonEmptyString(record.phone, "guardian.phone"),
+    dateOfBirth: nullableDate(record.dateOfBirth),
+    gender: nullableGender(record.gender),
     status: studentStatus(record.status, "guardian.status"),
     recordVersion: positiveInteger(record.recordVersion, "guardian.recordVersion"),
     relationshipType: nonEmptyString(record.relationshipType, "guardian.relationshipType"),
@@ -1499,25 +1608,21 @@ function decodeUpdatedGuardianProfile(value: unknown, expectedId: string): Updat
 
 function decodeCreatedStudentAggregate(value: unknown): CreatedStudentAggregate {
   const record = exactRecord(value, ["student", "primary_guardian", "relationship"]);
-  const student = exactRecord(record.student, ["id", "display_name"]);
-  const guardian = exactRecord(record.primary_guardian, ["id", "display_name"]);
-  const relationship = exactRecord(record.relationship, ["id", "relationship_type"]);
-  const relationshipType = expectString(relationship.relationship_type);
-  if (!isRelationshipType(relationshipType)) {
-    throw new TypeError("Invalid relationship.relationship_type.");
-  }
+  const student = exactRecord(record.student, ["id", "record_version"]);
+  const guardian = exactRecord(record.primary_guardian, ["id", "record_version"]);
+  const relationship = exactRecord(record.relationship, ["id", "record_version"]);
   return Object.freeze({
     student: Object.freeze({
       id: uuid(student.id, "student.id"),
-      display_name: nonEmptyString(student.display_name, "student.display_name"),
+      record_version: positiveInteger(student.record_version, "student.record_version"),
     }),
     primary_guardian: Object.freeze({
       id: uuid(guardian.id, "primary_guardian.id"),
-      display_name: nonEmptyString(guardian.display_name, "primary_guardian.display_name"),
+      record_version: positiveInteger(guardian.record_version, "primary_guardian.record_version"),
     }),
     relationship: Object.freeze({
       id: uuid(relationship.id, "relationship.id"),
-      relationship_type: relationshipType,
+      record_version: positiveInteger(relationship.record_version, "relationship.record_version"),
     }),
   });
 }
@@ -1550,6 +1655,7 @@ function decodeCurrentGuardianRelationship(value: unknown): CurrentGuardianRelat
     "relationship_id",
     "guardian",
     "relationship_type",
+    "relationship_description",
     "is_legal_guardian",
     "is_primary_contact",
     "is_emergency_contact",
@@ -1562,6 +1668,8 @@ function decodeCurrentGuardianRelationship(value: unknown): CurrentGuardianRelat
     relationship_id: uuid(record.relationship_id, "relationship_id"),
     guardian: decodeGuardianContactHint(record.guardian),
     relationship_type: relationshipType(record.relationship_type, "relationship_type"),
+    relationship_description: nullableNonEmptyString(record.relationship_description,
+      "relationship_description"),
     is_legal_guardian: expectBoolean(record.is_legal_guardian),
     is_primary_contact: expectBoolean(record.is_primary_contact),
     is_emergency_contact: expectBoolean(record.is_emergency_contact),
@@ -1594,6 +1702,7 @@ function decodeGuardianCommandResult(value: unknown): GuardianRelationshipComman
     "relationship_id",
     "guardian_id",
     "relationship_type",
+    "relationship_description",
     "is_legal_guardian",
     "is_primary_contact",
     "is_emergency_contact",
@@ -1606,6 +1715,8 @@ function decodeGuardianCommandResult(value: unknown): GuardianRelationshipComman
     relationship_id: uuid(record.relationship_id, "relationship_id"),
     guardian_id: uuid(record.guardian_id, "guardian_id"),
     relationship_type: relationshipType(record.relationship_type, "relationship_type"),
+    relationship_description: nullableNonEmptyString(record.relationship_description,
+      "relationship_description"),
     is_legal_guardian: expectBoolean(record.is_legal_guardian),
     is_primary_contact: expectBoolean(record.is_primary_contact),
     is_emergency_contact: expectBoolean(record.is_emergency_contact),
@@ -2056,6 +2167,14 @@ function nullableDate(value: unknown): string | null {
   const result = expectNullableString(value);
   if (result !== null && !isValidDate(result)) throw new TypeError("Invalid dateOfBirth.");
   return result;
+}
+
+function nullableGender(value: unknown): CrmGender | null {
+  const result = expectNullableString(value);
+  if (result !== null && !["male", "female", "other", "not_disclosed"].includes(result)) {
+    throw new TypeError("Invalid gender.");
+  }
+  return result as CrmGender | null;
 }
 
 function isoDateTime(value: unknown, field: string): string {

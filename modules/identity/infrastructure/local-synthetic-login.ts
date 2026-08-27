@@ -15,7 +15,6 @@ export const LOCAL_SYNTHETIC_ROLES = [
   "founder",
   "admin",
   "advisor",
-  "data_reviewer",
   "contractor",
 ] as const satisfies readonly OrganizationRole[];
 

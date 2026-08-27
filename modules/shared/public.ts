@@ -7,9 +7,12 @@ export {
   failIdempotencyRecord,
   hashRequestPayload,
   IdempotencyContractError,
+  validateIdempotencyActorScope,
   validateIdempotencyKey,
 } from "./domain/idempotency.ts";
 export type {
+  IdempotencyActorKind,
+  IdempotencyActorScope,
   IdempotencyDecision,
   IdempotencyDenialCode,
   IdempotencyRecord,
@@ -18,3 +21,22 @@ export type {
 export * from "./presentation/api-contract.ts";
 export * from "./presentation/release-one-entry-boundary.ts";
 export * from "./presentation/request-context.ts";
+export type {
+  AccessCaseIntakeOwnerPort,
+  CaseIntakeOwnerAdvisorOption,
+  CaseIntakeOwnerOption,
+  CaseIntakeOwnerTransaction,
+  CrmCaseIntakeOwnerPort,
+} from "./domain/case-intake-owner-contract.ts";
+export type {
+  AccessTaskBinding,
+  AccessTaskFactsPort,
+  CaseTaskProvisioningFacts,
+  CasesTaskFactsPort,
+  DocumentsCleanEvidencePort,
+  TaskFactsAssigneeRole,
+  TaskFactsKind,
+  TaskFactsTransaction,
+  TaskCompletionFacts,
+  TaskCompletionFactsPort,
+} from "./domain/p3-task-facts.ts";

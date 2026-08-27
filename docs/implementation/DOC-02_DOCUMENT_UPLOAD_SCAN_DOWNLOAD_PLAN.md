@@ -1,11 +1,19 @@
 # DOC-02 Case Document Upload, Scan, And Download Plan
 
+> **Runtime boundary superseded 2026-08-26.** LocalStack, local files and ClamAV
+> are no longer runnable local or Vercel implementations. The S3 versioned-object,
+> upload/download intent, receipt, scan-state and fail-closed contracts below remain
+> authoritative shapes, but their old LocalStack/ClamAV execution steps are historical
+> evidence only. Until reviewed production S3 and scanner connectors exist,
+> `production-aws` is unavailable. An explicit `deterministic-fake` object transport
+> and scanner is allowed only in non-production.
+
 | Control | Value |
 | --- | --- |
 | Ticket | `DOC-02` |
-| Status | `accepted_for_local_implementation` |
+| Status | `accepted_for_shared-contract-fake-runtime` |
 | Date | 2026-08-24 (Asia/Singapore) |
-| Delivery boundary | Local Dev only |
+| Delivery boundary | Local + Vercel test/preview contract; production S3/scanner pending |
 | Dependencies | DOC-01, P0-10, P0-11, P1-10, P1-11, DEC-017, DEC-018, DEC-024, DEC-032 |
 | Remote evidence | Vercel Test: `not_run (unverified)`; AWS Production: `not_run (unverified)` |
 

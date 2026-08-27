@@ -17,8 +17,7 @@ export const LOCAL_SYNTHETIC_PRINCIPALS = Object.freeze([
   principal("founder", "101", "201", "301"),
   principal("admin", "102", "202", "302"),
   principal("advisor", "103", "203", "303"),
-  principal("data_reviewer", "104", "204", "304"),
-  principal("contractor", "105", "205", "305"),
+  principal("contractor", "104", "204", "304"),
 ] as const satisfies readonly LocalSyntheticPrincipal[]);
 
 const PRINCIPALS_BY_ROLE = new Map(

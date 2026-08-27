@@ -2,7 +2,7 @@
 
 ## 1. 用途与边界
 
-本目录保存与当前代码版本绑定的实现记录、运行手册、安全模型和发布门禁。产品需求、领域术语、跨版本架构决策和研究位于同级工作区的 `txgj-doc` 文档目录。
+本目录保存与当前代码版本绑定的实现记录、运行手册、安全模型和发布门禁。唯一业务事实源是同级工作区的 `txgj-doc/business-requirements/`。
 
 本文只提供路由和状态解释，不改变各文档内部的约束，也不证明实现已经可运行。
 
@@ -10,14 +10,15 @@
 
 处理一个功能或缺陷前按以下顺序读取：
 
-1. `txgj-doc/PRD_IMPLEMENTATION_DECISIONS.md` 中对应决策。
-2. `txgj-doc/PRD_PHASE_IMPLEMENTATION_PLAN.md` 中对应 ticket、依赖和验收项。
-3. 当前接手范围先读取 `txgj-doc/TAKEOVER_PHASE0_SCOPE_BASELINE.zh-CN.md`；英文原文位于同仓库的 `TAKEOVER_PHASE0_SCOPE_BASELINE.md`。
-4. 本目录中对应的 implementation record。
-5. 相关领域契约、迁移和测试。
-6. `evidence/` 和 `docs/release-evidence/` 中的实际证据与签署状态。
+1. `txgj-doc/business-requirements/README.md` 及相关模块文件中状态为 `confirmed` 的对应 `BR-*` 规则。
+2. 本目录中对应的 implementation record；它只说明当前实现和历史验收，不能修改业务规则。
+3. 相关领域契约、迁移和测试。
+4. `evidence/` 和 `docs/release-evidence/` 中的实际证据与签署状态。
+5. 旧 PRD、旧决策和旧需求只可从 `txgj-doc/archive/` 读取，以便发现差异或提出问题，不得直接进入开发。
 
 文件名或计划存在不代表 ticket 已经完成。必须读取文档中的 `Status`、`Local status`、未验证项和禁止声明。
+
+历史 implementation 文档中的 `Authority: DEC-*` 或 `DP-*` 只说明当时采用的输入。2026-08-24 起，它们不再授权新的业务改动；新票据必须改为引用 `confirmed BR-*`。若唯一业务事实源尚无对应规则，该功能保持历史状态或 `blocked_pending_business_review`。
 
 ## 3. 目录职责
 
@@ -84,7 +85,7 @@
 | `P3-18_EMPTY_BASELINE_RESTORE_PLAN.md` | runbook 已升级；restore execution 未完成 |
 | `P3-19_FIRST_CASE_DECISION_PLAN.md` | unsigned `no-go` |
 | `release-evidence/phase3/first-case-go-no-go.md` | `no-go`，不授权任何真实案件 |
-| `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` | 当前本地 Portal/Billing 实现基线；真实启用仍需独立 gate |
+| `txgj-doc/business-requirements/` | 唯一业务事实源；开发只读取索引、当前模块和明确引用的跨模块 `BR-*`；实现与真实启用仍需独立 gate |
 
 当前接手阶段不运行云端验证，也不把 `partial_local`、`implemented_local` 或测试 fixture 描述为 production-ready。
 

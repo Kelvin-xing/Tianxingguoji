@@ -31,10 +31,12 @@ test("Founder and Advisor create a normalized aggregate with redacted effects", 
     });
     const result = await service.create({ actor: actor(role), command: command() });
 
-    assert.equal(result.student.displayName, "Synthetic Student");
+    assert.equal(result.student.id, IDS.student);
     assert.equal(observed?.student.contactEmail, "student@example.invalid");
-    assert.equal(observed?.primaryGuardian.email, "guardian@example.invalid");
-    assert.equal(observed?.primaryGuardian.phone, null);
+    assert.equal(observed?.primaryGuardian.kind, "new");
+    if (observed?.primaryGuardian.kind !== "new") assert.fail("Expected a new Guardian command.");
+    assert.equal(observed.primaryGuardian.email, "guardian@example.invalid");
+    assert.equal(observed.primaryGuardian.phone, null);
     assert.match(observed?.requestHash ?? "", /^[a-f0-9]{64}$/);
     assert.deepEqual(observed?.effects.audit.metadata, {
       effect_type: "crm.student_created",
@@ -59,7 +61,7 @@ test("Founder and Advisor create a normalized aggregate with redacted effects", 
 });
 
 test("Admin and other roles are denied before repository access", async () => {
-  for (const role of ["admin", "data_reviewer", "contractor"] as const) {
+  for (const role of ["admin", "contractor"] as const) {
     let called = false;
     const service = serviceWith(async (input) => {
       called = true;
@@ -95,11 +97,13 @@ test("stable error guard recognizes a StudentCreateError from another module ins
 });
 
 test("validation freezes relationship vocabulary, contact requirement, dates and idempotency", async () => {
+  const base = command();
+  if (base.primaryGuardian.kind !== "new") assert.fail("Expected a new Guardian command.");
   const invalidCommands: StudentCreateCommand[] = [
-    { ...command(), primaryGuardian: { ...command().primaryGuardian, relationshipType: "parent" as "father" } },
-    { ...command(), primaryGuardian: { ...command().primaryGuardian, email: null, phone: null } },
-    { ...command(), student: { ...command().student, dateOfBirth: "2026-02-31" } },
-    { ...command(), idempotencyKey: "not allowed whitespace" },
+    { ...base, primaryGuardian: { ...base.primaryGuardian, relationshipType: "invalid" as "father" } },
+    { ...base, primaryGuardian: { ...base.primaryGuardian, email: null, phone: null } },
+    { ...base, student: { ...base.student, dateOfBirth: "2026-02-31" } },
+    { ...base, idempotencyKey: "not allowed whitespace" },
   ];
   for (const invalid of invalidCommands) {
     await assert.rejects(
@@ -143,11 +147,16 @@ function command(): StudentCreateCommand {
       contactPhone: null,
     },
     primaryGuardian: {
+      kind: "new",
       displayName: " Synthetic Guardian ",
       email: " Guardian@Example.Invalid ",
       phone: " ",
       relationshipType: "father",
+      relationshipDescription: null,
       isLegalGuardian: true,
+      isEmergencyContact: false,
+      isBillingContact: false,
+      notificationConsent: false,
     },
     requestId: "crm-create-request-1",
     idempotencyKey: "crm-create-attempt-1",
@@ -162,17 +171,15 @@ function actor(role: IdentitySessionActor["role"]): IdentitySessionActor {
     sessionId: IDS.session,
     capturedSessionVersion: 1,
     reauthenticatedAtMs: null,
+    workspaceCapabilities: role === "admin" || role === "contractor" ? [] : ["students.create"],
   };
 }
 
 function created(input: Parameters<StudentCreateRepository["createStudent"]>[0]) {
   return {
-    student: { id: input.studentId, displayName: input.student.displayName },
-    primaryGuardian: { id: input.guardianId, displayName: input.primaryGuardian.displayName },
-    relationship: {
-      id: input.relationshipId,
-      relationshipType: input.primaryGuardian.relationshipType,
-    },
+    student: { id: input.studentId, recordVersion: 1 },
+    primaryGuardian: { id: input.guardianId, recordVersion: 1 },
+    relationship: { id: input.relationshipId, recordVersion: 1 },
   } as const;
 }
 

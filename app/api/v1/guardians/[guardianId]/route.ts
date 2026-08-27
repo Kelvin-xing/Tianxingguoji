@@ -1,5 +1,5 @@
 import { getProfileMaintenanceRuntime } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { createRequestContext, errorResponse, successResponse } from "@/modules/shared/public";
 
 import {
@@ -20,7 +20,7 @@ export async function PATCH(
   try {
     const { guardianId } = await context.params;
     const command = await parseGuardianProfileUpdate(request, guardianId, requestContext.requestId);
-    const actor = await requireIdentityActor();
+    const actor = await requireApiRequestAccessContext();
     assertProfileMaintenanceCapability(actor);
     const acknowledgement = await getProfileMaintenanceRuntime().service.updateGuardian({ actor, command });
     return successResponse(requestContext, { guardian: toProfileAcknowledgement(acknowledgement) });

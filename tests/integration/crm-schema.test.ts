@@ -71,13 +71,13 @@ test("requires exactly one current primary relationship to a readable Guardian",
   assert.deepEqual(
     evaluatePrimaryContacts({
       nowMs,
-      relationships: [{ ...primary, guardianStatus: "purged" }],
+      relationships: [{ ...primary, guardianStatus: "deleted" }],
     }),
     { allowed: false, code: "PRIMARY_GUARDIAN_INACTIVE" },
   );
 });
 
-test("fails closed on CRM deletion and purge transitions", () => {
+test("fails closed on CRM deletion transitions", () => {
   const pendingRequest = {
     currentStatus: "active" as const,
     targetStatus: "pending_delete" as const,
@@ -95,32 +95,32 @@ test("fails closed on CRM deletion and purge transitions", () => {
     code: "DELETION_REASON_REQUIRED",
   });
 
-  const purgeRequest = {
+  const deletionRequest = {
     ...pendingRequest,
     currentStatus: "pending_delete" as const,
-    targetStatus: "purged" as const,
+    targetStatus: "deleted" as const,
     actorRole: "founder" as const,
     founderApproved: true,
     retentionCleared: true,
     referencesCleared: true,
   };
-  assert.deepEqual(evaluateCrmDeletionTransition(purgeRequest), { allowed: true });
+  assert.deepEqual(evaluateCrmDeletionTransition(deletionRequest), { allowed: true });
   assert.deepEqual(
-    evaluateCrmDeletionTransition({ ...purgeRequest, actorRole: "admin" }),
+    evaluateCrmDeletionTransition({ ...deletionRequest, actorRole: "admin" }),
     { allowed: false, code: "FOUNDER_APPROVAL_REQUIRED" },
   );
   assert.deepEqual(
-    evaluateCrmDeletionTransition({ ...purgeRequest, legalHoldActive: true }),
+    evaluateCrmDeletionTransition({ ...deletionRequest, legalHoldActive: true }),
     { allowed: false, code: "LEGAL_HOLD_ACTIVE" },
   );
   assert.deepEqual(
-    evaluateCrmDeletionTransition({ ...purgeRequest, referencesCleared: false }),
+    evaluateCrmDeletionTransition({ ...deletionRequest, referencesCleared: false }),
     { allowed: false, code: "REFERENCES_REMAIN" },
   );
   assert.deepEqual(
     evaluateCrmDeletionTransition({
-      ...purgeRequest,
-      currentStatus: "purged",
+      ...deletionRequest,
+      currentStatus: "deleted",
       targetStatus: "active",
     }),
     { allowed: false, code: "INVALID_LIFECYCLE_TRANSITION" },
@@ -462,7 +462,7 @@ async function assertPrimaryHandoffAndHistory(client: Client): Promise<void> {
     UPDATE crm_student_guardian_relationships
        SET ends_at = transaction_timestamp(),
            ended_by_user_id = '00000000-0000-4000-8000-000000000011',
-           end_reason = 'Primary contact handoff',
+           end_reason_code = 'Primary contact handoff',
            record_version = record_version + 1,
            updated_at = transaction_timestamp()
      WHERE id = '14000000-0000-4000-8000-000000000001';
@@ -653,7 +653,7 @@ async function assertLifecycleAndPurgeGuards(client: Client): Promise<void> {
     UPDATE crm_student_guardian_relationships
        SET ends_at = transaction_timestamp(),
            ended_by_user_id = '00000000-0000-4000-8000-000000000011',
-           end_reason = 'Student deletion review',
+           end_reason_code = 'Student deletion review',
            record_version = record_version + 1,
            updated_at = transaction_timestamp()
      WHERE id = '14000000-0000-4000-8000-000000000004';

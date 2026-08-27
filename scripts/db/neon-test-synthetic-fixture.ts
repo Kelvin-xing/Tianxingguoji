@@ -31,7 +31,7 @@ export const NEON_TEST_PRINCIPALS = Object.freeze([
   principal("founder", "101", "201", "301"),
   principal("admin", "102", "202", "302"),
   principal("advisor", "103", "203", "303"),
-  principal("data_reviewer", "104", "204", "304"),
+  principal("advisor", "104", "204", "304", "advisor-secondary"),
   principal("contractor", "105", "205", "305"),
 ]);
 
@@ -150,17 +150,18 @@ export function neonTestSchoolSnapshotManifestSha256(): string {
 }
 
 function principal(
-  role: "founder" | "admin" | "advisor" | "data_reviewer" | "contractor",
+  role: "founder" | "admin" | "advisor" | "contractor",
   userSuffix: string,
   membershipSuffix: string,
   bindingSuffix: string,
+  emailLocalPart = role.replaceAll("_", "-"),
 ) {
   return Object.freeze({
     role,
     userId: `51000000-0000-4000-8000-000000000${userSuffix}`,
     membershipId: `51000000-0000-4000-8000-000000000${membershipSuffix}`,
     roleBindingId: `51000000-0000-4000-8000-000000000${bindingSuffix}`,
-    email: `${role.replaceAll("_", "-")}@env01.test.invalid`,
+    email: `${emailLocalPart}@env01.test.invalid`,
   });
 }
 

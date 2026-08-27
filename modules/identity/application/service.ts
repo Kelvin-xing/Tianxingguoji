@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import type { OrganizationRole } from "../../access/public.ts";
+import { isOrganizationRole, type OrganizationRole } from "../../access/public.ts";
 import { INVITE_POLICY } from "../domain/contract.ts";
 import type {
   CognitoInviteProvisioner,
@@ -19,14 +19,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTIVATION_CREDENTIAL = /^v1\.([0-9a-f-]{36})\.([0-9a-f-]{36})\.([0-9a-f-]{36})\.([A-Za-z0-9_-]{43})$/i;
 const RECEIPT_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const ORGANIZATION_ROLES = new Set<OrganizationRole>([
-  "founder",
-  "admin",
-  "advisor",
-  "data_reviewer",
-  "contractor",
-]);
-
 export interface IdentityClock {
   nowMs(): number;
 }
@@ -40,7 +32,8 @@ export interface FounderInviteActor {
 export interface InviteTarget {
   readonly userId: string;
   readonly normalizedEmail: string;
-  readonly role: OrganizationRole;
+  /** Legacy caller field; role onboarding belongs to Access. */
+  readonly role?: OrganizationRole;
 }
 
 export interface InviteDeliveryChannel {
@@ -179,7 +172,6 @@ export class IdentityService {
         targetUserId: input.target.userId,
         invitedByUserId: input.actor.userId,
         normalizedEmail: input.target.normalizedEmail,
-        requestedRole: input.target.role,
         secretHash: hashOpaqueSecret(activationSecret),
         expiresAtMs,
         idempotencyKey: input.idempotencyKey,
@@ -355,7 +347,7 @@ function assertFounder(actor: FounderInviteActor): void {
 function assertInviteTarget(target: InviteTarget): void {
   if (
     !UUID.test(target.userId) ||
-    !ORGANIZATION_ROLES.has(target.role) ||
+    (target.role !== undefined && !isOrganizationRole(target.role)) ||
     target.normalizedEmail.length === 0 ||
     target.normalizedEmail.length > 320 ||
     target.normalizedEmail !== target.normalizedEmail.trim().toLowerCase()

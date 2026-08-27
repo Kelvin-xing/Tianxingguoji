@@ -100,6 +100,9 @@ export const NEON_TEST_SEED_TABLE_COUNTS = Object.freeze({
 
 export type NeonTestSeedMode = "dry-run" | "apply";
 export type NeonTestSeedPopulation = "empty" | "existing";
+export type NeonTestSeedOptions = Readonly<{
+  includeTaskPolicy?: boolean;
+}>;
 export type NeonTestRuntimeBoundaryObservation = Readonly<{
   userName: string;
   databaseOwner: string;
@@ -206,7 +209,9 @@ export function createNeonTestSeedEvidence(
 export async function seedNeonTestRelease1(
   target: OneRoleBaselineTarget,
   mode: NeonTestSeedMode,
+  options: NeonTestSeedOptions = {},
 ) {
+  const includeTaskPolicy = options.includeTaskPolicy !== false;
   const baseline = await verifyCommittedOneRoleBaseline();
   const baselineManifestSha256 = sha256(baseline.manifestJson);
   const fixture = await loadNeonTestManifestFixture();
@@ -220,22 +225,27 @@ export async function seedNeonTestRelease1(
   await client.connect();
   try {
     await setSeedContext(client);
-    const publicTableCount = await assertSeedPreflight(client, target, baselineManifestSha256);
+    const publicTableCount = await assertSeedPreflight(
+      client,
+      target,
+      baselineManifestSha256,
+      includeTaskPolicy,
+    );
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     let populationBefore: NeonTestSeedPopulation | undefined;
     try {
       await setSeedTenantContext(client);
-      await lockSeedTables(client);
-      populationBefore = await inspectSeedPopulation(client);
+      await lockSeedTables(client, includeTaskPolicy);
+      populationBefore = await inspectSeedPopulation(client, includeTaskPolicy);
       if (populationBefore === "empty") {
         await insertIdentityAndAccess(client);
-        await insertApprovedTaskPolicy(client);
+        if (includeTaskPolicy) await insertApprovedTaskPolicy(client);
         await insertStudentsAndGuardians(client);
         await insertApprovedManifest(client, fixture);
         await insertSchools(client);
       }
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
-      await assertExactSeedContent(client, fixture);
+      await assertExactSeedContent(client, fixture, includeTaskPolicy);
       if (mode === "dry-run") {
         await client.query("ROLLBACK");
       } else {
@@ -249,14 +259,16 @@ export async function seedNeonTestRelease1(
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY");
     try {
       await setSeedTenantContext(client);
-      const populationAfter = await inspectSeedPopulation(client);
+      const populationAfter = await inspectSeedPopulation(client, includeTaskPolicy);
       if (mode === "dry-run" && populationAfter !== populationBefore) {
         throw new NeonTestSeedSafetyError("Neon seed dry-run changed the pre-existing seed state.");
       }
       if (mode === "apply" && populationAfter !== "existing") {
         throw new NeonTestSeedSafetyError("Neon seed apply did not produce the complete fixed fixture.");
       }
-      if (populationAfter === "existing") await assertExactSeedContent(client, fixture);
+      if (populationAfter === "existing") {
+        await assertExactSeedContent(client, fixture, includeTaskPolicy);
+      }
       await client.query("ROLLBACK");
     } catch (error) {
       await client.query("ROLLBACK");
@@ -294,6 +306,7 @@ async function assertSeedPreflight(
   client: Client,
   target: OneRoleBaselineTarget,
   baselineManifestSha256: string,
+  includeTaskPolicy: boolean,
 ): Promise<number> {
   const identity = await client.query<{
     database_name: string;
@@ -356,7 +369,10 @@ async function assertSeedPreflight(
     throw new NeonTestSeedSafetyError("Neon seed requires the exact one-role baseline marker.");
   }
 
-  const requiredTables = [...seedTableRules().keys(), ...PROHIBITED_NEON_TEST_SEED_TABLES];
+  const requiredTables = [
+    ...seedTableRules(includeTaskPolicy).keys(),
+    ...PROHIBITED_NEON_TEST_SEED_TABLES,
+  ];
   const publicTables = await client.query<{ total_count: string; required_count: string }>(`
     SELECT count(*)::text AS total_count,
            count(*) FILTER (WHERE tablename = ANY($1::text[]))::text AS required_count
@@ -366,7 +382,7 @@ async function assertSeedPreflight(
   const totalCount = Number(publicTables.rows[0]?.total_count ?? "0");
   if (
     Number(publicTables.rows[0]?.required_count ?? "0") !== new Set(requiredTables).size ||
-    totalCount < seedTableRules().size
+    totalCount < seedTableRules(includeTaskPolicy).size
   ) {
     throw new NeonTestSeedSafetyError("Neon seed requires all baseline seed tables.");
   }
@@ -375,8 +391,10 @@ async function assertSeedPreflight(
 
 export function classifyNeonTestSeedPopulation(
   counts: Readonly<Record<keyof typeof NEON_TEST_SEED_COUNTS, number>>,
+  expected: Readonly<Record<keyof typeof NEON_TEST_SEED_COUNTS, number>> =
+    NEON_TEST_SEED_COUNTS,
 ): NeonTestSeedPopulation {
-  const entries = Object.entries(NEON_TEST_SEED_COUNTS) as readonly [
+  const entries = Object.entries(expected) as readonly [
     keyof typeof NEON_TEST_SEED_COUNTS,
     number,
   ][];
@@ -404,12 +422,15 @@ export function validateNeonTestRuntimeBoundary(
   }
 }
 
-async function inspectSeedPopulation(client: Client): Promise<NeonTestSeedPopulation> {
+async function inspectSeedPopulation(
+  client: Client,
+  includeTaskPolicy: boolean,
+): Promise<NeonTestSeedPopulation> {
   const counts = { ...Object.fromEntries(Object.keys(NEON_TEST_SEED_COUNTS).map((name) => [name, 0])) } as Record<
     keyof typeof NEON_TEST_SEED_COUNTS,
     number
   >;
-  const allowed = seedTableRules();
+  const allowed = seedTableRules(includeTaskPolicy);
   const tables = await client.query<{ tablename: string }>(`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
   `);
@@ -435,15 +456,27 @@ async function inspectSeedPopulation(client: Client): Promise<NeonTestSeedPopula
     }
     counts[rule.countName] = seededCount;
   }
-  return classifyNeonTestSeedPopulation(counts);
+  return classifyNeonTestSeedPopulation(counts, expectedSeedCounts(includeTaskPolicy));
 }
 
-async function lockSeedTables(client: Client): Promise<void> {
-  const tables = [...seedTableRules().keys()].sort().map((table) => `public.${quoteIdentifier(table)}`);
+async function lockSeedTables(client: Client, includeTaskPolicy: boolean): Promise<void> {
+  const tables = [...seedTableRules(includeTaskPolicy).keys()]
+    .sort()
+    .map((table) => `public.${quoteIdentifier(table)}`);
   await client.query(`LOCK TABLE ${tables.join(", ")} IN SHARE ROW EXCLUSIVE MODE`);
 }
 
-function seedTableRules(): ReadonlyMap<
+function expectedSeedCounts(
+  includeTaskPolicy: boolean,
+): Readonly<Record<keyof typeof NEON_TEST_SEED_COUNTS, number>> {
+  return Object.freeze({
+    ...NEON_TEST_SEED_COUNTS,
+    task_policies: includeTaskPolicy ? NEON_TEST_SEED_COUNTS.task_policies : 0,
+    task_rules: includeTaskPolicy ? NEON_TEST_SEED_COUNTS.task_rules : 0,
+  });
+}
+
+function seedTableRules(includeTaskPolicy = true): ReadonlyMap<
   string,
   Readonly<{
     countName: keyof typeof NEON_TEST_SEED_COUNTS;
@@ -451,7 +484,7 @@ function seedTableRules(): ReadonlyMap<
     values: readonly unknown[];
   }>
 > {
-  return new Map([
+  const rules = new Map([
     ["access_organizations", rule("organizations", "id = $1", [NEON_TEST_ORGANIZATION.id])],
     ["identity_users", rule("users", "id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ userId }) => userId)])],
     ["access_organization_memberships", rule("memberships", "id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ membershipId }) => membershipId)])],
@@ -464,9 +497,18 @@ function seedTableRules(): ReadonlyMap<
     ["schools_schools", rule("schools", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ id }) => id)])],
     ["schools_snapshots", rule("school_snapshots", "id = $1", [NEON_TEST_SCHOOL_SNAPSHOT_ID])],
     ["schools_snapshot_records", rule("school_records", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ recordId }) => recordId)])],
-    ["tasks_transition_policies", rule("task_policies", "id = $1", [NEON_TEST_TASK_POLICY_ID])],
-    ["tasks_transition_rules", rule("task_rules", "policy_id = $1", [NEON_TEST_TASK_POLICY_ID])],
   ]);
+  if (includeTaskPolicy) {
+    rules.set(
+      "tasks_transition_policies",
+      rule("task_policies", "id = $1", [NEON_TEST_TASK_POLICY_ID]),
+    );
+    rules.set(
+      "tasks_transition_rules",
+      rule("task_rules", "policy_id = $1", [NEON_TEST_TASK_POLICY_ID]),
+    );
+  }
+  return rules;
 }
 
 function rule(
@@ -481,8 +523,9 @@ async function insertIdentityAndAccess(client: Client): Promise<void> {
   const founder = NEON_TEST_PRINCIPALS[0]!;
   for (const principal of NEON_TEST_PRINCIPALS) {
     await client.query(
-      `INSERT INTO identity_users (id, normalized_email, status, created_by_user_id)
-       VALUES ($1,$2,'active',$3)`,
+      `INSERT INTO identity_users
+        (id, normalized_email, status, activated_at, created_by_user_id)
+       VALUES ($1,$2,'active',transaction_timestamp(),$3)`,
       [principal.userId, principal.email, principal.role === "founder" ? null : founder.userId],
     );
   }
@@ -495,8 +538,8 @@ async function insertIdentityAndAccess(client: Client): Promise<void> {
   for (const principal of NEON_TEST_PRINCIPALS) {
     await client.query(
       `INSERT INTO access_organization_memberships
-        (id, organization_id, user_id, status, created_by_user_id)
-       VALUES ($1,$2,$3,'active',$4)`,
+        (id, organization_id, user_id, status, activated_at, created_by_user_id)
+       VALUES ($1,$2,$3,'active',transaction_timestamp(),$4)`,
       [principal.membershipId, NEON_TEST_ORGANIZATION.id, principal.userId, founder.userId],
     );
     await client.query(
@@ -631,8 +674,9 @@ async function insertSchools(client: Client): Promise<void> {
 async function assertExactSeedContent(
   client: Client,
   fixture: NeonTestManifestFixture,
+  includeTaskPolicy: boolean,
 ): Promise<void> {
-  if ((await inspectSeedPopulation(client)) !== "existing") {
+  if ((await inspectSeedPopulation(client, includeTaskPolicy)) !== "existing") {
     throw new NeonTestSeedSafetyError("Neon synthetic seed counts are inconsistent.");
   }
 
@@ -650,21 +694,24 @@ async function assertExactSeedContent(
     `, [principal.userId, principal.email, principal.role === "founder" ? null : founder.userId]);
   }
 
-  const requester = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
-  const reviewer = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
-  await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_policies
-    WHERE id=$1 AND organization_id=$2 AND version=1 AND status='approved'
-      AND requested_by_user_id=$3 AND initial_state=$4 AND approval_decision_id='OD-06'
-      AND approval_decision_status='resolved' AND approved_by_user_id=$5 AND approved_role='founder'
-      AND approved_at IS NOT NULL AND record_version=2`,
-  [NEON_TEST_TASK_POLICY_ID,NEON_TEST_ORGANIZATION.id,requester.userId,
-    RELEASE_1_TASK_INITIAL_STATE,reviewer.userId]);
-  for (const rule of RELEASE_1_TASK_TRANSITION_RULES) {
-    await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_rules
-      WHERE organization_id=$1 AND policy_id=$2 AND from_state=$3 AND to_state=$4
-        AND actor_kind=$5 AND allowed_actor_roles=$6::text[] AND requires_reason=$7
-        AND requires_different_actor=$8`,[NEON_TEST_ORGANIZATION.id,NEON_TEST_TASK_POLICY_ID,
-      rule.from,rule.to,rule.actorKind,[...rule.allowedActorRoles],rule.requiresReason,rule.requiresDifferentActor]);
+  if (includeTaskPolicy) {
+    const requester = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
+    const reviewer = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder")!;
+    await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_policies
+      WHERE id=$1 AND organization_id=$2 AND version=1 AND status='approved'
+        AND requested_by_user_id=$3 AND initial_state=$4 AND approval_decision_id='OD-06'
+        AND approval_decision_status='resolved' AND approved_by_user_id=$5 AND approved_role='founder'
+        AND approved_at IS NOT NULL AND record_version=2`,
+    [NEON_TEST_TASK_POLICY_ID, NEON_TEST_ORGANIZATION.id, requester.userId,
+      RELEASE_1_TASK_INITIAL_STATE, reviewer.userId]);
+    for (const rule of RELEASE_1_TASK_TRANSITION_RULES) {
+      await assertExactRow(client, `SELECT count(*)::int AS count FROM tasks_transition_rules
+        WHERE organization_id=$1 AND policy_id=$2 AND from_state=$3 AND to_state=$4
+          AND actor_kind=$5 AND allowed_actor_roles=$6::text[] AND requires_reason=$7
+          AND requires_different_actor=$8`, [NEON_TEST_ORGANIZATION.id, NEON_TEST_TASK_POLICY_ID,
+        rule.from, rule.to, rule.actorKind, [...rule.allowedActorRoles], rule.requiresReason,
+        rule.requiresDifferentActor]);
+    }
   }
 
   await assertExactRow(client, `
@@ -722,7 +769,7 @@ async function assertExactSeedContent(
          AND relationship_type = $5 AND is_legal_guardian AND is_primary_contact
          AND is_emergency_contact AND NOT is_billing_contact AND notification_consent
          AND starts_at IS NOT NULL AND ends_at IS NULL AND ended_by_user_id IS NULL
-         AND end_reason IS NULL AND record_version = 1
+         AND end_reason_code IS NULL AND record_version = 1
     `, [student.relationshipId, NEON_TEST_ORGANIZATION.id, student.id,
       student.guardianId, student.relationshipType]);
   }

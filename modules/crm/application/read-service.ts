@@ -1,12 +1,13 @@
-import type { IdentitySessionActor } from "../../identity/public.ts";
+import { hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
+import type { CrmGender } from "../domain/approved-p2-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const READ_ROLES = new Set(["founder", "admin", "advisor"]);
 
 export interface StudentListItem {
   readonly id: string;
   readonly displayName: string;
   readonly dateOfBirth: string | null;
+  readonly gender: CrmGender | null;
   readonly status: "active" | "pending_delete";
   readonly primaryGuardianName: string | null;
   readonly updatedAt: string;
@@ -18,6 +19,8 @@ export interface StudentGuardianItem {
   readonly status: "active" | "pending_delete";
   readonly email: string | null;
   readonly phone: string | null;
+  readonly dateOfBirth: string | null;
+  readonly gender: CrmGender | null;
   readonly recordVersion: number;
   readonly relationshipType: string;
   readonly isLegalGuardian: boolean;
@@ -85,7 +88,7 @@ export class StudentReadService {
     this.repository = repository;
   }
 
-  listStudents(actor: IdentitySessionActor): Promise<readonly StudentListItem[]> {
+  listStudents(actor: RequestAccessActor): Promise<readonly StudentListItem[]> {
     assertReader(actor);
     return this.repository.listStudents({
       organizationId: actor.organizationId,
@@ -93,7 +96,7 @@ export class StudentReadService {
     });
   }
 
-  findStudent(actor: IdentitySessionActor, studentId: string): Promise<StudentDetail | null> {
+  findStudent(actor: RequestAccessActor, studentId: string): Promise<StudentDetail | null> {
     assertReader(actor);
     if (!UUID.test(studentId)) throw new StudentReadError("STUDENT_ID_INVALID");
     return this.repository.findStudent({
@@ -104,8 +107,9 @@ export class StudentReadService {
   }
 }
 
-function assertReader(actor: IdentitySessionActor): void {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !READ_ROLES.has(actor.role)) {
+function assertReader(actor: RequestAccessActor): void {
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
+      !hasRequestCapability(actor, "students.read")) {
     throw new StudentReadError("STUDENT_READ_FORBIDDEN");
   }
 }

@@ -1,5 +1,4 @@
-import { requireIdentityActor } from "@/modules/identity/web";
-import { getDocumentWorkspaceRuntime } from "@/modules/documents/server";
+import { getDocumentWorkspaceRuntime, requireDocumentActor } from "@/modules/documents/server";
 import { handleApiRequest } from "@/modules/shared/public";
 
 import {
@@ -16,7 +15,7 @@ export function GET(request: Request): Promise<Response> {
     try {
       assertNoDocumentQuery(request);
       return documentCollectionData(
-        await getDocumentWorkspaceRuntime().service.list(await requireIdentityActor()),
+        await getDocumentWorkspaceRuntime().service.list(await requireDocumentActor()),
       );
     } catch (error) {
       throw mapDocumentWorkspaceError(error);

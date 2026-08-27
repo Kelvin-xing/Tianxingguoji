@@ -14,7 +14,7 @@ import {
   isOrganizationRole,
   isWorkspaceCapability,
   workspaceCapabilitiesForRole,
-  type OrganizationRole,
+  type Release1OrganizationRole,
   type WorkspaceCapability,
 } from "../../../modules/access/public.ts";
 
@@ -28,6 +28,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "cases.referral_sources.assign",
     "students.read",
     "students.create",
+    "students.guardians.manage",
     "students.profiles.manage",
     "students.deletion.request",
     "students.deletion.review",
@@ -45,17 +46,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "schools.manage",
     "crawler.manage",
   ]),
-  admin: Object.freeze([
-    "today.read",
-    "cases.assessments.read",
-    "students.read",
-    "referral_sources.read",
-    "referral_sources.manage",
-    "schools.read",
-    "access.manage",
-    "schools.manage",
-    "crawler.manage",
-  ]),
+  admin: Object.freeze(["today.read", "access.manage", "schools.manage", "crawler.manage"]),
   advisor: Object.freeze([
     "today.read",
     "cases.read",
@@ -79,23 +70,11 @@ const EXPECTED_MATRIX = Object.freeze({
     "documents.upload",
     "documents.download",
   ]),
-  data_reviewer: Object.freeze([
-    "today.read",
-    "schools.read",
-    "schools.manage",
-    "crawler.manage",
-  ]),
   contractor: Object.freeze(["tasks.read", "tasks.transition"]),
-} as const satisfies Readonly<Record<OrganizationRole, readonly WorkspaceCapability[]>>);
+} as const satisfies Readonly<Record<Release1OrganizationRole, readonly WorkspaceCapability[]>>);
 
-test("freezes the DOC-02 five-role workspace capability matrix", () => {
-  assert.deepEqual(ORGANIZATION_ROLES, [
-    "founder",
-    "admin",
-    "advisor",
-    "data_reviewer",
-    "contractor",
-  ]);
+test("freezes the Release 1 four-role workspace capability matrix", () => {
+  assert.deepEqual(ORGANIZATION_ROLES, ["founder", "admin", "advisor", "contractor"]);
   assert.deepEqual(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE, EXPECTED_MATRIX);
   for (const role of ORGANIZATION_ROLES) {
     assert.deepEqual(workspaceCapabilitiesForRole(role), EXPECTED_MATRIX[role]);

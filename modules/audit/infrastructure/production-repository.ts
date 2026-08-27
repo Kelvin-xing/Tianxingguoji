@@ -42,7 +42,14 @@ export interface AtomicMutationTransaction {
 }
 
 const TABLE_REFERENCE = /\b(?:from|join|into|update|delete\s+from)\s+([a-z][a-z0-9_]*)/gi;
-const SHARED_TABLES = new Set(["shared_idempotency_records"]);
+const SHARED_TABLES = new Set([
+  "shared_idempotency_records",
+  "audit_outbox",
+  "tasks_tasks",
+  "cases_service_cases",
+  "access_role_bindings",
+  "access_organization_memberships",
+]);
 
 export function requireSupportingTransactionRunner(
   runner: TenantTransactionRunner | null | undefined,
@@ -86,6 +93,57 @@ export async function appendAtomicMutationEffects(
       effects.outbox.eventVersion, effects.outbox.idempotencyKey, effects.outbox.requestId,
       JSON.stringify(effects.outbox.payload), effects.outbox.availableAt, effects.outbox.createdAt],
   );
+}
+
+/** Outbox state remains owned by Audit; supporting workers call these narrow lifecycle operations. */
+export async function claimAuditOutboxRow(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string; readonly leaseUntilMs: number },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query<Record<string, unknown>>({
+    text: `UPDATE audit_outbox SET status='processing', attempt_count=attempt_count+1,
+              leased_until=to_timestamp($2 / 1000.0), lease_version=lease_version+1,
+              updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$3 AND status='pending'
+        RETURNING id, organization_id, event_type, idempotency_key, attempt_count, lease_version`,
+    values: [input.id, input.leaseUntilMs, input.organizationId],
+  });
+}
+
+export function completeAuditOutboxRow(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='delivered', delivered_at=transaction_timestamp(),
+              leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
+    values: [input.id, input.organizationId],
+  });
+}
+
+export function retryAuditOutboxRow(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='pending', leased_until=NULL,
+              available_at=transaction_timestamp(), updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
+    values: [input.id, input.organizationId],
+  });
+}
+
+export function deadLetterAuditOutboxRow(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='dead_letter', dead_lettered_at=transaction_timestamp(),
+              leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
+    values: [input.id, input.organizationId],
+  });
 }
 
 function createOwnedTransaction(

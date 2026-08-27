@@ -164,7 +164,7 @@ export class InMemoryIdentitySessionRepository implements IdentitySessionReposit
     this.inviteByIdempotency.set(idempotencyScope, input.inviteId);
     this.usersById.set(input.targetUserId, {
       organizationId: input.organizationId,
-      role: input.requestedRole,
+      role: input.requestedRole ?? "advisor",
       providerSubject: null,
       status: "invited",
       recordVersion: 1,

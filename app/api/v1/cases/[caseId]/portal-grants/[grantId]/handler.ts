@@ -5,6 +5,7 @@ import {
   portalJson,
   readIdempotencyKey,
   readObject,
+  assertExactKeys,
   requireTrustedMutationOrigin,
 } from "../handler.ts";
 
@@ -22,6 +23,7 @@ export function createPortalGrantItemHandlers(deps: PortalGrantRouteDependencies
         if (!UUID.test(caseId) || !UUID.test(grantId)) throw new RequestInvalid();
         const idempotencyKey = readIdempotencyKey(request);
         const body = await readObject(request);
+        assertExactKeys(body, ["expected_version", "reason_code"]);
         if (
           !Number.isSafeInteger(body.expected_version) ||
           Number(body.expected_version) < 1 ||
@@ -36,6 +38,7 @@ export function createPortalGrantItemHandlers(deps: PortalGrantRouteDependencies
         }
         const result = await deps.revokeGrant({
           actorUserId: actor.actorUserId,
+          actor,
           caseId,
           grantId,
           expectedVersion: Number(body.expected_version),

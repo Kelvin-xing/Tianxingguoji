@@ -6,6 +6,7 @@ export * from "./application/service.ts";
 export * from "./application/student-create-service.ts";
 export * from "./application/profile-maintenance-service.ts";
 export * from "./application/deletion-review-service.ts";
+export * from "./domain/deletion-request-locator.ts";
 export * from "./application/referral-source-service.ts";
 export {
   DeletionReviewRuntimeUnavailable,
@@ -36,3 +37,6 @@ export * from "./infrastructure/postgresql-guardian-relationship-repository.ts";
 export * from "./infrastructure/postgresql-profile-maintenance-repository.ts";
 export * from "./infrastructure/postgresql-deletion-review-repository.ts";
 export * from "./infrastructure/postgresql-referral-source-repository.ts";
+export * from "./infrastructure/postgresql-case-intake-owner.ts";
+export * from "./application/portal-read-port.ts";
+export * from "./infrastructure/postgresql-portal-read-adapter.ts";

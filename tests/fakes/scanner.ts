@@ -37,11 +37,10 @@ const SAFE_IDENTIFIER = /^[A-Za-z][A-Za-z0-9._:/-]{0,255}$/;
 export class SyntheticScannerFake {
   private readonly outcomeQueue: SyntheticScannerOutcome[] = [];
   private readonly recordedCalls: SyntheticScanCall[] = [];
-  private readonly scannerVersion: string;
+  readonly scannerVersion = "clamav-release1" as const;
 
   constructor(...outcomes: SyntheticScannerOutcome[]) {
     this.outcomeQueue.push(...outcomes);
-    this.scannerVersion = "clamav-release1";
   }
 
   enqueue(...outcomes: SyntheticScannerOutcome[]): void {

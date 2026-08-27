@@ -1,5 +1,5 @@
 import { getProfileMaintenanceRuntime, getStudentReadRuntime, GuardianRelationshipRuntimeUnavailable } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { createApiError, createRequestContext, errorResponse, handleApiRequest, successResponse, type JsonValue } from "@/modules/shared/public";
 import { assertProfileMaintenanceCapability, mapProfileMaintenanceError, parseStudentProfileUpdate, toProfileAcknowledgement } from "../../profile-maintenance-handler.ts";
 import { mapStudentReadError } from "../../student-read-handler.ts";
@@ -14,7 +14,7 @@ export async function GET(
   return handleApiRequest(request, async () => {
     const { studentId } = await context.params;
     try {
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const student = await getStudentReadRuntime().service.findStudent(actor, studentId);
       if (!student) throw createApiError("NOT_FOUND");
       return {
@@ -40,7 +40,7 @@ export async function PATCH(
   try {
     const { studentId } = await context.params;
     const command = await parseStudentProfileUpdate(request, studentId, requestContext.requestId);
-    const actor = await requireIdentityActor();
+    const actor = await requireApiRequestAccessContext();
     assertProfileMaintenanceCapability(actor);
     const acknowledgement = await getProfileMaintenanceRuntime().service.updateStudent({ actor, command });
     return successResponse(requestContext, { student: toProfileAcknowledgement(acknowledgement) });

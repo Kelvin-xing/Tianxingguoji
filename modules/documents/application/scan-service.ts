@@ -19,6 +19,11 @@ const PROVIDER_VERSION = /^\S{1,1024}$/;
 const SAFE_CODE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
 const SAFE_BUCKET = /^[a-z0-9][a-z0-9.-]{1,62}[a-z0-9]$/;
 export const MAX_DOCUMENT_SCAN_ATTEMPTS = 3;
+export const DOCUMENT_SCANNER_ENGINES = Object.freeze([
+  "clamav-release1",
+  "deterministic-fake-release1",
+] as const);
+export type DocumentScannerEngine = (typeof DOCUMENT_SCANNER_ENGINES)[number];
 
 export interface DocumentScanClock {
   nowMs(): number;
@@ -108,6 +113,7 @@ export interface DocumentScanRepository {
     readonly event: DocumentScanEvent;
     readonly work: DocumentScanWork;
     readonly verdict: "clean" | "malicious";
+    readonly scannerEngine?: DocumentScannerEngine;
     readonly completedAtMs: number;
     readonly effects: MutationEffectBundle;
   }): Promise<DocumentScanVerdictResult>;
@@ -119,6 +125,7 @@ export interface DocumentScanRepository {
     readonly event: DocumentScanEvent;
     readonly work: DocumentScanWork;
     readonly failedAtMs: number;
+    readonly scannerEngine?: DocumentScannerEngine;
     readonly effects: MutationEffectBundle;
   }): Promise<DocumentScanFailureResult>;
   /** This read returns only opaque object/work identifiers and states. */
@@ -207,6 +214,7 @@ export class DocumentScanService {
     readonly event: DocumentScanEvent;
     readonly work: DocumentScanWork;
     readonly verdict: "clean" | "malicious";
+    readonly scannerEngine?: DocumentScannerEngine;
   }): Promise<DocumentScanVerdictResult> {
     assertEvent(input.event);
     assertWorkMatchesEvent(input.work, input.event);
@@ -218,6 +226,7 @@ export class DocumentScanService {
     if (!transition.allowed) throw new DocumentScanError("DOCUMENT_SCAN_TRANSITION_INVALID");
 
     const completedAtMs = this.now();
+    const scannerEngine = checkedScannerEngine(input.scannerEngine);
     const effects = this.effects({
       organizationId: input.work.organizationId,
       documentVersionId: input.work.documentVersionId,
@@ -232,6 +241,7 @@ export class DocumentScanService {
       event: input.event,
       work: input.work,
       verdict: input.verdict,
+      scannerEngine,
       completedAtMs,
       effects,
     });
@@ -240,6 +250,7 @@ export class DocumentScanService {
   async failScanWork(input: {
     readonly event: DocumentScanEvent;
     readonly work: DocumentScanWork;
+    readonly scannerEngine?: DocumentScannerEngine;
   }): Promise<DocumentScanFailureResult> {
     assertEvent(input.event);
     assertWorkMatchesEvent(input.work, input.event);
@@ -251,6 +262,7 @@ export class DocumentScanService {
     if (!transition.allowed) throw new DocumentScanError("DOCUMENT_SCAN_TRANSITION_INVALID");
 
     const failedAtMs = this.now();
+    const scannerEngine = checkedScannerEngine(input.scannerEngine);
     const isFinalAttempt = input.work.attemptCount === MAX_DOCUMENT_SCAN_ATTEMPTS ||
       input.event.deliveryAttempt === MAX_DOCUMENT_SCAN_ATTEMPTS;
     const effects = this.effects({
@@ -267,6 +279,7 @@ export class DocumentScanService {
       event: input.event,
       work: input.work,
       failedAtMs,
+      scannerEngine,
       effects,
     });
     if (
@@ -415,6 +428,14 @@ export class DocumentScanService {
     assertUuid(id);
     return id;
   }
+}
+
+function checkedScannerEngine(value: DocumentScannerEngine | undefined): DocumentScannerEngine {
+  const engine = value ?? "clamav-release1";
+  if (!(DOCUMENT_SCANNER_ENGINES as readonly string[]).includes(engine)) {
+    throw new DocumentScanError("DOCUMENT_SCAN_RESULT_INVALID");
+  }
+  return engine;
 }
 
 function assertEvent(event: DocumentScanEvent): void {

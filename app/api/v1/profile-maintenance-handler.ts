@@ -1,4 +1,4 @@
-import { evaluateBootstrapAuthorization } from "../../../modules/access/public.ts";
+import { hasRequestCapability, type RequestAccessActor } from "../../../modules/access/public.ts";
 import {
   isProfileMaintenanceError,
   isProfileMaintenanceRuntimeUnavailable,
@@ -6,13 +6,12 @@ import {
   type ProfileUpdateAcknowledgement,
   type StudentProfileUpdateCommand,
 } from "../../../modules/crm/server.ts";
-import type { IdentitySessionActor } from "../../../modules/identity/public.ts";
 import { createApiError } from "../../../modules/shared/public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function assertProfileMaintenanceCapability(actor: IdentitySessionActor): void {
-  if (!evaluateBootstrapAuthorization(actor.role, { capability: "students.profiles.manage" }).allowed) {
+export function assertProfileMaintenanceCapability(actor: RequestAccessActor): void {
+  if (!hasRequestCapability(actor, "students.profiles.manage")) {
     throw createApiError("FORBIDDEN");
   }
 }
@@ -23,10 +22,11 @@ export async function parseStudentProfileUpdate(
   requestId: string,
 ): Promise<StudentProfileUpdateCommand> {
   assertTargetId(studentId);
-  const body = await exactJson(request, ["display_name", "date_of_birth", "contact_email",
+  const body = await exactJson(request, ["display_name", "date_of_birth", "gender", "contact_email",
     "contact_phone", "expected_record_version"]);
   if (typeof body.display_name !== "string" ||
       (body.date_of_birth !== null && typeof body.date_of_birth !== "string") ||
+      !isNullableGender(body.gender) ||
       (body.contact_email !== null && typeof body.contact_email !== "string") ||
       (body.contact_phone !== null && typeof body.contact_phone !== "string") ||
       typeof body.expected_record_version !== "number") {
@@ -36,6 +36,7 @@ export async function parseStudentProfileUpdate(
     studentId,
     displayName: body.display_name as string,
     dateOfBirth: body.date_of_birth as string | null,
+    gender: body.gender,
     contactEmail: body.contact_email as string | null,
     contactPhone: body.contact_phone as string | null,
     expectedRecordVersion: body.expected_record_version as number,
@@ -50,10 +51,13 @@ export async function parseGuardianProfileUpdate(
   requestId: string,
 ): Promise<GuardianProfileUpdateCommand> {
   assertTargetId(guardianId);
-  const body = await exactJson(request, ["display_name", "email", "phone", "expected_record_version"]);
+  const body = await exactJson(request, ["display_name", "date_of_birth", "gender", "email", "phone",
+    "expected_record_version"]);
   if (typeof body.display_name !== "string" ||
       (body.email !== null && typeof body.email !== "string") ||
       (body.phone !== null && typeof body.phone !== "string") ||
+      (body.date_of_birth !== null && typeof body.date_of_birth !== "string") ||
+      !isNullableGender(body.gender) ||
       typeof body.expected_record_version !== "number") {
     throw createApiError("VALIDATION_FAILED");
   }
@@ -62,10 +66,16 @@ export async function parseGuardianProfileUpdate(
     displayName: body.display_name as string,
     email: body.email as string | null,
     phone: body.phone as string | null,
+    dateOfBirth: body.date_of_birth as string | null,
+    gender: body.gender,
     expectedRecordVersion: body.expected_record_version as number,
     requestId,
     idempotencyKey: requiredIdempotencyKey(request),
   });
+}
+
+function isNullableGender(value: unknown): value is "male" | "female" | "other" | "not_disclosed" | null {
+  return value === null || value === "male" || value === "female" || value === "other" || value === "not_disclosed";
 }
 
 export function toProfileAcknowledgement(acknowledgement: ProfileUpdateAcknowledgement) {

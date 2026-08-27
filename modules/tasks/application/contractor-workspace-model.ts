@@ -3,8 +3,9 @@ import type { ContractorTaskWorkspaceResult } from "./contractor-workspace.ts";
 
 const CONTRACTOR_ACTIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Object.freeze({
   created: Object.freeze([]),
-  assigned: Object.freeze(["accepted", "rejected"]),
+  assigned: Object.freeze(["accepted", "awaiting_reassignment"]),
   accepted: Object.freeze(["completed"]),
+  awaiting_reassignment: Object.freeze([]),
   rejected: Object.freeze([]),
   reassigned: Object.freeze([]),
   completed: Object.freeze([]),
@@ -15,7 +16,7 @@ const CONTRACTOR_ACTIONS: Readonly<Record<TaskState, readonly TaskState[]>> = Ob
 
 export const CONTRACTOR_TASK_ALLOWED_TRANSITIONS = Object.freeze([
   "accepted",
-  "rejected",
+  "awaiting_reassignment",
   "completed",
 ] as const satisfies readonly TaskState[]);
 
@@ -23,6 +24,7 @@ const STATE_LABELS: Readonly<Record<TaskState, string>> = Object.freeze({
   created: "Created",
   assigned: "Assigned",
   accepted: "Accepted",
+  awaiting_reassignment: "Awaiting reassignment",
   rejected: "Returned",
   reassigned: "Reassigned",
   completed: "Delivered",

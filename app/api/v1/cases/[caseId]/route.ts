@@ -1,5 +1,5 @@
 import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
 
 import { mapCaseWorkspaceDetailError } from "../route-contract.ts";
@@ -14,7 +14,7 @@ export async function GET(
   return handleApiRequest(request, async () => {
     const { caseId } = await context.params;
     try {
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const record = await getCaseWorkspaceRuntime().service.findCase(actor, caseId);
       if (!record) throw createApiError("NOT_FOUND");
       return { case: { ...record } } satisfies JsonValue;

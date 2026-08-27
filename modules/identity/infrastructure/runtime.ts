@@ -25,15 +25,20 @@ import { loadTestDatabaseConfiguration } from "../../../lib/runtime/test-databas
 import {
   getPostgresqlDatabaseTestSessionRepository,
 } from "./postgresql-database-test-repository.ts";
+import type { CanonicalIdentitySessionActor } from "../domain/actor.ts";
 
 export type IdentityRuntimeService = Pick<
   IdentityService,
   | "createFounderInvite"
   | "claimInviteActivation"
   | "completeManagedLogin"
-  | "requireSession"
   | "revokeSession"
->;
+> & Readonly<{
+  requireSession(input: Readonly<{
+    cookieSecret: string;
+    sensitiveAction: boolean;
+  }>): Promise<CanonicalIdentitySessionActor>;
+}>;
 
 export interface IdentityRuntime {
   readonly authMode: AuthMode;
@@ -215,6 +220,7 @@ function getCognitoRuntime(): IdentityRuntime {
         return Object.freeze({
           userId: actor.userId,
           organizationId: actor.organizationId,
+          membershipId: actor.membershipId,
           role: actor.role,
           sessionId: actor.sessionId,
           capturedSessionVersion: actor.capturedSessionVersion,

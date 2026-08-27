@@ -1,10 +1,6 @@
-import { StudentDetailView } from '@/components/crm/StudentDetailView'
+import { StudentDetailWorkspace } from '@/components/crm/StudentDetailWorkspace'
 
-export default async function StudentDetailPage({
-  params,
-}: {
-  readonly params: Promise<{ readonly studentId: string }>;
-}) {
+export default async function StudentDetailPage({ params }: { params: Promise<{ studentId: string }> }) {
   const { studentId } = await params
-  return <StudentDetailView studentId={studentId} />
+  return <StudentDetailWorkspace studentId={studentId} />
 }

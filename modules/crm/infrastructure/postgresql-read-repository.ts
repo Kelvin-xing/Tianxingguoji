@@ -6,11 +6,13 @@ import type {
   StudentReadRepository,
 } from "../application/read-service.ts";
 import type { TenantTransaction, TenantTransactionRunner } from "../../shared/server.ts";
+import type { CrmGender } from "../domain/approved-p2-contract.ts";
 
 interface StudentRow {
   id: string;
   display_name: string;
   date_of_birth: string | null;
+  gender: CrmGender | null;
   status: "active" | "pending_delete";
   primary_guardian_name: string | null;
   contact_email: string | null;
@@ -25,6 +27,8 @@ interface GuardianRow {
   status: "active" | "pending_delete";
   email: string | null;
   phone: string | null;
+  date_of_birth: string | null;
+  gender: CrmGender | null;
   relationship_type: string;
   is_legal_guardian: boolean;
   is_primary_contact: boolean;
@@ -44,7 +48,8 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
   listStudents(input: Parameters<StudentReadRepository["listStudents"]>[0]) {
     return this.runner.run(input, async (transaction) => {
       const result = await transaction.query<StudentRow>({
-        text: studentSelect(`student.status <> 'purged'`) + " ORDER BY student.display_name, student.id",
+        text: studentSelect(`student.status IN ('active','pending_delete')`) +
+          " ORDER BY student.updated_at DESC, student.id ASC",
       });
       return Object.freeze(result.rows.map(toListItem));
     });
@@ -52,20 +57,16 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 
   findStudent(input: Parameters<StudentReadRepository["findStudent"]>[0]) {
     return this.runner.run(input, async (transaction) => {
-      const resolvedStudent = await resolveDuplicateProfile(transaction, "student", input.studentId);
       const studentResult = await transaction.query<StudentRow>({
-        text: studentSelect("student.id = $1 AND student.status <> 'purged'"),
-        values: [resolvedStudent?.id ?? input.studentId],
+        text: studentSelect("student.id = $1 AND student.status IN ('active','pending_delete')"),
+        values: [input.studentId],
       });
-      const storedStudent = studentResult.rows[0];
-      const student = storedStudent && resolvedStudent ? { ...storedStudent,
-        id: resolvedStudent.id, display_name: resolvedStudent.displayName,
-        date_of_birth: resolvedStudent.dateOfBirth, contact_email: resolvedStudent.contactEmail,
-        contact_phone: resolvedStudent.contactPhone } : storedStudent;
+      const student = studentResult.rows[0];
       if (!student) return null;
 
       const guardianResult = await transaction.query<GuardianRow>({
         text: `SELECT guardian.id, guardian.display_name, guardian.status, guardian.email, guardian.phone,
+                      guardian.date_of_birth::text, guardian.gender,
                       relationship.relationship_type, relationship.is_legal_guardian,
                       relationship.is_primary_contact, relationship.is_emergency_contact,
                       relationship.is_billing_contact, relationship.notification_consent,
@@ -76,20 +77,21 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
                   AND guardian.organization_id = relationship.organization_id
                 WHERE relationship.student_id = $1
                   AND relationship.ends_at IS NULL
-                  AND guardian.status <> 'purged'
+                  AND guardian.status IN ('active','pending_delete')
                 ORDER BY relationship.is_primary_contact DESC, guardian.display_name, guardian.id`,
         values: [student.id],
       });
       const guardians: StudentDetail["guardians"][number][] = [];
       for (const row of guardianResult.rows) {
-        const resolved = await resolveDuplicateProfile(transaction, "guardian", row.id);
         guardians.push(Object.freeze({
-          id: resolved?.id ?? row.id,
-          displayName: resolved?.displayName ?? row.display_name,
-          status: resolved?.status ?? row.status,
-          email: resolved?.email ?? row.email,
-          phone: resolved?.phone ?? row.phone,
-          recordVersion: resolved?.recordVersion ?? toVersion(row.record_version),
+          id: row.id,
+          displayName: row.display_name,
+          status: row.status,
+          email: row.email,
+          phone: row.phone,
+          dateOfBirth: row.date_of_birth,
+          gender: row.gender,
+          recordVersion: toVersion(row.record_version),
           relationshipType: row.relationship_type,
           isLegalGuardian: row.is_legal_guardian,
           isPrimaryContact: row.is_primary_contact,
@@ -171,7 +173,7 @@ async function resolveDuplicateProfile(
 }
 
 function studentSelect(condition: string): string {
-  return `SELECT student.id, student.display_name, student.date_of_birth::text,
+  return `SELECT student.id, student.display_name, student.date_of_birth::text, student.gender,
                  student.status, student.contact_email, student.contact_phone,
                  student.updated_at, student.record_version,
                  primary_guardian.display_name AS primary_guardian_name
@@ -205,6 +207,7 @@ function toListItem(row: StudentRow): StudentListItem {
     id: row.id,
     displayName: row.display_name,
     dateOfBirth: row.date_of_birth,
+    gender: row.gender,
     status: row.status,
     primaryGuardianName: row.primary_guardian_name,
     updatedAt: new Date(row.updated_at).toISOString(),

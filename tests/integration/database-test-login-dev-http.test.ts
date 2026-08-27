@@ -185,8 +185,7 @@ test("database-test login works through the local Next Dev HTTP runtime", {
     const readiness = await checkLocalSyntheticReadiness({
       environment: localReadinessEnvironment(target.connectionString),
       probes: {
-        localstack: async () => ({ s3: true, sqs: true }),
-        clamav: async () => undefined,
+        documentTransport: async () => undefined,
       },
     });
     assert.deepEqual(readiness, {
@@ -196,9 +195,7 @@ test("database-test login works through the local Next Dev HTTP runtime", {
         postgresql: "ready",
         postgresql_identity: "ready",
         postgresql_application: "ready",
-        localstack_s3: "ready",
-        localstack_sqs: "ready",
-        clamav: "ready",
+        document_transport: "ready",
       },
     });
 
@@ -421,13 +418,13 @@ function localReadinessEnvironment(
     AUTH_MODE: "database-test",
     NODE_ENV: "development",
     LOCAL_SYNTHETIC_DATABASE_URL: connectionString,
-    LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
-    LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
-    LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",
-    LOCAL_SYNTHETIC_SQS_QUEUE: "tianxing-local-document-scan",
-    LOCAL_SYNTHETIC_SQS_DLQ: "tianxing-local-document-scan-dlq",
-    LOCAL_SYNTHETIC_CLAMAV_HOST: "127.0.0.1",
-    LOCAL_SYNTHETIC_CLAMAV_PORT: "3310",
+    DOCUMENT_TRANSPORT_MODE: "deterministic-fake",
+    DOCUMENT_FAKE_REGION: "ap-east-1",
+    DOCUMENT_FAKE_BUCKET: "tianxing-local-documents",
+    DOCUMENT_FAKE_ORIGIN: "http://localhost:3000",
+    DOCUMENT_FAKE_SIGNING_SECRET: "local-only-replace-with-32-characters",
+    DOCUMENT_FAKE_ORGANIZATION_ID: "51000000-0000-4000-8000-000000000001",
+    DOCUMENT_FAKE_WORKER_CONTEXT_ID: "10000000-0000-4000-8000-000000000901",
     LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS: "2000",
   };
 }

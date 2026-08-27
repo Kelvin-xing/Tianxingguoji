@@ -408,8 +408,13 @@ async function selectVisibleCase(
       JOIN identity_users AS primary_actor
         ON primary_actor.id=service_case.primary_user_id AND primary_actor.status='active'
      WHERE service_case.id=$1 AND service_case.organization_id=$2
-       AND ($3::text='founder' OR ($3='advisor' AND service_case.primary_role='advisor'
-         AND service_case.primary_user_id=$4))
+       AND ($3::text='founder' OR ($3='advisor' AND (
+         (service_case.primary_role='advisor' AND service_case.primary_user_id=$4)
+         OR EXISTS (SELECT 1 FROM tasks_tasks AS assigned_task
+             WHERE assigned_task.organization_id=service_case.organization_id
+               AND assigned_task.service_case_id=service_case.id
+               AND (assigned_task.assignee_user_id=$4 OR assigned_task.owner_user_id=$4))
+       )))
      ${lock ? "FOR UPDATE OF service_case FOR SHARE OF student,primary_binding,primary_membership,primary_actor" : ""}`,
     values: [caseId, input.organizationId, input.actorRole, input.actorUserId],
   });

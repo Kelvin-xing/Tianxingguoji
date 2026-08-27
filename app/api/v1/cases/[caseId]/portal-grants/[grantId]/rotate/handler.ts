@@ -1,11 +1,11 @@
 import type { PortalGrantRouteDependencies } from "../../handler.ts";
 import {
   RequestInvalid,
-  isIsoDate,
   mapInternalError,
   portalJson,
   readIdempotencyKey,
   readObject,
+  assertExactKeys,
   requireTrustedMutationOrigin,
 } from "../../handler.ts";
 
@@ -22,10 +22,10 @@ export function createPortalGrantRotateHandler(deps: PortalGrantRouteDependencie
       if (!UUID.test(caseId) || !UUID.test(grantId)) throw new RequestInvalid();
       const idempotencyKey = readIdempotencyKey(request);
       const body = await readObject(request);
+      assertExactKeys(body, ["expected_version"]);
       if (
         !Number.isSafeInteger(body.expected_version) ||
-        Number(body.expected_version) < 1 ||
-        !isIsoDate(body.expires_at)
+        Number(body.expected_version) < 1
       ) {
         throw new RequestInvalid();
       }
@@ -35,10 +35,10 @@ export function createPortalGrantRotateHandler(deps: PortalGrantRouteDependencie
       }
       const result = await deps.rotateGrant({
         actorUserId: actor.actorUserId,
+        actor,
         caseId,
         grantId,
         expectedVersion: Number(body.expected_version),
-        expiresAt: body.expires_at,
         idempotencyKey,
       });
       return portalJson({

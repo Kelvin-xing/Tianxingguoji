@@ -61,32 +61,40 @@ test("create sends only the frozen aggregate fields and its idempotency key", as
       student: {
         display_name: "Synthetic Student",
         date_of_birth: "2013-06-18",
+        gender: null,
         contact_email: null,
         contact_phone: null,
       },
       primary_guardian: {
+        kind: "new",
         display_name: "Synthetic Guardian",
         email: "guardian@example.invalid",
         phone: null,
+        date_of_birth: null,
+        gender: null,
         relationship_type: "father",
+        relationship_description: null,
         is_legal_guardian: true,
+        is_emergency_contact: false,
+        is_billing_contact: false,
+        notification_consent: false,
       },
     });
     for (const forbidden of ["organization", "actor", "role", "record_version", "is_primary_contact"]) {
       assert.equal(String(init?.body).includes(forbidden), false);
     }
     return apiResponse({
-      student: { id: STUDENT_ID, display_name: "Synthetic Student" },
-      primary_guardian: { id: GUARDIAN_ID, display_name: "Synthetic Guardian" },
-      relationship: { id: RELATIONSHIP_ID, relationship_type: "father" },
+      student: { id: STUDENT_ID, record_version: 1 },
+      primary_guardian: { id: GUARDIAN_ID, record_version: 1 },
+      relationship: { id: RELATIONSHIP_ID, record_version: 1 },
     });
   };
 
   const result = await createStudentWithPrimaryGuardian(draft, "student-create-attempt-1");
   assert.deepEqual(result, {
-    student: { id: STUDENT_ID, display_name: "Synthetic Student" },
-    primary_guardian: { id: GUARDIAN_ID, display_name: "Synthetic Guardian" },
-    relationship: { id: RELATIONSHIP_ID, relationship_type: "father" },
+    student: { id: STUDENT_ID, record_version: 1 },
+    primary_guardian: { id: GUARDIAN_ID, record_version: 1 },
+    relationship: { id: RELATIONSHIP_ID, record_version: 1 },
   });
 });
 
@@ -94,15 +102,15 @@ test("create decoder validates every ADR-002 field and rejects contract drift", 
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   const valid = {
-    student: { id: STUDENT_ID, display_name: "Synthetic Student" },
-    primary_guardian: { id: GUARDIAN_ID, display_name: "Synthetic Guardian" },
-    relationship: { id: RELATIONSHIP_ID, relationship_type: "father" },
+    student: { id: STUDENT_ID, record_version: 1 },
+    primary_guardian: { id: GUARDIAN_ID, record_version: 1 },
+    relationship: { id: RELATIONSHIP_ID, record_version: 1 },
   };
   const malformed = [
     { ...valid, student: { id: STUDENT_ID } },
     { ...valid, student: { ...valid.student, unexpected: true } },
-    { ...valid, primary_guardian: { ...valid.primary_guardian, display_name: "" } },
-    { ...valid, relationship: { ...valid.relationship, relationship_type: "parent" } },
+    { ...valid, primary_guardian: { ...valid.primary_guardian, record_version: 0 } },
+    { ...valid, relationship: { ...valid.relationship, record_version: 0 } },
     { ...valid, unexpected: true },
   ];
 
@@ -118,8 +126,8 @@ test("create decoder validates every ADR-002 field and rejects contract drift", 
 test("creation validation enforces names, date and at least one guardian contact", () => {
   assert.deepEqual(validateStudentCreateDraft(validDraft()), {});
   const invalid: StudentCreateDraft = {
-    student: { display_name: " ", date_of_birth: "2026-02-31", contact_email: "invalid", contact_phone: "" },
-    primary_guardian: { display_name: "", email: "", phone: "", relationship_type: "mother", is_legal_guardian: false },
+    student: { display_name: " ", date_of_birth: "2026-02-31", gender: "", contact_email: "invalid", contact_phone: "" },
+    primary_guardian: { display_name: "", email: "", phone: "", date_of_birth: "", gender: "", relationship_type: "mother", relationship_description: "", is_legal_guardian: false, is_emergency_contact: false, is_billing_contact: false, notification_consent: false },
   };
   assert.deepEqual(validateStudentCreateDraft(invalid), {
     studentDisplayName: "請輸入學生姓名。",
@@ -156,8 +164,8 @@ test("failure classification covers all creation presentation states", () => {
 
 function validDraft(): StudentCreateDraft {
   return {
-    student: { display_name: " Synthetic Student ", date_of_birth: "2013-06-18", contact_email: "", contact_phone: "" },
-    primary_guardian: { display_name: " Synthetic Guardian ", email: "guardian@example.invalid", phone: "", relationship_type: "father", is_legal_guardian: true },
+    student: { display_name: " Synthetic Student ", date_of_birth: "2013-06-18", gender: "", contact_email: "", contact_phone: "" },
+    primary_guardian: { display_name: " Synthetic Guardian ", email: "guardian@example.invalid", phone: "", date_of_birth: "", gender: "", relationship_type: "father", relationship_description: "", is_legal_guardian: true, is_emergency_contact: false, is_billing_contact: false, notification_consent: false },
   };
 }
 
@@ -166,6 +174,7 @@ function studentListFixture() {
     id: STUDENT_ID,
     displayName: "Synthetic Student",
     dateOfBirth: "2013-06-18",
+    gender: null,
     status: "active",
     primaryGuardianName: "Synthetic Guardian",
     updatedAt: "2026-08-22T00:00:00.000Z",
@@ -183,6 +192,8 @@ function studentDetailFixture() {
       displayName: "Synthetic Guardian",
       email: "guardian@example.invalid",
       phone: null,
+      dateOfBirth: null,
+      gender: null,
       status: "active",
       recordVersion: 1,
       relationshipType: "father",

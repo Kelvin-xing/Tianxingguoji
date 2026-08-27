@@ -1,4 +1,5 @@
-import { PortalRuntimeUnavailable } from "../../../../../modules/external-portal/server.ts";
+import { getPortalRuntime, PortalRuntimeUnavailable } from "../../../../../modules/external-portal/server.ts";
+import { randomUUID } from "node:crypto";
 import { PORTAL_SESSION_COOKIE_NAME } from "../sessions/handler.ts";
 import { createPortalWorkspaceGetHandler, readPortalCookie } from "./handler.ts";
 
@@ -9,6 +10,6 @@ const defaultGet = createPortalWorkspaceGetHandler({
     request?.headers.get("cookie") ?? null,
     PORTAL_SESSION_COOKIE_NAME,
   ) ?? null,
-  readWorkspace: async () => { throw new PortalRuntimeUnavailable(); },
+  readWorkspace: async ({ sessionSecret }) => getPortalRuntime().service.readWorkspace({ sessionSecret, requestId: randomUUID() }),
 });
 export const GET = defaultGet;

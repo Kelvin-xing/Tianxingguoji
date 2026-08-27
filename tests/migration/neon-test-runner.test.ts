@@ -492,7 +492,7 @@ test("prioritizes rollback verification failure while preserving original failur
 
 test("emits only approved plan and migration evidence fields", async () => {
   const manifest = await verifyOrderedMigrationManifest();
-  assert.equal(manifest.migrations.length, 35);
+  assert.equal(manifest.migrations.length, 40);
   assert.equal(manifest.migrations.at(-1)?.sha256, EXPECTED_LAST_MIGRATION_SHA256);
 
   const planText = JSON.stringify(createNeonTestPlanEvidence(manifest));

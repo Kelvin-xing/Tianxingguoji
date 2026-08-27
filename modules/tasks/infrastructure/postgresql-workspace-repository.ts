@@ -131,21 +131,19 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       if (replay) return replay;
       if (version(task.record_version) !== input.expectedRecordVersion) stale();
       const rules = await loadApprovedRules(tx, true); const rule = rules.find((candidate) =>
-        candidate.from === task.state && candidate.to === input.to); if (!rule) conflict();
-      if (!rule.allowedActorRoles.includes(input.actorRole) ||
-          (rule.actorKind === "assignee" && task.assignee_user_id !== input.actorUserId) ||
-          (rule.actorKind === "owner" && task.primary_user_id !== input.actorUserId) ||
-          (rule.actorKind === "approver" && (input.actorRole !== "founder" || task.assignee_user_id === input.actorUserId))) forbidden();
+        candidate.from === task.state && candidate.to === input.to && canActorUseRule(candidate, task, input));
+      if (!rule) conflict();
       if (rule.requiresReason && input.reason === "") invalid();
       let nextAssignee: AssigneeRow | null = null;
-      if (input.to === "reassigned") { nextAssignee = input.nextAssigneeUserId ? await lockAssignee(tx, input.nextAssigneeUserId) : null;
+      if (input.to === "assigned") { nextAssignee = input.nextAssigneeUserId ? await lockAssignee(tx, input.nextAssigneeUserId) : null;
         if (!nextAssignee) notFound(); }
       await tx.query(`INSERT INTO tasks_task_transition_receipts
         (id,organization_id,task_id,from_state,to_state,actor_user_id,actor_role,
-         expected_record_version,result_record_version,reason)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         expected_record_version,result_record_version,reason,completion_record_json)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
       [input.receiptId,input.organizationId,input.taskId,task.state,input.to,input.actorUserId,
-        input.actorRole,input.expectedRecordVersion,input.expectedRecordVersion+1,input.reason || null]);
+        input.actorRole,input.expectedRecordVersion,input.expectedRecordVersion+1,input.reason || null,
+        input.to === "completed" ? JSON.stringify({ kind: "manual", reason: input.reason || null }) : null]);
       const updated = await tx.query(`UPDATE tasks_tasks SET state=$2,
         assignee_user_id=COALESCE($3,assignee_user_id),
         assignee_role=COALESCE($4,assignee_role),
@@ -223,7 +221,24 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
     WHERE ($1::uuid IS NULL OR task.service_case_id=$1) AND ($2::uuid IS NULL OR task.id=$2)
       AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
         OR ($3='contractor' AND task.assignee_user_id=$4 AND task.assignee_role='contractor'
-          AND task.assignee_redaction_profile='task_only'))
+          AND task.assignee_redaction_profile='task_only'
+          AND task.task_kind='interview_support'
+          AND task.state NOT IN ('completed','cancelled','rejected')
+          AND service_case.stage <> 'closed'
+          AND student.status = 'active'
+          AND EXISTS (SELECT 1 FROM tasks_task_assignments current_assignment
+            WHERE current_assignment.task_id=task.id
+              AND current_assignment.organization_id=task.organization_id
+              AND current_assignment.assignee_user_id=$4
+              AND current_assignment.assignee_role='contractor'
+              AND current_assignment.redaction_profile='task_only'
+              AND current_assignment.status IN ('assigned','reassigned')
+              AND current_assignment.id = (SELECT latest_assignment.id
+                FROM tasks_task_assignments latest_assignment
+                WHERE latest_assignment.task_id=task.id
+                  AND latest_assignment.organization_id=task.organization_id
+                ORDER BY latest_assignment.created_at DESC,latest_assignment.id DESC
+                LIMIT 1))))
     ORDER BY task.updated_at DESC,task.id ${update ? "FOR UPDATE OF task" : ""}`,
   [caseId,taskId,input.actorRole,input.actorUserId]); return result.rows;
 }
@@ -271,17 +286,35 @@ function isReadableCreateCase(row: CaseRow): boolean {
 }
 function isWritableTask(row: TaskRow): boolean { return row.case_stage !== "closed" && row.student_status === "active"; }
 function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransitionRule[]): TaskView {
-  const transitions: AvailableTaskTransitionView[] = rules.filter((rule) => rule.from === row.state &&
-    rule.allowedActorRoles.includes(actor.actorRole) && ((rule.actorKind === "assignee" && row.assignee_user_id === actor.actorUserId) ||
-      (rule.actorKind === "owner" && row.primary_user_id === actor.actorUserId) ||
-      (rule.actorKind === "approver" && actor.actorRole === "founder" && row.assignee_user_id !== actor.actorUserId)))
-    .map((rule) => Object.freeze({ to: rule.to, requiresReason: rule.requiresReason, requiresAssignee: rule.to === "reassigned" }));
+  const transitionsByState = new Map<TaskState, AvailableTaskTransitionView>();
+  for (const rule of rules) {
+    if (rule.from !== row.state || !canActorUseRule(rule, row, actor)) continue;
+    if (!transitionsByState.has(rule.to)) {
+      transitionsByState.set(rule.to, Object.freeze({
+        to: rule.to,
+        requiresReason: rule.requiresReason,
+        requiresAssignee: rule.to === "assigned",
+      }));
+    }
+  }
+  const transitions = [...transitionsByState.values()];
   const base = { id: row.id,title: row.title,taskBrief: row.task_brief,dueAt: new Date(row.due_at).toISOString(),
     state: row.state,recordVersion: version(row.record_version),updatedAt: new Date(row.updated_at).toISOString(),
     availableTransitions: Object.freeze(transitions) };
   if (actor.actorRole === "contractor") return Object.freeze(base);
   return Object.freeze({ ...base,caseId: row.service_case_id,caseNumber: row.case_number,
     assignee: assigneeView({ id: row.assignee_binding_id,user_id: row.assignee_user_id,role: row.assignee_role }) });
+}
+
+function canActorUseRule(
+  rule: TaskTransitionRule,
+  task: TaskRow,
+  actor: TaskActorContext,
+): boolean {
+  if (!rule.allowedActorRoles.includes(actor.actorRole)) return false;
+  if (rule.actorKind === "assignee") return task.assignee_user_id === actor.actorUserId;
+  if (rule.actorKind === "owner") return task.primary_user_id === actor.actorUserId;
+  return actor.actorRole === "founder" && task.assignee_user_id !== actor.actorUserId;
 }
 function assigneeView(row: AssigneeRow) { return Object.freeze({ id: row.user_id,role: row.role,
   label: `${row.role === "advisor" ? "Advisor" : "Contractor"} · ${row.id.slice(-8)}` }); }

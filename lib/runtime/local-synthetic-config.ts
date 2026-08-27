@@ -6,10 +6,7 @@ import {
 } from "./runtime-environment.ts";
 
 const LOCAL_MODE = "local-synthetic" as const;
-const HK_REGION = "ap-east-1" as const;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
-const S3_BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
-const SQS_QUEUE = /^[A-Za-z0-9_-]{1,80}$/;
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -18,18 +15,8 @@ export interface LocalSyntheticConfig {
   readonly database: Readonly<{
     connectionString: string;
   }>;
-  readonly localstack: Readonly<{
-    endpoint: string;
-    region: typeof HK_REGION;
-    bucket: string;
-    queue: string;
-    deadLetterQueue: string;
-  }>;
-  readonly clamav: Readonly<{
-    host: string;
-    port: number;
-  }>;
   readonly dependencyTimeoutMs: number;
+  readonly organizationId?: string;
 }
 
 export class LocalSyntheticConfigurationError extends Error {
@@ -81,64 +68,25 @@ export function loadLocalSyntheticConfig(
     throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_DATABASE_URL");
   }
 
-  const localstackUrl = localUrl(
-    environment,
-    "LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT",
-    new Set(["http:"]),
-  );
-  if (
-    localstackUrl.username.length > 0 ||
-    localstackUrl.password.length > 0 ||
-    (localstackUrl.pathname !== "/" && localstackUrl.pathname !== "") ||
-    localstackUrl.search.length > 0 ||
-    localstackUrl.hash.length > 0
-  ) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT");
-  }
-
-  const region = required(environment, "LOCAL_SYNTHETIC_AWS_REGION");
-  if (region !== HK_REGION) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_AWS_REGION");
-  }
-
-  const bucket = required(environment, "LOCAL_SYNTHETIC_S3_BUCKET");
-  if (!S3_BUCKET.test(bucket) || /^\d+(?:\.\d+){3}$/.test(bucket)) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_S3_BUCKET");
-  }
-
-  const queue = queueName(environment, "LOCAL_SYNTHETIC_SQS_QUEUE");
-  const deadLetterQueue = queueName(environment, "LOCAL_SYNTHETIC_SQS_DLQ");
-  if (queue === deadLetterQueue) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_SQS_DLQ");
-  }
-
-  const clamavHost = required(environment, "LOCAL_SYNTHETIC_CLAMAV_HOST").toLowerCase();
-  if (!LOOPBACK_HOSTS.has(clamavHost)) {
-    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_CLAMAV_HOST");
-  }
-
-  const clamavPort = integer(environment, "LOCAL_SYNTHETIC_CLAMAV_PORT", 1, 65_535);
   const dependencyTimeoutMs = integer(
     environment,
     "LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS",
     250,
     10_000,
   );
+  const organizationId = environment.LOCAL_SYNTHETIC_ORGANIZATION_ID?.trim();
+  if (organizationId !== undefined &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(organizationId)) {
+    throw new LocalSyntheticConfigurationError("LOCAL_SYNTHETIC_ORGANIZATION_ID");
+  }
 
   return Object.freeze({
     mode: LOCAL_MODE,
     database: Object.freeze({
       connectionString: databaseUrl.toString(),
     }),
-    localstack: Object.freeze({
-      endpoint: localstackUrl.origin,
-      region,
-      bucket,
-      queue,
-      deadLetterQueue,
-    }),
-    clamav: Object.freeze({ host: clamavHost, port: clamavPort }),
     dependencyTimeoutMs,
+    ...(organizationId ? { organizationId } : {}),
   });
 }
 
@@ -159,14 +107,6 @@ function localUrl(
     throw new LocalSyntheticConfigurationError(variable);
   }
   return url;
-}
-
-function queueName(environment: Environment, variable: string): string {
-  const value = required(environment, variable);
-  if (!SQS_QUEUE.test(value)) {
-    throw new LocalSyntheticConfigurationError(variable);
-  }
-  return value;
 }
 
 function integer(

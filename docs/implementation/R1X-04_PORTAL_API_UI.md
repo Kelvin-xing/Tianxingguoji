@@ -4,7 +4,7 @@
 | --- | --- |
 | Run ID | `R1X-04-PORTAL-API-UI-20260813` |
 | Status | Local bounded vertical slice implemented |
-| Authority | Approved DP-01 through DP-05 baseline and R1X-01/R1X-02_03 contracts |
+| Business authority | `txgj-doc/business-requirements/80-portal-billing.zh-CN.md` (`BR-060`) and `70-notifications-audit.zh-CN.md` (`BR-071`); R1X-01/R1X-02_03 remain implementation contracts |
 
 ## Implemented Boundary
 

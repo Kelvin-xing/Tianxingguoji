@@ -6,7 +6,7 @@
 | Date | 2026-08-13 (Asia/Hong_Kong) |
 | Repository | `erp-frontend/` |
 | Status | `passed` for the pure-logic slice only |
-| Binding decisions | `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` DP-01 through DP-05 |
+| Binding business decisions | `txgj-doc/business-requirements/80-portal-billing.zh-CN.md`, confirmed `BR-060` |
 
 ## Outcome And Scope
 

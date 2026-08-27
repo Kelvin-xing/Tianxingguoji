@@ -1,7 +1,7 @@
 # R1X-08 PlatformBilling Aggregate Overview
 
 Status: local contract implementation complete; production integration pending  
-Decision authority: `txgj-doc/decisions/R1X-DECISION-BASELINE-20260812.md` (DP-06 through DP-12)
+Business authority: `txgj-doc/business-requirements/80-portal-billing.zh-CN.md` (`BR-061`, `BR-062`) and `70-notifications-audit.zh-CN.md` (`BR-071`)
 Release boundary: source, focused tests, and local UI only; no production adapter, migration, deployment, or tenant activation
 
 ## Problem and scope

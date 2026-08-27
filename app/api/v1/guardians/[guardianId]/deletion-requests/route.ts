@@ -1,5 +1,5 @@
 import { getDeletionReviewRuntime } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { handleApiRequest } from "@/modules/shared/public";
 
 import { deletionReceiptData, mapDeletionReviewError, parseDeletionRequest } from "../../../crm/deletion-handler.ts";
@@ -12,7 +12,7 @@ export async function POST(request: Request, context: { readonly params: Promise
     try {
       const { guardianId } = await context.params;
       const command = await parseDeletionRequest(request, "guardian", guardianId, requestContext.requestId);
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       return deletionReceiptData(await getDeletionReviewRuntime().service.requestDeletion({ actor, command }));
     } catch (error) { throw mapDeletionReviewError(error); }
   });

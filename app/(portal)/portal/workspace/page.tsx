@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { getPortalWorkspace, logoutPortal, type PortalWorkspaceDto } from '@/components/portal/f5-client'
 
 type ViewState = 'loading' | 'empty' | 'denied' | 'expired' | 'unavailable' | 'ready'
-interface Workspace { case_number: string; customer_facing_stage: string; last_customer_visible_update_at: string; school_targets: { name: string; status: string }[]; action_items: { title: string; deadline: string | null; completed: boolean }[]; messages: { body: string; published_at: string }[] }
+type Workspace = PortalWorkspaceDto
 
 export default function PortalWorkspacePage() {
   const router = useRouter()
@@ -12,30 +13,27 @@ export default function PortalWorkspacePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/v1/portal/workspace', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
-      .then(async (response) => {
-        if (response.status === 401) return setState('expired')
-        if (response.status === 403) return setState('denied')
-        if (response.status === 503) return setState('unavailable')
-        if (!response.ok) return setState('unavailable')
-        const value = await response.json() as Workspace
+    getPortalWorkspace()
+      .then((value) => {
+        if (value.status === 'paused' || value.status === 'closed') return setState('denied')
+        if (value.status === 'expired' || value.status === 'revoked') return setState('expired')
         setWorkspace(value)
-        setState(value.school_targets.length + value.action_items.length + value.messages.length === 0 ? 'empty' : 'ready')
-      }).catch(() => { if (!controller.signal.aborted) setState('unavailable') })
+        setState(value.schools.length + value.applications.length + value.documents.length === 0 ? 'empty' : 'ready')
+      }).catch((error) => { if (!controller.signal.aborted) setState(error instanceof Error && 'status' in error && (error as {status?: number}).status === 401 ? 'expired' : 'unavailable') })
     return () => controller.abort()
   }, [])
 
-  async function signOut() { await fetch('/api/v1/portal/sessions', { method: 'DELETE', credentials: 'same-origin', cache: 'no-store' }); router.replace('/portal/access') }
+  async function signOut() { await logoutPortal(); router.replace('/portal/access') }
   if (state !== 'ready' && state !== 'empty') return <PortalState state={state} />
   if (!workspace) return <PortalState state="unavailable" />
   return (
     <main className="portal-shell portal-workspace">
-      <header className="portal-workspace-header"><div><p className="portal-mark">案件 {workspace.case_number}</p><h1>{workspace.customer_facing_stage}</h1><p className="portal-muted">最近更新：{formatDate(workspace.last_customer_visible_update_at)}</p></div><button className="portal-secondary" onClick={signOut}>退出</button></header>
+      <header className="portal-workspace-header"><div><p className="portal-mark">案件進度</p><h1>{workspace.stage}</h1>{workspace.student && <p className="portal-muted">學生：{workspace.student.display_name}</p>}</div><button className="portal-secondary" onClick={signOut}>退出</button></header>
       {state === 'empty' && <section className="portal-panel"><h2>暫無新進度</h2><p className="portal-muted">顧問發布對客更新後會顯示在這裡。</p></section>}
       <section className="portal-grid">
-        <PortalList title="學校進度" items={workspace.school_targets.map((item) => `${item.name} · ${item.status}`)} />
-        <PortalList title="待辦事項" items={workspace.action_items.map((item) => `${item.completed ? '已完成' : '待處理'} · ${item.title}${item.deadline ? ` · ${item.deadline}` : ''}`)} />
-        <PortalList title="最新消息" items={workspace.messages.map((item) => `${formatDate(item.published_at)} · ${item.body}`)} />
+        <PortalList title="已確認學校" items={workspace.schools.map((item) => `${item.name} · ${item.status}`)} />
+        <PortalList title="申請狀態" items={workspace.applications.map((item) => `${item.school_name} · ${item.status}`)} />
+        <PortalList title="已發布文件" items={workspace.documents.map((item) => `${item.name} · ${formatDate(item.published_at)}`)} />
       </section>
     </main>
   )

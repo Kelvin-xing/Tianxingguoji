@@ -55,12 +55,12 @@ export class PostgresqlProfileMaintenanceRepository implements ProfileMaintenanc
       if (locked.recordVersion !== input.expectedRecordVersion) throw stale();
       const result = await transaction.query<UpdatedRow>(
         `UPDATE crm_students
-            SET display_name = $2, date_of_birth = $3, contact_email = $4,
-                contact_phone = $5, record_version = record_version + 1,
+            SET display_name = $2, date_of_birth = $3, gender = $4, contact_email = $5,
+                contact_phone = $6, record_version = record_version + 1,
                 updated_at = clock_timestamp()
-          WHERE id = $1 AND status = 'active' AND record_version = $6
+          WHERE id = $1 AND status = 'active' AND record_version = $7
         RETURNING id, record_version, updated_at`,
-        [input.studentId, input.displayName, input.dateOfBirth, input.contactEmail,
+        [input.studentId, input.displayName, input.dateOfBirth, input.gender, input.contactEmail,
           input.contactPhone, input.expectedRecordVersion],
       );
       const acknowledgement = toAcknowledgement(result.rows[0]);
@@ -87,11 +87,11 @@ export class PostgresqlProfileMaintenanceRepository implements ProfileMaintenanc
       if (locked.recordVersion !== input.expectedRecordVersion) throw stale();
       const result = await transaction.query<UpdatedRow>(
         `UPDATE crm_guardians
-            SET display_name = $2, email = $3, phone = $4,
+            SET display_name = $2, date_of_birth = $3, gender = $4, email = $5, phone = $6,
                 record_version = record_version + 1, updated_at = clock_timestamp()
-          WHERE id = $1 AND status = 'active' AND record_version = $5
+          WHERE id = $1 AND status = 'active' AND record_version = $7
         RETURNING id, record_version, updated_at`,
-        [input.guardianId, input.displayName, input.email, input.phone,
+        [input.guardianId, input.displayName, input.dateOfBirth, input.gender, input.email, input.phone,
           input.expectedRecordVersion],
       );
       const acknowledgement = toAcknowledgement(result.rows[0]);

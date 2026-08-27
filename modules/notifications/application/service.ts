@@ -6,12 +6,20 @@ import {
   type DeliveryReceipt,
   type NotificationRecord,
 } from "../domain/contract.ts";
+import { APPROVED_NOTIFICATION_EFFECTS, isApprovedNotificationEffect } from "../domain/p4-be-07-policy.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IN_APP_EFFECT_TYPE = "in_app.pending_item";
 const ELIGIBLE_OUTBOX_EVENTS = new Set([
   "tasks.task_transitioned",
   "cases.service_case_stage_transitioned",
+  "tasks.task_created",
+  "cases.candidate_list_submitted",
+  "cases.candidate_list_approved",
+  "cases.candidate_list_rejected",
+  "tasks.due_3d",
+  "tasks.due_1d",
+  "tasks.overdue",
+  "cases.service_case_closed",
 ]);
 export const MAX_IN_APP_DELIVERY_ATTEMPTS = 3;
 export const IN_APP_DELIVERY_LEASE_MS = 30_000;
@@ -25,7 +33,7 @@ export interface InAppDeliveryWork {
   readonly outboxId: string;
   readonly organizationId: string;
   readonly recipientUserId: string;
-  readonly eventType: "tasks.task_transitioned" | "cases.service_case_stage_transitioned";
+  readonly eventType: string;
   readonly effectIdempotencyKey: string;
   readonly attemptCount: number;
   readonly leaseVersion: number;
@@ -69,8 +77,9 @@ export interface InAppNotificationRepository {
   /**
    * In one transaction, lock the leased outbox row, re-evaluate the proposed
    * recipient's current access, and write exactly one notification/receipt.
-   * Lost access writes the supplied suppressed notification and compensated
-   * receipt, then completes the outbox without exposing a notice.
+   * Lost access returns the supplied suppressed result and writes only a
+   * compensated receipt with a null notification id, then completes the
+   * outbox without exposing a notice.
    */
   completeInAppDelivery(input: {
     readonly work: InAppDeliveryWork;
@@ -83,9 +92,9 @@ export interface InAppNotificationRepository {
 
   /**
    * A failure changes only worker/outbox delivery state. On the final bounded
-   * attempt it atomically writes the supplied suppressed notification and
-   * failed receipt before marking the outbox dead-lettered; it never touches
-   * the P1-13/P1-14 producer fact or producer audit record.
+   * attempt it atomically writes a failed receipt with a null notification id
+   * before marking the outbox dead-lettered; it never touches the P1-13/P1-14
+   * producer fact or producer audit record.
    */
   failInAppDelivery(input: {
     readonly work: InAppDeliveryWork;
@@ -158,7 +167,7 @@ export class InAppNotificationService {
       organizationId: work.organizationId,
       recipientUserId: work.recipientUserId,
       outboxId: work.outboxId,
-      effectType: IN_APP_EFFECT_TYPE,
+      effectType: notificationEffectForEvent(work.eventType),
       effectIdempotencyKey: work.effectIdempotencyKey,
       createdAt,
     });
@@ -171,7 +180,8 @@ export class InAppNotificationService {
       organizationId: work.organizationId,
       outboxId: work.outboxId,
       notificationId,
-      effectType: IN_APP_EFFECT_TYPE,
+      recipientUserId: work.recipientUserId,
+      effectType: notificationEffectForEvent(work.eventType),
       effectIdempotencyKey: work.effectIdempotencyKey,
       outcome: "delivered",
       attemptCount: work.attemptCount,
@@ -180,6 +190,7 @@ export class InAppNotificationService {
     const suppressedReceipt = buildDeliveryReceipt({
       ...deliveredReceipt,
       id: suppressedReceiptId,
+      notificationId: null,
       outcome: "compensated",
     });
 
@@ -202,25 +213,15 @@ export class InAppNotificationService {
     let terminalNotification: NotificationRecord | null = null;
     let terminalReceipt: DeliveryReceipt | null = null;
     if (terminal) {
-      const notificationId = this.id();
       const receiptId = this.id();
       const createdAt = new Date(failedAtMs).toISOString();
-      terminalNotification = buildPendingItemNotification({
-        id: notificationId,
-        organizationId: work.organizationId,
-        recipientUserId: work.recipientUserId,
-        outboxId: work.outboxId,
-        effectType: IN_APP_EFFECT_TYPE,
-        effectIdempotencyKey: work.effectIdempotencyKey,
-        status: "suppressed",
-        createdAt,
-      });
       terminalReceipt = buildDeliveryReceipt({
         id: receiptId,
         organizationId: work.organizationId,
         outboxId: work.outboxId,
-        notificationId,
-        effectType: IN_APP_EFFECT_TYPE,
+        notificationId: null,
+        recipientUserId: work.recipientUserId,
+        effectType: notificationEffectForEvent(work.eventType),
         effectIdempotencyKey: work.effectIdempotencyKey,
         outcome: "failed",
         attemptCount: work.attemptCount,
@@ -297,11 +298,11 @@ function assertCompletion(result: InAppDeliveryCompletion, work: InAppDeliveryWo
     result.notification.organizationId !== work.organizationId ||
     result.notification.recipientUserId !== work.recipientUserId ||
     result.notification.outboxId !== work.outboxId ||
-    result.notification.effectType !== IN_APP_EFFECT_TYPE ||
+    result.notification.effectType !== notificationEffectForEvent(work.eventType) ||
     result.notification.effectIdempotencyKey !== work.effectIdempotencyKey ||
     result.receipt.organizationId !== work.organizationId ||
     result.receipt.outboxId !== work.outboxId ||
-    result.receipt.effectType !== IN_APP_EFFECT_TYPE ||
+    result.receipt.effectType !== notificationEffectForEvent(work.eventType) ||
     result.receipt.effectIdempotencyKey !== work.effectIdempotencyKey
   ) {
     throw new InAppNotificationError("IN_APP_DELIVERY_RESULT_INVALID");
@@ -309,7 +310,7 @@ function assertCompletion(result: InAppDeliveryCompletion, work: InAppDeliveryWo
   if (
     (result.status === "delivered" &&
       (result.notification.status !== "unread" || result.receipt.outcome !== "delivered")) ||
-    (result.status === "suppressed" &&
+      (result.status === "suppressed" &&
       (result.notification.status !== "suppressed" || result.receipt.outcome !== "compensated"))
   ) {
     throw new InAppNotificationError("IN_APP_DELIVERY_RESULT_INVALID");
@@ -317,11 +318,31 @@ function assertCompletion(result: InAppDeliveryCompletion, work: InAppDeliveryWo
 }
 
 function assertReceipt(receipt: DeliveryReceipt): void {
-  for (const id of [receipt.id, receipt.organizationId, receipt.outboxId, receipt.notificationId]) {
+  for (const id of [receipt.id, receipt.organizationId, receipt.outboxId]) {
     assertUuid(id);
   }
+  if (receipt.notificationId !== null) assertUuid(receipt.notificationId);
 }
 
 function assertUuid(value: string): void {
   if (!UUID.test(value)) throw new InAppNotificationError("IN_APP_DELIVERY_INVALID");
+}
+
+/** Maps producer events to the nine approved effects without exposing payload text. */
+export function notificationEffectForEvent(
+  eventType: string,
+): (typeof APPROVED_NOTIFICATION_EFFECTS)[number] {
+  if (isApprovedNotificationEffect(eventType)) return eventType;
+  if (eventType === "tasks.task_transitioned" || eventType === "tasks.task_created") return "task_assigned";
+  if (eventType === "cases.service_case_stage_transitioned" || eventType === "cases.service_case_closed") {
+    return "case_closure_choice_required";
+  }
+  if (eventType === "cases.candidate_list_submitted") return "candidate_list_review_requested";
+  if (eventType === "cases.candidate_list_approved" || eventType === "cases.candidate_list_rejected") {
+    return "candidate_list_reviewed";
+  }
+  if (eventType === "tasks.due_3d") return "task_due_in_3_days";
+  if (eventType === "tasks.due_1d") return "task_due_in_1_day";
+  if (eventType === "tasks.overdue") return "task_overdue_daily";
+  throw new InAppNotificationError("IN_APP_DELIVERY_INVALID");
 }

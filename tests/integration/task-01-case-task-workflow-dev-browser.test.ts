@@ -41,18 +41,17 @@ const FOUNDER = principal("founder");
 const ADVISOR = principal("advisor");
 const CONTRACTOR = principal("contractor");
 const ADMIN = principal("admin");
-const DATA_REVIEWER = principal("data_reviewer");
 
-type Actor = "founder" | "advisor" | "contractor" | "admin" | "data_reviewer";
+type Actor = "founder" | "advisor" | "contractor" | "admin";
 type Stage =
   | "runtime_preflight" | "postgres_setup" | "baseline_seed" | "identity_provision"
   | "next_dev" | "canonical_origin" | "chrome_launch" | "login"
-  | "founder_case_fixture" | "case_panel_ready" | "client_validation"
+  | "advisor_case_fixture" | "case_panel_ready" | "client_validation"
   | "create_idempotency" | "create_authoritative_refresh" | "task_list_detail"
   | "detail_refresh" | "relogin_persistence" | "stale_recovery"
   | "advisor_transition_controls_ready" | "advisor_transition_submit"
   | "advisor_transition_receipt_contract" | "advisor_transition_authoritative_refresh"
-  | "advisor_transition_feedback" | "founder_approval" | "contractor_redaction"
+  | "advisor_transition_feedback" | "founder_read_only" | "contractor_redaction"
   | "denied_roles" | "desktop_viewport" | "mobile_viewport"
   | "browser_log_safety" | "cleanup" | "complete";
 
@@ -76,7 +75,6 @@ interface Evidence {
   founder_approved: boolean;
   contractor_audience_redacted: boolean;
   admin_direct_status: number | null;
-  data_reviewer_direct_status: number | null;
   denied_entries_hidden: boolean;
   desktop_metrics: ViewportEvidence | null;
   mobile_metrics: ViewportEvidence | null;
@@ -152,7 +150,7 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
   const containerName = `tianxing-task01-browser-pg17-${suffix}`;
   const volumeName = `tianxing-task01-browser-secret-${suffix}`;
   const applicationPassword = randomBytes(32).toString("hex");
-  const actors = [FOUNDER, ADVISOR, CONTRACTOR, ADMIN, DATA_REVIEWER] as const;
+  const actors = [FOUNDER, ADVISOR, CONTRACTOR, ADMIN] as const;
   const passwords = new Map<Actor, string>(actors.map((actor) => [actor.role, randomBytes(32).toString("base64url")]));
   const evidence: Evidence = {
     validation_required: false,
@@ -174,7 +172,6 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     founder_approved: false,
     contractor_audience_redacted: false,
     admin_direct_status: null,
-    data_reviewer_direct_status: null,
     denied_entries_hidden: false,
     desktop_metrics: null,
     mobile_metrics: null,
@@ -261,9 +258,9 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     page.on("console", (message) => { browserMessages.push(message.text()); });
 
     stage = "login";
-    await login(page, baseUrl, FOUNDER.email, passwords.get("founder")!);
+    await login(page, baseUrl, ADVISOR.email, passwords.get("advisor")!);
 
-    stage = "founder_case_fixture";
+    stage = "advisor_case_fixture";
     const fixture = await createCaseFixture(page, ADVISOR.roleBindingId, 2041);
     assert.deepEqual(fixture.evidence, { response_status: 200, json_parseable: true, exact_case_dto: true });
     assert.notEqual(fixture.caseId, null);
@@ -323,8 +320,16 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
       keys.push(route.request().headers()["idempotency-key"] ?? "");
       if (createPosts <= 2) return route.abort("timedout");
       const response = await route.fetch();
-      successfulCreateExactAck = (await safeTaskWriteEvidence(response.status(), await response.text())).exact_ack;
-      await route.fulfill({ response });
+      const responseBody = await response.text();
+      successfulCreateExactAck = (await safeTaskWriteEvidence(response.status(), responseBody)).exact_ack;
+      await route.fulfill({
+        status: response.status(),
+        headers: {
+          "content-type": response.headers()["content-type"] ?? "application/json",
+          "x-request-id": response.headers()["x-request-id"] ?? "",
+        },
+        body: responseBody,
+      });
     });
     await createButton.click();
     await unavailableNotice(page);
@@ -396,19 +401,18 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     await completeAdvisorTask(page, taskId, evidence.advisor_transition, (next) => { stage = next; });
     evidence.advisor_transitioned = true;
 
-    stage = "founder_approval";
+    stage = "founder_read_only";
     await logout(page);
     await login(page, baseUrl, FOUNDER.email, passwords.get("founder")!);
     await page.goto(`${baseUrl}${taskPath}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "TASK-01 changed synthetic work", exact: true, level: 2 }).waitFor({ state: "visible" });
-    await chooseTransition(page, "approved", true);
-    await page.getByRole("status").filter({ hasText: "任務已更新，內容已重新載入。" }).waitFor({ state: "visible" });
-    evidence.founder_approved = true;
+    assert.equal(await page.getByRole("combobox", { name: "操作", exact: true }).count(), 0);
+    assert.equal(await page.getByText("批准完成", { exact: true }).count(), 0);
 
     stage = "contractor_redaction";
     await createContractorTask(page, baseUrl, caseId, CONTRACTOR.userId);
     await logout(page);
-    await login(page, baseUrl, CONTRACTOR.email, passwords.get("contractor")!);
+    await login(page, baseUrl, CONTRACTOR.email, passwords.get("contractor")!, "/tasks");
     await openTasks(page, baseUrl);
     await page.getByRole("status").filter({ hasText: "不包含案件或學生資料" }).waitFor({ state: "visible" });
     assert.equal(await page.getByRole("link", { name: /^案件 / }).count(), 0);
@@ -422,12 +426,9 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     stage = "denied_roles";
     await page.setViewportSize({ width: 1440, height: 1000 });
     const adminDenied = await inspectDeniedActor(page, baseUrl, ADMIN.email, passwords.get("admin")!, caseId);
-    const reviewerDenied = await inspectDeniedActor(page, baseUrl, DATA_REVIEWER.email, passwords.get("data_reviewer")!, caseId);
     evidence.admin_direct_status = adminDenied.directStatus;
-    evidence.data_reviewer_direct_status = reviewerDenied.directStatus;
-    evidence.denied_entries_hidden = adminDenied.entriesHidden && reviewerDenied.entriesHidden;
+    evidence.denied_entries_hidden = adminDenied.entriesHidden;
     assert.deepEqual(adminDenied, { entriesHidden: true, directStatus: 403, forbidden: true, privateEcho: false });
-    assert.deepEqual(reviewerDenied, { entriesHidden: true, directStatus: 403, forbidden: true, privateEcho: false });
 
     stage = "browser_log_safety";
     const sensitiveValues = [
@@ -470,7 +471,7 @@ function principal(role: Actor) {
   return value as typeof value & { readonly role: Actor };
 }
 
-async function login(page: Page, baseUrl: string, email: string, password: string): Promise<void> {
+async function login(page: Page, baseUrl: string, email: string, password: string, destination: "/today" | "/tasks" = "/today"): Promise<void> {
   const navigation = await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" });
   assert.equal(navigation?.status(), 200);
   const emailInput = page.getByRole("textbox", { name: "測試帳號電郵", exact: true });
@@ -486,15 +487,15 @@ async function login(page: Page, baseUrl: string, email: string, password: strin
   const accessResponse = page.waitForResponse((response) => isGetPath(response, "/api/v1/auth/me"));
   await submit.click();
   assert.equal((await submitResponse).status(), 303);
-  await page.waitForURL((url) => url.pathname === "/today");
+  await page.waitForURL((url) => url.pathname === destination);
   assert.equal((await accessResponse).status(), 200);
-  await page.getByRole("heading", { name: "今日工作", exact: true, level: 2 }).waitFor({ state: "visible" });
+  await page.getByRole("heading", { name: destination === "/today" ? "今日工作" : "任務", exact: true }).first().waitFor({ state: "visible" });
 }
 
 async function logout(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "帳戶選單", exact: true }).click();
-  await page.getByRole("menuitem", { name: "登出", exact: true }).click();
-  await page.waitForURL((url) => url.pathname === "/login");
+  const response = await page.goto("/api/v1/auth/logout", { waitUntil: "domcontentloaded" });
+  assert.equal(response?.status(), 200);
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
   await page.getByRole("textbox", { name: "測試帳號電郵", exact: true }).waitFor({ state: "visible" });
 }
 
@@ -523,8 +524,8 @@ async function createCaseFixture(
           student_id: student,
           intake_year: year,
           admission_type: "transfer",
-          primary_role_binding_id: binding,
-          manifest_id: manifest,
+          primary_advisor_role_binding_id: binding,
+          signed_at: "2041-01-15T08:00:00+08:00",
         }),
       });
       evidence.response_status = response.status;
@@ -536,9 +537,14 @@ async function createCaseFixture(
         return { caseId: null, evidence };
       }
       if (!object(envelope) || !exactKeys(envelope, ["api_version", "request_id", "data"])) return { caseId: null, evidence };
-      if (!object(envelope.data) || !exactKeys(envelope.data, ["id", "record_version"]) ||
-          !uuid(envelope.data.id) || envelope.data.record_version !== 2) return { caseId: null, evidence };
-      const caseId = envelope.data.id;
+      if (!object(envelope.data) || !exactKeys(envelope.data, [
+        "assessment_manifest", "assessment_url", "case_id", "record_version", "stage", "workflow_status",
+      ]) || !uuid(envelope.data.case_id) || envelope.data.record_version !== 2 ||
+          envelope.data.stage !== "background_collection" || envelope.data.workflow_status !== "active" ||
+          !object(envelope.data.assessment_manifest) || typeof envelope.data.assessment_url !== "string") {
+        return { caseId: null, evidence };
+      }
+      const caseId = envelope.data.case_id;
       const authorityResponse = await fetch(`/api/v1/cases/${caseId}`);
       const authorityRoot = await authorityResponse.json() as unknown;
       if (authorityResponse.status !== 200 || !object(authorityRoot) ||
@@ -558,7 +564,9 @@ async function createCaseFixture(
         record.studentId === student && uuid(record.assessmentId) &&
         record.intakeYear === year && record.admissionType === "transfer" &&
         record.stage === "background_collection" && record.workflowStatus === "active" &&
-        record.manifestId === manifest && record.recordVersion === envelope.data.record_version;
+        record.manifestId === envelope.data.assessment_manifest.id &&
+        record.recordVersion === envelope.data.record_version &&
+        envelope.data.assessment_url === `/cases/${caseId}/assessment`;
       return { caseId: evidence.exact_case_dto ? caseId : null, evidence };
     } catch {
       return { caseId: null, evidence };
@@ -639,7 +647,7 @@ async function completeAdvisorTask(
   evidence.submit_count = await submit.count();
   evidence.submit_enabled = await submit.isEnabled();
   assert.equal(evidence.action_selected_completed, true);
-  assert.equal(evidence.reason_required, true);
+  assert.equal(evidence.reason_required, false);
   assert.equal(evidence.reason_filled, true);
   assert.equal(evidence.confirmation_count, 1);
   assert.equal(evidence.confirmation_checked, true);
@@ -811,8 +819,8 @@ function isIsoInstant(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && !Number.isNaN(Date.parse(value));
 }
 
-async function chooseTransition(page: Page, to: "accepted" | "completed" | "approved", withReason: boolean): Promise<void> {
-  const labels = { accepted: "接受任務", completed: "標記完成", approved: "批准完成" } as const;
+async function chooseTransition(page: Page, to: "accepted" | "completed", withReason: boolean): Promise<void> {
+  const labels = { accepted: "接受任務", completed: "標記完成" } as const;
   const action = page.getByRole("combobox", { name: "操作", exact: true });
   await action.waitFor({ state: "visible" });
   await action.selectOption(to);
@@ -865,7 +873,7 @@ async function inspectDeniedActor(page: Page, baseUrl: string, email: string, pa
   await login(page, baseUrl, email, password);
   const navigation = await page.goto(`${baseUrl}/tasks`, { waitUntil: "domcontentloaded" });
   assert.equal(navigation?.status(), 200);
-  await page.getByText("無法查看任務", { exact: true }).waitFor({ state: "visible" });
+  await page.getByText("目前身份無法查看此工作區", { exact: true }).waitFor({ state: "visible" });
   const entriesHidden = await page.locator('a[href^="/tasks/"]').count() === 0;
   const direct = await page.evaluate(async (payload) => {
     try {

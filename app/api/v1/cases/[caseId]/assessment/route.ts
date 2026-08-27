@@ -2,7 +2,7 @@ import {
   getCaseWorkspaceRuntime,
   type UpdateAssessmentAnswerCommand,
 } from "@/modules/cases/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import {
   createApiError,
   handleApiRequest,
@@ -39,7 +39,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     try {
       const { caseId } = await context.params;
       assertAssessmentCaseId(caseId);
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const view = await getCaseWorkspaceRuntime().assessmentService.getCaseAssessment({ actor, caseId });
       return {
         assessment_id: view.assessmentId,
@@ -87,7 +87,7 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
       const { caseId } = await context.params;
       assertAssessmentCaseId(caseId);
       const command = await parseUpdateCommand(request, requestContext.requestId);
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const result = await getCaseWorkspaceRuntime().assessmentService.updateAssessmentAnswer({
         actor,
         caseId,

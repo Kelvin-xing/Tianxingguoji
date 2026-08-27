@@ -20,8 +20,8 @@ import { planMigration } from "../../scripts/db/plan-migration.ts";
 
 test("allocates at most three active sessions without implicit eviction", () => {
   assert.deepEqual(SESSION_POLICY, {
-    idleTimeoutMs: 15 * 60 * 1_000,
-    absoluteTimeoutMs: 8 * 60 * 60 * 1_000,
+    idleTimeoutMs: 8 * 60 * 60 * 1_000,
+    absoluteTimeoutMs: 24 * 60 * 60 * 1_000,
     sensitiveReauthenticationMaxAgeMs: 5 * 60 * 1_000,
     maximumActiveSessions: 3,
   });

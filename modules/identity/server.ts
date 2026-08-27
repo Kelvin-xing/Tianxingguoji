@@ -19,5 +19,6 @@ export * from "./infrastructure/postgresql-database-test-repository.ts";
 export * from "./infrastructure/pkce.ts";
 export * from "./infrastructure/postgresql-client.ts";
 export * from "./infrastructure/postgresql-session-service.ts";
+export * from "./infrastructure/postgresql-session-principal.ts";
 export * from "./infrastructure/runtime.ts";
 export * from "./infrastructure/session-crypto.ts";

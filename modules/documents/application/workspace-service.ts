@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, type OrganizationRole } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability, type OrganizationRole } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -210,8 +210,10 @@ function authorize(
   actor: IdentitySessionActor,
   capability: "documents.read" | "documents.create",
 ): DocumentActorContext {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability }).allowed) {
+  const allowed = actor.workspaceCapabilities !== undefined
+    ? hasRequestCapability(actor, capability)
+    : evaluateBootstrapAuthorization(actor.role, { capability }).allowed;
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !allowed) {
     forbidden();
   }
   return Object.freeze({

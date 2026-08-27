@@ -15,7 +15,6 @@ import {
   verifyCommittedOneRoleBaseline,
 } from "../../scripts/db/generate-one-role-baseline.ts";
 import {
-  NEON_TEST_MANIFEST_ID,
   NEON_TEST_ORGANIZATION,
   NEON_TEST_PRINCIPALS,
   NEON_TEST_STUDENTS,
@@ -37,7 +36,7 @@ const ADVISOR = NEON_TEST_PRINCIPALS.find(({ role }) => role === "advisor")!;
 const STUDENT = NEON_TEST_STUDENTS[0]!;
 const DEV_LOGS = new WeakMap<ChildProcess, { stdout: string; stderr: string }>();
 
-test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next Dev HTTP", {
+test("CRM-05 Advisor Guardian deletion rejects an active relationship through PostgreSQL 17 and real Next Dev HTTP", {
   timeout: 300_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -95,7 +94,9 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
     assert.equal(baseline.postflight_state, "installed");
     assert.equal(baseline.generated_files, baseline.source_migrations + 1);
 
-    const seed = await seedNeonTestRelease1(target, "apply");
+    const seed = await seedNeonTestRelease1(target, "apply", {
+      includeTaskPolicy: false,
+    });
     assert.equal(seed.status, "pass");
     assert.equal(await provision(target, ADVISOR.email, advisorPassword), "created");
 
@@ -114,16 +115,23 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
       student_id: STUDENT.id,
       intake_year: 2027,
       admission_type: "transfer",
-      primary_role_binding_id: ADVISOR.roleBindingId,
-      manifest_id: NEON_TEST_MANIFEST_ID,
+      primary_advisor_role_binding_id: ADVISOR.roleBindingId,
+      signed_at: "2027-01-15T08:00:00+08:00",
     }, "crm05-deletion-probe-case");
-    assert.equal(caseCreate.response.status, 200);
+    assert.equal(caseCreate.response.status, 200, JSON.stringify(caseCreate.body));
     const caseReceipt = requiredRecord(caseCreate.body.data);
-    assert.deepEqual(Object.keys(caseReceipt).sort(), ["id", "record_version"]);
+    assert.deepEqual(Object.keys(caseReceipt).sort(), [
+      "assessment_manifest",
+      "assessment_url",
+      "case_id",
+      "record_version",
+      "stage",
+      "workflow_status",
+    ]);
     assert.equal(caseReceipt.record_version, 2);
     const caseAuthority = await getJson(
       baseUrl,
-      `/api/v1/cases/${requiredString(caseReceipt, "id")}`,
+      `/api/v1/cases/${requiredString(caseReceipt, "case_id")}`,
       advisorCookie,
     );
     assert.equal(caseAuthority.response.status, 200);
@@ -151,23 +159,8 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
         expected_record_version: previousVersion,
         reason_code: "record.lifecycle.pending_delete_requested",
       }, "crm05-deletion-probe-guardian");
-    if (deletion.response.status !== 200) {
-      const failure = readDeletionReviewPostgresFailure(devServer);
-      throw new HarnessError(`guardian_deletion_status_${deletion.response.status}` +
-        `_stage_${failure?.stage ?? "NONE"}_postgres_${failure?.postgresCode ?? "NULL"}`);
-    }
-    assertDeletionReceipt(deletion, previousVersion + 1);
-
-    const after = await getJson(baseUrl, `/api/v1/students/${STUDENT.id}`, advisorCookie);
-    assert.equal(after.response.status, 200);
-    const studentAfter = requiredRecord(after.body.data?.student);
-    const guardianAfter = requiredRecord(requiredArray(studentAfter.guardians)
-      .find((value) => requiredRecord(value).id === STUDENT.guardianId));
-    assert.equal(guardianAfter.status, "pending_delete");
-    assert.equal(guardianAfter.recordVersion, previousVersion + 1);
-    assertCurrentRelationships(await getJson(baseUrl,
-      `/api/v1/students/${STUDENT.id}/guardians`, advisorCookie), STUDENT.id, STUDENT.guardianId);
-
+    assert.equal(deletion.response.status, 409, JSON.stringify(deletion.body));
+    assert.equal(deletion.body.error?.code, "CONFLICT");
     const countsAfter = await inspectDeletionState(target);
     assert.deepEqual({
       guardianStatus: countsAfter.guardianStatus,
@@ -178,12 +171,12 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
       outboxDelta: countsAfter.outboxCount - countsBefore.outboxCount,
       privateMatches: countsAfter.privateMatches,
     }, {
-      guardianStatus: "pending_delete",
-      guardianVersionDelta: 1,
+      guardianStatus: "active",
+      guardianVersionDelta: 0,
       currentRelationshipDelta: 0,
-      receiptDelta: 1,
-      auditDelta: 1,
-      outboxDelta: 1,
+      receiptDelta: 0,
+      auditDelta: 0,
+      outboxDelta: 0,
       privateMatches: 0,
     });
     assertNoSensitiveDevLogs(devServer, [advisorPassword, target.connectionString,
@@ -195,11 +188,12 @@ test("CRM-05 Advisor Guardian deletion works through PostgreSQL 17 and real Next
       auth_me: 200,
       student_read: 200,
       relationships_read: 200,
-      guardian_deletion: 200,
-      pending_authoritative_reads: 200,
-      receipt_delta: 1,
-      audit_delta: 1,
-      outbox_delta: 1,
+      guardian_deletion: 409,
+      guardian_deletion_error: "CONFLICT",
+      current_relationship_guard: "active relationship rejected",
+      receipt_delta: 0,
+      audit_delta: 0,
+      outbox_delta: 0,
       private_matches: 0,
     });
   } catch (error) {
@@ -281,19 +275,6 @@ async function inspectDeletionState(target: OneRoleBaselineTarget) {
     await client.query("ROLLBACK").catch(() => {});
     await client.end().catch(() => {});
   }
-}
-
-function assertDeletionReceipt(result: Readonly<{ response: Response; body: ApiEnvelope }>, version: number) {
-  assert.equal(result.response.headers.get("cache-control"), "no-store");
-  const data = requiredRecord(result.body.data);
-  assert.deepEqual(Object.keys(data).sort(), ["deletion_requested_at", "entity_id", "entity_type",
-    "record_version", "status"]);
-  assert.equal(data.entity_type, "guardian");
-  assert.equal(data.entity_id, STUDENT.guardianId);
-  assert.equal(data.status, "pending_delete");
-  assert.equal(data.record_version, version);
-  assert.equal(new Date(requiredString(data, "deletion_requested_at")).toISOString(),
-    data.deletion_requested_at);
 }
 
 function assertCurrentRelationships(result: Readonly<{ response: Response; body: ApiEnvelope }>,
@@ -472,16 +453,6 @@ async function stopNextDev(child: ChildProcess | undefined): Promise<void> {
   }
 }
 
-function readDeletionReviewPostgresFailure(child: ChildProcess) {
-  const logs = DEV_LOGS.get(child);
-  if (!logs) throw new HarnessError("next_log_capture");
-  const matches = `${logs.stdout}\n${logs.stderr}`.matchAll(
-    /(?:^|\n)event=deletion_review_postgres_failure stage=(receipt_claim|actor_reauthorization|target_lock|advisor_scope|target_update|effects_append|receipt_complete|transaction_boundary) postgres_code=(08003|08006|23503|23505|23514|40001|40P01|42501|42601|42703|42883|42P01|55P03|57014|57P01|OTHER|NULL)(?:\n|$)/g,
-  );
-  let result: Readonly<{ stage: string; postgresCode: string }> | null = null;
-  for (const match of matches) result = Object.freeze({ stage: match[1]!, postgresCode: match[2]! });
-  return result;
-}
 function assertNoSensitiveDevLogs(child: ChildProcess, forbidden: readonly string[]): void {
   const logs = DEV_LOGS.get(child);
   if (!logs) throw new HarnessError("next_log_capture");

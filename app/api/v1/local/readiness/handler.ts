@@ -25,9 +25,7 @@ export function handleLocalReadinessRequest(
       postgresql: report.dependencies.postgresql,
       postgresql_identity: report.dependencies.postgresql_identity,
       postgresql_application: report.dependencies.postgresql_application,
-      localstack_s3: report.dependencies.localstack_s3,
-      localstack_sqs: report.dependencies.localstack_sqs,
-      clamav: report.dependencies.clamav,
+      document_transport: report.dependencies.document_transport,
     } as const;
     if (report.status !== "ready") {
       throw createApiError("SERVICE_UNAVAILABLE", {

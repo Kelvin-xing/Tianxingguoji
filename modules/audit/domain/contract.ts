@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { validateIdempotencyKey } from "../../shared/public.ts";
 
 export const AUDIT_OUTCOMES = Object.freeze(["succeeded", "denied", "failed"] as const);
-export const AUDIT_ACTOR_KINDS = Object.freeze(["user", "system", "worker"] as const);
+export const AUDIT_ACTOR_KINDS = Object.freeze(["user", "portal", "system", "worker"] as const);
 export const OUTBOX_STATES = Object.freeze([
   "pending",
   "processing",
@@ -92,6 +92,8 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_METADATA_KEYS = new Set([
+  "entity_type",
+  "decision",
   "record_version",
   "previous_version",
   "next_version",
@@ -103,7 +105,11 @@ const SAFE_METADATA_KEYS = new Set([
   "attempt_count",
 ]);
 const SAFE_OUTBOX_KEYS = new Set([
+  "entity_type",
+  "decision",
+  "previous_version",
   "aggregate_id",
+  "previous_record_version",
   "record_version",
   "request_id",
   "effect_type",

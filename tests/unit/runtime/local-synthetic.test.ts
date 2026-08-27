@@ -20,14 +20,6 @@ test("loads an explicit loopback-only local synthetic configuration", () => {
       connectionString:
         "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
     },
-    localstack: {
-      endpoint: "http://127.0.0.1:4566",
-      region: "ap-east-1",
-      bucket: "tianxing-local-documents",
-      queue: "tianxing-local-document-scan",
-      deadLetterQueue: "tianxing-local-document-scan-dlq",
-    },
-    clamav: { host: "127.0.0.1", port: 3310 },
     dependencyTimeoutMs: 2000,
   });
 });
@@ -43,19 +35,11 @@ test("fails closed when local mode is absent or used in production", () => {
   );
 });
 
-test("rejects remote database, LocalStack, and ClamAV endpoints", () => {
+test("rejects a remote local database endpoint", () => {
   const cases = [
     {
       variable: "LOCAL_SYNTHETIC_DATABASE_URL",
       value: "postgresql://tianxing_app:secret@database.example.test:5432/tianxing",
-    },
-    {
-      variable: "LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT",
-      value: "https://localstack.example.test:4566",
-    },
-    {
-      variable: "LOCAL_SYNTHETIC_CLAMAV_HOST",
-      value: "scanner.example.test",
     },
   ] as const;
 
@@ -93,9 +77,7 @@ test("reports all dependencies ready without exposing connection values", async 
       postgresql: "ready",
       postgresql_identity: "ready",
       postgresql_application: "ready",
-      localstack_s3: "ready",
-      localstack_sqs: "ready",
-      clamav: "ready",
+      document_transport: "ready",
     },
   });
   assert.equal(JSON.stringify(report).includes("tianxing-local-app-only"), false);
@@ -115,8 +97,7 @@ test("reports each unavailable dependency without throwing raw probe errors", as
       applicationPostgresql: async () => {
         throw new Error("application detail");
       },
-      localstack: async () => ({ s3: true, sqs: false }),
-      clamav: async () => {
+      documentTransport: async () => {
         throw new Error("scanner detail");
       },
     }),
@@ -129,9 +110,7 @@ test("reports each unavailable dependency without throwing raw probe errors", as
       postgresql: "unavailable",
       postgresql_identity: "unavailable",
       postgresql_application: "unavailable",
-      localstack_s3: "ready",
-      localstack_sqs: "unavailable",
-      clamav: "unavailable",
+      document_transport: "unavailable",
     },
   });
   assert.equal(JSON.stringify(report).includes("secret"), false);
@@ -146,14 +125,14 @@ function validEnvironment(): Record<string, string | undefined> {
     NODE_ENV: "development",
     LOCAL_SYNTHETIC_DATABASE_URL:
       "postgresql://tianxing_app:tianxing-local-app-only@127.0.0.1:5432/tianxing",
-    LOCAL_SYNTHETIC_LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566",
-    LOCAL_SYNTHETIC_AWS_REGION: "ap-east-1",
-    LOCAL_SYNTHETIC_S3_BUCKET: "tianxing-local-documents",
-    LOCAL_SYNTHETIC_SQS_QUEUE: "tianxing-local-document-scan",
-    LOCAL_SYNTHETIC_SQS_DLQ: "tianxing-local-document-scan-dlq",
-    LOCAL_SYNTHETIC_CLAMAV_HOST: "127.0.0.1",
-    LOCAL_SYNTHETIC_CLAMAV_PORT: "3310",
     LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS: "2000",
+    DOCUMENT_TRANSPORT_MODE: "deterministic-fake",
+    DOCUMENT_FAKE_REGION: "ap-east-1",
+    DOCUMENT_FAKE_BUCKET: "tianxing-local-documents",
+    DOCUMENT_FAKE_ORIGIN: "http://localhost:3000",
+    DOCUMENT_FAKE_SIGNING_SECRET: "local-only-test-secret-at-least-32-characters",
+    DOCUMENT_FAKE_ORGANIZATION_ID: "51000000-0000-4000-8000-000000000001",
+    DOCUMENT_FAKE_WORKER_CONTEXT_ID: "10000000-0000-4000-8000-000000000901",
   };
 }
 
@@ -164,8 +143,7 @@ function probes(
     postgresql: async () => undefined,
     identityPostgresql: async () => undefined,
     applicationPostgresql: async () => undefined,
-    localstack: async () => ({ s3: true, sqs: true }),
-    clamav: async () => undefined,
+    documentTransport: async () => undefined,
     ...overrides,
   };
 }

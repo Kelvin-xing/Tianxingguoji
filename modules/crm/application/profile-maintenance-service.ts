@@ -1,14 +1,18 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, type OrganizationRole } from "../../access/public.ts";
+import {
+  compatibilityRoleForRepository,
+  type OrganizationRole,
+  type RequestAccessActor,
+} from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
+import type { CrmGender } from "../domain/approved-p2-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -19,6 +23,7 @@ export interface StudentProfileUpdateCommand {
   readonly studentId: string;
   readonly displayName: string;
   readonly dateOfBirth: string | null;
+  readonly gender?: CrmGender | null;
   readonly contactEmail: string | null;
   readonly contactPhone: string | null;
   readonly expectedRecordVersion: number;
@@ -31,6 +36,8 @@ export interface GuardianProfileUpdateCommand {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
+  readonly dateOfBirth?: string | null;
+  readonly gender?: CrmGender | null;
   readonly expectedRecordVersion: number;
   readonly requestId: string;
   readonly idempotencyKey: string;
@@ -56,6 +63,7 @@ export interface ProfileMaintenanceRepository {
     readonly studentId: string;
     readonly displayName: string;
     readonly dateOfBirth: string | null;
+    readonly gender: CrmGender | null;
     readonly contactEmail: string | null;
     readonly contactPhone: string | null;
     readonly expectedRecordVersion: number;
@@ -65,6 +73,8 @@ export interface ProfileMaintenanceRepository {
     readonly displayName: string;
     readonly email: string | null;
     readonly phone: string | null;
+    readonly dateOfBirth: string | null;
+    readonly gender: CrmGender | null;
     readonly expectedRecordVersion: number;
   }): Promise<ProfileUpdateAcknowledgement>;
 }
@@ -128,7 +138,7 @@ export class ProfileMaintenanceService {
   }
 
   async updateStudent(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: StudentProfileUpdateCommand;
   }): Promise<ProfileUpdateAcknowledgement> {
     assertAuthorized(input.actor);
@@ -137,6 +147,7 @@ export class ProfileMaintenanceService {
       studentId: command.studentId,
       displayName: command.displayName,
       dateOfBirth: command.dateOfBirth,
+      gender: command.gender,
       contactEmail: command.contactEmail,
       contactPhone: command.contactPhone,
       expectedRecordVersion: command.expectedRecordVersion,
@@ -149,7 +160,7 @@ export class ProfileMaintenanceService {
         invoke: (effects) => this.repository.updateStudent({
           organizationId: input.actor.organizationId,
           actorUserId: input.actor.userId,
-          actorRole: input.actor.role,
+          actorRole: compatibilityRole(input.actor),
           ...command,
           requestHash,
           effects,
@@ -158,7 +169,7 @@ export class ProfileMaintenanceService {
   }
 
   async updateGuardian(input: {
-    readonly actor: IdentitySessionActor;
+    readonly actor: RequestAccessActor;
     readonly command: GuardianProfileUpdateCommand;
   }): Promise<ProfileUpdateAcknowledgement> {
     assertAuthorized(input.actor);
@@ -168,6 +179,8 @@ export class ProfileMaintenanceService {
       displayName: command.displayName,
       email: command.email,
       phone: command.phone,
+      dateOfBirth: command.dateOfBirth,
+      gender: command.gender,
       expectedRecordVersion: command.expectedRecordVersion,
     });
     return await this.update(input.actor, command.requestId, command.expectedRecordVersion, "Guardian",
@@ -178,7 +191,7 @@ export class ProfileMaintenanceService {
         invoke: (effects) => this.repository.updateGuardian({
           organizationId: input.actor.organizationId,
           actorUserId: input.actor.userId,
-          actorRole: input.actor.role,
+          actorRole: compatibilityRole(input.actor),
           ...command,
           requestHash,
           effects,
@@ -187,7 +200,7 @@ export class ProfileMaintenanceService {
   }
 
   private async update(
-    actor: IdentitySessionActor,
+    actor: RequestAccessActor,
     requestId: string,
     expectedRecordVersion: number,
     resourceType: "Student" | "Guardian",
@@ -229,20 +242,29 @@ export class ProfileMaintenanceService {
   }
 }
 
-function assertAuthorized(actor: IdentitySessionActor): void {
+function assertAuthorized(actor: RequestAccessActor): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability: "students.profiles.manage" }).allowed) {
+      !compatibilityRoleForRepository(actor, "students.profiles.manage")) {
     throw new ProfileMaintenanceError("PROFILE_MAINTENANCE_FORBIDDEN");
   }
 }
 
-function normalizeStudentCommand(command: StudentProfileUpdateCommand): StudentProfileUpdateCommand {
+function compatibilityRole(actor: RequestAccessActor): OrganizationRole {
+  const role = compatibilityRoleForRepository(actor, "students.profiles.manage");
+  if (!role) throw new ProfileMaintenanceError("PROFILE_MAINTENANCE_FORBIDDEN");
+  return role;
+}
+
+function normalizeStudentCommand(command: StudentProfileUpdateCommand): StudentProfileUpdateCommand & {
+  readonly gender: CrmGender | null;
+} {
   validateCommon(command.studentId, command.expectedRecordVersion, command.requestId,
     command.idempotencyKey);
   return Object.freeze({
     studentId: command.studentId,
     displayName: required(command.displayName),
     dateOfBirth: date(command.dateOfBirth),
+    gender: gender(command.gender),
     contactEmail: email(command.contactEmail),
     contactPhone: optional(command.contactPhone, 64),
     expectedRecordVersion: command.expectedRecordVersion,
@@ -251,7 +273,10 @@ function normalizeStudentCommand(command: StudentProfileUpdateCommand): StudentP
   });
 }
 
-function normalizeGuardianCommand(command: GuardianProfileUpdateCommand): GuardianProfileUpdateCommand {
+function normalizeGuardianCommand(command: GuardianProfileUpdateCommand): GuardianProfileUpdateCommand & {
+  readonly dateOfBirth: string | null;
+  readonly gender: CrmGender | null;
+} {
   validateCommon(command.guardianId, command.expectedRecordVersion, command.requestId,
     command.idempotencyKey);
   const normalized = Object.freeze({
@@ -259,6 +284,8 @@ function normalizeGuardianCommand(command: GuardianProfileUpdateCommand): Guardi
     displayName: required(command.displayName),
     email: email(command.email),
     phone: optional(command.phone, 64),
+    dateOfBirth: date(command.dateOfBirth),
+    gender: gender(command.gender),
     expectedRecordVersion: command.expectedRecordVersion,
     requestId: command.requestId,
     idempotencyKey: command.idempotencyKey,
@@ -297,11 +324,21 @@ function email(value: unknown): string | null {
 }
 
 function date(value: unknown): string | null {
+  if (value === undefined) return null;
   if (value === null) return null;
   if (typeof value !== "string" || !DATE.test(value)) throw invalid();
   const parsed = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) throw invalid();
   return value;
+}
+
+function gender(value: unknown): CrmGender | null {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (typeof value !== "string" || !["male", "female", "other", "not_disclosed"].includes(value)) {
+    throw invalid();
+  }
+  return value as CrmGender;
 }
 
 function invalid(): ProfileMaintenanceError {

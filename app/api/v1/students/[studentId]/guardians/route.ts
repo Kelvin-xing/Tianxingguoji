@@ -1,5 +1,5 @@
 import { getGuardianRelationshipRuntime } from "@/modules/crm/server";
-import { requireIdentityActor } from "@/modules/identity/web";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import {
   createRequestContext,
   errorResponse,
@@ -24,7 +24,7 @@ export async function GET(
   return handleApiRequest(request, async () => {
     try {
       const { studentId } = await context.params;
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       return toCurrentRelationshipsData(
         await getGuardianRelationshipRuntime().service.listCurrent(actor, studentId),
       );
@@ -42,7 +42,7 @@ export async function POST(
   try {
     const { studentId } = await context.params;
     const command = await parseAttachCommand(request, studentId, requestContext.requestId);
-    const actor = await requireIdentityActor();
+    const actor = await requireApiRequestAccessContext();
     const relationship = await getGuardianRelationshipRuntime().service.attachGuardian({ actor, command });
     return successResponse(requestContext, { relationship: toRelationshipData(relationship) }, 201);
   } catch (error) {

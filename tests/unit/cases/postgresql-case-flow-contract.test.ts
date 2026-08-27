@@ -90,6 +90,9 @@ test("Assessment mutations claim receipts before Case scope and lock concrete au
   }
   assert.match(source, /FOR UPDATE OF service_case[\s\S]*FOR SHARE OF student/);
   assert.match(source, /FOR SHARE OF role_binding, membership, identity_user, organization/);
+  assert.doesNotMatch(update, /FROM cases_assessment_answers[\s\S]*?FOR UPDATE/);
+  assert.match(update, /readAuthorizedHeader\(transaction, input, true, "write"\)/);
+  assert.match(update, /ORDER BY revision_number DESC[\s\S]*LIMIT 1/);
   assert.match(
     source,
     /role_binding\.user_id = \$1::uuid AND role_binding\.role::text = \$2::text/,
@@ -99,6 +102,18 @@ test("Assessment mutations claim receipts before Case scope and lock concrete au
   assert.match(source, /FOR SHARE OF collaborator, scope_grant, role_binding, membership,[\s\S]*identity_user, organization/);
   assert.match(source, /access_can_complete_background: canEdit && header\.case_stage === "background_collection"/);
   assert.match(source, /acknowledgementReference\(header\.assessment_id, Number\(saved\.record_version\)\)/);
+});
+
+test("Assessment answer revisions remain append-only and uniquely serialized by the header lock", async () => {
+  const [repository, migration] = await Promise.all([
+    readFile("modules/cases/infrastructure/postgresql-assessment-repository.ts", "utf8"),
+    readFile("db/migrations/202608260030_039_expand_crm_case_assessment.sql", "utf8"),
+  ]);
+  const update = repository.slice(repository.indexOf("  updateAssessmentAnswer("), repository.indexOf("  completeBackgroundCollection("));
+  assert.match(update, /readAuthorizedHeader\(transaction, input, true, "write"\)/);
+  assert.doesNotMatch(update, /cases_assessment_answers[\s\S]*FOR UPDATE/);
+  assert.match(migration, /UNIQUE \(organization_id, assessment_id, field_id, revision_number\)/);
+  assert.match(migration, /REVOKE UPDATE, DELETE ON TABLE cases_assessment_answers FROM tianxing_app/);
 });
 
 test("Assessment reads project editable fields and answers in canonical catalogue order", async () => {

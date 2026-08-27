@@ -4,7 +4,7 @@
 | --- | --- |
 | Run ID | `R1X-09-PORTAL-BILLING-COMPOSITION-20260813` |
 | Scope | Production composition seam for `ExternalPortalAccess` and `PlatformBilling` only |
-| Authority | `DEC-064` through `DEC-066`; approved `DP-01` through `DP-12` baseline |
+| Business authority | `txgj-doc/business-requirements/80-portal-billing.zh-CN.md` (`BR-060`–`BR-062`) and `70-notifications-audit.zh-CN.md` (`BR-071`) |
 | Status | `bounded_composition_seam_passed`; authoritative `R1X-09` remains incomplete |
 
 ## 1. Problem And Boundary

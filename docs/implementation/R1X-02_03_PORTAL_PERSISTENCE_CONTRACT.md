@@ -4,7 +4,7 @@
 | --- | --- |
 | Run ID | `R1X-02_03-PORTAL-PERSISTENCE-20260813` |
 | Scope | External Portal repository/schema seam only |
-| Authority | `DEC-064`, `DEC-065`, approved `DP-01` through `DP-05`, fail-closed `DP-10` |
+| Business authority | `txgj-doc/business-requirements/80-portal-billing.zh-CN.md` (`BR-060`) and `70-notifications-audit.zh-CN.md` (`BR-071`) |
 | Status | Local contract implemented; production adapter and enablement unavailable |
 
 ## 1. Outcome And Boundary

@@ -1,16 +1,14 @@
 export const TASK_STATES = Object.freeze([
-  "created",
   "assigned",
   "accepted",
-  "rejected",
-  "reassigned",
+  "awaiting_reassignment",
   "completed",
-  "approved",
-  "overdue",
   "cancelled",
 ] as const);
 
-export type TaskState = (typeof TASK_STATES)[number];
+/** Legacy values remain typed for historical read fixtures only; new writes reject them. */
+export type TaskState = (typeof TASK_STATES)[number] |
+  "created" | "rejected" | "reassigned" | "approved" | "overdue";
 export type TaskPolicyStatus = "candidate" | "approved" | "retired";
 export type TaskActorKind = "assignee" | "approver" | "owner";
 export type TaskActorRole =

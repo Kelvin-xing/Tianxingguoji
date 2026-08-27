@@ -5,6 +5,8 @@ import {
   mapGuardianRelationshipError,
   parseAttachCommand,
   parseHandoffCommand,
+  parseEndCommand,
+  toEndData,
   parseSearchRequest,
   toCurrentRelationshipsData,
 } from "../../app/api/v1/students/[studentId]/guardians/handler.ts";
@@ -18,6 +20,7 @@ test("parses frozen attach, search and handoff DTOs", async () => {
     studentId: STUDENT_ID,
     guardianId: GUARDIAN_ID,
     relationshipType: "father",
+    relationshipDescription: null,
     isLegalGuardian: true,
     isEmergencyContact: false,
     isBillingContact: false,
@@ -57,7 +60,7 @@ test("rejects client primary, reason, identity and unknown fields", async () => 
 });
 
 test("rejects invalid relationship vocabulary, query length, content type and missing idempotency", async () => {
-  await reject(parseAttachCommand(jsonRequest({ ...validAttach(), relationship_type: "parent" }, true),
+  await reject(parseAttachCommand(jsonRequest({ ...validAttach(), relationship_type: "not_a_relationship" }, true),
     STUDENT_ID, "request"), "VALIDATION_FAILED");
   await reject(parseSearchRequest(jsonRequest({ query: "x" }), STUDENT_ID), "VALIDATION_FAILED");
   await reject(parseAttachCommand(jsonRequest(validAttach(), false), STUDENT_ID, "request"), "INVALID_REQUEST");
@@ -98,12 +101,21 @@ test("serializes the unchanged current relationship DTO with masked hints", () =
   assert.deepEqual(Object.keys(data.relationships[0]!).sort(), [
     "guardian", "is_billing_contact", "is_emergency_contact", "is_legal_guardian",
     "is_primary_contact", "notification_consent", "record_version", "relationship_id",
-    "relationship_type", "starts_at",
-  ]);
+    "relationship_type", "relationship_description", "starts_at",
+  ].sort());
   assert.deepEqual(Object.keys(data.relationships[0]!.guardian).sort(), [
     "display_name", "email_hint", "id", "phone_hint",
   ]);
   assert.equal(data.relationships[0]!.guardian.email_hint, "s***@example.invalid");
+});
+
+test("parses and serializes relationship end contract", async () => {
+  const request = jsonRequest({ expected_record_version: 4 }, true);
+  assert.deepEqual(await parseEndCommand(request, STUDENT_ID, GUARDIAN_ID, "end.request"), { studentId: STUDENT_ID, relationshipId: GUARDIAN_ID, expectedRecordVersion: 4, requestId: "end.request", idempotencyKey: "crm02-attempt-1" });
+  await reject(parseEndCommand(jsonRequest({ expected_record_version: 4, reason: "x" }, true), STUDENT_ID, GUARDIAN_ID, "r"), "INVALID_REQUEST");
+  await reject(parseEndCommand(jsonRequest({ expected_record_version: 0 }, true), STUDENT_ID, GUARDIAN_ID, "r"), "VALIDATION_FAILED");
+  const data = toEndData({ relationshipId: GUARDIAN_ID, studentId: STUDENT_ID, status: "ended", endsAt: "2026-01-01T00:00:00.000Z", recordVersion: 5, occurredAt: "2026-01-01T00:00:00.000Z" });
+  assert.deepEqual(Object.keys(data.relationship).sort(), ["ends_at", "id", "record_version", "status", "student_id"]);
 });
 
 test("maps stable not-found errors and rejects unknown error shapes", () => {
@@ -127,6 +139,7 @@ function validAttach() {
   return {
     guardian_id: GUARDIAN_ID,
     relationship_type: "father",
+    relationship_description: null,
     is_legal_guardian: true,
     is_emergency_contact: false,
     is_billing_contact: false,

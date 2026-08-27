@@ -1,17 +1,23 @@
 import "server-only";
 
 import { AssessmentService } from "../application/assessment-service.ts";
+import { CaseIntakeOptionsCoordinator, CaseIntakeService } from "../application/intake-service.ts";
 import type { CaseService } from "../application/service.ts";
 import { CaseWorkspaceService } from "../application/workspace-service.ts";
 import { CaseWorkflowService } from "../application/workflow-service.ts";
 import { CaseReferralSourceAssignmentService } from "../application/referral-source-assignment-service.ts";
+import { CandidateListService } from "../application/candidate-list-service.ts";
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
 import { createPostgreSqlAdapter } from "./postgresql.ts";
 import { PostgresqlCaseWorkspaceRepository } from "./postgresql-workspace-repository.ts";
+import { PostgresqlCaseIntakeRepository } from "./postgresql-case-intake-repository.ts";
+import { PostgresqlCrmCaseIntakeOwner } from "../../crm/server.ts";
+import { PostgresqlAccessCaseIntakeOwner } from "../../access/server.ts";
 import { PostgresqlCaseWorkflowRepository } from "./postgresql-workflow-repository.ts";
 import { PostgresqlAssessmentRepository } from "./postgresql-assessment-repository.ts";
 import { PostgresqlCaseReferralSourceAssignmentRepository } from "./postgresql-referral-source-assignment-repository.ts";
+import { PostgresqlCandidateListRepository } from "./postgresql-candidate-list-repository.ts";
 
 export interface CaseReferralSourceRuntime { readonly service: CaseReferralSourceAssignmentService }
 export class CaseReferralSourceRuntimeUnavailable extends Error {
@@ -65,8 +71,10 @@ export function getCaseRuntime(): CaseRuntime {
 
 export interface CaseWorkspaceRuntime {
   readonly service: CaseWorkspaceService;
+  readonly intakeService: CaseIntakeService;
   readonly assessmentService: AssessmentService;
   readonly workflowService: CaseWorkflowService;
+  readonly candidateListService: CandidateListService;
 }
 
 const globalForCaseWorkspace = globalThis as typeof globalThis & {
@@ -84,10 +92,24 @@ export function getCaseWorkspaceRuntime(): CaseWorkspaceRuntime {
     const adapter = createPostgreSqlAdapter(getApplicationTenantRunner());
     runtime = Object.freeze({
       service: new CaseWorkspaceService(new PostgresqlCaseWorkspaceRepository(adapter)),
+      intakeService: new CaseIntakeService(
+        new PostgresqlCaseIntakeRepository(
+          getApplicationTenantRunner(),
+          new PostgresqlCrmCaseIntakeOwner(getApplicationTenantRunner()),
+          new PostgresqlAccessCaseIntakeOwner(getApplicationTenantRunner()),
+        ),
+        new CaseIntakeOptionsCoordinator(
+          new PostgresqlCrmCaseIntakeOwner(getApplicationTenantRunner()),
+          new PostgresqlAccessCaseIntakeOwner(getApplicationTenantRunner()),
+        ),
+      ),
       assessmentService: new AssessmentService({
         repository: new PostgresqlAssessmentRepository(adapter),
       }),
       workflowService: new CaseWorkflowService(new PostgresqlCaseWorkflowRepository(adapter)),
+      candidateListService: new CandidateListService(
+        new PostgresqlCandidateListRepository(getApplicationTenantRunner()),
+      ),
     });
     runtimes.set(mode, runtime);
   }

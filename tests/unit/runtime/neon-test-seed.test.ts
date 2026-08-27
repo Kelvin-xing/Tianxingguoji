@@ -68,7 +68,7 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     "founder",
     "admin",
     "advisor",
-    "data_reviewer",
+    "advisor",
     "contractor",
   ]);
   assert.equal(NEON_TEST_STUDENTS.length, 2);

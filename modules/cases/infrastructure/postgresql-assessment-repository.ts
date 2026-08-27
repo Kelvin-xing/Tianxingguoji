@@ -87,11 +87,12 @@ export class PostgresqlAssessmentRepository implements AssessmentRepository {
           field.moduleId === "k12-education-profile")
         .map((field) => field.fieldId);
       const answers = await transaction.query<AnswerRow>(
-        `SELECT id, field_id, semantic_state, value_json, value_type, record_version
+        `SELECT DISTINCT ON (field_id)
+                id, field_id, semantic_state, value_json, value_type, record_version
            FROM cases_assessment_answers
           WHERE assessment_id = $1 AND manifest_id = $2
             AND field_id = ANY($3::text[])
-          ORDER BY field_id`,
+          ORDER BY field_id, revision_number DESC`,
         [header.assessment_id, header.manifest_id, visibleFieldIds],
       );
       return Object.freeze({
@@ -129,7 +130,8 @@ export class PostgresqlAssessmentRepository implements AssessmentRepository {
         `SELECT id, field_id, semantic_state, value_json, value_type, record_version
            FROM cases_assessment_answers
           WHERE assessment_id = $1 AND field_id = $2
-          FOR UPDATE`,
+          ORDER BY revision_number DESC
+          LIMIT 1`,
         [header.assessment_id, input.field.fieldId],
       );
       const fields = await readManifestFields(transaction, header.manifest_id, true);
@@ -157,39 +159,23 @@ export class PostgresqlAssessmentRepository implements AssessmentRepository {
         });
       }
 
-      let saved: AnswerRow | undefined;
-      if (prior) {
-        const result = await transaction.query<AnswerRow>(
-          `UPDATE cases_assessment_answers
-              SET semantic_state = $3, value_json = $4::jsonb, value_type = $5,
-                  source = 'advisor_input', visibility = $6, updated_by_user_id = $7,
-                  record_version = record_version + 1,
-                  updated_at = to_timestamp($8 / 1000.0)
-            WHERE id = $1 AND assessment_id = $2 AND record_version = $9
-          RETURNING id, field_id, semantic_state, value_json, value_type, record_version`,
-          [prior.id, header.assessment_id, input.semanticState,
-            input.value === null ? null : JSON.stringify(input.value), input.valueType,
-            input.field.visibility, input.actorUserId, input.updatedAtMs,
-            input.expectedRecordVersion],
-        );
-        saved = result.rows[0];
-      } else {
-        const result = await transaction.query<AnswerRow>(
-          `INSERT INTO cases_assessment_answers
-            (id, organization_id, assessment_id, manifest_id, module_layer, module_id,
-             module_version, field_id, semantic_state, value_json, value_type, source,
-             visibility, is_derived, updated_by_user_id, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,'advisor_input',$12,false,$13,
-             to_timestamp($14 / 1000.0),to_timestamp($14 / 1000.0))
-           RETURNING id, field_id, semantic_state, value_json, value_type, record_version`,
-          [input.answerId, input.organizationId, header.assessment_id, header.manifest_id,
-            input.field.layer, input.field.moduleId, input.field.moduleVersion,
-            input.field.fieldId, input.semanticState,
-            input.value === null ? null : JSON.stringify(input.value), input.valueType,
-            input.field.visibility, input.actorUserId, input.updatedAtMs],
-        );
-        saved = result.rows[0];
-      }
+      const nextRevision = currentVersion + 1;
+      const result = await transaction.query<AnswerRow>(
+        `INSERT INTO cases_assessment_answers
+          (id, organization_id, assessment_id, manifest_id, module_layer, module_id,
+           module_version, field_id, semantic_state, value_json, value_type, source,
+           visibility, is_derived, updated_by_user_id, revision_number, record_version,
+           created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,'advisor_input',$12,false,$13,
+           $14,$14,to_timestamp($15 / 1000.0),to_timestamp($15 / 1000.0))
+         RETURNING id, field_id, semantic_state, value_json, value_type, record_version`,
+        [input.answerId, input.organizationId, header.assessment_id, header.manifest_id,
+          input.field.layer, input.field.moduleId, input.field.moduleVersion,
+          input.field.fieldId, input.semanticState,
+          input.value === null ? null : JSON.stringify(input.value), input.valueType,
+          input.field.visibility, input.actorUserId, nextRevision, input.updatedAtMs],
+      );
+      const saved = result.rows[0];
       if (!saved) {
         throw new AssessmentServiceError("ASSESSMENT_ANSWER_STALE_VERSION", {
           currentRecordVersion: currentVersion,

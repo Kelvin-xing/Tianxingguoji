@@ -16,33 +16,10 @@ import {
 } from "../domain/contract.ts";
 import type { DocumentObjectHead } from "../application/object-receipt-service.ts";
 import type { DocumentCapabilitySigner } from "../application/transfer-service.ts";
+import type { DocumentObjectCleaner, DocumentObjectReader } from "./object-transport-port.ts";
 
 const BASE64_SHA256 = /^[A-Za-z0-9+/]{43}=$/;
 const PROVIDER_VERSION = /^\S{1,1024}$/;
-
-export interface DocumentObjectReader {
-  headExact(input: {
-    readonly bucket: string;
-    readonly key: string;
-    readonly providerVersionId: string;
-    readonly signal?: AbortSignal;
-  }): Promise<DocumentObjectHead>;
-  readExact(input: {
-    readonly bucket: string;
-    readonly key: string;
-    readonly providerVersionId: string;
-    readonly signal?: AbortSignal;
-  }): Promise<AsyncIterable<Uint8Array>>;
-}
-
-export interface DocumentObjectCleaner {
-  deleteExact(input: {
-    readonly bucket: string;
-    readonly key: string;
-    readonly providerVersionId: string;
-    readonly signal?: AbortSignal;
-  }): Promise<"deleted" | "already_absent">;
-}
 
 export class LocalDocumentObjectStoreUnavailable extends Error {
   constructor() {

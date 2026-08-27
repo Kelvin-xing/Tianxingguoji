@@ -9,7 +9,8 @@ export interface InvitePersistenceInput {
   readonly targetUserId: string;
   readonly invitedByUserId: string;
   readonly normalizedEmail: string;
-  readonly requestedRole: OrganizationRole;
+  /** Legacy read compatibility only; new Identity invites leave it empty. */
+  readonly requestedRole?: OrganizationRole;
   readonly secretHash: string;
   readonly expiresAtMs: number;
   readonly idempotencyKey: string;

@@ -14,11 +14,18 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue };
 
 export type IdempotencyState = "in_progress" | "completed" | "failed";
+export type IdempotencyActorKind = "user" | "portal" | "worker" | "system";
+
+export interface IdempotencyActorScope {
+  readonly kind: IdempotencyActorKind;
+  readonly opaqueId: string;
+}
 
 export interface IdempotencyRecord {
   readonly id: string;
   readonly organizationId: string;
-  readonly actorUserId: string;
+  readonly actorKind: IdempotencyActorKind;
+  readonly actorOpaqueId: string;
   readonly operation: string;
   readonly key: string;
   readonly requestHash: string;
@@ -36,13 +43,16 @@ export type IdempotencyDecision =
   | {
       readonly action: "replay";
       readonly state: "completed" | "failed";
-      readonly resultReference: string | null;
+      readonly resultReference: string;
+      readonly responseHash: string;
+      readonly recordVersion: number;
     }
   | { readonly action: "conflict"; readonly code: "IDEMPOTENCY_KEY_REUSED" };
 
 export type IdempotencyDenialCode =
   | "IDEMPOTENCY_ID_INVALID"
   | "IDEMPOTENCY_KEY_INVALID"
+  | "IDEMPOTENCY_ACTOR_INVALID"
   | "IDEMPOTENCY_HASH_INVALID"
   | "IDEMPOTENCY_OPERATION_INVALID"
   | "IDEMPOTENCY_RECORD_STATE_INVALID"
@@ -73,7 +83,8 @@ export function validateIdempotencyKey(key: string): string {
 export function createIdempotencyRecord(input: {
   readonly id: string;
   readonly organizationId: string;
-  readonly actorUserId: string;
+  readonly actorKind: IdempotencyActorKind;
+  readonly actorOpaqueId: string;
   readonly operation: string;
   readonly key: string;
   readonly requestHash: string;
@@ -81,13 +92,18 @@ export function createIdempotencyRecord(input: {
 }): IdempotencyRecord {
   const operation = validateOperation(input.operation);
   const key = validateIdempotencyKey(input.key);
+  const actor = validateIdempotencyActorScope({
+    kind: input.actorKind,
+    opaqueId: input.actorOpaqueId,
+  });
   validateHash(input.requestHash);
   validateTimestamp(input.createdAt);
 
   return deepFreeze({
     id: requireUuid(input.id),
     organizationId: requireUuid(input.organizationId),
-    actorUserId: requireUuid(input.actorUserId),
+    actorKind: actor.kind,
+    actorOpaqueId: actor.opaqueId,
     operation,
     key,
     requestHash: input.requestHash,
@@ -152,15 +168,26 @@ export function failIdempotencyRecord(
 }
 
 export function evaluateIdempotency(input: {
+  readonly actorKind: IdempotencyActorKind;
+  readonly actorOpaqueId: string;
   readonly key: string;
   readonly requestHash: string;
   readonly existing: IdempotencyRecord | null;
 }): IdempotencyDecision {
+  const actor = validateIdempotencyActorScope({
+    kind: input.actorKind,
+    opaqueId: input.actorOpaqueId,
+  });
   validateIdempotencyKey(input.key);
   validateHash(input.requestHash);
 
   if (input.existing === null) return { action: "start" };
-  if (input.existing.key !== input.key || input.existing.requestHash !== input.requestHash) {
+  if (
+    input.existing.actorKind !== actor.kind ||
+    input.existing.actorOpaqueId !== actor.opaqueId ||
+    input.existing.key !== input.key ||
+    input.existing.requestHash !== input.requestHash
+  ) {
     return { action: "conflict", code: "IDEMPOTENCY_KEY_REUSED" };
   }
   if (input.existing.state === "in_progress") {
@@ -169,8 +196,23 @@ export function evaluateIdempotency(input: {
   return {
     action: "replay",
     state: input.existing.state,
-    resultReference: input.existing.resultReference,
+    resultReference: requireTerminalValue(input.existing.resultReference),
+    responseHash: requireTerminalValue(input.existing.responseHash),
+    recordVersion: input.existing.recordVersion,
   };
+}
+
+export function validateIdempotencyActorScope(
+  actor: IdempotencyActorScope,
+): IdempotencyActorScope {
+  if (
+    !["user", "portal", "worker", "system"].includes(actor.kind) ||
+    typeof actor.opaqueId !== "string" ||
+    !IDEMPOTENCY_KEY_PATTERN.test(actor.opaqueId)
+  ) {
+    throw new IdempotencyContractError("IDEMPOTENCY_ACTOR_INVALID");
+  }
+  return Object.freeze({ kind: actor.kind, opaqueId: actor.opaqueId });
 }
 
 export function canonicalizeJson(value: JsonValue): string {
@@ -183,7 +225,12 @@ export function canonicalizeJson(value: JsonValue): string {
   }
   if (Array.isArray(value)) return `[${value.map(canonicalizeJson).join(",")}]`;
 
-  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+  if (typeof value !== "object") {
+    throw new IdempotencyContractError("IDEMPOTENCY_HASH_INVALID");
+  }
+  const entries = Object.entries(value).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0
+  );
   return `{${entries
     .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalizeJson(nested)}`)
     .join(",")}}`;
@@ -206,6 +253,13 @@ function validateResultReference(value: string): void {
   if (typeof value !== "string" || !IDEMPOTENCY_KEY_PATTERN.test(value)) {
     throw new IdempotencyContractError("IDEMPOTENCY_RESULT_INVALID");
   }
+}
+
+function requireTerminalValue(value: string | null): string {
+  if (value === null) {
+    throw new IdempotencyContractError("IDEMPOTENCY_RESULT_INVALID");
+  }
+  return value;
 }
 
 function validateTimestamp(value: string): void {

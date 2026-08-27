@@ -3,6 +3,7 @@ import "server-only";
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
 import type { TenantTransaction, TenantTransactionRunner } from "../../shared/server.ts";
+import { IdempotencyExecutionError, runIdempotentTransaction } from "../../shared/server.ts";
 import {
   ReferralSourceError,
   isReferralSourceError,
@@ -12,18 +13,34 @@ import {
   type ReferralSourceType,
   type ReferralSourceView,
 } from "../application/referral-source-service.ts";
+import type { ReferralSourceCursor } from "../domain/referral-source-cursor.ts";
+import { validateReferralSourceDescription } from "../domain/approved-p2-contract.ts";
 
 const CREATE_OPERATION = "crm.referral_source.create";
 const UPDATE_OPERATION = "crm.referral_source.update";
-const REFERENCE = /^([0-9a-f-]{36}):(\d{1,16})$/i;
+const DEACTIVATE_OPERATION = "crm.referral_source.deactivate";
+const REFERENCE = /^rs:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):(active|inactive):([1-9][0-9]{0,15}):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
 
 interface SourceRow extends Record<string, unknown> {
   id: string; display_name: string; source_type: ReferralSourceType;
+  description: string | null;
   status: ReferralSourceStatus; record_version: number | string;
+  updated_at: Date | string;
+  deactivated_at?: Date | string | null;
+  deactivated_by_user_id?: string | null;
+  deactivate_reason_code?: string | null;
 }
-interface ReceiptRow extends Record<string, unknown> {
-  request_hash: string; state: string; result_reference: string | null; response_hash: string | null;
-}
+type ReferralSourceMutationInput = {
+  readonly organizationId: string;
+  readonly actorUserId: string;
+  readonly actorRole: string;
+  readonly idempotencyKey: string;
+  readonly requestHash: string;
+  readonly effects: Parameters<typeof appendAtomicMutationEffects>[1];
+  readonly idempotencyRecordId: string;
+  readonly occurredAt: string;
+  readonly requestId: string;
+};
 
 export class PostgresqlReferralSourceRepository implements ReferralSourceRepository {
   private readonly runner: TenantTransactionRunner;
@@ -32,62 +49,143 @@ export class PostgresqlReferralSourceRepository implements ReferralSourceReposit
   list(input: Parameters<ReferralSourceRepository["list"]>[0]) {
     return this.run(input, async (tx) => {
       await assertActor(tx, input, "read");
-      const result = await tx.query<SourceRow>(`SELECT id,display_name,source_type,status,record_version
-        FROM crm_referral_sources WHERE ($1::text IS NULL OR status=$1)
-        ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,display_name COLLATE "C",id LIMIT 100`,
-      [input.status]);
-      return Object.freeze(result.rows.map(view));
+      const result = await tx.query<SourceRow>(`SELECT id,display_name,source_type,description,status,record_version,updated_at
+        FROM crm_referral_sources
+        WHERE organization_id=$1
+          AND ($2::text IS NULL OR status=$2)
+          AND ($3::text IS NULL OR source_type=$3)
+          AND ($4::text IS NULL OR display_name ILIKE '%' || $4 || '%')
+          AND ($5::text IS NULL OR display_name COLLATE "C" > $5 OR
+            (display_name COLLATE "C" = $5 AND id::text COLLATE "C" > $6))
+        ORDER BY display_name COLLATE "C" ASC,id::text COLLATE "C" ASC
+        LIMIT $7`,
+      [input.organizationId, input.status, input.sourceType, input.query,
+        input.cursor?.displayName ?? null, input.cursor?.id ?? null, input.limit + 1]);
+      const rows = result.rows.map(view);
+      return Object.freeze({ items: Object.freeze(rows.slice(0, input.limit)), hasMore: rows.length > input.limit });
     });
   }
 
   find(input: Parameters<ReferralSourceRepository["find"]>[0]) {
     return this.run(input, async (tx) => {
       await assertActor(tx, input, "read");
-      const result = await tx.query<SourceRow>(`SELECT id,display_name,source_type,status,record_version
-        FROM crm_referral_sources WHERE id=$1`, [input.sourceId]);
-      return result.rows[0] ? view(result.rows[0]) : null;
+      const result = await tx.query<SourceRow>(`SELECT id,display_name,source_type,description,status,record_version,updated_at
+        FROM crm_referral_sources
+        WHERE organization_id=$1 AND id=$2
+          AND ($3::text <> 'advisor' OR status='active')`, [input.organizationId, input.sourceId, input.actorRole]);
+      if (!result.rows[0] || (input.actorRole === "advisor" && result.rows[0].status !== "active")) return null;
+      return view(result.rows[0]);
     });
   }
 
   create(input: Parameters<ReferralSourceRepository["create"]>[0]) {
-    return this.run(input, async (tx) => {
-      const replay = await claimReceipt(tx, input, CREATE_OPERATION);
-      await assertActor(tx, input, "manage");
-      if (replay) return replay;
+    return this.mutate(input, CREATE_OPERATION, async (tx) => {
       const result = await tx.query<SourceRow>(`INSERT INTO crm_referral_sources
-        (id,organization_id,display_name,source_type,status,record_version)
-        VALUES ($1,$2,$3,$4,'active',1)
-        RETURNING id,display_name,source_type,status,record_version`,
-      [input.sourceId, input.organizationId, input.displayName, input.sourceType]);
-      const row = result.rows[0]; if (!row) unavailable();
-      const acknowledgement = ack(row);
-      await appendAtomicMutationEffects(tx, input.effects);
-      await completeReceipt(tx, input, CREATE_OPERATION, acknowledgement);
-      return acknowledgement;
+        (id,organization_id,display_name,source_type,description,status,record_version)
+        VALUES ($1,$2,$3,$4,$5,'active',1)
+        RETURNING id,display_name,source_type,description,status,record_version,updated_at`,
+      [input.sourceId, input.organizationId, input.displayName, input.sourceType, input.description]);
+      const row = result.rows[0];
+      if (!row || row.id !== input.sourceId || row.status !== "active" || version(row.record_version) !== 1) unavailable();
+      return ack(row);
     });
   }
 
   update(input: Parameters<ReferralSourceRepository["update"]>[0]) {
-    return this.run(input, async (tx) => {
-      const replay = await claimReceipt(tx, input, UPDATE_OPERATION);
-      await assertActor(tx, input, "manage");
-      if (replay) return replay;
-      const locked = await tx.query<SourceRow>(`SELECT id,display_name,source_type,status,record_version
-        FROM crm_referral_sources WHERE id=$1 FOR UPDATE`, [input.sourceId]);
+    return this.mutate(input, UPDATE_OPERATION, async (tx) => {
+      const locked = await tx.query<SourceRow>(`SELECT id,display_name,source_type,description,status,record_version,updated_at
+        FROM crm_referral_sources WHERE organization_id=$1 AND id=$2 FOR UPDATE`, [input.organizationId, input.sourceId]);
       const current = locked.rows[0]; if (!current) notFound();
       if (version(current.record_version) !== input.expectedRecordVersion) stale();
-      if (current.status === "inactive" && input.status === "active") conflict();
-      if (current.display_name === input.displayName && current.status === input.status) conflict();
+      if (!validateReferralSourceDescription({ sourceType: input.sourceType, description: input.description })) unavailable();
+      if (current.status === "inactive") conflict();
+      if (current.display_name === input.displayName && current.source_type === input.sourceType &&
+          current.description === input.description) conflict();
       const updated = await tx.query<SourceRow>(`UPDATE crm_referral_sources
-        SET display_name=$2,status=$3,record_version=record_version+1,updated_at=transaction_timestamp()
-        WHERE id=$1 AND record_version=$4
-        RETURNING id,display_name,source_type,status,record_version`,
-      [input.sourceId, input.displayName, input.status, input.expectedRecordVersion]);
+        SET display_name=$3,source_type=$4,description=$5,record_version=record_version+1,updated_at=transaction_timestamp()
+        WHERE organization_id=$1 AND id=$2 AND record_version=$6 AND status='active'
+        RETURNING id,display_name,source_type,description,status,record_version,updated_at`,
+      [input.organizationId, input.sourceId, input.displayName, input.sourceType, input.description,
+        input.expectedRecordVersion]);
       const row = updated.rows[0]; if (!row) stale();
-      const acknowledgement = ack(row);
-      await appendAtomicMutationEffects(tx, input.effects);
-      await completeReceipt(tx, input, UPDATE_OPERATION, acknowledgement);
+      if (row.id !== input.sourceId || row.status !== "active" || row.source_type !== input.sourceType ||
+          version(row.record_version) !== input.expectedRecordVersion + 1) unavailable();
+      return ack(row);
+    });
+  }
+
+  deactivate(input: Parameters<ReferralSourceRepository["deactivate"]>[0]) {
+    return this.mutate(input, DEACTIVATE_OPERATION, async (tx) => {
+      const locked = await tx.query<SourceRow>(`SELECT id,status,record_version
+        FROM crm_referral_sources
+        WHERE organization_id=$1 AND id=$2
+        FOR UPDATE`, [input.organizationId, input.sourceId]);
+      const current = locked.rows[0];
+      if (!current) notFound();
+      if (current.status === "inactive") conflict();
+      if (version(current.record_version) !== input.expectedRecordVersion) stale();
+      const updated = await tx.query<SourceRow>(`UPDATE crm_referral_sources
+        SET status='inactive', deactivated_at=transaction_timestamp(), deactivated_by_user_id=$3,
+            deactivate_reason_code=$4, record_version=record_version+1, updated_at=transaction_timestamp()
+        WHERE organization_id=$1 AND id=$2 AND status='active' AND record_version=$5
+        RETURNING id,display_name,source_type,description,status,record_version,updated_at`,
+      [input.organizationId, input.sourceId, input.actorUserId, input.reasonCode, input.expectedRecordVersion]);
+      const row = updated.rows[0];
+      if (!row) stale();
+      if (row.id !== input.sourceId || row.status !== "inactive" ||
+          version(row.record_version) !== input.expectedRecordVersion + 1) unavailable();
+      return ack(row);
+    });
+  }
+
+  private mutate(
+    input: ReferralSourceMutationInput,
+    operation: string,
+    execute: (tx: Db) => Promise<ReferralSourceAcknowledgement>,
+  ): Promise<ReferralSourceAcknowledgement> {
+    return runIdempotentTransaction({
+      runner: this.runner,
+      context: {
+        organizationId: input.organizationId,
+        actorUserId: input.actorUserId,
+        actorKind: "user",
+        actorOpaqueId: input.actorUserId,
+        requestId: input.requestId,
+      },
+      claim: {
+        id: input.idempotencyRecordId,
+        organizationId: input.organizationId,
+        actorKind: "user",
+        actorOpaqueId: input.actorUserId,
+        operation,
+        key: input.idempotencyKey,
+        requestHash: input.requestHash,
+        createdAt: input.occurredAt,
+      },
+      revalidate: (transaction) => assertActor(adapt(transaction), input, "manage"),
+      execute: async (transaction) => {
+        const acknowledgement = await execute(adapt(transaction));
+        await appendAtomicMutationEffects(adapt(transaction), input.effects);
+        return {
+          state: "completed" as const,
+          resultReference: encodeReference(acknowledgement),
+          responseHash: hashAcknowledgement(acknowledgement),
+          updatedAt: input.occurredAt,
+          value: acknowledgement,
+        };
+      },
+    }).then((result) => {
+      if (result.status === "executed") return result.value;
+      const acknowledgement = parseReference(result.resultReference);
+      if (result.responseHash !== hashAcknowledgement(acknowledgement)) unavailable();
       return acknowledgement;
+    }).catch((cause) => {
+      if (isReferralSourceError(cause)) throw cause;
+      if (cause instanceof IdempotencyExecutionError) {
+        if (cause.code === "IDEMPOTENCY_KEY_REUSED") conflict();
+        if (cause.code === "IDEMPOTENCY_IN_PROGRESS") throw new ReferralSourceError("REFERRAL_SOURCE_CONFLICT");
+      }
+      unavailable();
     });
   }
 
@@ -101,7 +199,7 @@ export class PostgresqlReferralSourceRepository implements ReferralSourceReposit
 
 async function assertActor(tx: Db, input: { organizationId: string; actorUserId: string; actorRole: string },
   mode: "read" | "manage") {
-  const roles = mode === "read" ? ["founder", "admin", "advisor"] : ["founder", "admin"];
+  const roles = mode === "read" ? ["founder", "advisor"] : ["founder"];
   if (!roles.includes(input.actorRole)) forbidden();
   const result = await tx.query(`SELECT binding.id FROM identity_users AS actor
     JOIN access_organization_memberships AS membership ON membership.user_id=actor.id
@@ -113,48 +211,38 @@ async function assertActor(tx: Db, input: { organizationId: string; actorUserId:
     FOR SHARE OF actor,membership,binding,organization`, [input.actorUserId, input.actorRole, input.organizationId]);
   if (result.rowCount !== 1) forbidden();
 }
-async function claimReceipt(tx: Db, input: { organizationId: string; actorUserId: string;
-  idempotencyKey: string; requestHash: string }, operation: string) {
-  const inserted = await tx.query(`INSERT INTO shared_idempotency_records
-    (id,organization_id,actor_user_id,operation,idempotency_key,request_hash,state)
-    VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'in_progress')
-    ON CONFLICT (organization_id,actor_user_id,operation,idempotency_key) DO NOTHING RETURNING id`,
-  [input.organizationId,input.actorUserId,operation,input.idempotencyKey,input.requestHash]);
-  const selected = await tx.query<ReceiptRow>(`SELECT request_hash,state,result_reference,response_hash
-    FROM shared_idempotency_records WHERE organization_id=$1 AND actor_user_id=$2
-      AND operation=$3 AND idempotency_key=$4 FOR UPDATE`,
-  [input.organizationId,input.actorUserId,operation,input.idempotencyKey]);
-  if (inserted.rowCount === 1) return null;
-  const row = selected.rows[0];
-  if (!row || row.request_hash !== input.requestHash || row.state !== "completed" ||
-      !row.result_reference || !row.response_hash) conflict();
-  const result = parseReference(row.result_reference);
-  if (row.response_hash !== hashAcknowledgement(result)) unavailable();
+function parseReference(value: string): ReferralSourceAcknowledgement {
+  const match = REFERENCE.exec(value);
+  if (!match) unavailable();
+  const id = match[1]!.toLowerCase();
+  const status = match[2] as ReferralSourceStatus;
+  const recordVersion = version(match[3]!);
+  const updatedAt = match[4]!;
+  const result = Object.freeze({ id, status, recordVersion, updatedAt });
+  if (encodeReference(result) !== value) unavailable();
   return result;
 }
-async function completeReceipt(tx: Db, input: { organizationId: string; actorUserId: string;
-  idempotencyKey: string; requestHash: string }, operation: string, result: ReferralSourceAcknowledgement) {
-  const reference = `${result.id}:${result.recordVersion}`;
-  const completed = await tx.query(`UPDATE shared_idempotency_records SET state='completed',
-    result_reference=$5,response_hash=$6,record_version=record_version+1,updated_at=transaction_timestamp()
-    WHERE organization_id=$1 AND actor_user_id=$2 AND operation=$3 AND idempotency_key=$4
-      AND request_hash=$7 AND state='in_progress'`,
-  [input.organizationId,input.actorUserId,operation,input.idempotencyKey,reference,
-    hashAcknowledgement(result),input.requestHash]);
-  if (completed.rowCount !== 1) unavailable();
-}
-function parseReference(value: string): ReferralSourceAcknowledgement {
-  const match = REFERENCE.exec(value); if (!match) unavailable();
-  return Object.freeze({ id: match[1]!, recordVersion: version(match[2]!) });
-}
 function hashAcknowledgement(value: ReferralSourceAcknowledgement) {
-  return hashRequestPayload({ id: value.id, record_version: value.recordVersion });
+  return hashRequestPayload({
+    referral_source: {
+      id: value.id,
+      status: value.status,
+      record_version: value.recordVersion,
+      updated_at: value.updatedAt,
+    },
+  });
+}
+function encodeReference(value: ReferralSourceAcknowledgement): string {
+  const reference = `rs:${value.id.toLowerCase()}:${value.status}:${value.recordVersion}:${value.updatedAt}`;
+  if (reference.length > 128 || !REFERENCE.test(reference)) unavailable();
+  return reference;
 }
 function view(row: SourceRow): ReferralSourceView { return Object.freeze({ id: row.id,
-  displayName: row.display_name, sourceType: row.source_type, status: row.status,
-  recordVersion: version(row.record_version) }); }
+  displayName: row.display_name, sourceType: row.source_type, description: row.description,
+  status: row.status,
+  recordVersion: version(row.record_version), updatedAt: new Date(row.updated_at).toISOString() }); }
 function ack(row: SourceRow): ReferralSourceAcknowledgement {
-  return Object.freeze({ id: row.id, recordVersion: version(row.record_version) });
+  return Object.freeze({ id: row.id, status: row.status, recordVersion: version(row.record_version), updatedAt: new Date(row.updated_at).toISOString() });
 }
 function version(value: number | string) { const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number) || number < 1) unavailable(); return number; }

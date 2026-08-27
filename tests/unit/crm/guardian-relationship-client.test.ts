@@ -157,6 +157,7 @@ function attachDraft(): AttachGuardianRelationshipDraft {
   return {
     guardian_id: SECONDARY_GUARDIAN_ID,
     relationship_type: "mother",
+    relationship_description: null,
     is_legal_guardian: true,
     is_emergency_contact: false,
     is_billing_contact: false,

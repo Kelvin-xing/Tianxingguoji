@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { IdempotencyActorKind } from "../domain/idempotency.ts";
+
 export const APPLICATION_DATABASE_ROLE = "tianxing_app" as const;
 
 const RDS_HONG_KONG_HOSTNAME = /^[a-z0-9][a-z0-9.-]*\.ap-east-1\.rds\.amazonaws\.com$/;
@@ -41,17 +43,36 @@ export interface DatabaseQueryResult<Row> {
 
 export interface DatabaseClient {
   query<Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>>;
-  release(): void;
+  release(error?: Error): void;
 }
 
 export interface DatabasePool {
   connect(): Promise<DatabaseClient>;
 }
 
+export interface ActorScopedTenantDatabaseContext {
+  readonly organizationId: string;
+  readonly actorKind: IdempotencyActorKind;
+  readonly actorOpaqueId: string;
+  readonly requestId: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly actorUserId?: string;
+}
+
 export interface TenantDatabaseContext {
   readonly organizationId: string;
   readonly actorUserId: string;
+  readonly actorKind?: never;
+  readonly actorOpaqueId?: never;
+  readonly requestId?: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
 }
+
+export type TenantTransactionContext =
+  | ActorScopedTenantDatabaseContext
+  | TenantDatabaseContext;
 
 export interface TenantTransaction {
   query<Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>>;
@@ -59,7 +80,7 @@ export interface TenantTransaction {
 
 export interface TenantTransactionRunner {
   run<Result>(
-    context: TenantDatabaseContext,
+    context: TenantTransactionContext,
     operation: (transaction: TenantTransaction) => Promise<Result>,
   ): Promise<Result>;
 }
@@ -108,39 +129,42 @@ export function createTenantTransactionRunner(
 ): TenantTransactionRunner {
   return Object.freeze({
     async run<Result>(
-      context: TenantDatabaseContext,
+      context: TenantTransactionContext,
       operation: (transaction: TenantTransaction) => Promise<Result>,
     ): Promise<Result> {
       assertTenantContext(context);
       const client = await pool.connect();
       let began = false;
+      let releaseError: Error | undefined;
 
       try {
         await client.query({ text: "BEGIN" });
         began = true;
         if (options) await assertDatabaseRole(client, options);
-        await client.query({
-          text: "SELECT set_config('app.organization_id', $1, true)",
-          values: [context.organizationId],
-        });
-        await client.query({
-          text: "SELECT set_config('app.actor_user_id', $1, true)",
-          values: [context.actorUserId],
-        });
+        await setTenantContext(client, resolveTenantContext(context));
         const result = await operation(createTransaction(client));
+        await clearTenantContext(client);
         await client.query({ text: "COMMIT" });
+        began = false;
+        await resetTenantContext(client);
         return result;
       } catch (error) {
         if (began) {
           try {
             await client.query({ text: "ROLLBACK" });
-          } catch {
+          } catch (rollbackError) {
+            releaseError = toError(rollbackError);
             // Preserve the original database or domain failure for the API contract.
           }
         }
+        try {
+          await resetTenantContext(client);
+        } catch (cleanupError) {
+          releaseError ??= toError(cleanupError);
+        }
         throw error;
       } finally {
-        client.release();
+        client.release(releaseError);
       }
     },
   });
@@ -170,8 +194,126 @@ function createTransaction(client: DatabaseClient): TenantTransaction {
   });
 }
 
-function assertTenantContext(context: TenantDatabaseContext): void {
-  if (!UUID.test(context.organizationId) || !UUID.test(context.actorUserId)) {
-    throw new TypeError("Tenant database context requires canonical UUID identifiers.");
+function assertTenantContext(context: TenantTransactionContext): void {
+  resolveTenantContext(context);
+}
+
+type ResolvedTenantContext = Readonly<{
+  organizationId: string;
+  actorKind: IdempotencyActorKind;
+  actorOpaqueId: string;
+  actorUserId: string;
+  requestId: string;
+  correlationId: string;
+  causationId: string;
+}>;
+
+const SAFE_OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function resolveTenantContext(context: TenantTransactionContext): ResolvedTenantContext {
+  if (!UUID.test(context.organizationId)) {
+    throw new TypeError("Tenant database context requires a canonical organization UUID.");
   }
+
+  if (context.actorKind === undefined) {
+    if (!UUID.test(context.actorUserId)) {
+      throw new TypeError("Legacy tenant context requires a canonical User UUID.");
+    }
+    return Object.freeze({
+      organizationId: context.organizationId,
+      actorKind: "user",
+      actorOpaqueId: context.actorUserId,
+      actorUserId: context.actorUserId,
+      requestId: validateOptionalOpaque(context.requestId),
+      correlationId: validateOptionalOpaque(context.correlationId),
+      causationId: validateOptionalOpaque(context.causationId),
+    });
+  }
+
+  if (
+    !["user", "portal", "worker", "system"].includes(context.actorKind) ||
+    !SAFE_OPAQUE_ID.test(context.actorOpaqueId) ||
+    !SAFE_OPAQUE_ID.test(context.requestId)
+  ) {
+    throw new TypeError("Actor-scoped tenant context contains an invalid opaque identifier.");
+  }
+  if (
+    context.actorKind === "user" &&
+    (!UUID.test(context.actorOpaqueId) ||
+      (context.actorUserId !== undefined && context.actorUserId !== context.actorOpaqueId))
+  ) {
+    throw new TypeError("User actor scope must use the actual User UUID.");
+  }
+  if (context.actorKind !== "user" && context.actorUserId !== undefined) {
+    throw new TypeError("Non-user actor scope cannot carry a User identifier.");
+  }
+  return Object.freeze({
+    organizationId: context.organizationId,
+    actorKind: context.actorKind,
+    actorOpaqueId: context.actorOpaqueId,
+    actorUserId: context.actorKind === "user" ? context.actorOpaqueId : "",
+    requestId: context.requestId,
+    correlationId: validateOptionalOpaque(context.correlationId),
+    causationId: validateOptionalOpaque(context.causationId),
+  });
+}
+
+async function setTenantContext(
+  client: DatabaseClient,
+  context: ResolvedTenantContext,
+): Promise<void> {
+  await setLocal(client, "app.organization_id", context.organizationId);
+  await setLocal(client, "app.actor_kind", context.actorKind);
+  await setLocal(client, "app.actor_opaque_id", context.actorOpaqueId);
+  await setLocal(client, "app.actor_user_id", context.actorUserId);
+  await setLocal(client, "app.request_id", context.requestId);
+  await setLocal(client, "app.correlation_id", context.correlationId);
+  await setLocal(client, "app.causation_id", context.causationId);
+}
+
+async function clearTenantContext(client: DatabaseClient): Promise<void> {
+  for (const setting of [
+    "app.organization_id",
+    "app.actor_kind",
+    "app.actor_opaque_id",
+    "app.actor_user_id",
+    "app.request_id",
+    "app.correlation_id",
+    "app.causation_id",
+  ]) {
+    await setLocal(client, setting, "");
+  }
+}
+
+async function resetTenantContext(client: DatabaseClient): Promise<void> {
+  for (const setting of [
+    "app.organization_id",
+    "app.actor_kind",
+    "app.actor_opaque_id",
+    "app.actor_user_id",
+    "app.request_id",
+    "app.correlation_id",
+    "app.causation_id",
+  ]) {
+    await client.query({ text: `RESET ${setting}` });
+  }
+}
+
+function setLocal(client: DatabaseClient, setting: string, value: string) {
+  return client.query({
+    text: `SELECT set_config('${setting}', $1, true)`,
+    values: [value],
+  });
+}
+
+function validateOptionalOpaque(value: string | undefined): string {
+  if (value === undefined) return "";
+  if (!SAFE_OPAQUE_ID.test(value)) {
+    throw new TypeError("Tenant database context contains an invalid propagated identifier.");
+  }
+  return value;
+}
+
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error("Database rollback failed.");
 }

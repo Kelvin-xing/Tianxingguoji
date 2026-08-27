@@ -590,7 +590,7 @@ async function markStudentPending(target: OneRoleBaselineTarget, studentId: stri
 async function purgeStudent(target: OneRoleBaselineTarget, studentId: string): Promise<void> {
   await tenantQuery(target, NEON_TEST_ORGANIZATION.id, FOUNDER.userId, async (client) => {
     await client.query(`UPDATE crm_student_guardian_relationships SET
-      ends_at=transaction_timestamp(),ended_by_user_id=$2,end_reason='privacy_purge',
+      ends_at=transaction_timestamp(),ended_by_user_id=$2,end_reason_code='privacy_purge',
       record_version=record_version+1,updated_at=transaction_timestamp()
       WHERE student_id=$1 AND ends_at IS NULL`, [studentId, FOUNDER.userId]);
     await client.query(`UPDATE crm_students SET status='purged',display_name=NULL,date_of_birth=NULL,

@@ -6,7 +6,7 @@ import {
   GuardianRelationshipService,
   type GuardianRelationshipRepository,
 } from "../../modules/crm/application/guardian-relationship-service.ts";
-import type { IdentitySessionActor } from "../../modules/identity/public.ts";
+import { workspaceCapabilitiesForRole, type OrganizationRole, type Release1OrganizationRole, type RequestAccessActor } from "../../modules/access/public.ts";
 
 const ORGANIZATION_ID = "22222222-2222-4222-8222-222222222222";
 const STUDENT_ID = "44444444-4444-4444-8444-444444444444";
@@ -21,7 +21,7 @@ const IDS = [
   "70000000-0000-4000-8000-000000000006",
 ];
 
-test("Advisor-only management fixes attach primary=false and handoff reason server-side", async () => {
+test("Guardian management fixes attach primary=false and handoff reason server-side", async () => {
   const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
   const repository = repositoryStub(calls);
   let index = 0;
@@ -33,6 +33,7 @@ test("Advisor-only management fixes attach primary=false and handoff reason serv
       studentId: STUDENT_ID,
       guardianId: GUARDIAN_ID,
       relationshipType: "father",
+      relationshipDescription: null,
       isLegalGuardian: true,
       isEmergencyContact: false,
       isBillingContact: false,
@@ -59,8 +60,9 @@ test("Advisor-only management fixes attach primary=false and handoff reason serv
   assert.equal(calls[1]!.input.reason, "guardian.primary.handoff");
 });
 
-test("Founder, Admin, Data Reviewer and Contractor cannot manage Guardian relationships", async () => {
-  for (const role of ["founder", "admin", "data_reviewer", "contractor"] as const) {
+test("Admin, Data Reviewer and Contractor cannot manage Guardian relationships", async () => {
+  await new GuardianRelationshipService(repositoryStub([])).searchGuardians({ actor: actor("founder"), studentId: STUDENT_ID, query: "gu" });
+  for (const role of ["admin", "data_reviewer", "contractor"] as const) {
     const service = new GuardianRelationshipService(repositoryStub([]));
     await assert.rejects(
       service.searchGuardians({ actor: actor(role), studentId: STUDENT_ID, query: "gu" }),
@@ -78,7 +80,8 @@ test("relationship vocabulary and search length fail closed", async () => {
       command: {
         studentId: STUDENT_ID,
         guardianId: GUARDIAN_ID,
-        relationshipType: "parent" as "father",
+        relationshipType: "other_guardian" as "father",
+        relationshipDescription: null,
         isLegalGuardian: true,
         isEmergencyContact: false,
         isBillingContact: false,
@@ -97,14 +100,24 @@ test("relationship vocabulary and search length fail closed", async () => {
   );
 });
 
-test("students.read continues to allow Founder, Admin and Advisor current relationship reads", async () => {
-  for (const role of ["founder", "admin", "advisor"] as const) {
+test("students.read allows Founder and Advisor current relationship reads", async () => {
+  for (const role of ["founder", "advisor"] as const) {
     const view = await new GuardianRelationshipService(repositoryStub([])).listCurrent(
       actor(role),
       STUDENT_ID,
     );
     assert.equal(view.student.id, STUDENT_ID);
   }
+  await assert.rejects(new GuardianRelationshipService(repositoryStub([])).listCurrent(actor("admin"), STUDENT_ID));
+});
+
+test("history reads current and ended relationships with access boundaries", async () => {
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+  const repository = repositoryStub(calls);
+  for (const role of ["founder", "advisor"] as const) assert.equal((await new GuardianRelationshipService(repository).listHistory(actor(role), STUDENT_ID)).relationships.length, 2);
+  for (const role of ["admin", "contractor"] as const) await assert.rejects(new GuardianRelationshipService(repository).listHistory(actor(role), STUDENT_ID));
+  await assert.rejects(new GuardianRelationshipService({ ...repository, async listHistory() { return null; } }).listHistory(actor("advisor"), STUDENT_ID));
+  await assert.rejects(new GuardianRelationshipService(repository).listHistory(actor("advisor"), "bad"));
 });
 
 test("current reads preserve repository visibility and fail closed when the Student is not readable", async () => {
@@ -127,14 +140,12 @@ test("current reads preserve repository visibility and fail closed when the Stud
   );
 });
 
-function actor(role: IdentitySessionActor["role"]): IdentitySessionActor {
+function actor(role: OrganizationRole): RequestAccessActor {
+  const roles: readonly Release1OrganizationRole[] = role === "data_reviewer" ? [] : [role];
   return {
     userId: ACTOR_ID,
     organizationId: ORGANIZATION_ID,
-    role,
-    sessionId: "33333333-3333-4333-8333-333333333333",
-    capturedSessionVersion: 1,
-    reauthenticatedAtMs: null,
+    roles, workspaceCapabilities: workspaceCapabilitiesForRole(role),
   };
 }
 
@@ -164,6 +175,9 @@ function repositoryStub(
         }],
       };
     },
+    async listHistory() {
+      return { student: { id: STUDENT_ID, displayName: "Synthetic Student" }, relationships: [{ relationship, guardian: { id: GUARDIAN_ID, displayName: "Synthetic Guardian", emailHint: null, phoneHint: null } }, { relationship: { ...relationship, relationshipId: IDS[1]!, endsAt: "2026-01-01T00:00:00.000Z" }, guardian: { id: GUARDIAN_ID, displayName: "Deleted guardian", emailHint: null, phoneHint: null } }] };
+    },
     async searchGuardians() {
       return [{ id: GUARDIAN_ID, displayName: "Synthetic Guardian", emailHint: null, phoneHint: null }];
     },
@@ -180,6 +194,9 @@ function repositoryStub(
           successorSecondary: "80000000-0000-4000-8000-000000000002",
         },
       };
+    },
+    async endRelationship() {
+      throw new Error("end relationship repository is outside this workflow fixture");
     },
   };
 }

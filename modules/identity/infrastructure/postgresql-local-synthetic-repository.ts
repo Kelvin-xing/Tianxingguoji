@@ -204,11 +204,12 @@ implements LocalSyntheticSessionRepository {
     readonly secretHash: string;
     readonly nowMs: number;
     readonly sensitiveAction: boolean;
-  }): Promise<IdentitySessionActor> {
+  }): Promise<import("../domain/actor.ts").CanonicalIdentitySessionActor> {
     const actor = await this.findSessionActor(input);
     return Object.freeze({
       userId: actor.userId,
       organizationId: actor.organizationId,
+      membershipId: actor.membershipId,
       role: actor.role,
       sessionId: actor.sessionId,
       capturedSessionVersion: actor.capturedSessionVersion,

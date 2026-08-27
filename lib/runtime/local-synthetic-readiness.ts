@@ -1,7 +1,5 @@
 import "server-only";
 
-import { createConnection } from "node:net";
-
 import { Client } from "pg";
 
 import {
@@ -14,6 +12,10 @@ import {
   loadLocalSyntheticConfig,
   type LocalSyntheticConfig,
 } from "./local-synthetic-config.ts";
+import {
+  loadDocumentTransportConfig,
+  type DocumentTransportConfig,
+} from "./document-transport-config.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 const RELEASE1_FOUNDER = NEON_TEST_PRINCIPALS.find(({ role }) => role === "founder");
@@ -27,9 +29,7 @@ export interface LocalSyntheticReadinessReport {
     postgresql: LocalDependencyState;
     postgresql_identity: LocalDependencyState;
     postgresql_application: LocalDependencyState;
-    localstack_s3: LocalDependencyState;
-    localstack_sqs: LocalDependencyState;
-    clamav: LocalDependencyState;
+    document_transport: LocalDependencyState;
   }>;
 }
 
@@ -37,8 +37,7 @@ export interface LocalSyntheticReadinessProbes {
   postgresql(config: LocalSyntheticConfig): Promise<void>;
   identityPostgresql(config: LocalSyntheticConfig): Promise<void>;
   applicationPostgresql(config: LocalSyntheticConfig): Promise<void>;
-  localstack(config: LocalSyntheticConfig): Promise<Readonly<{ s3: boolean; sqs: boolean }>>;
-  clamav(config: LocalSyntheticConfig): Promise<void>;
+  documentTransport(config: DocumentTransportConfig): Promise<void>;
 }
 
 export async function checkLocalSyntheticReadiness(
@@ -48,25 +47,23 @@ export async function checkLocalSyntheticReadiness(
   }> = {},
 ): Promise<LocalSyntheticReadinessReport> {
   const config = loadLocalSyntheticConfig(options.environment);
+  const documentConfig = loadDocumentTransportConfig(options.environment);
   const probes: LocalSyntheticReadinessProbes = Object.freeze({
     ...DEFAULT_PROBES,
     ...options.probes,
   });
-  const [postgresql, postgresqlIdentity, postgresqlApplication, localstack, clamav] = await Promise.allSettled([
+  const [postgresql, postgresqlIdentity, postgresqlApplication, documentTransport] = await Promise.allSettled([
     probes.postgresql(config),
     probes.identityPostgresql(config),
     probes.applicationPostgresql(config),
-    probes.localstack(config),
-    probes.clamav(config),
+    probes.documentTransport(documentConfig),
   ]);
 
   const dependencies = Object.freeze({
     postgresql: state(postgresql.status === "fulfilled"),
     postgresql_identity: state(postgresqlIdentity.status === "fulfilled"),
     postgresql_application: state(postgresqlApplication.status === "fulfilled"),
-    localstack_s3: state(localstack.status === "fulfilled" && localstack.value.s3),
-    localstack_sqs: state(localstack.status === "fulfilled" && localstack.value.sqs),
-    clamav: state(clamav.status === "fulfilled"),
+    document_transport: state(documentTransport.status === "fulfilled"),
   });
   const ready = Object.values(dependencies).every((dependency) => dependency === "ready");
 
@@ -220,70 +217,13 @@ const DEFAULT_PROBES: LocalSyntheticReadinessProbes = Object.freeze({
     }
   },
 
-  async localstack(
-    config: LocalSyntheticConfig,
-  ): Promise<Readonly<{ s3: boolean; sqs: boolean }>> {
-    const response = await fetch(`${config.localstack.endpoint}/_localstack/health`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(config.dependencyTimeoutMs),
-    });
-    if (!response.ok) throw new Error("LocalStack health request failed.");
-    const payload: unknown = await response.json();
-    const services = record(payload)?.services;
-    const serviceRecord = record(services);
-    return Object.freeze({
-      s3: localstackServiceReady(serviceRecord?.s3),
-      sqs: localstackServiceReady(serviceRecord?.sqs),
-    });
-  },
-
-  clamav(config: LocalSyntheticConfig): Promise<void> {
-    return probeClamav(config.clamav.host, config.clamav.port, config.dependencyTimeoutMs);
+  async documentTransport(config: DocumentTransportConfig): Promise<void> {
+    if (config.mode !== "deterministic-fake") {
+      throw new Error("Document transport is not enabled for local development.");
+    }
   },
 });
 
-function probeClamav(host: string, port: number, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port });
-    let settled = false;
-    let reply = Buffer.alloc(0);
-
-    const finish = (error?: Error): void => {
-      if (settled) return;
-      settled = true;
-      socket.destroy();
-      if (error) reject(error);
-      else resolve();
-    };
-
-    socket.setTimeout(timeoutMs, () => finish(new Error("ClamAV readiness timed out.")));
-    socket.once("connect", () => socket.write(Buffer.from("zPING\0", "utf8")));
-    socket.on("data", (chunk) => {
-      reply = Buffer.concat([reply, chunk]);
-      if (reply.length > 64) {
-        finish(new Error("ClamAV readiness response was too large."));
-        return;
-      }
-      const terminator = reply.indexOf(0);
-      if (terminator < 0) return;
-      const response = reply.subarray(0, terminator).toString("utf8");
-      finish(response === "PONG" ? undefined : new Error("ClamAV readiness result was invalid."));
-    });
-    socket.once("error", (error) => finish(error));
-    socket.once("close", () => finish(new Error("ClamAV closed the readiness connection.")));
-  });
-}
-
-function localstackServiceReady(value: unknown): boolean {
-  return value === "available" || value === "running" || value === "ready";
-}
-
 function state(ready: boolean): LocalDependencyState {
   return ready ? "ready" : "unavailable";
-}
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }

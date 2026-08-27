@@ -1,9 +1,13 @@
-import { evaluateBootstrapAuthorization } from "@/modules/access/public";
+import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { getCaseWorkspaceRuntime } from "@/modules/cases/server";
-import { requireIdentityActor } from "@/modules/identity/web";
-import { createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
+import { handleApiRequest, type JsonValue } from "@/modules/shared/public";
 
-import { mapCaseWorkspaceCollectionError, parseCaseCreateRequest } from "./route-contract.ts";
+import {
+  caseIntakeReceiptData,
+  mapCaseIntakeError,
+  parseCaseIntakeRequest,
+} from "./intake-route-contract.ts";
+import { mapCaseWorkspaceCollectionError } from "./route-contract.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   return handleApiRequest(request, async () => {
     try {
-      const actor = await requireIdentityActor();
+      const actor = await requireApiRequestAccessContext();
       const cases = await getCaseWorkspaceRuntime().service.listCases(actor);
       return { cases: cases.map((record) => ({ ...record })) } satisfies JsonValue;
     } catch (error) {
@@ -22,19 +26,13 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   return handleApiRequest(request, async (context) => {
-    const command = await parseCaseCreateRequest(request, context.requestId);
     try {
-      const actor = await requireIdentityActor();
-      if (!evaluateBootstrapAuthorization(actor.role, { capability: "cases.create" }).allowed) {
-        throw createApiError("FORBIDDEN");
-      }
-      const created = await getCaseWorkspaceRuntime().service.createCase({ actor, command });
-      return {
-        id: created.id,
-        record_version: created.recordVersion,
-      } satisfies JsonValue;
+      const command = await parseCaseIntakeRequest(request, context.requestId);
+      const actor = await requireApiRequestAccessContext();
+      const created = await getCaseWorkspaceRuntime().intakeService.createCase({ actor, command });
+      return caseIntakeReceiptData(created) satisfies JsonValue;
     } catch (error) {
-      throw mapCaseWorkspaceCollectionError(error);
+      throw mapCaseIntakeError(error);
     }
   });
 }

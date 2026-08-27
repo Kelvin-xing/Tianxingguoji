@@ -209,7 +209,7 @@ function WorkspacePanel({
     return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><SurfaceState icon="x" title={panel.title} detail={panel.detail} requestReference={panel.requestReference} retryHref={panel.retryHref} headingRef={headingRef} /></section>;
   }
   if (panel.data.tab === "assessment" && panel.data.editor) {
-    return <div id="case-workspace-panel" role="tabpanel"><AssessmentEditor caseId={panel.data.editor.caseId} caseStage={panel.data.editor.caseStage} /></div>;
+    return <div id="case-workspace-panel" role="tabpanel"><AssessmentEditor endpoint={panel.data.editor.endpoint} initialView={panel.data.editor.initialView} /></div>;
   }
   return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><ReadyPanel data={panel.data} headingRef={headingRef} /></section>;
 }

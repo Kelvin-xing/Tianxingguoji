@@ -37,11 +37,12 @@ export const ORGANIZATION_ROLES = Object.freeze([
   "founder",
   "admin",
   "advisor",
-  "data_reviewer",
   "contractor",
 ] as const);
 
-export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+export type Release1OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+/** Historical rows remain readable for migration compatibility, never active. */
+export type OrganizationRole = Release1OrganizationRole | "data_reviewer";
 export type RoleBindingStatus = "active" | "revoked";
 
 export const WORKSPACE_CAPABILITIES = Object.freeze([
@@ -76,7 +77,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
 export type WorkspaceCapability = (typeof WORKSPACE_CAPABILITIES)[number];
 
 export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
-  Record<OrganizationRole, readonly WorkspaceCapability[]>
+  Record<Release1OrganizationRole, readonly WorkspaceCapability[]>
 > = Object.freeze({
   founder: Object.freeze([
     "today.read",
@@ -87,6 +88,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "cases.referral_sources.assign",
     "students.read",
     "students.create",
+    "students.guardians.manage",
     "students.profiles.manage",
     "students.deletion.request",
     "students.deletion.review",
@@ -106,11 +108,6 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
   ] as const),
   admin: Object.freeze([
     "today.read",
-    "cases.assessments.read",
-    "students.read",
-    "referral_sources.read",
-    "referral_sources.manage",
-    "schools.read",
     "access.manage",
     "schools.manage",
     "crawler.manage",
@@ -138,21 +135,86 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "documents.upload",
     "documents.download",
   ] as const),
-  data_reviewer: Object.freeze([
-    "today.read",
-    "schools.read",
-    "schools.manage",
-    "crawler.manage",
-  ] as const),
   contractor: Object.freeze(["tasks.read", "tasks.transition"] as const),
 });
 
-export function workspaceCapabilitiesForRole(role: OrganizationRole): readonly WorkspaceCapability[] {
-  return BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE[role];
+export function workspaceCapabilitiesForRole(
+  role: OrganizationRole,
+): readonly WorkspaceCapability[] {
+  return role === "data_reviewer" ? EMPTY_CAPABILITIES : BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE[role];
 }
 
-export function isOrganizationRole(value: unknown): value is OrganizationRole {
+export function isOrganizationRole(value: unknown): value is Release1OrganizationRole {
   return typeof value === "string" && (ORGANIZATION_ROLES as readonly string[]).includes(value);
+}
+
+const EMPTY_CAPABILITIES = Object.freeze([] as const);
+
+export const ROLE_COMPATIBILITY = Object.freeze({
+  founder: Object.freeze(["admin", "advisor"] as const),
+  admin: Object.freeze(["founder", "advisor"] as const),
+  advisor: Object.freeze(["founder", "admin"] as const),
+  contractor: Object.freeze([] as const),
+} as const);
+
+export type EmploymentType = "FULL_TIME" | "PART_TIME";
+
+export type RoleAssignmentDecision =
+  | { readonly allowed: true }
+  | {
+      readonly allowed: false;
+      readonly code:
+        | "ROLE_UNKNOWN"
+        | "ROLE_CONFLICT"
+        | "ROLE_NOT_COMPATIBLE_WITH_EMPLOYMENT_TYPE"
+        | "LAST_FOUNDER_REQUIRED";
+    };
+
+export function evaluateRoleAssignment(input: Readonly<{
+  readonly existingRoles: readonly OrganizationRole[];
+  readonly candidateRole: unknown;
+  readonly employmentType: EmploymentType;
+  readonly removingRole?: OrganizationRole;
+}>): RoleAssignmentDecision {
+  if (!isOrganizationRole(input.candidateRole)) {
+    return { allowed: false, code: "ROLE_UNKNOWN" };
+  }
+  const existing = new Set(input.existingRoles.filter(isOrganizationRole));
+  const projected = new Set(existing);
+  if (input.removingRole !== undefined && isOrganizationRole(input.removingRole)) {
+    projected.delete(input.removingRole);
+  }
+  if (input.removingRole !== input.candidateRole) projected.add(input.candidateRole);
+  if (projected.has("contractor") && projected.size > 1) {
+    return { allowed: false, code: "ROLE_CONFLICT" };
+  }
+  if (
+    (input.employmentType === "FULL_TIME" && input.candidateRole === "contractor") ||
+    (input.employmentType === "PART_TIME" &&
+      (input.candidateRole === "founder" || input.candidateRole === "advisor"))
+  ) {
+    return { allowed: false, code: "ROLE_NOT_COMPATIBLE_WITH_EMPLOYMENT_TYPE" };
+  }
+  if (
+    input.removingRole === "founder" &&
+    existing.has("founder") &&
+    !projected.has("founder")
+  ) {
+    return { allowed: false, code: "LAST_FOUNDER_REQUIRED" };
+  }
+  return { allowed: true };
+}
+
+export function capabilityIncludes(
+  granted: CollaboratorCapability,
+  requested: CollaboratorCapability,
+): boolean {
+  const rank: Readonly<Record<CollaboratorCapability, number>> = {
+    view: 1,
+    comment: 2,
+    edit: 3,
+  };
+  return rank[granted] >= rank[requested];
 }
 
 export function isWorkspaceCapability(value: unknown): value is WorkspaceCapability {
@@ -236,7 +298,7 @@ export function evaluateScopeGrant(input: ScopeGrantEvaluationInput): ScopeGrant
   if (input.requestedScope !== input.grantScope) {
     return { allowed: false, code: "GRANT_SCOPE_MISMATCH" };
   }
-  if (input.requestedCapability !== input.grantCapability) {
+  if (!capabilityIncludes(input.grantCapability, input.requestedCapability)) {
     return { allowed: false, code: "GRANT_CAPABILITY_MISMATCH" };
   }
   if (input.nowMs < input.startsAtMs) {

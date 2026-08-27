@@ -6,7 +6,7 @@ import {
   DocumentScannerUnavailable,
   LocalClamavDocumentScanner,
 } from "../../../modules/documents/infrastructure/clamav-scanner.ts";
-import type { DocumentObjectReader } from "../../../modules/documents/infrastructure/local-object-store.ts";
+import type { DocumentObjectReader } from "../../../modules/documents/infrastructure/object-transport-port.ts";
 
 const BUCKET = "tianxing-documents-local";
 const OBJECT = Object.freeze({

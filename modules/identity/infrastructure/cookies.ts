@@ -4,7 +4,7 @@ export const SESSION_COOKIE_NAME = `${SECURE_COOKIE_PREFIX}tx_session`
 export const COGNITO_STATE_COOKIE_NAME = `${SECURE_COOKIE_PREFIX}tx_cognito_state`
 export const COGNITO_VERIFIER_COOKIE_NAME = `${SECURE_COOKIE_PREFIX}tx_cognito_verifier`
 
-export const SESSION_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 24 * 60 * 60
 export const COGNITO_COOKIE_MAX_AGE_SECONDS = 10 * 60
 
 export const authCookieOptions = Object.freeze({

@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization } from "../../access/public.ts";
+import {
+  compatibilityRoleForRepository,
+  type RequestAccessActor,
+} from "../../access/public.ts";
 import { buildAtomicMutationEffects, buildAuditEvent, buildOutboxMessage,
   type MutationEffectBundle } from "../../audit/public.ts";
-import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 import type { ReferralSourceType } from "../../crm/public.ts";
 
@@ -26,7 +28,7 @@ export interface CaseReferralSourceAssignmentsView {
 }
 export interface CaseReferralSourceAcknowledgement { readonly id: string; readonly recordVersion: number }
 interface ActorInput { readonly organizationId: string; readonly actorUserId: string;
-  readonly actorRole: IdentitySessionActor["role"] }
+  readonly actorRole: string }
 
 export interface CaseReferralSourceAssignmentRepository {
   read(input: ActorInput & { readonly caseId: string }): Promise<CaseReferralSourceAssignmentsView | null>;
@@ -72,13 +74,13 @@ export class CaseReferralSourceAssignmentService {
     this.repository = repository; this.createId = createId; this.now = now;
   }
 
-  read(actor: IdentitySessionActor, caseId: string) {
+  read(actor: RequestAccessActor, caseId: string) {
     const context = authorize(actor, "cases.read");
     if (!UUID.test(caseId)) invalid();
     return this.repository.read({ ...context, caseId });
   }
 
-  assign(input: { readonly actor: IdentitySessionActor; readonly command: {
+  assign(input: { readonly actor: RequestAccessActor; readonly command: {
     readonly caseId: string; readonly referralSourceId: string;
     readonly expectedCurrentAssignmentRecordVersion: number | null;
     readonly requestId: string; readonly idempotencyKey: string;
@@ -119,10 +121,11 @@ export class CaseReferralSourceAssignmentService {
       effects: buildAtomicMutationEffects({ audit, outbox }) });
   }
 }
-function authorize(actor: IdentitySessionActor, capability: "cases.read" | "cases.referral_sources.assign"): ActorInput {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability }).allowed) forbidden();
-  return { organizationId: actor.organizationId, actorUserId: actor.userId, actorRole: actor.role };
+function authorize(actor: RequestAccessActor, capability: "cases.read" | "cases.referral_sources.assign"): ActorInput {
+  const compatibilityRole = compatibilityRoleForRepository(actor, capability);
+  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || !compatibilityRole) forbidden();
+  return { organizationId: actor.organizationId, actorUserId: actor.userId,
+    actorRole: compatibilityRole };
 }
 function checkedId(createId: () => string) { const id = createId(); if (!UUID.test(id)) invalid(); return id; }
 function invalid(): never { throw new CaseReferralSourceError("CASE_REFERRAL_SOURCE_INVALID"); }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { PortalPolicyError } from "../../../../../modules/external-portal/public.ts";
 import { mapPortalErrorToPublicResponse } from "../../../../../modules/external-portal/public.ts";
 import {
@@ -10,11 +11,11 @@ const NO_STORE = { "Cache-Control": "private, no-store, max-age=0", Pragma: "no-
 const COOKIE_OPTIONS = "Path=/; HttpOnly; Secure; SameSite=Strict; Priority=High";
 
 export interface PortalSessionRouteDependencies {
-  redeem(input: { readonly accessKey: string }): Promise<{
+  redeem(input: { readonly accessKey: string; readonly idempotencyKey: string; readonly requestId: string }): Promise<{
     readonly sessionSecret: string;
     readonly absoluteExpiresAt: string;
   }>;
-  revokeSession(input: { readonly sessionSecret: string }): Promise<void>;
+  revokeSession(input: { readonly sessionSecret: string; readonly requestId: string }): Promise<void>;
 }
 
 export function createPortalSessionHandlers(deps: PortalSessionRouteDependencies) {
@@ -23,10 +24,11 @@ export function createPortalSessionHandlers(deps: PortalSessionRouteDependencies
       try {
         const body = await readBody(request);
         const accessKey = body.access_key;
-        if (typeof accessKey !== "string" || accessKey.length < 16 || accessKey.length > 1024) {
+        const idempotencyKey = request.headers.get("idempotency-key")?.trim() ?? "";
+        if (typeof accessKey !== "string" || accessKey.length < 64 || accessKey.length > 512 || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(idempotencyKey)) {
           return invalidRequest();
         }
-        const result = await deps.redeem({ accessKey });
+        const result = await deps.redeem({ accessKey, idempotencyKey, requestId: request.headers.get("x-request-id") ?? randomUUID() });
         const expires = new Date(result.absoluteExpiresAt);
         if (!Number.isFinite(expires.getTime())) throw new PortalRuntimeUnavailable();
         return json({ status: "active", expires_at: result.absoluteExpiresAt }, 201, {
@@ -42,7 +44,7 @@ export function createPortalSessionHandlers(deps: PortalSessionRouteDependencies
         "Set-Cookie": `${PORTAL_SESSION_COOKIE_NAME}=; Max-Age=0; ${COOKIE_OPTIONS}`,
       };
       try {
-        if (secret) await deps.revokeSession({ sessionSecret: secret });
+        if (secret) await deps.revokeSession({ sessionSecret: secret, requestId: request.headers.get("x-request-id") ?? randomUUID() });
       } catch (error) {
         if (error instanceof PortalRuntimeUnavailable) {
           return json({ error: { code: error.code } }, 503, clearCookie);

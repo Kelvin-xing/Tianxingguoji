@@ -1,5 +1,8 @@
 export type ApiResponseMode = "envelope" | "raw";
 
+/** The server contract accepts an opaque, bounded idempotency key. */
+export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
 export type ApiRequestBody =
   | string
   | number
@@ -13,6 +16,10 @@ export interface ApiRequest {
   readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly body?: ApiRequestBody;
   readonly headers?: Readonly<Record<string, string>>;
+  /** Required for commands; omitted for reads. */
+  readonly idempotencyKey?: string;
+  /** Added to the JSON command body as `expected_record_version`. */
+  readonly expectedRecordVersion?: number;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   readonly responseMode?: ApiResponseMode;
@@ -41,6 +48,14 @@ export class ApiClientError extends Error {
   }
 }
 
+export interface ApiReceipt {
+  readonly id?: string;
+  readonly record_version?: number;
+  readonly occurred_at?: string;
+  readonly updated_at?: string;
+  readonly [key: string]: unknown;
+}
+
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export async function requestApi<T>(request: ApiRequest, decoder: ApiDecoder<T>): Promise<T> {
@@ -56,6 +71,11 @@ export async function requestApi<T>(request: ApiRequest, decoder: ApiDecoder<T>)
   const requestId = createRequestId();
   if (request.signal?.aborted) {
     throw new ApiClientError({ code: "REQUEST_ABORTED", status: 0, retryable: false, requestId });
+  }
+
+  const body = bodyWithExpectedVersion(request.body, request.expectedRecordVersion);
+  if (request.idempotencyKey !== undefined && !IDEMPOTENCY_KEY_PATTERN.test(request.idempotencyKey)) {
+    throw clientError("INVALID_CLIENT_REQUEST");
   }
 
   const controller = new AbortController();
@@ -77,19 +97,30 @@ export async function requestApi<T>(request: ApiRequest, decoder: ApiDecoder<T>)
   const headers = new Headers(request.headers);
   headers.set("accept", "application/json");
   headers.set("x-request-id", requestId);
-  if (request.body !== undefined) headers.set("content-type", "application/json");
+  if (body !== undefined) headers.set("content-type", "application/json");
+  if (request.idempotencyKey !== undefined) {
+    headers.set("idempotency-key", request.idempotencyKey);
+  }
 
   try {
     const response = await fetch(request.path, {
       method: request.method ?? "GET",
-      body: request.body === undefined ? undefined : JSON.stringify(request.body),
+      body: body === undefined ? undefined : JSON.stringify(body),
       headers,
       credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
     });
     const responseRequestId = readRequestId(response.headers.get("x-request-id")) ?? requestId;
-    const payload = await parseJsonResponse(response, responseRequestId);
+    let payload: unknown;
+    try {
+      payload = await parseJsonResponse(response, responseRequestId);
+    } catch (error) {
+      if (!response.ok && (response.status === 401 || response.status === 403)) {
+        throw new ApiClientError({ code: statusCode(response.status), status: response.status, retryable: false, requestId: responseRequestId });
+      }
+      throw error;
+    }
 
     if (!response.ok) throw decodeApiError(payload, response.status, responseRequestId);
 
@@ -158,10 +189,59 @@ export function expectArray<T>(value: unknown, decoder: ApiDecoder<T>): readonly
 
 function decodeEnvelope(payload: unknown, status: number, fallbackRequestId: string | null): unknown {
   const envelope = expectRecord(payload);
-  if (envelope.api_version !== "v1" || !("data" in envelope)) {
+  if (
+    envelope.api_version !== "v1" ||
+    !("data" in envelope) ||
+    !("request_id" in envelope) ||
+    typeof envelope.request_id !== "string" ||
+    !safeRequestId(envelope.request_id) ||
+    "error" in envelope
+  ) {
     throw new ApiClientError({ code: "MALFORMED_RESPONSE", status, retryable: false, requestId: fallbackRequestId });
   }
   return envelope.data;
+}
+
+export function expectReceipt(value: unknown): ApiReceipt {
+  const record = expectRecord(value);
+  const opaqueId = Object.entries(record).find(([key, item]) =>
+    (key === "id" || key.endsWith("_id")) && typeof item === "string" && safeOpaqueValue(item),
+  );
+  if (!opaqueId) {
+    throw new TypeError("Expected an opaque receipt ID.");
+  }
+  if (
+    record.record_version !== undefined &&
+    (!Number.isSafeInteger(record.record_version) || (record.record_version as number) < 0)
+  ) {
+    throw new TypeError("Expected a safe receipt record version.");
+  }
+  for (const field of ["occurred_at", "updated_at"] as const) {
+    if (record[field] !== undefined && typeof record[field] !== "string") {
+      throw new TypeError("Expected a receipt timestamp.");
+    }
+  }
+  return record as ApiReceipt;
+}
+
+function bodyWithExpectedVersion(
+  body: ApiRequestBody | undefined,
+  expectedRecordVersion: number | undefined,
+): ApiRequestBody | undefined {
+  if (expectedRecordVersion === undefined) return body;
+  if (!Number.isSafeInteger(expectedRecordVersion) || expectedRecordVersion < 0) {
+    throw clientError("INVALID_CLIENT_REQUEST");
+  }
+  if (body === undefined) return { expected_record_version: expectedRecordVersion };
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw clientError("INVALID_CLIENT_REQUEST");
+  }
+  const record = body as Readonly<Record<string, ApiRequestBody>>;
+  const existing = record.expected_record_version;
+  if (existing !== undefined && existing !== expectedRecordVersion) {
+    throw clientError("INVALID_CLIENT_REQUEST");
+  }
+  return { ...record, expected_record_version: expectedRecordVersion };
 }
 
 async function parseJsonResponse(response: Response, requestId: string | null): Promise<unknown> {
@@ -184,18 +264,28 @@ async function parseJsonResponse(response: Response, requestId: string | null): 
 
 function decodeApiError(payload: unknown, status: number, fallbackRequestId: string | null): ApiClientError {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    return new ApiClientError({ code: "UNEXPECTED_ERROR", status, retryable: status >= 500, requestId: fallbackRequestId });
+    return new ApiClientError({ code: statusCode(status), status, retryable: status === 429 || status >= 500, requestId: fallbackRequestId });
   }
   const root = payload as Readonly<Record<string, unknown>>;
   const error = root.error;
   if (typeof error !== "object" || error === null || Array.isArray(error)) {
-    return new ApiClientError({ code: "UNEXPECTED_ERROR", status, retryable: status >= 500, requestId: fallbackRequestId });
+    return new ApiClientError({ code: statusCode(status), status, retryable: status === 429 || status >= 500, requestId: fallbackRequestId });
   }
   const record = error as Readonly<Record<string, unknown>>;
-  const code = typeof record.code === "string" && safeCode(record.code) ? record.code : "UNEXPECTED_ERROR";
+  const code = typeof record.code === "string" && safeCode(record.code) ? record.code : statusCode(status);
   const retryable = typeof record.retryable === "boolean" ? record.retryable : status === 429 || status >= 500;
   const requestId = typeof record.request_id === "string" ? readRequestId(record.request_id) : fallbackRequestId;
   return new ApiClientError({ code, status, retryable, requestId });
+}
+
+function statusCode(status: number): string {
+  if (status === 401) return "UNAUTHENTICATED";
+  if (status === 403) return "FORBIDDEN";
+  if (status === 404) return "NOT_FOUND";
+  if (status === 409) return "CONFLICT";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 503) return "SERVICE_UNAVAILABLE";
+  return status >= 500 ? "INTERNAL_ERROR" : "UNEXPECTED_ERROR";
 }
 
 function createRequestId(): string {
@@ -208,6 +298,10 @@ function readRequestId(value: string | null): string | null {
 
 function safeRequestId(value: string | null): value is string {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
+}
+
+function safeOpaqueValue(value: string): boolean {
+  return IDEMPOTENCY_KEY_PATTERN.test(value);
 }
 
 function safeCode(value: string): boolean {

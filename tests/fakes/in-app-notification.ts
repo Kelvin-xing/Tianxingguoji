@@ -32,6 +32,7 @@ interface StoredOutbox {
 export class InMemoryInAppNotificationRepository implements InAppNotificationRepository {
   private outbox = new Map<string, StoredOutbox>();
   private notifications = new Map<string, NotificationRecord>();
+  private completionNotifications = new Map<string, NotificationRecord>();
   private receiptsByEffect = new Map<string, DeliveryReceipt>();
   private businessFacts = new Set<string>();
   private failCompletion = false;
@@ -141,7 +142,9 @@ export class InMemoryInAppNotificationRepository implements InAppNotificationRep
     const stored = this.requireLease(input.work);
     const existing = this.receiptsByEffect.get(effectKey(stored));
     if (existing) {
-      const notification = this.notifications.get(existing.notificationId);
+      const notification = existing.notificationId === null
+        ? this.completionNotifications.get(effectKey(stored))
+        : this.notifications.get(existing.notificationId);
       if (!notification) throw new Error("synthetic receipt without notification");
       return { status: "duplicate", notification, receipt: existing };
     }
@@ -155,13 +158,16 @@ export class InMemoryInAppNotificationRepository implements InAppNotificationRep
     const receipt = delivered ? input.deliveredReceipt : input.suppressedReceipt;
     const nextOutbox = new Map(this.outbox);
     const nextNotifications = new Map(this.notifications);
+    const nextCompletionNotifications = new Map(this.completionNotifications);
     const nextReceipts = new Map(this.receiptsByEffect);
     nextOutbox.set(stored.outbox.id, { ...stored, status: "delivered" });
-    nextNotifications.set(notification.id, notification);
+    if (delivered) nextNotifications.set(notification.id, notification);
+    nextCompletionNotifications.set(effectKey(stored), notification);
     nextReceipts.set(effectKey(stored), receipt);
 
     this.outbox = nextOutbox;
     this.notifications = nextNotifications;
+    this.completionNotifications = nextCompletionNotifications;
     this.receiptsByEffect = nextReceipts;
     return {
       status: delivered ? "delivered" : "suppressed",
@@ -175,7 +181,7 @@ export class InMemoryInAppNotificationRepository implements InAppNotificationRep
   ): Promise<InAppDeliveryFailure> {
     const stored = this.requireLease(input.work);
     const terminal = stored.attemptCount === MAX_IN_APP_DELIVERY_ATTEMPTS;
-    if (terminal !== (input.terminalNotification !== null && input.terminalReceipt !== null)) {
+    if (terminal !== (input.terminalReceipt !== null)) {
       throw new Error("synthetic terminal receipt mismatch");
     }
 
@@ -191,12 +197,10 @@ export class InMemoryInAppNotificationRepository implements InAppNotificationRep
       };
     }
 
-    const terminalNotification = input.terminalNotification!;
     const terminalReceipt = input.terminalReceipt!;
     const nextNotifications = new Map(this.notifications);
     const nextReceipts = new Map(this.receiptsByEffect);
     nextOutbox.set(stored.outbox.id, { ...stored, status: "dead_letter" });
-    nextNotifications.set(terminalNotification.id, terminalNotification);
     nextReceipts.set(effectKey(stored), terminalReceipt);
     this.outbox = nextOutbox;
     this.notifications = nextNotifications;

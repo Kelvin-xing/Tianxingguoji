@@ -78,6 +78,7 @@ export function taskStateLabel(state: TaskState): string {
     created: "已建立",
     assigned: "已指派",
     accepted: "已接受",
+    awaiting_reassignment: "等待重新指派",
     rejected: "已拒絕",
     reassigned: "已重新指派",
     completed: "已完成",
@@ -91,6 +92,7 @@ export function taskStateLabel(state: TaskState): string {
 export function transitionLabel(state: TaskState): string {
   const labels: Partial<Readonly<Record<TaskState, string>>> = {
     accepted: "接受任務",
+    awaiting_reassignment: "要求重新指派",
     rejected: "拒絕任務",
     reassigned: "重新指派",
     completed: "標記完成",

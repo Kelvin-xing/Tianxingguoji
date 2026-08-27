@@ -1,17 +1,15 @@
 {
   "nav": {
-    "dashboard": "儀表板",
     "today": "今日工作",
     "cases": "案件",
-    "students": "學生 CRM",
     "studentsAndGuardians": "學生與監護人",
-    "schools": "招生資訊",
     "schoolData": "學校資料",
     "tasks": "任務",
     "documents": "文件",
     "access": "身份與權限",
-    "schoolGovernance": "學校治理",
-    "dataReview": "資料審核",
+    "dashboard": "儀表板",
+    "students": "學生 CRM",
+    "schools": "招生資訊",
     "selector": "選校報告",
     "ai": "AI 助理",
     "adminCrawler": "爬蟲管理",
@@ -105,16 +103,23 @@
     "search": "搜尋",
     "clear": "清除",
     "print": "列印",
-    "lang_toggle": "English"
+    "lang_toggle": "English",
+    "sign_out": "登出"
   },
   "layout": {
     "erp_title": "天星顧問 ERP",
-    "open_navigation": "展開導航",
-    "close_navigation": "收合導航",
-    "notifications": "通知",
-    "notifications_unavailable": "通知服務暫時不可用，請稍後再試。",
-    "account_menu": "帳戶選單",
-    "logout": "登出"
+    "workspace_navigation": "工作台導航",
+    "workspace_section": "Workspace",
+    "administration_section": "Administration",
+    "future_section": "Future",
+    "checking_identity": "確認身份中",
+    "organization": "香港組織",
+    "session_ready": "Session boundary ready",
+    "open_navigation": "開啟導航",
+    "close_navigation": "關閉導航",
+    "search_placeholder": "搜尋學生、案件或學校",
+    "search_label": "全域搜尋",
+    "notifications_unavailable": "通知入口尚未接通"
   },
   "admin": {
     "crawler": "爬蟲管理"

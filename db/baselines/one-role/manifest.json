@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "4bea80c40b394a3b00864d51f51f7b7b4ad4b2f2feaa40ee4a0aa2b8791be3b0",
+  "source_history_manifest_sha256": "82dadc1a453f16343a7a87c6529de341edeb2cb266e4d5757e3603b280597f96",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -261,6 +261,111 @@
       "generated_file": "035_202608240020_036_complete_case_workflow_foundation.sql",
       "generated_sha256": "c19a650f34a306a1a9d9270ad2180c835e599294402a59e349e92faf0bb2649d",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202608260010_037_expand_shared_actor_scope.sql",
+      "source_sha256": "546fe8b98d8bb3ab572c1b2f6df6217dd072b12edcb56f025e3bb2ac21a4ff8f",
+      "generated_file": "036_202608260010_037_expand_shared_actor_scope.sql",
+      "generated_sha256": "546fe8b98d8bb3ab572c1b2f6df6217dd072b12edcb56f025e3bb2ac21a4ff8f",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260020_038_expand_identity_access_boundaries.sql",
+      "source_sha256": "67f3bf7bfafd7f95a71f049b68c66f92251c547a6ae1ca219d2f7009a1542533",
+      "generated_file": "037_202608260020_038_expand_identity_access_boundaries.sql",
+      "generated_sha256": "67f3bf7bfafd7f95a71f049b68c66f92251c547a6ae1ca219d2f7009a1542533",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260030_039_expand_crm_case_assessment.sql",
+      "source_sha256": "8e9a3a95ce79aaa155f375abfb8f7f39af13b3a17748165021168507df3645da",
+      "generated_file": "038_202608260030_039_expand_crm_case_assessment.sql",
+      "generated_sha256": "de38b65a169f323559d10ae771dc1b3ec385dcd3b4db4086037f852a45780dcd",
+      "transform": "crm-case-assessment-baseline-rls-v1"
+    },
+    {
+      "name": "202608260040_040_expand_candidate_list_case_flow.sql",
+      "source_sha256": "fa7523311620d36613a98a60bf92b243a56b49331e2be67d9c9f22ea538e7cfd",
+      "generated_file": "039_202608260040_040_expand_candidate_list_case_flow.sql",
+      "generated_sha256": "fa7523311620d36613a98a60bf92b243a56b49331e2be67d9c9f22ea538e7cfd",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260050_041_expand_school_target_task_events.sql",
+      "source_sha256": "a9419bd59dd5f23dd1bbdb64d9968fb317191294aad2628e7af4f259bace0920",
+      "generated_file": "040_202608260050_041_expand_school_target_task_events.sql",
+      "generated_sha256": "e1698c033815bc439b77c9df8c84e0b25f5eb136958c369acb6aa8891082d914",
+      "transform": "school-target-task-events-baseline-privilege-window-v1"
+    },
+    {
+      "name": "202608260060_042_access_session_locator.sql",
+      "source_sha256": "dbcbd71b768140d461bfd75e362b40d79126968cc33119d4e12f4b809aa71f2d",
+      "generated_file": "041_202608260060_042_access_session_locator.sql",
+      "generated_sha256": "d826ec7eb794651f0a12e5e7cf1938b222b801bb0086087c781a0b5837a703d5",
+      "transform": "identity-session-locator-rls-v1"
+    },
+    {
+      "name": "202608260070_043_fix_assessment_blocker_append_only_lock.sql",
+      "source_sha256": "89ad9fd0c2dfefd2cf12508054277a97ba9a206456cd4881cd8fbc7d714448bb",
+      "generated_file": "042_202608260070_043_fix_assessment_blocker_append_only_lock.sql",
+      "generated_sha256": "89ad9fd0c2dfefd2cf12508054277a97ba9a206456cd4881cd8fbc7d714448bb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260080_044_prevent_new_crm_purged_rows.sql",
+      "source_sha256": "76f749936d562699f69a31c8b6807da3a6b8d2c60ff6c664fcd022ad4bf7fdb1",
+      "generated_file": "043_202608260080_044_prevent_new_crm_purged_rows.sql",
+      "generated_sha256": "76f749936d562699f69a31c8b6807da3a6b8d2c60ff6c664fcd022ad4bf7fdb1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260090_045_rename_guardian_relationship_end_reason.sql",
+      "source_sha256": "5cf2403081dac0a4edac8397397bbe0a2acf3e93f1f6e21896b0758c04e21ccb",
+      "generated_file": "044_202608260090_045_rename_guardian_relationship_end_reason.sql",
+      "generated_sha256": "5cf2403081dac0a4edac8397397bbe0a2acf3e93f1f6e21896b0758c04e21ccb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260100_046_align_referral_source_deactivation_reason.sql",
+      "source_sha256": "13bbd15ca77069fdd8e41438098e7da4cebc7174e0f225a19b8e5b16361397a0",
+      "generated_file": "045_202608260100_046_align_referral_source_deactivation_reason.sql",
+      "generated_sha256": "13bbd15ca77069fdd8e41438098e7da4cebc7174e0f225a19b8e5b16361397a0",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260110_047_add_case_signed_at.sql",
+      "source_sha256": "59fa67460923e385d6673701e535c72a0cf42c4afa37e131ebffcf06253a658b",
+      "generated_file": "046_202608260110_047_add_case_signed_at.sql",
+      "generated_sha256": "59fa67460923e385d6673701e535c72a0cf42c4afa37e131ebffcf06253a658b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260110_048_complete_notifications_delivery.sql",
+      "source_sha256": "1abf36845565b80708827136ccd1a6f6433f56c41b028e43ae0078f20b9d9d8c",
+      "generated_file": "047_202608260110_048_complete_notifications_delivery.sql",
+      "generated_sha256": "1abf36845565b80708827136ccd1a6f6433f56c41b028e43ae0078f20b9d9d8c",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260120_049_external_portal_release1_boundary.sql",
+      "source_sha256": "ceea4e3f565aee4499f3c184694fbd7c1c0219f6ecefd365312892b10bb4f058",
+      "generated_file": "048_202608260120_049_external_portal_release1_boundary.sql",
+      "generated_sha256": "ceea4e3f565aee4499f3c184694fbd7c1c0219f6ecefd365312892b10bb4f058",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260130_050_allow_awaiting_reassignment_task_rules.sql",
+      "source_sha256": "4859793a76a52f52cbce75890a1408970dc5572ca9568c088018030411b0c6bc",
+      "generated_file": "049_202608260130_050_allow_awaiting_reassignment_task_rules.sql",
+      "generated_sha256": "4859793a76a52f52cbce75890a1408970dc5572ca9568c088018030411b0c6bc",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608260140_051_allow_task_transition_actor_kind_key.sql",
+      "source_sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108",
+      "generated_file": "050_202608260140_051_allow_task_transition_actor_kind_key.sql",
+      "generated_sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -437,6 +542,81 @@
     {
       "name": "035_202608240020_036_complete_case_workflow_foundation.sql",
       "sha256": "c19a650f34a306a1a9d9270ad2180c835e599294402a59e349e92faf0bb2649d",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "036_202608260010_037_expand_shared_actor_scope.sql",
+      "sha256": "546fe8b98d8bb3ab572c1b2f6df6217dd072b12edcb56f025e3bb2ac21a4ff8f",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "037_202608260020_038_expand_identity_access_boundaries.sql",
+      "sha256": "67f3bf7bfafd7f95a71f049b68c66f92251c547a6ae1ca219d2f7009a1542533",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "038_202608260030_039_expand_crm_case_assessment.sql",
+      "sha256": "de38b65a169f323559d10ae771dc1b3ec385dcd3b4db4086037f852a45780dcd",
+      "transform": "crm-case-assessment-baseline-rls-v1"
+    },
+    {
+      "name": "039_202608260040_040_expand_candidate_list_case_flow.sql",
+      "sha256": "fa7523311620d36613a98a60bf92b243a56b49331e2be67d9c9f22ea538e7cfd",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "040_202608260050_041_expand_school_target_task_events.sql",
+      "sha256": "e1698c033815bc439b77c9df8c84e0b25f5eb136958c369acb6aa8891082d914",
+      "transform": "school-target-task-events-baseline-privilege-window-v1"
+    },
+    {
+      "name": "041_202608260060_042_access_session_locator.sql",
+      "sha256": "d826ec7eb794651f0a12e5e7cf1938b222b801bb0086087c781a0b5837a703d5",
+      "transform": "identity-session-locator-rls-v1"
+    },
+    {
+      "name": "042_202608260070_043_fix_assessment_blocker_append_only_lock.sql",
+      "sha256": "89ad9fd0c2dfefd2cf12508054277a97ba9a206456cd4881cd8fbc7d714448bb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "043_202608260080_044_prevent_new_crm_purged_rows.sql",
+      "sha256": "76f749936d562699f69a31c8b6807da3a6b8d2c60ff6c664fcd022ad4bf7fdb1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "044_202608260090_045_rename_guardian_relationship_end_reason.sql",
+      "sha256": "5cf2403081dac0a4edac8397397bbe0a2acf3e93f1f6e21896b0758c04e21ccb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "045_202608260100_046_align_referral_source_deactivation_reason.sql",
+      "sha256": "13bbd15ca77069fdd8e41438098e7da4cebc7174e0f225a19b8e5b16361397a0",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "046_202608260110_047_add_case_signed_at.sql",
+      "sha256": "59fa67460923e385d6673701e535c72a0cf42c4afa37e131ebffcf06253a658b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "047_202608260110_048_complete_notifications_delivery.sql",
+      "sha256": "1abf36845565b80708827136ccd1a6f6433f56c41b028e43ae0078f20b9d9d8c",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "048_202608260120_049_external_portal_release1_boundary.sql",
+      "sha256": "ceea4e3f565aee4499f3c184694fbd7c1c0219f6ecefd365312892b10bb4f058",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "049_202608260130_050_allow_awaiting_reassignment_task_rules.sql",
+      "sha256": "4859793a76a52f52cbce75890a1408970dc5572ca9568c088018030411b0c6bc",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "050_202608260140_051_allow_task_transition_actor_kind_key.sql",
+      "sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108",
       "transform": "copy-v1"
     },
     {

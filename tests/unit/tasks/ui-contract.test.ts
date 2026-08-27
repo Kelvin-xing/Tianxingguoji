@@ -106,7 +106,7 @@ test("TASK-01 permanent browser gate is isolated, privacy-safe and complete", as
     "relogin_persistence",
     "stale_recovery",
     "advisor_transition",
-    "founder_approval",
+    "founder_read_only",
     "contractor_redaction",
     "denied_roles",
     "browser_log_safety",

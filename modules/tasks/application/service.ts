@@ -229,7 +229,7 @@ function assertInput(input: {
     throw new TaskWorkflowError("TASK_COMMAND_INVALID");
   }
 
-  if (input.command.to === "reassigned") {
+  if (input.command.to === "assigned") {
     if (input.command.nextAssigneeUserId === null) {
       throw new TaskWorkflowError("TASK_ASSIGNMENT_TARGET_REQUIRED");
     }
