@@ -68,6 +68,7 @@ export const NEON_TEST_SEED_COUNTS = Object.freeze({
   organizations: 1,
   users: 5,
   memberships: 5,
+  employee_profiles: 5,
   role_bindings: 5,
   students: 2,
   guardians: 2,
@@ -85,6 +86,7 @@ export const NEON_TEST_SEED_TABLE_COUNTS = Object.freeze({
   access_organizations: NEON_TEST_SEED_COUNTS.organizations,
   identity_users: NEON_TEST_SEED_COUNTS.users,
   access_organization_memberships: NEON_TEST_SEED_COUNTS.memberships,
+  access_employee_profiles: NEON_TEST_SEED_COUNTS.employee_profiles,
   access_role_bindings: NEON_TEST_SEED_COUNTS.role_bindings,
   crm_students: NEON_TEST_SEED_COUNTS.students,
   crm_guardians: NEON_TEST_SEED_COUNTS.guardians,
@@ -488,6 +490,7 @@ function seedTableRules(includeTaskPolicy = true): ReadonlyMap<
     ["access_organizations", rule("organizations", "id = $1", [NEON_TEST_ORGANIZATION.id])],
     ["identity_users", rule("users", "id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ userId }) => userId)])],
     ["access_organization_memberships", rule("memberships", "id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ membershipId }) => membershipId)])],
+    ["access_employee_profiles", rule("employee_profiles", "membership_id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ membershipId }) => membershipId)])],
     ["access_role_bindings", rule("role_bindings", "id = ANY($1::uuid[])", [NEON_TEST_PRINCIPALS.map(({ roleBindingId }) => roleBindingId)])],
     ["crm_students", rule("students", "id = ANY($1::uuid[])", [NEON_TEST_STUDENTS.map(({ id }) => id)])],
     ["crm_guardians", rule("guardians", "id = ANY($1::uuid[])", [NEON_TEST_STUDENTS.map(({ guardianId }) => guardianId)])],
@@ -541,6 +544,13 @@ async function insertIdentityAndAccess(client: Client): Promise<void> {
         (id, organization_id, user_id, status, activated_at, created_by_user_id)
        VALUES ($1,$2,$3,'active',transaction_timestamp(),$4)`,
       [principal.membershipId, NEON_TEST_ORGANIZATION.id, principal.userId, founder.userId],
+    );
+    await client.query(
+      `INSERT INTO access_employee_profiles
+        (membership_id, organization_id, display_name, employment_type)
+       VALUES ($1,$2,$3,$4)`,
+      [principal.membershipId, NEON_TEST_ORGANIZATION.id,
+        principal.displayName, principal.employmentType],
     );
     await client.query(
       `INSERT INTO access_role_bindings
@@ -728,6 +738,14 @@ async function assertExactSeedContent(
        WHERE id = $1 AND organization_id = $2 AND user_id = $3
          AND status = 'active' AND record_version = 1 AND created_by_user_id = $4
     `, [principal.membershipId, NEON_TEST_ORGANIZATION.id, principal.userId, founder.userId]);
+    await assertExactRow(client, `
+      SELECT count(*)::int AS count
+        FROM access_employee_profiles
+       WHERE membership_id = $1 AND organization_id = $2
+         AND display_name = $3 AND employment_type = $4
+         AND avatar_key IS NULL AND record_version = 1
+    `, [principal.membershipId, NEON_TEST_ORGANIZATION.id,
+      principal.displayName, principal.employmentType]);
     await assertExactRow(client, `
       SELECT count(*)::int AS count
         FROM access_role_bindings

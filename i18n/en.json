@@ -107,6 +107,7 @@
     "sign_out": "Sign out"
   },
   "layout": {
+    "profile": "Profile",
     "erp_title": "Tianxingguoji ERP",
     "workspace_navigation": "Workspace navigation",
     "workspace_section": "Workspace",

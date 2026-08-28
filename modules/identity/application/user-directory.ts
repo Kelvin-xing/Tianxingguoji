@@ -22,6 +22,8 @@ export interface UserDirectoryEntry {
   readonly membershipStatus: MembershipStatus;
   readonly displayName: string | null;
   readonly employmentType: EmploymentType | null;
+  readonly profileRecordVersion: number | null;
+  readonly accessVersion: string;
   readonly roles: readonly UserDirectoryRole[];
   readonly updatedAt: string;
 }

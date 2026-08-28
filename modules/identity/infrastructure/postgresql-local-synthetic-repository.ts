@@ -285,6 +285,13 @@ implements LocalSyntheticSessionRepository {
           AND role_binding.status = 'active'
         WHERE session.secret_hash = $1
           AND session.session_kind = 'local_synthetic'
+        ORDER BY CASE role_binding.role
+          WHEN 'founder' THEN 1
+          WHEN 'admin' THEN 2
+          WHEN 'advisor' THEN 3
+          WHEN 'contractor' THEN 4
+          ELSE 5
+        END, role_binding.id
         LIMIT 1
         FOR UPDATE OF session`,
         [secretHashBuffer(input.secretHash)],

@@ -159,6 +159,23 @@ export const ROLE_COMPATIBILITY = Object.freeze({
 
 export type EmploymentType = "FULL_TIME" | "PART_TIME";
 
+export interface MemberAccessVersionRole {
+  readonly bindingId: string;
+  readonly recordVersion: number;
+}
+
+export function buildMemberAccessVersion(input: Readonly<{
+  readonly membershipRecordVersion: number;
+  readonly profileRecordVersion: number | null;
+  readonly roles: readonly MemberAccessVersionRole[];
+}>): string {
+  const roles = [...input.roles]
+    .sort((left, right) => left.bindingId.localeCompare(right.bindingId))
+    .map((role) => `${role.bindingId}@${role.recordVersion}`)
+    .join(",") || "none";
+  return `v1:${input.membershipRecordVersion}:${input.profileRecordVersion ?? 0}:${roles}`;
+}
+
 export type RoleAssignmentDecision =
   | { readonly allowed: true }
   | {

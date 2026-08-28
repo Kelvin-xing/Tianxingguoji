@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -18,6 +19,7 @@ const PAGE_TITLE_KEYS: Array<{ prefix: string; titleKey: string }> = [
   { prefix: '/tasks', titleKey: 'nav.tasks' },
   { prefix: '/documents', titleKey: 'nav.documents' },
   { prefix: '/admin/access', titleKey: 'nav.access' },
+  { prefix: '/profile', titleKey: 'layout.profile' },
 ]
 
 export function TopBar({
@@ -72,7 +74,7 @@ export function TopBar({
         </label>
         <a href="/notifications" className="icon-button relative" title="通知" aria-label="通知"><Icon name="activity" size={17} />{notificationCount !== null && notificationCount > 0 ? <span className="absolute -right-1 -top-1 min-w-4 h-4 px-1 rounded-full text-[10px] leading-4 text-center" style={{ background: '#dc2626', color: '#fff' }}>{notificationCount > 99 ? '99+' : notificationCount}</span> : null}</a>
         <button type="button" onClick={toggleLang} className="text-xs px-2.5 h-9 rounded-md" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--surface)' }}>{t('common.lang_toggle')}</button>
-        <div className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-xs font-semibold" title={effectiveAuth ? effectiveAuth.role : t('layout.checking_identity')} aria-label={effectiveAuth ? effectiveAuth.role : t('layout.checking_identity')} style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? initials(effectiveAuth.user_id) : '…'}</div>
+        <Link href="/profile" className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-xs font-semibold" title="个人资料" aria-label="个人资料" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? initials(effectiveAuth.user_id) : '…'}</Link>
       </div>
     </header>
   )

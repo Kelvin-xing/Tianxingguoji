@@ -23,6 +23,8 @@ export async function GET(request: Request): Promise<Response> {
           membership_status: user.membershipStatus,
           display_name: user.displayName,
           employment_type: user.employmentType,
+          profile_record_version: user.profileRecordVersion,
+          access_version: user.accessVersion,
           roles: user.roles.map((role) => ({
             role: role.role,
             status: role.status,

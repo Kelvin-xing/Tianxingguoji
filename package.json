@@ -18,6 +18,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:auth": "node --conditions=react-server --test tests/unit/auth/runtime.test.ts tests/unit/auth/mode.test.ts tests/contract/auth-me-route.test.ts",
+    "test:access-management": "node --conditions=react-server --test tests/unit/access/member-management.test.ts tests/contract/auth-users-route.test.ts tests/migration/member-role-management-boundary.test.ts",
     "test:p1-fe-01": "node --test tests/unit/api/client.test.ts tests/unit/layout/workspace-shell.test.ts",
     "test:p2-fe-02": "node --test tests/unit/crm/f2-workspace.test.ts",
     "test:p3-fe-03": "node --test tests/unit/tasks/p3-fe-03.test.ts",

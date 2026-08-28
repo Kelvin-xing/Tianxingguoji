@@ -244,11 +244,18 @@ async function establishVerifiedUserContext(
         AND role_binding.status = 'active'
       WHERE identity_user.id = $2
         AND identity_user.status = 'active'
-      ORDER BY role_binding.id
+      ORDER BY CASE role_binding.role
+        WHEN 'founder' THEN 1
+        WHEN 'admin' THEN 2
+        WHEN 'advisor' THEN 3
+        WHEN 'contractor' THEN 4
+        ELSE 5
+      END, role_binding.id
+      LIMIT 1
       FOR SHARE OF identity_user, membership, role_binding`,
     [organizationId, userId],
   );
-  if (eligibility.rows.length !== 1) return false;
+  if (eligibility.rows.length < 1) return false;
   await setActorContext(client, userId);
   return true;
 }

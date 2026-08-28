@@ -162,6 +162,8 @@ function principal(
     membershipId: `51000000-0000-4000-8000-000000000${membershipSuffix}`,
     roleBindingId: `51000000-0000-4000-8000-000000000${bindingSuffix}`,
     email: `${emailLocalPart}@env01.test.invalid`,
+    displayName: `ENV01 Synthetic ${emailLocalPart}`,
+    employmentType: role === "contractor" ? "PART_TIME" as const : "FULL_TIME" as const,
   });
 }
 

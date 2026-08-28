@@ -6,6 +6,23 @@ import test from "node:test";
 import { Client, Pool } from "pg";
 
 import {
+  MemberManagementError,
+  MemberManagementService,
+} from "../../modules/access/application/member-management.ts";
+import { PostgresqlMemberManagementRepository } from "../../modules/access/infrastructure/postgresql-member-management-repository.ts";
+import {
+  DatabaseTestLoginService,
+  deriveDatabaseTestVerifier,
+} from "../../modules/identity/application/database-test-login.ts";
+import { hashOpaqueSecret } from "../../modules/identity/application/opaque-secret.ts";
+import { PostgresqlDatabaseTestSessionRepository } from "../../modules/identity/infrastructure/postgresql-database-test-repository.ts";
+import { PostgresqlUserDirectoryRepository } from "../../modules/identity/infrastructure/postgresql-user-directory-repository.ts";
+import {
+  createTenantTransactionRunner,
+  type DatabasePool,
+} from "../../modules/shared/infrastructure/db.ts";
+
+import {
   ONE_ROLE_SOURCE_COUNT,
   verifyCommittedOneRoleBaseline,
   type OneRoleGeneratedFile,
@@ -81,6 +98,8 @@ test("P1-BE-02 PostgreSQL 17 gate: Identity + Access boundaries", {
     application = new Pool({ connectionString: applicationUrl, max: 4 });
     admin = new Pool({ connectionString: adminUrl, max: 2 });
     await seedFixture(admin);
+    await assertDatabaseTestMultiRoleSession(application, admin);
+    await assertMemberManagementCommands(application, admin);
     await assertIdentitySessionContract(application, admin);
     await assertAccessResolutionAndRevocation(application, admin);
     await assertRoleAndProfileConstraints(admin);
@@ -96,6 +115,155 @@ test("P1-BE-02 PostgreSQL 17 gate: Identity + Access boundaries", {
     }
   }
 });
+
+async function assertDatabaseTestMultiRoleSession(application: Pool, admin: Pool): Promise<void> {
+  const password = "p1-be-02-multi-role-password";
+  const salt = Buffer.alloc(32, 0x5a);
+  const verifier = await deriveDatabaseTestVerifier(Buffer.from(password), salt);
+  try {
+    await admin.query(
+      `INSERT INTO identity_database_test_credentials
+        (user_id,verifier_version,password_salt,password_verifier)
+       VALUES ($1,'scrypt-v1',$2,$3)`,
+      [IDS.multiUser, salt, verifier],
+    );
+  } finally {
+    verifier.fill(0);
+  }
+
+  const repository = new PostgresqlDatabaseTestSessionRepository(application, APP_ROLE);
+  const login = new DatabaseTestLoginService(repository);
+  const session = await login.createSession({
+    email: "p1-be-02-multi@example.invalid",
+    password,
+  });
+  assert.equal(session.actor.userId, IDS.multiUser);
+  assert.equal(session.actor.role, "founder");
+  const resolved = await repository.findActorBySessionSecretHash({
+    secretHash: hashOpaqueSecret(session.cookieSecret),
+    nowMs: Date.now(),
+    sensitiveAction: false,
+  });
+  assert.equal(resolved.userId, IDS.multiUser);
+  assert.equal(resolved.role, "founder");
+  assert.equal(resolved.roleBindingId, IDS.founderRole);
+  await repository.revokeSessionBySecretHash({
+    secretHash: hashOpaqueSecret(session.cookieSecret),
+    reason: "p1_be_02_multi_role_verified",
+  });
+}
+
+async function assertMemberManagementCommands(application: Pool, admin: Pool): Promise<void> {
+  const runner = createTenantTransactionRunner(application as unknown as DatabasePool, {
+    expectedLoginUser: APP_ROLE,
+  });
+  const directory = new PostgresqlUserDirectoryRepository(runner);
+  const service = new MemberManagementService({
+    repository: new PostgresqlMemberManagementRepository(runner),
+  });
+  const actor = Object.freeze({
+    userId: IDS.multiUser,
+    organizationId: IDS.organization,
+    membershipId: IDS.multiMembership,
+    roles: ["founder", "admin", "advisor"] as const,
+    workspaceCapabilities: ["access.manage"] as const,
+    authorizationVersion: "member-management-postgresql-v1",
+  });
+
+  let users = await directory.listUsers({
+    organizationId: IDS.organization,
+    actorUserId: IDS.multiUser,
+  });
+  const founderOnly = users.find((user) => user.userId === IDS.founderOnlyUser);
+  assert.ok(founderOnly);
+  const first = await service.updateMemberAccess({
+    actor,
+    targetUserId: IDS.founderOnlyUser,
+    command: {
+      displayName: "Founder And Admin",
+      employmentType: "FULL_TIME",
+      roles: ["founder", "admin"],
+      expectedAccessVersion: founderOnly.accessVersion,
+      requestId: "member-management-add-admin",
+      idempotencyKey: "member-management-add-admin",
+    },
+  });
+  assert.equal(first.replayed, false);
+  const replay = await service.updateMemberAccess({
+    actor,
+    targetUserId: IDS.founderOnlyUser,
+    command: {
+      displayName: "Founder And Admin",
+      employmentType: "FULL_TIME",
+      roles: ["founder", "admin"],
+      expectedAccessVersion: founderOnly.accessVersion,
+      requestId: "member-management-add-admin-replay",
+      idempotencyKey: "member-management-add-admin",
+    },
+  });
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.receiptId, first.receiptId);
+
+  const own = await service.updateOwnDisplayName({
+    actor,
+    command: {
+      displayName: "Founder Workspace User",
+      expectedProfileRecordVersion: 1,
+      requestId: "member-management-own-name",
+      idempotencyKey: "member-management-own-name",
+    },
+  });
+  assert.equal(own.userId, IDS.multiUser);
+
+  users = await directory.listUsers({
+    organizationId: IDS.organization,
+    actorUserId: IDS.multiUser,
+  });
+  const updatedFounderOnly = users.find((user) => user.userId === IDS.founderOnlyUser);
+  assert.ok(updatedFounderOnly);
+  assert.deepEqual(updatedFounderOnly.roles.map(({ role }) => role).sort(), ["admin", "founder"]);
+  assert.equal(updatedFounderOnly.displayName, "Founder And Admin");
+
+  await service.updateMemberAccess({
+    actor,
+    targetUserId: IDS.founderOnlyUser,
+    command: {
+      displayName: "Admin Only",
+      employmentType: "FULL_TIME",
+      roles: ["admin"],
+      expectedAccessVersion: updatedFounderOnly.accessVersion,
+      requestId: "member-management-revoke-founder",
+      idempotencyKey: "member-management-revoke-founder",
+    },
+  });
+  const multi = (await directory.listUsers({
+    organizationId: IDS.organization,
+    actorUserId: IDS.multiUser,
+  })).find((user) => user.userId === IDS.multiUser);
+  assert.ok(multi);
+  await assert.rejects(service.updateMemberAccess({
+    actor,
+    targetUserId: IDS.multiUser,
+    command: {
+      displayName: "No Founder",
+      employmentType: "FULL_TIME",
+      roles: ["admin", "advisor"],
+      expectedAccessVersion: multi.accessVersion,
+      requestId: "member-management-last-founder",
+      idempotencyKey: "member-management-last-founder",
+    },
+  }), (error: unknown) =>
+    error instanceof MemberManagementError && error.code === "LAST_FOUNDER_REQUIRED");
+
+  const evidence = await admin.query<{ audit_count: string; outbox_count: string }>(`
+    SELECT
+      (SELECT count(*) FROM audit_events WHERE event_type LIKE 'access.%member%'
+        OR event_type LIKE 'access.employee_profile.%') AS audit_count,
+      (SELECT count(*) FROM audit_outbox WHERE event_type LIKE 'access.%member%'
+        OR event_type LIKE 'access.employee_profile.%') AS outbox_count`);
+  assert.equal(evidence.rows[0]?.audit_count, "3");
+  assert.equal(evidence.rows[0]?.outbox_count, "3");
+}
 
 async function seedFixture(admin: Pool): Promise<void> {
   await admin.query(`
