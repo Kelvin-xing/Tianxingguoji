@@ -74,7 +74,7 @@ try {
   // grants were lost during the Production bootstrap. This is not a schema-wide
   // grant and is safe to replay after the one-time migration.
   await client.query("GRANT SELECT, INSERT ON TABLE public.cases_candidate_school_list_versions TO tianxing_app");
-  await client.query(`GRANT UPDATE (status,founder_decision,founder_decided_by_user_id,
+  await client.query(`GRANT UPDATE (status,submitted_at,founder_decision,founder_decided_by_user_id,
     founder_decided_at,founder_decision_reason,founder_decision_sha256,guardian_id,
     guardian_relationship_id,guardian_decision,guardian_decided_at,
     guardian_confirmation_channel,guardian_recorded_by_user_id,guardian_recorded_at,
