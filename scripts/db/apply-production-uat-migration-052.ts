@@ -69,6 +69,20 @@ try {
     await client.query(`GRANT EXECUTE ON FUNCTION ${V2_FUNCTION} TO tianxing_app`);
   }
 
+  // Reassert the narrow 040 command privileges for databases whose historical
+  // grants were lost during the Production bootstrap. This is not a schema-wide
+  // grant and is safe to replay after the one-time migration.
+  await client.query("GRANT SELECT, INSERT ON TABLE public.cases_candidate_school_list_versions TO tianxing_app");
+  await client.query(`GRANT UPDATE (status,founder_decision,founder_decided_by_user_id,
+    founder_decided_at,founder_decision_reason,founder_decision_sha256,guardian_id,
+    guardian_relationship_id,guardian_decision,guardian_decided_at,
+    guardian_confirmation_channel,guardian_recorded_by_user_id,guardian_recorded_at,
+    guardian_bound_founder_decision_sha256,record_version,updated_at)
+    ON TABLE public.cases_candidate_school_list_versions TO tianxing_app`);
+  await client.query("GRANT SELECT, INSERT ON TABLE public.cases_candidate_school_list_items TO tianxing_app");
+  await client.query("GRANT UPDATE (school_target_id) ON TABLE public.cases_candidate_school_list_items TO tianxing_app");
+  await client.query("GRANT INSERT ON TABLE public.cases_school_targets TO tianxing_app");
+
   const postflight = await readPreflight();
   if (
     !postflight.v2_function ||
