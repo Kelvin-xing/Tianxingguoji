@@ -90,6 +90,10 @@ export function Sidebar({
               <Icon name="log-out" size={13} />
               <span>{t('common.sign_out')}</span>
             </a>
+            <Link href="/profile" className="flex items-center gap-2 mt-1 px-2 py-1.5 text-[11px] rounded" style={{ color: 'var(--sidebar-text)' }} onClick={mobileOpen ? (onCloseMobile ?? onClose) : undefined}>
+              <Icon name="user" size={13} />
+              <span>个人资料</span>
+            </Link>
             <div className="flex items-center gap-1.5 mt-3 text-[10px]" style={{ color: '#86efac' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
               <span className="sidebar-session-label">{t('layout.session_ready')}</span>

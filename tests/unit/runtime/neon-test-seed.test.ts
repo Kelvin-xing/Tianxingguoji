@@ -77,6 +77,7 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     organizations: 1,
     users: 5,
     memberships: 5,
+    employee_profiles: 5,
     role_bindings: 5,
     students: 2,
     guardians: 2,
@@ -93,6 +94,7 @@ test("defines the exact independent ENV01 synthetic fixture counts", () => {
     access_organizations: 1,
     identity_users: 5,
     access_organization_memberships: 5,
+    access_employee_profiles: 5,
     access_role_bindings: 5,
     crm_students: 2,
     crm_guardians: 2,
@@ -135,6 +137,11 @@ test("uses only visibly synthetic invalid-domain data and fixed unique UUIDs", (
   for (const identifier of identifiers) assert.match(identifier, /^[0-9a-f-]{36}$/);
   for (const principal of NEON_TEST_PRINCIPALS) {
     assert.match(principal.email, /@env01\.test\.invalid$/);
+    assert.match(principal.displayName, /ENV01 Synthetic/);
+    assert.equal(
+      principal.employmentType,
+      principal.role === "contractor" ? "PART_TIME" : "FULL_TIME",
+    );
   }
   for (const student of NEON_TEST_STUDENTS) {
     assert.match(student.displayName, /ENV01 Synthetic/);

@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "0b05ac0679ef62b76dc60d7fcd929fbc7d6ca87a06fee90547f5e74a19dad1ca",
+  "source_history_manifest_sha256": "e252f30df91ec303e7472c5073dfe73f2085899593ebdf6981592ff4ce2bc97b",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -373,6 +373,20 @@
       "generated_file": "051_202608280010_052_complete_application_task_delivery.sql",
       "generated_sha256": "50a3d17b5b0246953d6e369407eb45da7140998455e6c6169102f504c4d436c3",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202608280020_053_harden_member_role_management.sql",
+      "source_sha256": "3397db3c799b6a9027320f113d75b95d7723a17c747970c9e14d8c6ea703afd4",
+      "generated_file": "052_202608280020_053_harden_member_role_management.sql",
+      "generated_sha256": "3397db3c799b6a9027320f113d75b95d7723a17c747970c9e14d8c6ea703afd4",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202608290010_054_support_multi_role_identity_sessions.sql",
+      "source_sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78",
+      "generated_file": "053_202608290010_054_support_multi_role_identity_sessions.sql",
+      "generated_sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -629,6 +643,16 @@
     {
       "name": "051_202608280010_052_complete_application_task_delivery.sql",
       "sha256": "50a3d17b5b0246953d6e369407eb45da7140998455e6c6169102f504c4d436c3",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "052_202608280020_053_harden_member_role_management.sql",
+      "sha256": "3397db3c799b6a9027320f113d75b95d7723a17c747970c9e14d8c6ea703afd4",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "053_202608290010_054_support_multi_role_identity_sessions.sql",
+      "sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78",
       "transform": "copy-v1"
     },
     {

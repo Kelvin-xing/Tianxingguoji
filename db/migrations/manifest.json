@@ -51,6 +51,8 @@
     { "name": "202608260120_049_external_portal_release1_boundary.sql", "sha256": "ceea4e3f565aee4499f3c184694fbd7c1c0219f6ecefd365312892b10bb4f058" },
     { "name": "202608260130_050_allow_awaiting_reassignment_task_rules.sql", "sha256": "4859793a76a52f52cbce75890a1408970dc5572ca9568c088018030411b0c6bc" },
     { "name": "202608260140_051_allow_task_transition_actor_kind_key.sql", "sha256": "07e7f711f2e41df669984840d135a0e499cad8143eac9c03a46c3da737b31108" },
-    { "name": "202608280010_052_complete_application_task_delivery.sql", "sha256": "50a3d17b5b0246953d6e369407eb45da7140998455e6c6169102f504c4d436c3" }
+    { "name": "202608280010_052_complete_application_task_delivery.sql", "sha256": "50a3d17b5b0246953d6e369407eb45da7140998455e6c6169102f504c4d436c3" },
+    { "name": "202608280020_053_harden_member_role_management.sql", "sha256": "3397db3c799b6a9027320f113d75b95d7723a17c747970c9e14d8c6ea703afd4" },
+    { "name": "202608290010_054_support_multi_role_identity_sessions.sql", "sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78" }
   ]
 }

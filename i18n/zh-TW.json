@@ -107,6 +107,7 @@
     "sign_out": "登出"
   },
   "layout": {
+    "profile": "個人資料",
     "erp_title": "天星顧問 ERP",
     "workspace_navigation": "工作台導航",
     "workspace_section": "Workspace",
