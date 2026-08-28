@@ -180,6 +180,13 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
         }
         throw new CandidateListError("CANDIDATE_LIST_IDEMPOTENCY_IN_PROGRESS");
       }
+      if (!(error instanceof CandidateListError)) {
+        process.stderr.write(
+          `event=candidate_list_postgres_failure operation=${command.operation}` +
+          ` postgres_code=${safePostgresCode(error)}` +
+          ` postgres_constraint=${safePostgresConstraint(error)}\n`,
+        );
+      }
       throw error;
     }
   }
@@ -236,4 +243,22 @@ function hashAcknowledgement(value: CandidateListAcknowledgement): string {
     }), ...(value.founderDecisionSha256 === undefined ? {} : {
       founder_decision_sha256: value.founderDecisionSha256,
     }) });
+}
+
+function safePostgresCode(error: unknown): string {
+  const code = valueFromError(error, "code");
+  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? code : "OTHER";
+}
+
+function safePostgresConstraint(error: unknown): string {
+  const constraint = valueFromError(error, "constraint");
+  return typeof constraint === "string" && /^[a-z0-9_]{1,96}$/.test(constraint)
+    ? constraint
+    : "NONE";
+}
+
+function valueFromError(error: unknown, field: "code" | "constraint"): unknown {
+  return typeof error === "object" && error !== null
+    ? (error as Record<string, unknown>)[field]
+    : undefined;
 }
