@@ -21,6 +21,7 @@ if (!connectionString || !expectedDatabase) {
 const client = new Client({
   connectionString,
   application_name: "tianxing-production-uat-migration-052",
+  ssl: { rejectUnauthorized: true },
 });
 
 try {
