@@ -32,6 +32,15 @@ test("repository stores immutable Audit receipt as idempotency result reference"
   assert.doesNotMatch(source,/resultReference: command\.resultReference/);
 });
 
+test("candidate-list diagnostics classify permission failures without logging raw messages", async () => {
+  const source = await readFile(
+    "modules/cases/infrastructure/postgresql-candidate-list-repository.ts","utf8");
+  assert.match(source,/postgres_permission=\$\{safePostgresPermission\(error\)\}/);
+  assert.match(source,/DENIED_\$\{denied\[1\]!\.toUpperCase\(\)\}/);
+  assert.match(source,/RLS_\$\{rowSecurity\[1\]!\.toUpperCase\(\)\}/);
+  assert.doesNotMatch(source,/postgres_message=|postgres_detail=/);
+});
+
 test("routes expose only list creation, Founder review and recorded Guardian decision", async () => {
   const source = (await Promise.all(routes.filter((path) => !path.includes("guardian-decision"))
     .map((path) => readFile(path,"utf8")))).join("\n");
