@@ -24,6 +24,7 @@ test("reads only the v1 auth endpoint without caching or role-derived normalizat
   const first = await getWorkspaceAccessSnapshot(controller.signal);
   const second = await getWorkspaceAccessSnapshot(controller.signal);
   assert.equal(requestCount, 2);
+  assert.equal(first.nickname, null);
   assert.equal(first.role, "contractor");
   assert.deepEqual(first.capabilities, ["cases.read"]);
   assert.deepEqual(second, first);
@@ -80,6 +81,7 @@ function snapshot(overrides: Readonly<Record<string, unknown>> = {}) {
   return {
     user_id: USER_ID,
     organization_id: ORGANIZATION_ID,
+    nickname: null,
     role: "advisor",
     policy_version: "release1-bootstrap-v1",
     capabilities: ["today.read", "cases.read"],

@@ -16,6 +16,7 @@ const POLICY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const SNAPSHOT_KEYS = Object.freeze([
   "user_id",
   "organization_id",
+  "nickname",
   "role",
   "policy_version",
   "capabilities",
@@ -24,6 +25,7 @@ const SNAPSHOT_KEYS = Object.freeze([
 export interface WorkspaceAccessSnapshot {
   readonly user_id: string;
   readonly organization_id: string;
+  readonly nickname: string | null;
   readonly role: OrganizationRole;
   readonly policy_version: string;
   readonly capabilities: readonly WorkspaceCapability[];
@@ -42,6 +44,7 @@ function decodeWorkspaceAccessSnapshot(value: unknown): WorkspaceAccessSnapshot 
 
   const userId = expectString(record.user_id);
   const organizationId = expectString(record.organization_id);
+  const nickname = record.nickname === null ? null : expectString(record.nickname);
   const role = expectString(record.role);
   const policyVersion = expectString(record.policy_version);
   if (!UUID.test(userId) || !UUID.test(organizationId)) {
@@ -67,6 +70,7 @@ function decodeWorkspaceAccessSnapshot(value: unknown): WorkspaceAccessSnapshot 
   return Object.freeze({
     user_id: userId,
     organization_id: organizationId,
+    nickname,
     role,
     policy_version: policyVersion,
     capabilities: Object.freeze([...capabilities]),
