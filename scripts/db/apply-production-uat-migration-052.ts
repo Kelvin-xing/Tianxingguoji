@@ -34,6 +34,7 @@ try {
   await client.query("SET LOCAL lock_timeout = '10s'");
   await client.query("SET LOCAL statement_timeout = '60s'");
   await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_LOCK_ID]);
+  await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
 
   const preflight = await readPreflight();
   if (
