@@ -54,29 +54,54 @@ export class ApplicationTaskRequestConsumer {
         organizationId:input.organizationId,eventType:"cases.application_task_requested",
         eventVersion:2,aggregateId:input.targetId,auditEventId:input.sourceEventId,
       })).rows[0];
-      if (!source || source.status === "dead_letter") return false;
+      if (!source) {
+        logDeliveryFailure("source_missing");
+        return false;
+      }
+      if (source.status === "dead_letter") {
+        logDeliveryFailure("source_dead_letter");
+        return false;
+      }
       const existing = await readTaskBySource(transaction,input.organizationId,input.sourceEventId);
-      if (source.status === "delivered") return existing !== null;
-      if (source.status !== "pending") return false;
+      if (source.status === "delivered") {
+        if (existing === null) logDeliveryFailure("delivered_without_task");
+        return existing !== null;
+      }
+      if (source.status !== "pending") {
+        logDeliveryFailure("source_not_pending");
+        return false;
+      }
       const facts = await this.facts.readRequestFacts(transaction,{
         organizationId:input.organizationId,targetId:input.targetId,
         sourceEventId:input.sourceEventId,
       });
       if (!facts || facts.caseId !== input.caseId || facts.applicationDeadline === null ||
-          !Number.isSafeInteger(facts.applicationRound) || facts.applicationRound < 1) return false;
+          !Number.isSafeInteger(facts.applicationRound) || facts.applicationRound < 1) {
+        logDeliveryFailure("facts_invalid");
+        return false;
+      }
       if (existing) {
         if (existing.target_id !== facts.targetId || existing.due_at.getTime() !==
-            new Date(facts.applicationDeadline).getTime()) return false;
+            new Date(facts.applicationDeadline).getTime()) {
+          logDeliveryFailure("existing_task_mismatch");
+          return false;
+        }
       }
       const claim = await claimAuditOutboxSourceTransaction(transaction,{
         id:source.id,organizationId:input.organizationId,
       });
-      if ((claim.rowCount ?? claim.rows.length) !== 1) return false;
+      if ((claim.rowCount ?? claim.rows.length) !== 1) {
+        logDeliveryFailure("claim_lost");
+        return false;
+      }
       if (!existing) await this.insertTask(transaction,facts,source.request_id);
       const delivered = await completeAuditOutboxSourceTransaction(transaction,{
         id:source.id,organizationId:input.organizationId,
       });
-      if ((delivered.rowCount ?? delivered.rows.length) !== 1) return false;
+      if ((delivered.rowCount ?? delivered.rows.length) !== 1) {
+        logDeliveryFailure("delivery_lost");
+        return false;
+      }
       this.hooks.failBeforeCommit?.();
       return true;
     }).catch((error) => {
@@ -161,6 +186,14 @@ function safePostgresConstraint(error: unknown): string {
   const constraint = valueFromError(error, "constraint");
   return typeof constraint === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(constraint)
     ? constraint : "NONE";
+}
+
+function logDeliveryFailure(reason: "source_missing" | "source_dead_letter" |
+  "delivered_without_task" | "source_not_pending" | "facts_invalid" |
+  "existing_task_mismatch" | "claim_lost" | "delivery_lost"): void {
+  process.stderr.write(
+    `event=application_task_consumer_pending operation=tasks.application_task_delivery reason=${reason}\n`,
+  );
 }
 
 function valueFromError(error: unknown, key: "code" | "constraint"): unknown {
