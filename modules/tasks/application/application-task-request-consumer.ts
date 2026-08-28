@@ -79,7 +79,15 @@ export class ApplicationTaskRequestConsumer {
       if ((delivered.rowCount ?? delivered.rows.length) !== 1) return false;
       this.hooks.failBeforeCommit?.();
       return true;
-    }).catch(() => false);
+    }).catch((error) => {
+      // Keep asynchronous delivery failures observable without logging SQL or business payloads.
+      process.stderr.write(
+        `event=application_task_consumer_failure operation=tasks.application_task_delivery` +
+        ` postgres_code=${safePostgresCode(error)}` +
+        ` postgres_constraint=${safePostgresConstraint(error)}\n`,
+      );
+      return false;
+    });
   }
 
   private async insertTask(
@@ -143,6 +151,23 @@ async function organizationId(transaction:TenantTransaction):Promise<string>{
 function systemContext(organizationId:string,requestId:string){return {organizationId,
   actorKind:"system" as const,actorOpaqueId:"application-task-consumer",
   requestId};}
+
+function safePostgresCode(error: unknown): string {
+  const code = valueFromError(error, "code");
+  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? code : "OTHER";
+}
+
+function safePostgresConstraint(error: unknown): string {
+  const constraint = valueFromError(error, "constraint");
+  return typeof constraint === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(constraint)
+    ? constraint : "NONE";
+}
+
+function valueFromError(error: unknown, key: "code" | "constraint"): unknown {
+  if (!error || typeof error !== "object") return undefined;
+  return (error as Record<string, unknown>)[key];
+}
+
 function adapt(transaction:TenantTransaction){return {query:async<Row extends Record<string,unknown>>(
   text:string,values?:readonly unknown[])=>{const result=await transaction.query<Row>({text,values});
   return{rows:result.rows,rowCount:result.rowCount??result.rows.length};}};}
