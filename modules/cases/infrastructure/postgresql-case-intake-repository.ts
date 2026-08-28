@@ -101,6 +101,9 @@ export class PostgresqlCaseIntakeRepository implements CaseIntakeRepository {
       return receipt;
     }).catch((cause) => {
       if (cause instanceof CaseIntakeError) throw cause;
+      if (isActiveCaseDuplicateViolation(cause)) {
+        throw new CaseIntakeError("CASE_INTAKE_CONFLICT");
+      }
       if (cause instanceof IdempotencyExecutionError) {
         if (cause.code === "IDEMPOTENCY_KEY_REUSED") {
           throw new CaseIntakeError("CASE_INTAKE_IDEMPOTENCY_CONFLICT");
@@ -301,4 +304,13 @@ function parseReference(value: string): Reference {
   const reference = { caseId: match[1]!.toLowerCase(), recordVersion: Number(match[2]) };
   if (encodeReference(reference) !== value) throw new CaseIntakeError("CASE_INTAKE_UNAVAILABLE");
   return reference;
+}
+
+function isActiveCaseDuplicateViolation(
+  error: unknown,
+): error is { code: "23505"; constraint: "cases_service_cases_one_active_student_case_idx" } {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { readonly code?: unknown; readonly constraint?: unknown };
+  return candidate.code === "23505" &&
+    candidate.constraint === "cases_service_cases_one_active_student_case_idx";
 }

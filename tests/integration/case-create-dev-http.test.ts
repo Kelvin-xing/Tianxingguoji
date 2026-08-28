@@ -880,6 +880,14 @@ async function assertP2CaseIntakeFlow(input: {
   );
   assertApiError(conflict, 409, "CONFLICT");
   assert.deepEqual(await readCaseCounts(input.target), after);
+  const activeDuplicate = await createCase(
+    input.baseUrl,
+    advisorCookie,
+    "p2-case-intake-active-duplicate",
+    body,
+  );
+  assertApiError(activeDuplicate, 409, "CONFLICT");
+  assert.deepEqual(await readCaseCounts(input.target), after);
 
   const detail = await getJson(input.baseUrl, `/api/v1/cases/${caseId}`, advisorCookie);
   assert.equal(detail.response.status, 200, JSON.stringify(detail.body));
@@ -2284,7 +2292,10 @@ async function login(baseUrl: string, email: string, password: string): Promise<
     redirect: "manual",
   });
   assert.equal(response.status, 303);
-  assert.equal(new URL(response.headers.get("location")!).pathname, "/today");
+  assert.equal(
+    new URL(response.headers.get("location")!).pathname,
+    email === CONTRACTOR.email ? "/tasks" : "/today",
+  );
   const setCookie = response.headers.get("set-cookie");
   if (!setCookie) throw new HarnessError("login_cookie_missing");
   if (!/; HttpOnly/i.test(setCookie)) throw new HarnessError("login_cookie_http_only");
