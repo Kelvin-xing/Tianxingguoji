@@ -7,6 +7,7 @@ import {
 export interface WorkspaceAuthDto {
   readonly user_id: string;
   readonly organization_id: string;
+  readonly nickname: string | null;
   readonly role: OrganizationRole;
   readonly capabilities: readonly WorkspaceCapability[];
 }
@@ -71,8 +72,13 @@ export function isWorkspaceCapability(value: unknown): value is WorkspaceCapabil
 export function decodeWorkspaceAuth(value: unknown): WorkspaceAuthDto {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("Invalid workspace identity response.");
   const record = value as Record<string, unknown>;
-  if (typeof record.user_id !== "string" || typeof record.organization_id !== "string" || !isOrganizationRole(record.role) || !Array.isArray(record.capabilities) || !record.capabilities.every(isWorkspaceCapability)) throw new TypeError("Invalid workspace identity response.");
-  return { user_id: record.user_id, organization_id: record.organization_id, role: record.role, capabilities: Object.freeze([...record.capabilities]) };
+  if (typeof record.user_id !== "string" || typeof record.organization_id !== "string" || (record.nickname !== null && typeof record.nickname !== "string") || !isOrganizationRole(record.role) || !Array.isArray(record.capabilities) || !record.capabilities.every(isWorkspaceCapability)) throw new TypeError("Invalid workspace identity response.");
+  return { user_id: record.user_id, organization_id: record.organization_id, nickname: record.nickname, role: record.role, capabilities: Object.freeze([...record.capabilities]) };
+}
+
+export function nicknameInitial(nickname: string | null): string {
+  const normalized = nickname?.trim();
+  return normalized ? (Array.from(normalized)[0] ?? "?") : "?";
 }
 
 export function roleLabel(role: OrganizationRole): string {

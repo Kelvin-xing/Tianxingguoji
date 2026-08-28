@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { Icon } from '@/components/workspace/Icon'
 import { requestApi } from '@/lib/api/client'
 import { unreadCount } from '@/components/notifications/f4-client'
-import { decodeWorkspaceAuth, type WorkspaceAuthDto } from '@/components/layout/workspace-navigation'
+import { decodeWorkspaceAuth, nicknameInitial, type WorkspaceAuthDto } from '@/components/layout/workspace-navigation'
 import { useLangToggle } from '@/lib/i18n-provider'
 
 const PAGE_TITLE_KEYS: Array<{ prefix: string; titleKey: string }> = [
@@ -74,13 +74,8 @@ export function TopBar({
         </label>
         <a href="/notifications" className="icon-button relative" title="通知" aria-label="通知"><Icon name="activity" size={17} />{notificationCount !== null && notificationCount > 0 ? <span className="absolute -right-1 -top-1 min-w-4 h-4 px-1 rounded-full text-[10px] leading-4 text-center" style={{ background: '#dc2626', color: '#fff' }}>{notificationCount > 99 ? '99+' : notificationCount}</span> : null}</a>
         <button type="button" onClick={toggleLang} className="text-xs px-2.5 h-9 rounded-md" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)', background: 'var(--surface)' }}>{t('common.lang_toggle')}</button>
-        <Link href="/profile" className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-xs font-semibold" title="个人资料" aria-label="个人资料" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? initials(effectiveAuth.user_id) : '…'}</Link>
+        <Link href="/profile" className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full text-xs font-semibold" title="个人资料" aria-label="个人资料" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? nicknameInitial(effectiveAuth.nickname) : '…'}</Link>
       </div>
     </header>
   )
-}
-
-function initials(value: string): string {
-  const token = value.split('-').find(Boolean) ?? value
-  return token.slice(0, 2).toUpperCase()
 }

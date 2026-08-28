@@ -29,7 +29,7 @@ export default function ProfilePage() {
   }, [])
 
   async function save() {
-    if (!profile || displayName.trim().length < 1) { setMessage('请输入显示名称。'); return }
+    if (!profile || displayName.trim().length < 1) { setMessage('请输入昵称。'); return }
     setState('saving')
     setMessage(null)
     try {
@@ -47,17 +47,17 @@ export default function ProfilePage() {
   }
 
   return <div className="max-w-2xl mx-auto space-y-6">
-    <section><div className="eyebrow">Account · Profile</div><h2 className="page-title">个人资料</h2><p className="page-subtitle">修改工作台显示名称。登录邮箱、员工类型和角色不会改变。</p></section>
+    <section><div className="eyebrow">Account · Profile</div><h2 className="page-title">个人资料</h2><p className="page-subtitle">修改工作台昵称。登录邮箱、员工类型和角色不会改变。</p></section>
     <section className="workspace-section">
       {state === 'loading' && <LoadingState title="正在载入个人资料" />}
       {state === 'unavailable' && <UnavailableState title="个人资料暂时不可用" detail="请稍后重试。" onRetry={load} />}
       {state === 'error' && <ErrorState title="个人资料读取失败" detail="请重新载入后再试。" onRetry={load} />}
       {profile && ['ready', 'saving', 'saved'].includes(state) && <div className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2"><Info label="登录邮箱" value={profile.email} /><Info label="员工类型" value={employmentLabel(profile.employment_type)} /></div>
-        <label className="block"><span className="text-sm font-medium">显示名称</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null); if (state === 'saved') setState('ready') }} /></label>
+        <label className="block"><span className="text-sm font-medium">昵称</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null); if (state === 'saved') setState('ready') }} /></label>
         {message && <div className="form-error" role="alert"><Icon name="shield" size={15} /><span>{message}</span></div>}
-        {state === 'saved' && <div className="flex items-center gap-2 text-sm" style={{ color: '#15803d' }} role="status"><Icon name="check-circle" size={16} />显示名称已保存。</div>}
-        <div className="flex justify-end"><button type="button" className="primary-button" disabled={state === 'saving' || displayName.trim().length < 1} onClick={() => void save()}><Icon name="check" size={16} />{state === 'saving' ? '保存中' : '保存显示名称'}</button></div>
+        {state === 'saved' && <div className="flex items-center gap-2 text-sm" style={{ color: '#15803d' }} role="status"><Icon name="check-circle" size={16} />昵称已保存。</div>}
+        <div className="flex justify-end"><button type="button" className="primary-button" disabled={state === 'saving' || displayName.trim().length < 1} onClick={() => void save()}><Icon name="check" size={16} />{state === 'saving' ? '保存中' : '保存昵称'}</button></div>
       </div>}
     </section>
   </div>
