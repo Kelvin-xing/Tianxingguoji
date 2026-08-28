@@ -194,6 +194,7 @@ export const MODULE_REGISTRY = Object.freeze({
       "modules/schools/public.ts",
       "modules/schools/server.ts",
       "modules/schools/client.ts",
+      "modules/schools/crawler-client.ts",
       "modules/schools/crawler-server.ts",
     ],
     historicalEntrypoints: [],

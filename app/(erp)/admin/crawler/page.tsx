@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { crawlerApi } from '@/modules/schools/client'
+import { crawlerApi } from '@/modules/schools/crawler-client'
 import type { CrawlerConfig, CrawlerReviewDecision, CrawlerReviewRecord, CrawlerSummary, CrawlerTicket } from '@/types'
 
 const LEVEL_OPTIONS = ['Primary', 'Secondary', 'Post Secondary']
