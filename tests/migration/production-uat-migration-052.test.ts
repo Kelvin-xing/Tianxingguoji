@@ -23,6 +23,10 @@ test("Production UAT migration is locked, transactional and postflight verified"
   assert.match(script, /postflight\.v2_function/);
   assert.match(script, /postflight\.deadline_column/);
   assert.match(script, /postflight\.v2_trigger/);
+  assert.match(script, /installed\.v2_owner !== installed\.v1_owner/);
+  assert.match(script, /ALTER FUNCTION \$\{V2_FUNCTION\} OWNER TO/);
+  assert.match(script, /postflight\.v2_executable/);
+  assert.match(script, /postflight\.v2_owner !== postflight\.v1_owner/);
 });
 
 test("Production UAT migration never logs connection material", () => {
