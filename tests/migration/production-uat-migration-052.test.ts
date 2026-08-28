@@ -29,7 +29,7 @@ test("Production UAT migration is locked, transactional and postflight verified"
   assert.match(script, /postflight\.v2_executable/);
   assert.match(script, /postflight\.v2_owner !== postflight\.v1_owner/);
   assert.match(script, /GRANT SELECT, INSERT ON TABLE public\.cases_candidate_school_list_versions/);
-  assert.match(script, /GRANT UPDATE \(status,founder_decision/);
+  assert.match(script, /GRANT UPDATE \(status,submitted_at,founder_decision/);
   assert.match(script, /GRANT SELECT, INSERT ON TABLE public\.cases_candidate_school_list_items/);
   assert.match(script, /GRANT INSERT ON TABLE public\.cases_school_targets/);
 });
