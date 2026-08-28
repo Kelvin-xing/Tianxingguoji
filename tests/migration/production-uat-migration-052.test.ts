@@ -15,6 +15,7 @@ test("Production UAT migration is production-only and pins the exact target", ()
 });
 
 test("Production UAT migration is locked, transactional and postflight verified", () => {
+  assert.match(script, /ssl: \{ rejectUnauthorized: true \}/);
   assert.match(script, /pg_advisory_xact_lock/);
   assert.match(script, /await client\.query\("BEGIN"\)/);
   assert.match(script, /await client\.query\("COMMIT"\)/);
