@@ -102,8 +102,10 @@ export async function appendAtomicMutationEffects(
   await transaction.query(
     `INSERT INTO audit_outbox
       (id, audit_event_id, organization_id, aggregate_type, aggregate_id, event_type,
-       event_version, idempotency_key, request_id, payload, status, available_at, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'pending',$11,$12)`,
+       event_version, idempotency_key, request_id, payload, status, available_at, created_at,
+       updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,'pending',$11,$12,
+       GREATEST(transaction_timestamp(), $12::timestamptz))`,
     [effects.outbox.id, effects.outbox.auditEventId, effects.outbox.organizationId,
       effects.outbox.aggregateType, effects.outbox.aggregateId, effects.outbox.eventType,
       effects.outbox.eventVersion, effects.outbox.idempotencyKey, effects.outbox.requestId,
@@ -289,8 +291,10 @@ async function insertOutbox(transaction: TenantTransaction, message: OutboxMessa
   await transaction.query({
     text: `INSERT INTO audit_outbox
       (id, audit_event_id, organization_id, aggregate_type, aggregate_id, event_type,
-       event_version, idempotency_key, request_id, payload, status, attempt_count, available_at, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14)`,
+       event_version, idempotency_key, request_id, payload, status, attempt_count, available_at,
+       created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,
+        GREATEST(transaction_timestamp(), $14::timestamptz))`,
     values: [message.id, message.auditEventId, message.organizationId, message.aggregateType,
       message.aggregateId, message.eventType, message.eventVersion, message.idempotencyKey,
       message.requestId, JSON.stringify(message.payload), message.status, message.attemptCount,
