@@ -181,11 +181,16 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
         throw new CandidateListError("CANDIDATE_LIST_IDEMPOTENCY_IN_PROGRESS");
       }
       if (!(error instanceof CandidateListError)) {
+        const runtime = await readCandidateRuntimeFingerprint(this.runner, input).catch(() => null);
         process.stderr.write(
           `event=candidate_list_postgres_failure operation=${command.operation}` +
           ` postgres_code=${safePostgresCode(error)}` +
           ` postgres_constraint=${safePostgresConstraint(error)}` +
-          ` postgres_permission=${safePostgresPermission(error)}\n`,
+          ` postgres_permission=${safePostgresPermission(error)}` +
+          ` runtime_db_expected=${runtime?.databaseExpected ?? "unknown"}` +
+          ` runtime_user_expected=${runtime?.userExpected ?? "unknown"}` +
+          ` runtime_v2_function=${runtime?.v2Function ?? "unknown"}` +
+          ` runtime_version_insert=${runtime?.versionInsert ?? "unknown"}\n`,
         );
       }
       throw error;
@@ -215,6 +220,37 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
         }) });
     });
   }
+}
+
+async function readCandidateRuntimeFingerprint(
+  runner: TenantTransactionRunner,
+  input: RepositoryInput,
+): Promise<Readonly<{
+  databaseExpected: boolean;
+  userExpected: boolean;
+  v2Function: boolean;
+  versionInsert: boolean;
+}>> {
+  return runner.run({ organizationId: input.organizationId, actorKind: "user",
+    actorOpaqueId: input.actorUserId, actorUserId: input.actorUserId,
+    requestId: input.effects.audit.requestId }, async (transaction) => {
+    const result = await transaction.query<{
+      database_expected: boolean;
+      user_expected: boolean;
+      v2_function: boolean;
+      version_insert: boolean;
+    }>({
+      text: `SELECT current_database() = 'txgj_env01_test' AS database_expected,
+                    current_user = 'tianxing_app' AS user_expected,
+                    to_regprocedure('public.cases_create_candidate_list_version_v2(uuid,uuid,uuid,bigint,text,text,jsonb,timestamptz)') IS NOT NULL AS v2_function,
+                    has_table_privilege(current_user,'public.cases_candidate_school_list_versions','INSERT') AS version_insert`,
+    });
+    const row = result.rows[0];
+    if (!row) throw new Error("Runtime fingerprint unavailable.");
+    return Object.freeze({ databaseExpected: row.database_expected,
+      userExpected: row.user_expected, v2Function: row.v2_function,
+      versionInsert: row.version_insert });
+  });
 }
 
 function adaptTransaction(transaction: TenantTransaction) {

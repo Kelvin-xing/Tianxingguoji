@@ -38,6 +38,10 @@ test("candidate-list diagnostics classify permission failures without logging ra
   assert.match(source,/postgres_permission=\$\{safePostgresPermission\(error\)\}/);
   assert.match(source,/DENIED_\$\{denied\[1\]!\.toUpperCase\(\)\}/);
   assert.match(source,/RLS_\$\{rowSecurity\[1\]!\.toUpperCase\(\)\}/);
+  assert.match(source,/runtime_db_expected=/);
+  assert.match(source,/runtime_user_expected=/);
+  assert.match(source,/runtime_v2_function=/);
+  assert.match(source,/runtime_version_insert=/);
   assert.doesNotMatch(source,/postgres_message=|postgres_detail=/);
 });
 
