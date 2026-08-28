@@ -184,7 +184,8 @@ export class PostgresqlCandidateListRepository implements CandidateListRepositor
         process.stderr.write(
           `event=candidate_list_postgres_failure operation=${command.operation}` +
           ` postgres_code=${safePostgresCode(error)}` +
-          ` postgres_constraint=${safePostgresConstraint(error)}\n`,
+          ` postgres_constraint=${safePostgresConstraint(error)}` +
+          ` postgres_permission=${safePostgresPermission(error)}\n`,
         );
       }
       throw error;
@@ -257,7 +258,18 @@ function safePostgresConstraint(error: unknown): string {
     : "NONE";
 }
 
-function valueFromError(error: unknown, field: "code" | "constraint"): unknown {
+function safePostgresPermission(error: unknown): string {
+  const message = valueFromError(error, "message");
+  if (typeof message !== "string") return "NONE";
+  const denied = /^permission denied for (table|sequence|schema|function) ([a-z0-9_]+)$/i
+    .exec(message);
+  if (denied) return `DENIED_${denied[1]!.toUpperCase()}_${denied[2]!.toUpperCase()}`;
+  const rowSecurity = /^(?:new row violates|query would be affected by) row-level security policy for table "([a-z0-9_]+)"$/i
+    .exec(message);
+  return rowSecurity ? `RLS_${rowSecurity[1]!.toUpperCase()}` : "OTHER";
+}
+
+function valueFromError(error: unknown, field: "code" | "constraint" | "message"): unknown {
   return typeof error === "object" && error !== null
     ? (error as Record<string, unknown>)[field]
     : undefined;
