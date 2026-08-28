@@ -10,6 +10,7 @@
   },
   "scripts": {
     "preinstall": "node scripts/check-toolchain.ts",
+    "prebuild": "node scripts/db/apply-production-uat-migration-052.ts",
     "check:toolchain": "node scripts/check-toolchain.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "dev": "next dev",
