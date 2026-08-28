@@ -5,6 +5,10 @@ import { Client } from "pg";
 const MIGRATION_NAME = "202608280010_052_complete_application_task_delivery.sql";
 const EXPECTED_APPLICATION_USER = "tianxing_app";
 const MIGRATION_LOCK_ID = 520_828_001;
+const V1_FUNCTION =
+  "public.cases_create_candidate_list_version(uuid,uuid,uuid,bigint,text,text,jsonb,timestamptz)";
+const V2_FUNCTION =
+  "public.cases_create_candidate_list_version_v2(uuid,uuid,uuid,bigint,text,text,jsonb,timestamptz)";
 
 if (process.env.VERCEL_ENV !== "production") {
   console.log(`production_uat_migration=${MIGRATION_NAME} status=skipped_non_production`);
@@ -53,8 +57,26 @@ try {
     await client.query(migrationSql);
   }
 
+  const installed = await readPreflight();
+  if (!installed.v2_owner || !installed.v1_owner) {
+    throw new Error("Production UAT migration function ownership could not be inspected.");
+  }
+  if (installed.v2_owner !== installed.v1_owner) {
+    await client.query(
+      `ALTER FUNCTION ${V2_FUNCTION} OWNER TO ${quoteIdentifier(installed.v1_owner)}`,
+    );
+    await client.query(`REVOKE ALL ON FUNCTION ${V2_FUNCTION} FROM PUBLIC`);
+    await client.query(`GRANT EXECUTE ON FUNCTION ${V2_FUNCTION} TO tianxing_app`);
+  }
+
   const postflight = await readPreflight();
-  if (!postflight.v2_function || !postflight.deadline_column || !postflight.v2_trigger) {
+  if (
+    !postflight.v2_function ||
+    !postflight.deadline_column ||
+    !postflight.v2_trigger ||
+    !postflight.v2_executable ||
+    postflight.v2_owner !== postflight.v1_owner
+  ) {
     throw new Error("Production UAT migration postflight verification failed.");
   }
 
@@ -79,6 +101,9 @@ async function readPreflight(): Promise<Readonly<{
   promotion_function: boolean;
   deadline_column: boolean;
   v2_trigger: boolean;
+  v1_owner: string | null;
+  v2_owner: string | null;
+  v2_executable: boolean;
 }>> {
   const result = await client.query({
     text: `SELECT current_database() AS database_name,
@@ -100,11 +125,31 @@ async function readPreflight(): Promise<Readonly<{
                        AND table_row.relname='cases_candidate_school_list_versions'
                        AND trigger_row.tgname='cases_candidate_confirmed_preparing_trg'
                        AND NOT trigger_row.tgisinternal
-                  ) AS v2_trigger`,
+                  ) AS v2_trigger,
+                  (
+                    SELECT pg_get_userbyid(function_row.proowner)
+                      FROM pg_proc AS function_row
+                     WHERE function_row.oid=to_regprocedure('${V1_FUNCTION}')::oid
+                  ) AS v1_owner,
+                  (
+                    SELECT pg_get_userbyid(function_row.proowner)
+                      FROM pg_proc AS function_row
+                     WHERE function_row.oid=to_regprocedure('${V2_FUNCTION}')::oid
+                  ) AS v2_owner,
+                  COALESCE(has_function_privilege(
+                    'tianxing_app',to_regprocedure('${V2_FUNCTION}')::oid,'EXECUTE'
+                  ),false) AS v2_executable`,
   });
   const row = result.rows[0];
   if (!row) throw new Error("Production UAT migration preflight returned no row.");
   return row;
+}
+
+function quoteIdentifier(value: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(value)) {
+    throw new Error("Production UAT migration owner identifier was rejected.");
+  }
+  return `"${value.replaceAll('"', '""')}"`;
 }
 
 function readPostgresCode(error: unknown): string {
