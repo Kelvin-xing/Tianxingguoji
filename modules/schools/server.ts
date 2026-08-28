@@ -15,3 +15,4 @@ export * from "./infrastructure/postgresql-directory-repository.ts";
 export * from "./application/school-options-service.ts";
 export * from "./infrastructure/postgresql-school-options-repository.ts";
 export * from "./infrastructure/school-options-runtime.ts";
+export * from "./infrastructure/database-test-resolved-fixture.ts";
