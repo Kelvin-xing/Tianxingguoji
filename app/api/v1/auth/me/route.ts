@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 
 import {
+  getMemberManagementRuntime,
   isRequestAccessContextError,
   resolveRequestAccessContext,
 } from "@/modules/access/server";
@@ -16,8 +17,10 @@ export async function GET(request: Request): Promise<Response> {
     const secret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     if (!secret) throw createApiError("UNAUTHENTICATED");
     let accessContext;
+    let nickname: string | null;
     try {
       accessContext = await resolveRequestAccessContext({ cookieSecret: secret });
+      nickname = (await getMemberManagementRuntime().service.getOwnProfile(accessContext)).displayName;
     } catch (error) {
       if (isRequestAccessContextError(error, "REQUEST_ACCESS_UNAUTHENTICATED")) {
         throw createApiError("UNAUTHENTICATED");
@@ -34,6 +37,7 @@ export async function GET(request: Request): Promise<Response> {
     return {
       user_id: accessContext.userId,
       organization_id: accessContext.organizationId,
+      nickname,
       // Compatibility only: authorization uses the request-time capability union below.
       role: compatibilityRole,
       policy_version: BOOTSTRAP_ACCESS_POLICY_VERSION,

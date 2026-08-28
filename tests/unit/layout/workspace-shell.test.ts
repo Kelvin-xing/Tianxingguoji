@@ -8,6 +8,7 @@ import {
   defaultWorkspacePath,
   isContractorWorkspace,
   isReleaseOneInternalRole,
+  nicknameInitial,
   visibleWorkspaceNavigation,
 } from "../../../components/layout/workspace-navigation.ts";
 
@@ -29,6 +30,7 @@ test("workspace auth accepts the complete server capability vocabulary", () => {
   const auth = decodeWorkspaceAuth({
     user_id: "51000000-0000-4000-8000-000000000101",
     organization_id: "51000000-0000-4000-8000-000000000001",
+    nickname: "小天",
     role: "founder",
     capabilities: [
       "cases.create",
@@ -45,6 +47,15 @@ test("workspace auth accepts the complete server capability vocabulary", () => {
     "documents.upload",
     "today.read",
   ]);
+  assert.equal(auth.nickname, "小天");
+});
+
+test("workspace avatar uses the first nickname character with a neutral fallback", () => {
+  assert.equal(nicknameInitial("小天"), "小");
+  assert.equal(nicknameInitial(" Alice "), "A");
+  assert.equal(nicknameInitial("😀 Tester"), "😀");
+  assert.equal(nicknameInitial("   "), "?");
+  assert.equal(nicknameInitial(null), "?");
 });
 
 test("Data Reviewer remains outside Release 1 entrypoints", () => {

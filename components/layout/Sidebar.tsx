@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { Icon } from '@/components/workspace/Icon'
 import {
   decodeWorkspaceAuth,
+  nicknameInitial,
   visibleWorkspaceNavigation,
   type WorkspaceAuthDto,
   type WorkspaceNavigationItem,
@@ -80,7 +81,7 @@ export function Sidebar({
         <div className="px-3 pb-3">
           <div className="p-3 rounded-lg" style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)' }}>
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? initials(effectiveAuth.user_id) : '…'}</div>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{effectiveAuth ? nicknameInitial(effectiveAuth.nickname) : '…'}</div>
               <div className="sidebar-user-copy min-w-0">
                 <div className="text-xs font-medium truncate" style={{ color: '#f4f7fb' }}>{effectiveAuth ? roleLabel(effectiveAuth.role) : t('layout.checking_identity')}</div>
                 <div className="text-[11px] truncate" style={{ color: 'var(--sidebar-text-muted)' }}>{t('layout.organization')}</div>
@@ -112,11 +113,6 @@ function roleLabel(role: WorkspaceAuthDto['role']): string {
   if (role === 'advisor') return 'Advisor'
   if (role === 'contractor') return 'Contractor'
   return 'Data Reviewer'
-}
-
-function initials(value: string): string {
-  const token = value.split('-').find(Boolean) ?? value
-  return token.slice(0, 2).toUpperCase()
 }
 
 function NavItem({ item, label, active, onNavigate }: { readonly item: WorkspaceNavigationItem; readonly label: string; readonly active: boolean; readonly onNavigate?: () => void }) {

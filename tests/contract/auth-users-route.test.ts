@@ -23,6 +23,9 @@ test("access page reads users and submits the frozen member access command", asy
   assert.match(source, /method: 'PATCH'/);
   assert.match(source, /expected_access_version: user\.access_version/);
   assert.match(source, /Contractor 必须是唯一角色/);
+  assert.match(source, />昵称</);
+  assert.match(source, /未设置昵称/);
+  assert.doesNotMatch(source, /显示名称|未设置姓名/);
   assert.doesNotMatch(source, /password|secret|token|session_hash/i);
 });
 
@@ -36,4 +39,13 @@ test("member and own-profile routes keep role management separate from self disp
   assert.match(profile, /service\.updateOwnDisplayName/);
   assert.match(profile, /service\.getOwnProfile/);
   assert.doesNotMatch(profile, /employmentType:|roles:/);
+});
+
+test("own profile presents employee display_name consistently as nickname", async () => {
+  const source = await readFile("app/(erp)/profile/page.tsx", "utf8");
+
+  assert.match(source, /工作台昵称/);
+  assert.match(source, />昵称</);
+  assert.match(source, /昵称已保存/);
+  assert.doesNotMatch(source, /显示名称/);
 });

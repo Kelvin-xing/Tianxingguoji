@@ -111,7 +111,7 @@ function UserTable({ users, total, onEdit }: { readonly users: readonly UserDire
           <tbody>
             {users.map((user) => (
               <tr key={user.user_id} className="data-row">
-                <td><div className="table-primary">{user.display_name ?? '未设置姓名'}</div><div className="table-secondary">{user.email}</div></td>
+                <td><div className="table-primary">{user.display_name ?? '未设置昵称'}</div><div className="table-secondary">{user.email}</div></td>
                 <td><StatusPill value={user.user_status} /></td>
                 <td className="table-muted">{employmentLabel(user.employment_type)}</td>
                 <td><div className="flex flex-wrap gap-1">{user.roles.length > 0 ? user.roles.map((role) => <RolePill key={role.role} role={role.role} />) : <span className="table-muted">未分配角色</span>}</div></td>
@@ -171,7 +171,7 @@ function MemberEditor({ user, onClose, onSaved }: { readonly user: UserDirectory
         </div>
 
         <div className="mt-5 space-y-5">
-          <label className="block"><span className="text-sm font-medium">显示名称</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null) }} /></label>
+          <label className="block"><span className="text-sm font-medium">昵称</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null) }} /></label>
 
           <fieldset><legend className="text-sm font-medium">员工类型</legend><div className="mt-2 grid grid-cols-2 gap-2">
             {(['FULL_TIME', 'PART_TIME'] as const).map((value) => <label key={value} className={`selection-card ${employmentType === value ? 'selected' : ''}`}><input type="radio" name="employment-type" checked={employmentType === value} onChange={() => { setEmploymentType(value); setMessage(null) }} /><span className="selection-mark" aria-hidden="true" /><span><strong>{value === 'FULL_TIME' ? '正式员工' : '兼职'}</strong><small>{value}</small></span></label>)}
@@ -198,7 +198,7 @@ function inferredEmploymentType(roles: readonly Role[]): EmploymentType { return
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-HK') }
 
 function validateMemberSelection(displayName: string, employmentType: EmploymentType, roles: readonly Role[]): string | null {
-  if (displayName.trim().length < 1) return '请输入显示名称。'
+  if (displayName.trim().length < 1) return '请输入昵称。'
   if (roles.includes('contractor') && roles.length > 1) return 'Contractor 必须是唯一角色。'
   if (employmentType === 'FULL_TIME' && roles.includes('contractor')) return '正式员工不能分配 Contractor。'
   if (employmentType === 'PART_TIME' && (roles.includes('founder') || roles.includes('advisor'))) return '兼职不能分配 Founder 或 Advisor。'

@@ -9,6 +9,8 @@ test("auth/me uses the reusable request-time Access helper instead of actor.role
   ]);
 
   assert.match(source, /resolveRequestAccessContext/);
+  assert.match(source, /getMemberManagementRuntime\(\)\.service\.getOwnProfile\(accessContext\)/);
+  assert.match(source, /nickname:.*displayName|nickname,/s);
   assert.match(source, /capabilities: accessContext\.workspaceCapabilities/);
   assert.match(source, /role: compatibilityRole/);
   assert.doesNotMatch(source, /actor\.role/);
