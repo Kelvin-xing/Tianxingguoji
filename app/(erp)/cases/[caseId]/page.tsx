@@ -50,9 +50,9 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>{record.caseNumber}</span></div>
-      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">CaseWorkflow · ServiceCase</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />Student 360</Link></section>
+      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">案件</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />查看學生</Link></section>
 
-      <section className="workspace-section"><div className="mb-5"><h3 className="section-title">案件階段</h3><p className="section-detail">Assessment 完成後仍由獨立的案件階段命令推進，不會由頁面自動跳階段。</p></div><div className="overflow-x-auto"><div className="stage-track">{stages.map((stage, index) => { const done = index < stageIndex; const active = index === stageIndex; return <div className="stage-node" key={stage.key}><div className={`stage-dot ${done ? 'done' : ''} ${active ? 'active' : ''}`}>{done ? <Icon name="check" size={13} /> : index + 1}</div><span className={active ? 'active-label' : ''}>{stage.label}</span>{index < stages.length - 1 && <div className={`stage-line ${done ? 'done' : ''}`} />}</div> })}</div></div></section>
+      <section className="workspace-section"><div className="mb-5"><h3 className="section-title">案件階段</h3><p className="section-detail">評估完成後，請按流程逐步推進案件。</p></div><div className="overflow-x-auto"><div className="stage-track">{stages.map((stage, index) => { const done = index < stageIndex; const active = index === stageIndex; return <div className="stage-node" key={stage.key}><div className={`stage-dot ${done ? 'done' : ''} ${active ? 'active' : ''}`}>{done ? <Icon name="check" size={13} /> : index + 1}</div><span className={active ? 'active-label' : ''}>{stage.label}</span>{index < stages.length - 1 && <div className={`stage-line ${done ? 'done' : ''}`} />}</div> })}</div></div></section>
 
       <CaseWorkflowProvider initialWorkflowStatus={record.workflowStatus}>
         <CaseWorkflowControls
@@ -67,8 +67,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       </CaseWorkflowProvider>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">案件身份</h3><p className="section-detail">這些欄位屬於 ServiceCase，不複製 Student 身份資料。</p></div><div className="grid grid-cols-2 gap-4"><Info label="Case number" value={record.caseNumber} /><Info label="Student" value={record.studentName} /><Info label="Intake year" value={String(record.intakeYear)} /><Info label="Admission type" value={admissionLabel(record.admissionType)} /><Info label="Primary" value={record.primaryBindingLabel} /><Info label="Record version" value={String(record.recordVersion)} /></div></section>
-        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">Assessment 綁定</h3><p className="section-detail">評估固定使用建案時批准的 15 字段 Manifest，之後不會靜默換版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="Assessment ID" value={record.assessmentId} /><Info label="Manifest ID" value={record.manifestId} /><Info label="Status" value={assessmentStatusLabel(assessment.status)} /></div></section>
+        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">案件資料</h3><p className="section-detail">顯示本案的基本資料。</p></div><div className="grid grid-cols-2 gap-4"><Info label="案件編號" value={record.caseNumber} /><Info label="學生" value={record.studentName} /><Info label="入學年度" value={String(record.intakeYear)} /><Info label="申請類型" value={admissionLabel(record.admissionType)} /><Info label="主要顧問" value={record.primaryBindingLabel} /><Info label="資料版本" value={String(record.recordVersion)} /></div></section>
+        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">評估設定</h3><p className="section-detail">評估會沿用案件建立時核准的版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="評估編號" value={record.assessmentId} /><Info label="版本編號" value={record.manifestId} /><Info label="狀態" value={assessmentStatusLabel(assessment.status)} /></div></section>
       </div>
 
       <AssessmentEditor
@@ -86,7 +86,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         canReviewCandidateLists={actorRoles.includes('founder')}
       />
 
-      <div className="preview-notice"><Icon name="shield" size={15} /><span>PostgreSQL authoritative read/write · 每個答案獨立版本控制，完成背景收集時再次驗證權限、阻塞項、評估版本與冪等憑據。</span></div>
     </div>
   )
 }

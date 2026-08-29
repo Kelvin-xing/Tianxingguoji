@@ -11,8 +11,8 @@
     "students": "學生 CRM",
     "schools": "招生資訊",
     "selector": "選校報告",
-    "ai": "AI 助理",
-    "adminCrawler": "爬蟲管理",
+    "ai": "智慧助理",
+    "adminCrawler": "學校資料治理",
     "knowledge": "創始人知識庫"
   },
   "dashboard": {
@@ -20,10 +20,10 @@
     "active_students": "活躍學生",
     "pending_deadlines": "待截止申請",
     "school_db": "學校資料庫",
-    "ai_queries": "本月 AI 查詢",
+    "ai_queries": "本月智慧助理查詢",
     "upcoming_deadlines": "即將截止",
-    "crawler_status": "爬蟲狀態",
-    "crawler_last_run": "最後執行",
+    "crawler_status": "資料更新狀態",
+    "crawler_last_run": "最後更新",
     "days_left": "天後截止"
   },
   "students": {
@@ -39,7 +39,7 @@
     "target_grade": "目標年級",
     "target_schools": "目標學校",
     "documents": "文件清單",
-    "notes": "備注",
+    "notes": "備註",
     "status_collecting": "資料收集",
     "status_applying": "申請中",
     "status_interview": "等待面試",
@@ -53,7 +53,7 @@
     "school_name": "學校名稱",
     "district": "地區",
     "admission_type": "招生類型",
-    "confidence": "數據信心",
+    "confidence": "資料可信度",
     "application_dates": "申請日期",
     "review_status": "審核狀態",
     "admission_url": "招生連結",
@@ -69,32 +69,32 @@
     "filter_all": "全部",
     "required_materials": "所需文件",
     "application_forms": "申請表連結",
-    "notes": "備注"
+    "notes": "備註"
   },
   "selector": {
     "title": "選校篩選器",
     "filters": "篩選條件",
     "district": "地區",
     "admission_type": "招生類型",
-    "confidence": "數據信心",
+    "confidence": "資料可信度",
     "all": "全部",
     "results": "篩選結果",
     "match_count": "{{count}} 間學校",
-    "generate_pdf": "生成 PDF 報告",
+    "generate_pdf": "產生 PDF 報告",
     "report_title": "選校報告",
-    "generated_on": "生成日期",
-    "consultant_notes": "顧問備注",
+    "generated_on": "產生日期",
+    "consultant_notes": "顧問備註",
     "no_results": "無符合條件的學校"
   },
   "ai": {
     "title": "AI 面試輔導助理",
-    "subtitle": "由 Dify + DeepSeek 驅動",
-    "not_configured": "Dify 尚未配置",
-    "setup_instructions": "請在環境變量中設置 NEXT_PUBLIC_DIFY_APP_URL 以啟用 AI 助理",
-    "current_student": "當前學生"
+    "subtitle": "集中整理學生與案件資料",
+    "not_configured": "智慧助理目前未開放",
+    "setup_instructions": "智慧助理目前未開放，請先使用其他工作區功能。",
+    "current_student": "目前學生"
   },
   "common": {
-    "loading": "載入中...",
+    "loading": "載入中…",
     "error": "發生錯誤",
     "back": "返回",
     "close": "關閉",
@@ -103,26 +103,26 @@
     "search": "搜尋",
     "clear": "清除",
     "print": "列印",
-    "lang_toggle": "English",
+    "lang_toggle": "切換語言",
     "sign_out": "登出"
   },
   "layout": {
     "profile": "個人資料",
     "erp_title": "天星顧問 ERP",
     "workspace_navigation": "工作台導航",
-    "workspace_section": "Workspace",
-    "administration_section": "Administration",
-    "future_section": "Future",
+    "workspace_section": "工作區",
+    "administration_section": "管理",
+    "future_section": "其他功能",
     "checking_identity": "確認身份中",
     "organization": "香港組織",
-    "session_ready": "Session boundary ready",
+    "session_ready": "工作階段已就緒",
     "open_navigation": "開啟導航",
     "close_navigation": "關閉導航",
     "search_placeholder": "搜尋學生、案件或學校",
     "search_label": "全域搜尋",
-    "notifications_unavailable": "通知入口尚未接通"
+    "notifications_unavailable": "通知服務暫時無法使用"
   },
   "admin": {
-    "crawler": "爬蟲管理"
+    "crawler": "學校資料治理"
   }
 }

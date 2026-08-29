@@ -34,7 +34,7 @@ export default function SchoolsPage() {
   useEffect(() => {
     listSchoolDirectory()
       .then((items) => setSchools(items.map(toAdmissionRecord)))
-      .catch((err) => setError(err instanceof Error ? err.message : '載入學校資料失敗'))
+      .catch(() => setError('學校資料暫時無法載入，請稍後重試。'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -59,7 +59,7 @@ export default function SchoolsPage() {
       <div className="flex flex-wrap gap-3 items-center p-3 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <input type="text" placeholder={`${t('common.search')}…`} value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
         <FilterSelect label={t('schools.admission_type')} value={typeFilter} onChange={setTypeFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'transfer', label: t('schools.type_transfer') }, { value: 's1_admission', label: t('schools.type_s1') }, { value: 'unknown', label: t('schools.type_unknown') }]} />
-        <FilterSelect label={t('schools.confidence')} value={confidenceFilter} onChange={setConfidenceFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'high', label: t('schools.confidence_high') }, { value: 'medium', label: t('schools.confidence_medium') }, { value: 'low', label: t('schools.confidence_low') }, { value: 'missing', label: 'Missing' }]} />
+        <FilterSelect label={t('schools.confidence')} value={confidenceFilter} onChange={setConfidenceFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'high', label: t('schools.confidence_high') }, { value: 'medium', label: t('schools.confidence_medium') }, { value: 'low', label: t('schools.confidence_low') }, { value: 'missing', label: '未提供' }]} />
         <FilterSelect label={t('schools.review_status')} value={reviewFilter} onChange={setReviewFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'auto_selected', label: '自動通過' }, { value: 'needs_review', label: t('schools.status_needs_review') }, { value: 'approved', label: t('schools.status_approved') }, { value: 'rejected', label: t('schools.status_rejected') }]} />
         <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)' }}>{filtered.length} / {schools.length} 所</span>
       </div>
@@ -130,10 +130,10 @@ function FragmentRow({ school, expanded, onToggle }: { school: AdmissionRecord; 
     <>
       <tr className="transition-colors cursor-pointer" style={{ borderBottom: '1px solid var(--border-subtle)' }} onClick={onToggle}>
         <td className="px-4 py-3"><div className="font-medium" style={{ color: 'var(--text-primary)' }}>{school.school_name_zh}</div><div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{school.school_name_en}</div></td>
-        <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{school.district || '—'}<br />{school.school_type || school.finance_type || '—'}</td>
-        <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#475569' }}>{school.admission_type}</span></td>
-        <td className="px-4 py-3"><Badge value={school.confidence} styles={CONFIDENCE_STYLES} /></td>
-        <td className="px-4 py-3"><Badge value={school.review_status} styles={REVIEW_STYLES} /></td>
+        <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{school.district || '—'}<br />{school.school_type ? schoolTypeLabel(school.school_type) : school.finance_type ? financeTypeLabel(school.finance_type) : '—'}</td>
+        <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#475569' }}>{admissionTypeLabel(school.admission_type)}</span></td>
+        <td className="px-4 py-3"><Badge value={school.confidence} label={confidenceLabel(school.confidence)} styles={CONFIDENCE_STYLES} /></td>
+        <td className="px-4 py-3"><Badge value={school.review_status} label={reviewStatusLabel(school.review_status)} styles={REVIEW_STYLES} /></td>
         <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{school.application_dates || school.submission_deadline || '—'}</td>
       </tr>
       {expanded && (
@@ -152,9 +152,9 @@ function FragmentRow({ school, expanded, onToggle }: { school: AdmissionRecord; 
   )
 }
 
-function Badge({ value, styles }: { value: string; styles: Record<string, { bg: string; color: string }> }) {
+function Badge({ value, label, styles }: { value: string; label: string; styles: Record<string, { bg: string; color: string }> }) {
   const style = styles[value] || styles.unknown || { bg: '#f1f5f9', color: '#64748b' }
-  return <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: style.bg, color: style.color }}>{value}</span>
+  return <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: style.bg, color: style.color }}>{label}</span>
 }
 
 function Detail({ label, value }: { label: string; value?: string }) {
@@ -163,4 +163,35 @@ function Detail({ label, value }: { label: string; value?: string }) {
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return <div className="flex items-center gap-1.5"><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}:</span><select value={value} onChange={(e) => onChange(e.target.value)}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+}
+
+function admissionTypeLabel(value: string): string {
+  if (value === 'transfer') return '插班／轉校'
+  if (value === 's1_admission') return '中一入學'
+  return '未知'
+}
+
+function confidenceLabel(value: string): string {
+  if (value === 'high') return '高'
+  if (value === 'medium') return '中'
+  if (value === 'low') return '低'
+  return '未提供'
+}
+
+function reviewStatusLabel(value: string): string {
+  if (value === 'auto_selected') return '自動通過'
+  if (value === 'approved') return '已通過'
+  if (value === 'needs_review') return '待人工審核'
+  if (value === 'rejected') return '已拒絕'
+  return '待審核'
+}
+
+function schoolTypeLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = { government: '官立', aided: '資助', private: '私立', international: '國際', boarding: '寄宿' }
+  return labels[value] ?? value
+}
+
+function financeTypeLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = { government: '官立', aided: '資助', private: '私立', direct_subsidy: '直資', international: '國際' }
+  return labels[value] ?? value
 }

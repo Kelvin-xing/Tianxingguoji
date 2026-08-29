@@ -220,7 +220,7 @@ export function AutomaticTaskTransitionControls({
     <section className="workspace-section space-y-4" aria-labelledby="automatic-task-transition-heading">
       <div>
         <h3 id="automatic-task-transition-heading" className="section-title">處理自動任務</h3>
-        <p className="section-detail">可用操作及目前版本由服務端即時計算。</p>
+        <p className="section-detail">可用操作會隨任務狀態更新。</p>
       </div>
       {interviewCompletionPending ? (
         <div className="inline-callout" role="status">
@@ -304,7 +304,7 @@ export function AutomaticTaskTransitionControls({
           {selectedAction ? (
             <label className="flex items-start gap-3 text-sm">
               <input type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => { attempt.current!.rotate(); setNotice(null); setConfirmed(event.target.checked); }} />
-              <span>我確認執行「{ACTION_LABELS[selectedAction]}」，並保存這次處理記錄。</span>
+              <span>我確認執行「{ACTION_LABELS[selectedAction]}」，並儲存這次處理記錄。</span>
             </label>
           ) : null}
 

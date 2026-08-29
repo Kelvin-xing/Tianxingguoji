@@ -30,7 +30,7 @@ test('P3 FE case sections keep applications/interviews/close separate and contra
   const contractor = await readFile(new URL('../../../app/(erp)/contractor/tasks/[taskId]/page.tsx', import.meta.url), 'utf8')
   assert.match(section, /applications/)
   assert.match(section, /interviews/)
-  assert.match(section, /Founder 结案/)
+  assert.match(section, /Founder 結案/)
   assert.match(contractor, /contractor/)
   assert.doesNotMatch(contractor, /Student|Guardian|Assessment|Document/i)
 })

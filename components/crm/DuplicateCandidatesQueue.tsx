@@ -116,7 +116,7 @@ export function DuplicateCandidatesQueue() {
       <section className="workspace-section" aria-labelledby="duplicate-create-heading">
         <div className="mb-5">
           <h3 id="duplicate-create-heading" className="section-title">建立人工審查候選</h3>
-          <p className="section-detail">分別查找並選擇兩筆資料；匹配訊號由系統安全檢查，不會自動選擇或合併。</p>
+          <p className="section-detail">分別查詢並選擇兩筆資料；配對訊號由系統安全檢查，不會自動選擇或合併。</p>
         </div>
         <div className="space-y-5">
           <label className="field-label max-w-xs" htmlFor="duplicate-entity-type">
@@ -142,7 +142,7 @@ export function DuplicateCandidatesQueue() {
 
       <section className="workspace-section" aria-labelledby="duplicate-queue-heading">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5">
-          <div><h3 id="duplicate-queue-heading" className="section-title">待處理清單</h3><p className="section-detail">只顯示安全標籤、匹配訊號名稱和處理狀態。</p></div>
+          <div><h3 id="duplicate-queue-heading" className="section-title">待處理清單</h3><p className="section-detail">只顯示安全標籤、配對訊號名稱和處理狀態。</p></div>
           <div className="flex flex-col sm:flex-row gap-3">
             <label className="field-label" htmlFor="duplicate-queue-entity"><span>資料類型</span><select id="duplicate-queue-entity" value={entityType} onChange={(event) => changeEntity(event.target.value as DuplicateEntityType)}><option value="student">學生</option><option value="guardian">監護人</option></select></label>
             <label className="field-label" htmlFor="duplicate-queue-status"><span>處理狀態</span><select id="duplicate-queue-status" value={status} onChange={(event) => changeStatus(event.target.value as DuplicateCandidateFilterStatus)}><option value="review_required">待人工審查</option><option value="merged">已完成合併決定</option></select></label>
@@ -179,13 +179,13 @@ function RecordPicker({ side, title, entityType, selected, excludedId, disabled,
   return <fieldset className="border rounded-lg p-4 space-y-4" style={{ borderColor: 'var(--border)' }} disabled={disabled}>
     <legend className="px-1 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</legend>
     <form className="flex flex-col sm:flex-row gap-2" onSubmit={search} role="search">
-      <label className="field-label flex-1" htmlFor={`duplicate-search-${side}`}><span>查找{entityType === 'student' ? '學生' : '監護人'}</span><input id={`duplicate-search-${side}`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} minLength={2} maxLength={100} autoComplete="off" /></label>
-      <button type="submit" className="secondary-button self-end justify-center" disabled={state.kind === 'searching'} aria-busy={state.kind === 'searching'}><Icon name="search" size={15} />{state.kind === 'searching' ? '查找中…' : '查找'}</button>
+      <label className="field-label flex-1" htmlFor={`duplicate-search-${side}`}><span>查詢{entityType === 'student' ? '學生' : '監護人'}</span><input id={`duplicate-search-${side}`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} minLength={2} maxLength={100} autoComplete="off" /></label>
+      <button type="submit" className="secondary-button self-end justify-center" disabled={state.kind === 'searching'} aria-busy={state.kind === 'searching'}><Icon name="search" size={15} />{state.kind === 'searching' ? '查詢中…' : '查詢'}</button>
     </form>
     {state.kind === 'validation' ? <p className="form-error" role="alert">請輸入 2 至 100 個字元。</p> : null}
-    {state.kind === 'unavailable' ? <p className="form-error" role="alert">暫時無法查找資料，請稍後重試。</p> : null}
+    {state.kind === 'unavailable' ? <p className="form-error" role="alert">暫時無法查詢資料，請稍後重試。</p> : null}
     {selected ? <div className="preview-notice" role="status"><Icon name="check-circle" size={15} /><span>已選擇：{selected.display_label}{selected.contact_hint ? ` · ${selected.contact_hint}` : ''}</span></div> : null}
-    {state.kind === 'idle' && state.results.length > 0 ? <div className="space-y-2" role="radiogroup" aria-label={`${title}查找結果`}>{state.results.map((record) => {
+    {state.kind === 'idle' && state.results.length > 0 ? <div className="space-y-2" role="radiogroup" aria-label={`${title}查詢結果`}>{state.results.map((record) => {
       const unavailable = record.id === excludedId
       return <label key={record.id} className={`selection-card ${selected?.id === record.id ? 'selected' : ''} ${unavailable ? 'disabled' : ''}`}><input type="radio" name={`duplicate-record-${side}`} checked={selected?.id === record.id} disabled={unavailable} onChange={() => onSelect(record)} /><span className="selection-mark" aria-hidden="true" /><span className="min-w-0"><strong className="break-words">{record.display_label}</strong><small className="break-words">{record.contact_hint ?? '沒有聯絡提示'}</small></span></label>
     })}</div> : null}
@@ -195,7 +195,7 @@ function RecordPicker({ side, title, entityType, selected, excludedId, disabled,
 
 function CandidateRow({ candidate }: { readonly candidate: DuplicateCandidateSummary }) {
   return <article className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center gap-4">
-    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="status-pill status-warning">{candidate.entity_type === 'student' ? '學生' : '監護人'}</span><span className={`status-pill ${candidate.status === 'merged' ? 'status-success' : 'status-warning'}`}>{candidate.status === 'merged' ? '已完成合併決定' : '待人工審查'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>版本 {candidate.record_version}</span></div><h4 className="mt-2 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{candidate.left_record.display_label} / {candidate.right_record.display_label}</h4><p className="mt-1 text-xs break-words" style={{ color: 'var(--text-muted)' }}>匹配訊號：{candidate.matching_signals.map(signalLabel).join('、')}</p></div>
+    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="status-pill status-warning">{candidate.entity_type === 'student' ? '學生' : '監護人'}</span><span className={`status-pill ${candidate.status === 'merged' ? 'status-success' : 'status-warning'}`}>{candidate.status === 'merged' ? '已完成合併決定' : '待人工審查'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>版本 {candidate.record_version}</span></div><h4 className="mt-2 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{candidate.left_record.display_label} / {candidate.right_record.display_label}</h4><p className="mt-1 text-xs break-words" style={{ color: 'var(--text-muted)' }}>配對訊號：{candidate.matching_signals.map(signalLabel).join('、')}</p></div>
     <Link href={`/students/duplicates/${candidate.id}`} className="secondary-button justify-center shrink-0">查看比較<Icon name="chevron-right" size={15} /></Link>
   </article>
 }
@@ -217,6 +217,6 @@ function hasCapability(capabilities: readonly unknown[], expected: string): bool
 function signalLabel(signal: string): string {
   if (signal === 'display_name') return '姓名'
   if (signal === 'date_of_birth') return '出生日期'
-  if (signal === 'email') return 'Email'
+  if (signal === 'email') return '電郵'
   return '電話'
 }

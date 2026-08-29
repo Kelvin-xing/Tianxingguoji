@@ -85,7 +85,7 @@ export function SchoolTargetsPanel({ caseId }: { readonly caseId: string }) {
             {view.items.length} 個目標 · {view.intake_year} · {admissionLabel(view.admission_type)}
           </p>
         </div>
-        <span className="status-pill shrink-0">只讀</span>
+        <span className="status-pill shrink-0">唯讀</span>
       </div>
 
       {view.items.length === 0 ? (

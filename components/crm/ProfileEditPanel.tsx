@@ -82,7 +82,7 @@ export function StudentProfileEditor({
 
   return (
     <form className="mt-5 border-t pt-5 space-y-4" onSubmit={submit} noValidate aria-label="編輯學生基本資料">
-      <div><h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>編輯學生資料</h4><p className="section-detail">修改基本資料後保存；取消不會保留未保存內容。</p></div>
+      <div><h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>編輯學生資料</h4><p className="section-detail">修改基本資料後儲存；取消不會保留未儲存內容。</p></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ProfileField label="學生姓名" id="student-profile-display-name" required error={validation.displayName}>
           <input id="student-profile-display-name" value={draft.display_name} onChange={(event) => change('display_name', event.target.value)} required autoComplete="name" aria-invalid={Boolean(validation.displayName)} />
@@ -90,7 +90,7 @@ export function StudentProfileEditor({
         <ProfileField label="出生日期" id="student-profile-date-of-birth" error={validation.dateOfBirth}>
           <input id="student-profile-date-of-birth" type="date" value={draft.date_of_birth} onChange={(event) => change('date_of_birth', event.target.value)} aria-invalid={Boolean(validation.dateOfBirth)} />
         </ProfileField>
-        <ProfileField label="學生 Email" id="student-profile-email" error={validation.email}>
+        <ProfileField label="學生電郵" id="student-profile-email" error={validation.email}>
           <input id="student-profile-email" type="email" value={draft.contact_email} onChange={(event) => change('contact_email', event.target.value)} autoComplete="email" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(validation.email)} />
         </ProfileField>
         <ProfileField label="學生電話" id="student-profile-phone" error={validation.phone}>
@@ -100,7 +100,7 @@ export function StudentProfileEditor({
       <ProfileFeedback state={submitState} onReload={onReload} />
       <EditorActions
         pending={submitState.kind === 'saving' || submitState.kind === 'success'}
-        saveLabel="保存學生資料"
+        saveLabel="儲存學生資料"
         onCancel={() => { attempt.current.complete(); onCancel() }}
       />
     </form>
@@ -164,7 +164,7 @@ export function GuardianProfileEditor({
         <ProfileField label="監護人姓名" id="guardian-profile-name" required error={validation.displayName}>
           <input id="guardian-profile-name" value={draft.display_name} onChange={(event) => change('display_name', event.target.value)} required autoComplete="name" aria-invalid={Boolean(validation.displayName)} />
         </ProfileField>
-        <ProfileField label="監護人 Email" id="guardian-profile-email" error={validation.email}>
+        <ProfileField label="監護人電郵" id="guardian-profile-email" error={validation.email}>
           <input id="guardian-profile-email" type="email" value={draft.email} onChange={(event) => change('email', event.target.value)} autoComplete="email" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(validation.email ?? validation.contact)} />
         </ProfileField>
         <ProfileField label="監護人電話" id="guardian-profile-phone" error={validation.phone}>
@@ -175,7 +175,7 @@ export function GuardianProfileEditor({
       <ProfileFeedback state={submitState} onReload={onReload} />
       <EditorActions
         pending={submitState.kind === 'saving' || submitState.kind === 'success'}
-        saveLabel="保存監護人資料"
+        saveLabel="儲存監護人資料"
         onCancel={() => { attempt.current.complete(); onCancel() }}
       />
     </form>
@@ -188,21 +188,21 @@ function ProfileField({ label, id, required, error, children }: { readonly label
 }
 
 function EditorActions({ pending, saveLabel, onCancel }: { readonly pending: boolean; readonly saveLabel: string; readonly onCancel: () => void }) {
-  return <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2"><button type="button" className="secondary-button justify-center" onClick={onCancel} disabled={pending}>取消</button><button type="submit" className="primary-button justify-center min-w-36" disabled={pending} aria-busy={pending}><Icon name={pending ? 'clock' : 'check'} size={16} /><span aria-live="polite">{pending ? '保存中…' : saveLabel}</span></button></div>
+  return <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2"><button type="button" className="secondary-button justify-center" onClick={onCancel} disabled={pending}>取消</button><button type="submit" className="primary-button justify-center min-w-36" disabled={pending} aria-busy={pending}><Icon name={pending ? 'clock' : 'check'} size={16} /><span aria-live="polite">{pending ? '儲存中…' : saveLabel}</span></button></div>
 }
 
 function ProfileFeedback({ state, onReload }: { readonly state: SubmitState; readonly onReload: () => void }) {
   if (state.kind === 'idle' || state.kind === 'saving' || state.kind === 'success') return null
   if (state.kind === 'stale') return <div className="form-error" role="alert"><Icon name="x" size={15} /><span>這筆資料已被更新。請重新載入最新資料後再編輯。<button type="button" className="secondary-button mt-3" onClick={onReload}>重新載入最新資料</button></span></div>
   const message = state.kind === 'validation'
-    ? '部分資料未通過檢查，請修正後再保存。'
+    ? '部分資料未通過檢查，請修正後再儲存。'
     : state.kind === 'conflict'
-      ? '這次保存與先前操作衝突，請修改資料後再提交。'
+      ? '這次儲存與先前操作衝突，請修改資料後再提交。'
       : state.kind === 'unauthenticated'
         ? '工作階段已失效，請重新登入。'
         : state.kind === 'denied'
           ? '你的帳號目前無法修改這筆資料。'
-          : '資料服務暫時不可用，請稍後重試；重試不會重複保存。'
+          : '資料服務暫時不可用，請稍後重試。'
   const requestId = 'requestId' in state ? state.requestId : null
   return <div className="form-error" role="alert"><Icon name="x" size={15} /><span>{message}{requestId ? <small className="block mt-1">參考編號：{requestId}</small> : null}</span></div>
 }

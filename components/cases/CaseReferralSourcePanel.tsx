@@ -207,7 +207,7 @@ export function CaseReferralSourcePanel({ caseId }: { readonly caseId: string })
 
         <div className="border-t pt-5" style={{ borderColor: 'var(--border-subtle)' }}>
           <h4 className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>歷史關聯</h4>
-          <p className="section-detail">每筆記錄顯示建立關聯當時保存的來源快照。</p>
+          <p className="section-detail">每筆記錄顯示建立關聯當時保留的來源資料。</p>
           {view.history.length === 0 ? <div className="empty-state py-6">尚無歷史關聯。</div> : <ul className="mt-3 divide-y" style={{ borderColor: 'var(--border-subtle)' }}>{view.history.map((item) => <li key={item.id}><AssignmentView assignment={item} /></li>)}</ul>}
         </div>
       </div>

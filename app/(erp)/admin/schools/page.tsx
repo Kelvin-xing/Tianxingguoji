@@ -46,23 +46,23 @@ export default function SchoolGovernancePage() {
       }),
     }).catch(() => null)
     setBusy(null)
-    setOutcome(await responseOutcome(response, 'Snapshot 對賬已記錄'))
+    setOutcome(await responseOutcome(response, '資料對帳已記錄'))
   }
 
   return (
     <div className="max-w-[1100px] mx-auto space-y-6">
       <section>
-        <div className="eyebrow">Administration · School intelligence</div>
+        <div className="eyebrow">管理 · 學校資料</div>
         <h2 className="page-title">學校治理</h2>
-        <p className="page-subtitle">審核欄位修訂與處理 snapshot 差異。</p>
+        <p className="page-subtitle">審核欄位修訂與處理資料差異。</p>
       </section>
 
       {outcome && <div role="status" className={outcome.ok ? 'preview-notice' : 'form-error'}><Icon name={outcome.ok ? 'check-circle' : 'x'} size={15} /><span>{outcome.summary}</span></div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <form onSubmit={submitReview} className="workspace-section space-y-4">
-          <div><h3 className="section-title">欄位審核</h3><p className="section-detail">一般欄位由 Data Reviewer；身份欄位由 Founder。</p></div>
-          <Field label="Change request ID" name="change_request_id" />
+          <div><h3 className="section-title">欄位審核</h3><p className="section-detail">一般欄位由 Admin 審核；身份欄位由 Founder 審核。</p></div>
+          <Field label="修改申請編號" name="change_request_id" />
           <label className="block text-xs font-medium">決定<select name="decision" className="w-full mt-1" defaultValue="approve"><option value="approve">批准</option><option value="reject">拒絕</option></select></label>
           <Field label="目前版本" name="expected_record_version" type="number" defaultValue="1" />
           <label className="block text-xs font-medium">理由<textarea name="reason" required maxLength={1024} className="w-full mt-1 min-h-24" /></label>
@@ -70,11 +70,11 @@ export default function SchoolGovernancePage() {
         </form>
 
         <form onSubmit={submitReconciliation} className="workspace-section space-y-4">
-          <div><h3 className="section-title">Snapshot 對賬</h3><p className="section-detail">使用已可見的 immutable snapshot 檢查 approved overlay。</p></div>
-          <Field label="School ID" name="school_id" />
-          <Field label="Overlay revision ID" name="overlay_revision_id" />
-          <Field label="Snapshot ID" name="snapshot_id" />
-          <Field label="Overlay 目前版本" name="expected_overlay_record_version" type="number" defaultValue="1" />
+          <div><h3 className="section-title">資料對帳</h3><p className="section-detail">檢查已核准的學校資料差異。</p></div>
+          <Field label="學校編號" name="school_id" />
+          <Field label="資料修訂編號" name="overlay_revision_id" />
+          <Field label="資料版本編號" name="snapshot_id" />
+          <Field label="修訂目前版本" name="expected_overlay_record_version" type="number" defaultValue="1" />
           <button type="submit" className="primary-button" disabled={busy !== null}><Icon name="activity" size={15} />{busy === 'reconcile' ? '處理中' : '執行對賬'}</button>
         </form>
       </div>
@@ -89,6 +89,5 @@ function Field({ label, name, type = 'text', defaultValue }: { label: string; na
 async function responseOutcome(response: Response | null, success: string): Promise<ApiOutcome> {
   if (!response) return { ok: false, summary: '服務暫時無法連線' }
   if (response.ok) return { ok: true, summary: success }
-  const payload = await response.json().catch(() => null) as { error?: { code?: string } } | null
-  return { ok: false, summary: payload?.error?.code || `HTTP ${response.status}` }
+  return { ok: false, summary: response.status === 403 ? '目前帳號沒有執行此操作的權限。' : '操作未完成，請稍後重試。' }
 }

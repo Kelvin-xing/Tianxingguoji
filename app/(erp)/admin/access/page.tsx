@@ -65,34 +65,34 @@ export default function AccessPage() {
   return (
     <div className="max-w-[1200px] mx-auto space-y-6">
       <section>
-        <div className="eyebrow">Administration · Identity</div>
-        <h2 className="page-title">Access</h2>
-        <p className="page-subtitle">查看使用者，并维护员工资料与当前基础角色。</p>
+        <div className="eyebrow">管理 · 身份與權限</div>
+        <h2 className="page-title">身份與權限</h2>
+        <p className="page-subtitle">查看使用者，維護員工資料與目前基礎角色。</p>
       </section>
 
       <section className="workspace-section">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="section-title">使用者列表</h3>
-            <p className="section-detail">Founder 和 Admin 可管理；权限在每次请求时重新计算。</p>
+            <p className="section-detail">Founder 和 Admin 可以管理使用者角色。</p>
           </div>
           <button type="button" className="secondary-button" onClick={loadUsers} disabled={state === 'loading'}>
-            <Icon name="rotate-ccw" size={15} />重新载入
+            <Icon name="rotate-ccw" size={15} />重新載入
           </button>
         </div>
-        {state === 'loading' && <LoadingState title="正在载入使用者" />}
-        {state === 'denied' && <ErrorState title="无法查看使用者" detail="当前身份没有 access.manage 权限。" />}
-        {state === 'unavailable' && <UnavailableState title="使用者服务暂时不可用" detail="请确认当前运行环境和数据库连接后重试。" onRetry={loadUsers} />}
-        {state === 'error' && <ErrorState title="使用者读取失败" detail="请保留当前页面后重试。" onRetry={loadUsers} />}
-        {state === 'empty' && <div className="empty-state">目前组织没有可显示的使用者。</div>}
+        {state === 'loading' && <LoadingState title="正在載入使用者" detail="請稍候。" />}
+        {state === 'denied' && <ErrorState title="無法查看使用者" detail="目前帳號沒有管理使用者的權限。" />}
+        {state === 'unavailable' && <UnavailableState title="使用者服務暫時不可用" detail="請稍後重試。" onRetry={loadUsers} />}
+        {state === 'error' && <ErrorState title="使用者讀取失敗" detail="請保留目前頁面後重試。" onRetry={loadUsers} />}
+        {state === 'empty' && <div className="empty-state">目前組織沒有可顯示的使用者。</div>}
         {state === 'ready' && <UserTable users={users} total={total} onEdit={setSelected} />}
       </section>
 
       <section className="workspace-section">
-        <h3 className="section-title">角色规则</h3>
+        <h3 className="section-title">角色規則</h3>
         <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <p><strong style={{ color: 'var(--text-primary)' }}>正式员工</strong><br />可担任 Founder、Admin、Advisor。</p>
-          <p><strong style={{ color: 'var(--text-primary)' }}>兼职</strong><br />Contractor 必须单独存在；Admin 不受员工类型限制。</p>
+          <p><strong style={{ color: 'var(--text-primary)' }}>正式員工</strong><br />可擔任 Founder、Admin、Advisor。</p>
+          <p><strong style={{ color: 'var(--text-primary)' }}>兼職</strong><br />Contractor 必須單獨存在；Admin 不受員工類型限制。</p>
         </div>
       </section>
 
@@ -107,16 +107,16 @@ function UserTable({ users, total, onEdit }: { readonly users: readonly UserDire
       <div className="section-detail mb-3">共 {total} 位使用者</div>
       <div className="overflow-x-auto -mx-5">
         <table className="data-table min-w-[900px]">
-          <thead><tr><th>使用者</th><th>状态</th><th>员工类型</th><th>当前角色</th><th>更新</th><th><span className="sr-only">操作</span></th></tr></thead>
+        <thead><tr><th>使用者</th><th>狀態</th><th>員工類型</th><th>目前角色</th><th>更新</th><th><span className="sr-only">操作</span></th></tr></thead>
           <tbody>
             {users.map((user) => (
               <tr key={user.user_id} className="data-row">
-                <td><div className="table-primary">{user.display_name ?? '未设置昵称'}</div><div className="table-secondary">{user.email}</div></td>
+                <td><div className="table-primary">{user.display_name ?? '未設定暱稱'}</div><div className="table-secondary">{user.email}</div></td>
                 <td><StatusPill value={user.user_status} /></td>
                 <td className="table-muted">{employmentLabel(user.employment_type)}</td>
                 <td><div className="flex flex-wrap gap-1">{user.roles.length > 0 ? user.roles.map((role) => <RolePill key={role.role} role={role.role} />) : <span className="table-muted">未分配角色</span>}</div></td>
                 <td className="table-muted">{formatDate(user.updated_at)}</td>
-                <td><button type="button" className="icon-button" title="编辑员工资料与角色" aria-label={`编辑 ${user.display_name ?? user.email}`} onClick={() => onEdit(user)}><Icon name="settings" size={16} /></button></td>
+        <td><button type="button" className="icon-button" title="編輯員工資料與角色" aria-label={`編輯 ${user.display_name ?? user.email}`} onClick={() => onEdit(user)}><Icon name="settings" size={16} /></button></td>
               </tr>
             ))}
           </tbody>
@@ -152,10 +152,10 @@ function MemberEditor({ user, onClose, onSaved }: { readonly user: UserDirectory
       }, decodeMutationReceipt)
       onSaved()
     } catch (error) {
-      if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setMessage('资料已被其他操作更新，请关闭后重新载入。')
-      else if (error instanceof ApiClientError && error.code === 'CONFLICT') setMessage('无法保存。请保留至少一位 Founder，并检查员工类型与角色组合。')
-      else if (error instanceof ApiClientError && error.code === 'FORBIDDEN') setMessage('当前身份没有管理角色的权限。')
-      else setMessage('保存失败，请稍后重试。')
+      if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setMessage('資料已被其他操作更新，請關閉後重新載入。')
+      else if (error instanceof ApiClientError && error.code === 'CONFLICT') setMessage('無法儲存。請保留至少一位 Founder，並檢查員工類型與角色組合。')
+      else if (error instanceof ApiClientError && error.code === 'FORBIDDEN') setMessage('目前帳號沒有管理角色的權限。')
+      else setMessage('儲存失敗，請稍後重試。')
     } finally {
       setSaving(false)
     }
@@ -163,45 +163,45 @@ function MemberEditor({ user, onClose, onSaved }: { readonly user: UserDirectory
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="member-editor-title">
-      <button type="button" className="absolute inset-0 bg-slate-950/45" aria-label="关闭编辑窗口" onClick={onClose} />
+      <button type="button" className="absolute inset-0 bg-slate-950/45" aria-label="關閉編輯視窗" onClick={onClose} />
       <div className="relative w-full max-w-xl rounded-lg p-5 sm:p-6 shadow-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0"><div className="eyebrow">Member access</div><h3 id="member-editor-title" className="section-title mt-1 truncate">{user.display_name ?? user.email}</h3><p className="section-detail truncate">{user.email}</p></div>
-          <button type="button" className="icon-button" title="关闭" aria-label="关闭" onClick={onClose}><Icon name="x" size={18} /></button>
+          <div className="min-w-0"><div className="eyebrow">使用者權限</div><h3 id="member-editor-title" className="section-title mt-1 truncate">{user.display_name ?? user.email}</h3><p className="section-detail truncate">{user.email}</p></div>
+          <button type="button" className="icon-button" title="關閉" aria-label="關閉" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
 
         <div className="mt-5 space-y-5">
-          <label className="block"><span className="text-sm font-medium">昵称</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null) }} /></label>
+          <label className="block"><span className="text-sm font-medium">暱稱</span><input className="mt-2 w-full" value={displayName} maxLength={100} onChange={(event) => { setDisplayName(event.target.value); setMessage(null) }} /></label>
 
-          <fieldset><legend className="text-sm font-medium">员工类型</legend><div className="mt-2 grid grid-cols-2 gap-2">
-            {(['FULL_TIME', 'PART_TIME'] as const).map((value) => <label key={value} className={`selection-card ${employmentType === value ? 'selected' : ''}`}><input type="radio" name="employment-type" checked={employmentType === value} onChange={() => { setEmploymentType(value); setMessage(null) }} /><span className="selection-mark" aria-hidden="true" /><span><strong>{value === 'FULL_TIME' ? '正式员工' : '兼职'}</strong><small>{value}</small></span></label>)}
+          <fieldset><legend className="text-sm font-medium">員工類型</legend><div className="mt-2 grid grid-cols-2 gap-2">
+            {(['FULL_TIME', 'PART_TIME'] as const).map((value) => <label key={value} className={`selection-card ${employmentType === value ? 'selected' : ''}`}><input type="radio" name="employment-type" checked={employmentType === value} onChange={() => { setEmploymentType(value); setMessage(null) }} /><span className="selection-mark" aria-hidden="true" /><span><strong>{value === 'FULL_TIME' ? '正式員工' : '兼職'}</strong></span></label>)}
           </div></fieldset>
 
-          <fieldset><legend className="text-sm font-medium">当前角色</legend><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <fieldset><legend className="text-sm font-medium">目前角色</legend><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {EDITABLE_ROLES.map((role) => <label key={role} className={`selection-card min-w-0 ${roles.includes(role) ? 'selected' : ''}`}><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" checked={roles.includes(role)} onChange={() => toggleRole(role)} /><span className="min-w-0"><strong className="break-words">{roleLabel(role)}</strong></span></label>)}
           </div></fieldset>
 
           {(message || validation) && <div className="form-error" role="alert"><Icon name="shield" size={15} /><span>{message ?? validation}</span></div>}
         </div>
 
-        <div className="mt-6 flex justify-end gap-2"><button type="button" className="secondary-button" onClick={onClose} disabled={saving}>取消</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving || validation !== null}><Icon name="check" size={16} />{saving ? '保存中' : '保存变更'}</button></div>
+        <div className="mt-6 flex justify-end gap-2"><button type="button" className="secondary-button" onClick={onClose} disabled={saving}>取消</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving || validation !== null}><Icon name="check" size={16} />{saving ? '儲存中' : '儲存變更'}</button></div>
       </div>
     </div>
   )
 }
 
-function StatusPill({ value }: { readonly value: UserStatus | MembershipStatus }) { const label = value === 'active' ? 'Active' : value === 'invited' ? 'Invited' : 'Disabled'; return <span className={`status-pill ${value === 'active' ? 'status-success' : 'status-warning'}`}>{label}</span> }
+function StatusPill({ value }: { readonly value: UserStatus | MembershipStatus }) { const label = value === 'active' ? '啟用' : value === 'invited' ? '已邀請' : '已停用'; return <span className={`status-pill ${value === 'active' ? 'status-success' : 'status-warning'}`}>{label}</span> }
 function RolePill({ role }: { readonly role: Role }) { return <span className="status-pill status-success">{roleLabel(role)}</span> }
 function roleLabel(role: Role): string { return role === 'founder' ? 'Founder' : role === 'admin' ? 'Admin' : role === 'advisor' ? 'Advisor' : 'Contractor' }
-function employmentLabel(value: EmploymentType | null): string { return value === 'FULL_TIME' ? '正式员工' : value === 'PART_TIME' ? '兼职' : '未设置' }
+function employmentLabel(value: EmploymentType | null): string { return value === 'FULL_TIME' ? '正式員工' : value === 'PART_TIME' ? '兼職' : '未設定' }
 function inferredEmploymentType(roles: readonly Role[]): EmploymentType { return roles.includes('contractor') ? 'PART_TIME' : 'FULL_TIME' }
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-HK') }
 
 function validateMemberSelection(displayName: string, employmentType: EmploymentType, roles: readonly Role[]): string | null {
-  if (displayName.trim().length < 1) return '请输入昵称。'
-  if (roles.includes('contractor') && roles.length > 1) return 'Contractor 必须是唯一角色。'
-  if (employmentType === 'FULL_TIME' && roles.includes('contractor')) return '正式员工不能分配 Contractor。'
-  if (employmentType === 'PART_TIME' && (roles.includes('founder') || roles.includes('advisor'))) return '兼职不能分配 Founder 或 Advisor。'
+  if (displayName.trim().length < 1) return '請輸入暱稱。'
+  if (roles.includes('contractor') && roles.length > 1) return 'Contractor 必須是唯一角色。'
+  if (employmentType === 'FULL_TIME' && roles.includes('contractor')) return '正式員工不能分配 Contractor。'
+  if (employmentType === 'PART_TIME' && (roles.includes('founder') || roles.includes('advisor'))) return '兼職不能分配 Founder 或 Advisor。'
   return null
 }
 

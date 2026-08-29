@@ -183,7 +183,7 @@ export function DuplicateCandidateReview({ candidateId }: { readonly candidateId
     <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/students/duplicates" className="quiet-link">疑似重複資料</Link><Icon name="chevron-right" size={14} /><span>人工比較</span></div>
     <header className="flex flex-col md:flex-row md:items-start md:justify-between gap-4"><div><div className="eyebrow">資料品質</div><h2 className="page-title">人工比較資料</h2><p className="page-subtitle">逐項核對兩筆資料，再決定是否合併及各欄位採用哪一筆來源。</p></div><div className="flex flex-wrap gap-2"><span className="status-pill status-warning">{detail.candidate.entity_type === 'student' ? '學生' : '監護人'}</span><span className={`status-pill ${detail.merge?.status === 'corrected' ? 'status-warning' : detail.candidate.status === 'merged' ? 'status-success' : 'status-warning'}`}>{statusLabel(detail)}</span><span className="status-pill">版本 {detail.candidate.record_version}</span></div></header>
 
-    {(commandState === 'success' || commandState === 'corrected') ? <div ref={noticeRef} className="preview-notice" role="status" tabIndex={-1}><Icon name="check-circle" size={15} /><span>{commandState === 'success' ? '合併決定已保存，頁面已重新讀取最新資料。' : '更正已保存，兩筆原始資料與既有歷史均獲保留。'}</span></div> : null}
+    {(commandState === 'success' || commandState === 'corrected') ? <div ref={noticeRef} className="preview-notice" role="status" tabIndex={-1}><Icon name="check-circle" size={15} /><span>{commandState === 'success' ? '合併決定已儲存，頁面已重新載入最新資料。' : '更正已儲存，兩筆原始資料與既有歷史均獲保留。'}</span></div> : null}
 
     <section className="workspace-section" aria-labelledby="duplicate-comparison-heading">
       <div className="mb-5"><h3 id="duplicate-comparison-heading" className="section-title">資料並排比較</h3><p className="section-detail">左右兩欄均為目前權威資料；系統不會預先判定採用哪一筆。</p></div>
@@ -201,9 +201,9 @@ export function DuplicateCandidateReview({ candidateId }: { readonly candidateId
           <IdentityChoice legend="選擇來源資料" name="source-record" detail={detail} selected={sourceRecordId} disabled={pending} onChange={(id) => changeIdentity('source', id)} />
         </div>
         <fieldset className="space-y-4" disabled={pending}><legend className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>逐欄選擇資料來源</legend>{detail.supported_fields.map((field) => <FieldChoice key={field} field={field} detail={detail} selected={fieldSelections[field] ?? ''} onChange={(id) => selectField(field, id)} />)}</fieldset>
-        <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={mergeConfirmed} onChange={(event) => { mergeAttempt.current.rotate(); setMergeConfirmed(event.target.checked); setCommandState('idle') }} disabled={pending} /><span>我確認來源資料的 UUID、原始欄位和歷史紀錄都會保留；此操作不會刪除任何學生、監護人、關係或案件。</span></label>
+        <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={mergeConfirmed} onChange={(event) => { mergeAttempt.current.rotate(); setMergeConfirmed(event.target.checked); setCommandState('idle') }} disabled={pending} /><span>我確認來源資料、原始欄位和歷史紀錄都會保留；此操作不會刪除任何學生、監護人、關係或案件。</span></label>
         <CommandFeedback state={commandState} onReload={refreshAuthoritative} />
-        <div className="flex justify-end"><button type="button" className="primary-button justify-center min-w-36" onClick={merge} disabled={pending} aria-busy={commandState === 'merging'}><Icon name={commandState === 'merging' ? 'clock' : 'check'} size={16} />{commandState === 'merging' ? '保存中…' : '確認合併決定'}</button></div>
+        <div className="flex justify-end"><button type="button" className="primary-button justify-center min-w-36" onClick={merge} disabled={pending} aria-busy={commandState === 'merging'}><Icon name={commandState === 'merging' ? 'clock' : 'check'} size={16} />{commandState === 'merging' ? '儲存中…' : '確認合併決定'}</button></div>
       </div>}
     </section> : <section className="workspace-section" aria-labelledby="duplicate-result-heading">
       <div className="mb-5"><h3 id="duplicate-result-heading" className="section-title">目前合併結果</h3><p className="section-detail">原始資料和歷史仍然保留；此處只顯示目前有效的人工決定。</p></div>
@@ -236,7 +236,7 @@ function CommandFeedback({ state, onReload }: { readonly state: CommandState; re
   return <div className="form-error" role="alert"><Icon name="x" size={15} /><span>{message}</span></div>
 }
 
-function ReadOnlyNotice() { return <div className="preview-notice" role="status"><Icon name="shield" size={15} /><span>你可以查看並比較資料，但目前沒有合併或更正權限。服務端仍會獨立驗證每項操作。</span></div> }
+function ReadOnlyNotice() { return <div className="preview-notice" role="status"><Icon name="shield" size={15} /><span>你可以查看並比較資料，但目前沒有合併或更正權限。</span></div> }
 function ResultInfo({ label, value }: { readonly label: string; readonly value: string }) { return <div><dt className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</dt><dd className="mt-1 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{value}</dd></div> }
 function PageState({ icon, title, detail, href, action, onRetry }: { readonly icon: 'clock' | 'lock' | 'shield' | 'users' | 'x'; readonly title: string; readonly detail: string; readonly href?: string; readonly action?: string; readonly onRetry?: () => void }) { return <div className="max-w-3xl mx-auto"><section className="workspace-section"><div className="empty-state"><Icon name={icon} size={20} /><strong>{title}</strong><span>{detail}</span>{href && action ? <Link href={href} className="primary-button mt-3">{action}</Link> : null}{onRetry ? <button type="button" className="secondary-button mt-3" onClick={onRetry}>重新載入</button> : null}</div></section></div> }
 
@@ -245,5 +245,5 @@ function labelFor(detail: DuplicateCandidateDetail, recordId: string): string { 
 function hasCapability(capabilities: readonly unknown[], expected: string): boolean { return capabilities.some((capability) => String(capability) === expected) }
 function commandFailure(error: unknown): CommandState { const failure = classifyDuplicateRequestFailure(error); if (failure === 'stale') return 'stale'; if (failure === 'conflict') return 'conflict'; if (failure === 'validation') return 'validation'; if (failure === 'forbidden' || failure === 'not_found' || failure === 'unauthenticated') return 'denied'; return 'unavailable' }
 function statusLabel(detail: DuplicateCandidateDetail): string { if (detail.merge?.status === 'corrected') return '已更正'; if (detail.candidate.status === 'merged') return '已完成合併決定'; return '待人工審查' }
-function fieldLabel(field: DuplicateSupportedField): string { if (field === 'display_name') return '姓名'; if (field === 'date_of_birth') return '出生日期'; if (field === 'contact_email' || field === 'email') return 'Email'; return '電話' }
+function fieldLabel(field: DuplicateSupportedField): string { if (field === 'display_name') return '姓名'; if (field === 'date_of_birth') return '出生日期'; if (field === 'contact_email' || field === 'email') return '電郵'; return '電話' }
 function profileValue(profile: DuplicateProfile, field: DuplicateSupportedField): string { const value = field in profile ? profile[field as keyof DuplicateProfile] : null; return typeof value === 'string' && value.length > 0 ? value : '未提供' }

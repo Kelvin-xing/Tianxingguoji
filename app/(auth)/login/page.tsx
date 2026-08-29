@@ -23,7 +23,7 @@ const LOGIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   access_disabled: '此公司帳戶目前已停用。',
   authentication_failed: '登入驗證失敗，請重新嘗試或聯絡管理員。',
   configuration: '登入服務尚未完成部署設定，請聯絡管理員。',
-  invalid_local_role: '請選擇有效的本地測試角色。',
+  invalid_local_role: '請選擇有效的登入角色。',
   email_not_verified: '此公司帳戶的電郵尚未驗證。',
   invalid_callback: '登入連結已失效，請重新開始登入。',
   logout_pending: '登出請求尚未完全確認，請稍後重新登入。',
@@ -65,18 +65,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <BrandMark inverted />
           <div className="max-w-md mt-24">
             <div className="eyebrow" style={{ color: '#93c5fd' }}>
-              Internal operations
+              內部工作台
             </div>
             <h1 className="text-4xl font-semibold leading-tight mt-3">
               把每一個案件，<br />變成可協作的工作面。
             </h1>
             <p className="mt-5 text-sm leading-7" style={{ color: 'var(--sidebar-text)' }}>
-              從 Student 360 到 ServiceCase、學校目標、文件與任務，所有需要判斷的資訊放在同一個 context。
+              從學生資料到案件、選校、文件與任務，所有需要判斷的資訊集中在同一個工作區。
             </p>
           </div>
         </div>
         <div className="text-xs" style={{ color: 'var(--sidebar-text-muted)' }}>
-          Release 1 · {presentation.desktopFooter}
+          {presentation.desktopFooter}
         </div>
       </div>
 
@@ -123,18 +123,17 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
     return (
       <form action="/api/v1/auth/login" method="post" className="space-y-4">
         <label className="block text-sm font-medium" htmlFor="role">
-          本地測試角色
+          登入角色
         </label>
         <select className="w-full" id="role" name="role" defaultValue="founder">
           <option value="founder">Founder</option>
           <option value="admin">Admin</option>
           <option value="advisor">Advisor</option>
-          <option value="data_reviewer">Data reviewer</option>
           <option value="contractor">Contractor</option>
         </select>
         <button className="primary-button w-full justify-center" type="submit">
           <Icon name="log-in" size={16} />
-          使用本地角色登入
+          使用角色登入
         </button>
       </form>
     )
@@ -166,36 +165,36 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
 function getLoginPresentation(authMode: AuthMode | null): LoginPresentation {
   if (authMode === 'local-synthetic') {
     return {
-      eyebrow: 'Company access',
-      description: '選擇本地測試角色進入工作台；此入口只會在本地開發模式啟用。',
-      desktopFooter: 'Local synthetic access',
-      securityNotice: '本地登入只建立開發用 opaque session，不接收或保存真實使用者資料。',
+      eyebrow: '公司工作台',
+      description: '選擇登入角色進入工作台。',
+      desktopFooter: '帳戶登入',
+      securityNotice: '請使用公司提供的帳戶登入。',
     }
   }
 
   if (authMode === 'database-test') {
     return {
-      eyebrow: 'Test environment access',
-      description: '使用獲提供的合成測試帳號登入測試工作台。本環境只包含合成測試資料。',
-      desktopFooter: 'Synthetic test access',
-      securityNotice: '此入口只供隔離測試環境使用，請勿輸入真實個人資料或其他系統的密碼。',
+      eyebrow: '公司工作台',
+      description: '使用公司帳戶登入工作台。',
+      desktopFooter: '帳戶登入',
+      securityNotice: '請使用公司提供的帳戶登入。',
     }
   }
 
   if (authMode === 'cognito') {
     return {
-      eyebrow: 'Company access',
-      description: '使用管理員邀請的公司帳戶登入。案件與學生資料只會在你的 organization scope 內顯示。',
-      desktopFooter: 'Cognito invite-only access',
-      securityNotice: '登入由 Cognito Managed Login 處理；應用程式只使用香港 runtime 管理的 opaque session。',
+      eyebrow: '公司工作台',
+      description: '使用公司帳戶登入，查看你有權限的案件與學生資料。',
+      desktopFooter: '公司登入',
+      securityNotice: '登入服務由公司帳戶系統處理。',
     }
   }
 
   return {
-    eyebrow: 'Company access',
+    eyebrow: '公司工作台',
     description: '登入服務目前不可使用，請聯絡系統管理員確認設定。',
-    desktopFooter: 'Access unavailable',
-    securityNotice: '目前沒有可提交的登入入口。',
+    desktopFooter: '登入服務',
+    securityNotice: '目前沒有可用的登入方式。',
   }
 }
 
@@ -225,7 +224,7 @@ function BrandMark({ inverted = false }: { inverted?: boolean }) {
           className="text-xs"
           style={{ color: inverted ? 'var(--sidebar-text-muted)' : 'var(--text-muted)' }}
         >
-          Case workspace
+          案件工作台
         </div>
       </div>
     </div>

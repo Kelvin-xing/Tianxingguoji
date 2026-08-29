@@ -28,8 +28,8 @@ export function TicketModal({
     try {
       await onSubmit({ field, description, reporter })
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '提交失敗')
+    } catch {
+      setError('提交回報失敗，請稍後重試。')
     } finally {
       setSaving(false)
     }
@@ -75,7 +75,7 @@ export function TicketModal({
         </div>
         <div className="flex justify-end gap-2 p-4" style={{ borderTop: '1px solid var(--border)' }}>
           <button onClick={onClose} className="text-sm px-3 py-1.5 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>取消</button>
-          <button onClick={submit} disabled={saving} className="text-sm px-3 py-1.5 rounded-md disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>{saving ? '提交中' : '提交 ticket'}</button>
+          <button onClick={submit} disabled={saving} className="text-sm px-3 py-1.5 rounded-md disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>{saving ? '提交中' : '提交回報'}</button>
         </div>
       </div>
     </div>

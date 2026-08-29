@@ -9,7 +9,7 @@ test('P4 notifications use recipient DTO, allowed actions and stable minimal cop
   assert.match(client, /unread-count/)
   assert.match(client, /resolve-target/)
   assert.match(workspace, /allowed_actions/)
-  assert.match(workspace, /有待办事项需要处理/)
+  assert.match(workspace, /有待處理事項/)
   assert.match(workspace, /StaleState/)
   assert.match(topbar, /unreadCount/)
   assert.doesNotMatch(workspace, /window\.fetch|sendEmail|sendSms|portalGrant/i)

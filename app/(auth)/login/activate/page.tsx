@@ -18,12 +18,12 @@ export default async function InviteActivationPage({
     <main className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--page-bg)" }}>
       <section className="w-full max-w-md">
         <div className="mb-8">
-          <div className="eyebrow">Company access</div>
+          <div className="eyebrow">公司工作台</div>
           <h1 className="text-2xl font-semibold mt-2" style={{ color: "var(--text-primary)" }}>
             啟用公司帳戶
           </h1>
           <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>
-            輸入邀請通知提供的啟用資訊，然後在 Cognito Managed Login 完成密碼設定及 TOTP。
+            輸入邀請通知提供的啟用資訊，完成帳戶設定。
           </p>
         </div>
         {errorMessage ? (

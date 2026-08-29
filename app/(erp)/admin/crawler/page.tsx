@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { crawlerApi } from '@/modules/schools/crawler-client'
 import type { CrawlerConfig, CrawlerReviewDecision, CrawlerReviewRecord, CrawlerSummary, CrawlerTicket } from '@/types'
 
-const LEVEL_OPTIONS = ['Primary', 'Secondary', 'Post Secondary']
+const LEVEL_OPTIONS = ['Primary', 'Secondary', 'Post Secondary'] as const
 
 export default function AdminCrawlerPage() {
   const [summary, setSummary] = useState<CrawlerSummary | null>(null)
@@ -33,8 +33,8 @@ export default function AdminCrawlerPage() {
       setTickets(nextTickets)
       setDecisions(nextDecisions)
       setConfig(nextConfig)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '載入管理資料失敗，請確認 DATABASE_URL 已在 Vercel/本地環境配置')
+    } catch {
+      setError('載入管理資料失敗，請稍後重試。')
     }
   }
 
@@ -49,7 +49,7 @@ export default function AdminCrawlerPage() {
     if (!config) return
     setMessage('')
     setConfig(await crawlerApi.saveConfig(config))
-    setMessage('爬蟲配置已儲存')
+    setMessage('資料更新設定已儲存')
   }
 
   async function saveDecision(status: 'approved' | 'needs_changes') {
@@ -74,24 +74,24 @@ export default function AdminCrawlerPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Metric label="全量學校" value={summary?.total_records || 0} />
         <Metric label="待人工驗證" value={summary?.needs_review || queue.length} tone="warn" />
-        <Metric label="未處理 tickets" value={openTickets.length} tone="danger" />
+        <Metric label="待處理回報" value={openTickets.length} tone="danger" />
         <Metric label="已處理審核" value={decisions.length} tone="ok" />
       </div>
 
       <section className="rounded-lg p-4 space-y-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>自動爬蟲配置</h2>
-          <button onClick={saveConfig} disabled={!config} className="text-sm px-3 py-1.5 rounded-md disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>儲存配置</button>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>自動資料更新設定</h2>
+          <button onClick={saveConfig} disabled={!config} className="text-sm px-3 py-1.5 rounded-md disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>儲存設定</button>
         </div>
         {config && (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
-            <label className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />啟用自動爬取</label>
+            <label className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />啟用自動更新</label>
             <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>頻率<select className="mt-1 w-full" value={config.frequency} onChange={(e) => setConfig({ ...config, frequency: e.target.value as CrawlerConfig['frequency'] })}><option value="manual">手動</option><option value="daily">每日</option><option value="weekly">每週</option><option value="monthly">每月</option></select></label>
-            <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>並發數<input className="mt-1 w-full" type="number" min={1} max={8} value={config.max_parallel} onChange={(e) => setConfig({ ...config, max_parallel: Number(e.target.value) })} /></label>
-            <label className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={config.llm_enabled} onChange={(e) => setConfig({ ...config, llm_enabled: e.target.checked })} />開啟 LLM</label>
+            <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>同時處理數量<input className="mt-1 w-full" type="number" min={1} max={8} value={config.max_parallel} onChange={(e) => setConfig({ ...config, max_parallel: Number(e.target.value) })} /></label>
+            <label className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}><input type="checkbox" checked={config.llm_enabled} onChange={(e) => setConfig({ ...config, llm_enabled: e.target.checked })} />啟用智慧分析</label>
             <div className="text-xs" style={{ color: 'var(--text-muted)' }}>更新：{config.updated_at}</div>
             <div className="md:col-span-5 flex flex-wrap gap-2">
-              {LEVEL_OPTIONS.map((level) => <label key={level} className="text-xs px-2 py-1 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}><input className="mr-1" type="checkbox" checked={config.school_levels.includes(level)} onChange={(e) => setConfig({ ...config, school_levels: e.target.checked ? [...config.school_levels, level] : config.school_levels.filter((item) => item !== level) })} />{level}</label>)}
+              {LEVEL_OPTIONS.map((level) => <label key={level} className="text-xs px-2 py-1 rounded-md" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}><input className="mr-1" type="checkbox" checked={config.school_levels.includes(level)} onChange={(e) => setConfig({ ...config, school_levels: e.target.checked ? [...config.school_levels, level] : config.school_levels.filter((item) => item !== level) })} />{schoolLevelLabel(level)}</label>)}
             </div>
           </div>
         )}
@@ -103,7 +103,7 @@ export default function AdminCrawlerPage() {
           <div className="max-h-[620px] overflow-auto divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
             {queue.slice(0, 160).map((item) => {
               const decision = decisionMap.get(item.school_key)
-              return <button key={item.school_key} onClick={() => { setSelected(item); setSuggestion(decision?.suggestion || item.suggested_action || ''); setReviewer(decision?.reviewer || '') }} className="w-full text-left p-3 hover:bg-slate-50" style={{ background: selected?.school_key === item.school_key ? 'var(--accent-subtle)' : 'transparent' }}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.school_name_zh}</div><div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.missing_fields || '需要確認來源'}</div></div><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: decision?.status === 'approved' ? '#f0fdf4' : '#fffbeb', color: decision?.status === 'approved' ? '#15803d' : '#b45309' }}>{decision?.status || item.review_priority}</span></div></button>
+              return <button key={item.school_key} onClick={() => { setSelected(item); setSuggestion(decision?.suggestion || item.suggested_action || ''); setReviewer(decision?.reviewer || '') }} className="w-full text-left p-3 hover:bg-slate-50" style={{ background: selected?.school_key === item.school_key ? 'var(--accent-subtle)' : 'transparent' }}><div className="flex items-start justify-between gap-3"><div><div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{item.school_name_zh}</div><div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.missing_fields || '需要確認來源'}</div></div><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: decision?.status === 'approved' ? '#f0fdf4' : '#fffbeb', color: decision?.status === 'approved' ? '#15803d' : '#b45309' }}>{reviewStatusLabel(decision?.status || item.review_priority)}</span></div></button>
             })}
           </div>
         </section>
@@ -117,16 +117,16 @@ export default function AdminCrawlerPage() {
                 <div className="text-xs p-3 rounded" style={{ background: 'var(--bg)', color: 'var(--text-secondary)' }}>{selected.suggested_action || selected.notes || '請人工確認此記錄。'}</div>
                 <textarea className="w-full min-h-28" value={suggestion} onChange={(e) => setSuggestion(e.target.value)} placeholder="修改建議或審核備註" />
                 <input className="w-full" value={reviewer} onChange={(e) => setReviewer(e.target.value)} placeholder="審核人" />
-                <div className="flex gap-2"><button onClick={() => saveDecision('approved')} className="text-sm px-3 py-1.5 rounded-md" style={{ background: '#16a34a', color: '#fff' }}>通過</button><button onClick={() => saveDecision('needs_changes')} className="text-sm px-3 py-1.5 rounded-md" style={{ background: '#d97706', color: '#fff' }}>保存修改建議</button></div>
+                <div className="flex gap-2"><button onClick={() => saveDecision('approved')} className="text-sm px-3 py-1.5 rounded-md" style={{ background: '#16a34a', color: '#fff' }}>通過</button><button onClick={() => saveDecision('needs_changes')} className="text-sm px-3 py-1.5 rounded-md" style={{ background: '#d97706', color: '#fff' }}>儲存修改建議</button></div>
               </>
             ) : <div className="text-sm" style={{ color: 'var(--text-muted)' }}>從左側選擇一條待審核資料。</div>}
           </section>
 
           <section className="rounded-lg overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <div className="p-4" style={{ borderBottom: '1px solid var(--border)' }}><h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>用戶 tickets</h2></div>
+            <div className="p-4" style={{ borderBottom: '1px solid var(--border)' }}><h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>使用者回報</h2></div>
             <div className="max-h-[360px] overflow-auto divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-              {tickets.length === 0 && <div className="p-4 text-sm" style={{ color: 'var(--text-muted)' }}>暫無 ticket</div>}
-              {tickets.map((ticket) => <div key={ticket.id} className="p-3 space-y-2"><div className="flex justify-between gap-3"><div><div className="text-sm font-medium">{ticket.school_name_zh}</div><div className="text-xs" style={{ color: 'var(--text-muted)' }}>{ticket.field} · {ticket.reporter || '匿名'}</div></div><span className="text-xs">{ticket.status}</span></div><div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{ticket.description}</div><div className="flex gap-1.5">{(['open', 'reviewing', 'resolved', 'rejected'] as const).map((status) => <button key={status} onClick={() => updateTicket(ticket, status)} className="text-xs px-2 py-1 rounded" style={{ border: '1px solid var(--border)', color: ticket.status === status ? 'var(--accent)' : 'var(--text-secondary)' }}>{status}</button>)}</div></div>)}
+              {tickets.length === 0 && <div className="p-4 text-sm" style={{ color: 'var(--text-muted)' }}>暫無回報</div>}
+              {tickets.map((ticket) => <div key={ticket.id} className="p-3 space-y-2"><div className="flex justify-between gap-3"><div><div className="text-sm font-medium">{ticket.school_name_zh}</div><div className="text-xs" style={{ color: 'var(--text-muted)' }}>{ticketFieldLabel(ticket.field)} · {ticket.reporter || '匿名'}</div></div><span className="text-xs">{ticketStatusLabel(ticket.status)}</span></div><div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{ticket.description}</div><div className="flex gap-1.5">{(['open', 'reviewing', 'resolved', 'rejected'] as const).map((status) => <button key={status} onClick={() => updateTicket(ticket, status)} className="text-xs px-2 py-1 rounded" style={{ border: '1px solid var(--border)', color: ticket.status === status ? 'var(--accent)' : 'var(--text-secondary)' }}>{ticketStatusLabel(status)}</button>)}</div></div>)}
             </div>
           </section>
         </div>
@@ -138,4 +138,36 @@ export default function AdminCrawlerPage() {
 function Metric({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'warn' | 'danger' | 'ok' }) {
   const color = tone === 'warn' ? '#d97706' : tone === 'danger' ? '#dc2626' : tone === 'ok' ? '#16a34a' : 'var(--accent)'
   return <div className="p-4 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: `3px solid ${color}` }}><div className="text-xl font-bold" style={{ color }}>{value}</div><div className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</div></div>
+}
+
+function schoolLevelLabel(value: typeof LEVEL_OPTIONS[number]): string {
+  if (value === 'Primary') return '小學';
+  if (value === 'Secondary') return '中學';
+  return '專上教育';
+}
+
+function reviewStatusLabel(value: string): string {
+  if (value === 'approved') return '已通過';
+  if (value === 'needs_review') return '待人工審核';
+  if (value === 'needs_changes') return '需要修改';
+  if (value === 'rejected') return '已拒絕';
+  if (value === 'high') return '高優先';
+  if (value === 'medium') return '中優先';
+  return '待審核';
+}
+
+function ticketStatusLabel(value: string): string {
+  if (value === 'open') return '待處理';
+  if (value === 'reviewing') return '審核中';
+  if (value === 'resolved') return '已處理';
+  if (value === 'rejected') return '已拒絕';
+  return '待處理';
+}
+
+function ticketFieldLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    general: '整體資料', admission_url: '招生連結', application_dates: '申請日期', required_materials: '所需文件',
+    tuition_info: '學費', dormitory_info: '宿舍', school_metadata: '學校基本資料',
+  }
+  return labels[value] ?? '資料欄位'
 }

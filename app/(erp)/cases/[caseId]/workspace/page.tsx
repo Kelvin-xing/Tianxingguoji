@@ -59,8 +59,8 @@ function runtimeUnavailableProjection(
     activeTab,
     panel: {
       kind: "error",
-      title: "Case workspace is temporarily unavailable",
-      detail: "The authorized case workspace projection is not configured.",
+      title: "案件工作區暫時無法使用",
+      detail: "請稍後重試。",
       requestReference: randomUUID(),
       retryHref: `${routeBase}?tab=${activeTab}`,
     },

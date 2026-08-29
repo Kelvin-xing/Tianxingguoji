@@ -157,8 +157,8 @@ function CaseRow({ item }: { item: DashboardCase }) {
       <div className="min-w-0">
         {item.summary ? (
           <>
-            <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{STAGE_LABELS[item.summary.stage] ?? item.summary.stage}</div>
-            <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-muted)' }}>{item.summary.next_action ?? '暫無下一步'}</div>
+            <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{STAGE_LABELS[item.summary.stage] ?? stageLabel(item.summary.stage)}</div>
+            <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-muted)' }}>{item.summary.next_action ? actionLabel(item.summary.next_action) : '暫無下一步'}</div>
           </>
         ) : <span className="text-xs" style={{ color: 'var(--text-muted)' }}>僅顯示獲授權範圍</span>}
       </div>
@@ -174,6 +174,23 @@ function CaseRow({ item }: { item: DashboardCase }) {
 
 function Count({ label, value }: { label: string; value: number | string }) {
   return <div><dt style={{ color: 'var(--text-muted)' }}>{label}</dt><dd className="mt-0.5 font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</dd></div>
+}
+
+const ACTION_LABELS: Readonly<Record<string, string>> = {
+  'Review assessment': '查看評估',
+  'Complete assessment': '完成評估',
+  'Confirm shortlist': '確認選校名單',
+  'Prepare application': '準備申請',
+  'Submit application': '提交申請',
+  'Prepare interview': '準備面試',
+}
+
+function stageLabel(value: string): string {
+  return /[\u3400-\u9fff]/.test(value) ? value : '目前階段'
+}
+
+function actionLabel(value: string): string {
+  return ACTION_LABELS[value] ?? (/[\u3400-\u9fff]/.test(value) ? value : '待處理事項')
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

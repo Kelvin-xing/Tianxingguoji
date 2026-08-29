@@ -125,8 +125,8 @@ export function StudentDetailView({ studentId }: { readonly studentId: string })
 
       <section className="workspace-section">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4"><div><h3 className="section-title">學生基本資料</h3><p className="section-detail">此處顯示學生本人的身份與聯絡資料。</p></div><div className="flex flex-wrap gap-2">{active && canRequestDeletion ? <PendingDeletionRequestControl entityType="student" entityId={student.id} status={student.status} recordVersion={student.recordVersion} onRequested={() => saved('學生已送交待刪除審查。')} onReload={reloadAuthoritative} /> : null}{active && canManageProfiles ? <button type="button" className="secondary-button" onClick={(event) => beginEdit({ kind: 'student' }, event.currentTarget)} disabled={editTarget?.kind === 'student'}><Icon name="settings" size={15} />編輯學生資料</button> : null}</div></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Info label="出生日期" value={student.dateOfBirth ?? '未提供'} /><Info label="聯絡 Email" value={student.contactEmail ?? '未提供'} /><Info label="聯絡電話" value={student.contactPhone ?? '未提供'} /><Info label="更新時間" value={formatDate(student.updatedAt)} /></div>
-        {active && editTarget?.kind === 'student' ? <StudentProfileEditor student={student} onCancel={cancelEdit} onSaved={() => saved('學生資料已保存。')} onReload={reloadAuthoritative} /> : null}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"><Info label="出生日期" value={student.dateOfBirth ?? '未提供'} /><Info label="聯絡電郵" value={student.contactEmail ?? '未提供'} /><Info label="聯絡電話" value={student.contactPhone ?? '未提供'} /><Info label="更新時間" value={formatDate(student.updatedAt)} /></div>
+        {active && editTarget?.kind === 'student' ? <StudentProfileEditor student={student} onCancel={cancelEdit} onSaved={() => saved('學生資料已儲存。')} onReload={reloadAuthoritative} /> : null}
       </section>
 
       {successMessage ? <div ref={successNotice} className="preview-notice" role="status" tabIndex={-1}><Icon name="check-circle" size={15} /><span>{successMessage}</span></div> : null}
@@ -141,7 +141,7 @@ export function StudentDetailView({ studentId }: { readonly studentId: string })
         </div>
         {student.guardians.length === 0
           ? <div className="empty-state">目前沒有有效監護人關係。</div>
-          : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{student.guardians.map((guardian) => <GuardianSummary key={guardian.id} relationship={relationshipsByGuardianId.get(guardian.id)} guardian={guardian} studentActive={active} canManageProfiles={canManageProfiles} canRequestDeletion={canRequestDeletion} editing={editTarget?.kind === 'guardian' && editTarget.guardianId === guardian.id} onEdit={(trigger) => beginEdit({ kind: 'guardian', guardianId: guardian.id }, trigger)} onCancel={cancelEdit} onSaved={() => saved('監護人資料已保存。')} onDeletionRequested={() => saved('監護人已送交待刪除審查。')} onReload={reloadAuthoritative} />)}</div>}
+          : <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{student.guardians.map((guardian) => <GuardianSummary key={guardian.id} relationship={relationshipsByGuardianId.get(guardian.id)} guardian={guardian} studentActive={active} canManageProfiles={canManageProfiles} canRequestDeletion={canRequestDeletion} editing={editTarget?.kind === 'guardian' && editTarget.guardianId === guardian.id} onEdit={(trigger) => beginEdit({ kind: 'guardian', guardianId: guardian.id }, trigger)} onCancel={cancelEdit} onSaved={() => saved('監護人資料已儲存。')} onDeletionRequested={() => saved('監護人已送交待刪除審查。')} onReload={reloadAuthoritative} />)}</div>}
       </section>
     </div>
   )

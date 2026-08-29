@@ -17,14 +17,14 @@ test("focused editors expose only the frozen profile fields with Save and Cancel
   for (const label of [
     "學生姓名",
     "出生日期",
-    "學生 Email",
+    "學生電郵",
     "學生電話",
     "監護人姓名",
-    "監護人 Email",
+    "監護人電郵",
     "監護人電話",
   ]) assert.match(panel, new RegExp(`label=["']${label}["']`));
-  assert.match(panel, /saveLabel="保存學生資料"/);
-  assert.match(panel, /saveLabel="保存監護人資料"/);
+  assert.match(panel, /saveLabel="儲存學生資料"/);
+  assert.match(panel, /saveLabel="儲存監護人資料"/);
   assert.match(panel, />取消<\/button>/);
   assert.doesNotMatch(panel, /type=["']hidden|name=["'][^"']*(?:uuid|version)|localStorage|sessionStorage|URLSearchParams|console\.|analytics|fetch\(/i);
 });
@@ -57,8 +57,8 @@ test("profile UI distinguishes saving, validation, stale, denied, unavailable an
   assert.match(panel, /aria-busy=\{pending\}/);
   assert.match(panel, /role="alert"/);
   assert.match(detail, /role="status" tabIndex=\{-1\}/);
-  assert.match(detail, /學生資料已保存。/);
-  assert.match(detail, /監護人資料已保存。/);
+  assert.match(detail, /學生資料已儲存。/);
+  assert.match(detail, /監護人資料已儲存。/);
 });
 
 test("read cards remain masked while editors receive exact matched Guardian profiles", async () => {

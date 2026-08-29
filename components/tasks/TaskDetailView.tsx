@@ -12,7 +12,7 @@ import {
 } from "@/modules/tasks/client";
 import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./AutomaticTaskTransitionControls";
 import { TaskTransitionControls } from "./TaskTransitionControls";
-import { TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate } from "./task-ui";
+import { TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
 type LoadState = "loading" | "ready" | "unauthenticated" | "denied" | "not_found" | "unavailable";
 
@@ -106,7 +106,7 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
           <Info label="到期時間" value={formatTaskDate(task.due_at)} />
           <Info label="最後更新" value={formatTaskDate(task.updated_at)} />
           <Info label="任務類型" value={task.task_kind === "application_prepare_submit" ? "準備並提交申請" : task.task_kind === "interview_support" ? "面試支援" : "手工任務"} />
-          {task.current_assignment ? <Info label="目前指派" value={`${task.current_assignment.assignee_role === "advisor" ? "顧問" : "外部協作人員"} · ${task.current_assignment.status}`} /> : null}
+          {task.current_assignment ? <Info label="目前指派" value={`${task.current_assignment.assignee_role === "advisor" ? "顧問" : "外部協作人員"} · ${taskStateLabel(task.current_assignment.status)}`} /> : null}
           {internal ? <Info label="負責人" value={result.task.assignee.label} /> : null}
           {internal ? <div><dt className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>案件</dt><dd className="mt-1"><Link href={`/cases/${result.task.case_id}`} className="quiet-link">{result.task.case_number}</Link></dd></div> : null}
         </dl>
@@ -115,9 +115,9 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
         <div className="inline-callout" role="status">
           <Icon name={transitionOutcome === "target_pending" ? "clock" : "check-circle"} size={15} />
           <span>{transitionOutcome === "target_pending"
-            ? "Task 已完成，SchoolTarget 待自動恢復。"
+            ? "任務已完成，學校目標待自動恢復。"
             : transitionOutcome === "target_completed"
-              ? "Task 已完成，學校申請狀態已同步更新。"
+              ? "任務已完成，學校申請狀態已同步更新。"
               : transitionOutcome === "stale"
                 ? "任務已有較新版本，內容已重新載入。"
                 : "任務已更新，內容已重新載入。"}</span>

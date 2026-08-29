@@ -119,7 +119,7 @@ export function CaseWorkflowControls({
       } else if (failure === "conflict") {
         setFeedback({ kind: "conflict", message: "案件目前的狀態不允許這個操作。" });
       } else {
-        setFeedback({ kind: "unavailable", message: "案件流程服務暫時不可用；重試不會重複操作。" });
+        setFeedback({ kind: "unavailable", message: "案件流程服務暫時不可用，請稍後重試。" });
       }
     } finally {
       submissionLocked.current = false;

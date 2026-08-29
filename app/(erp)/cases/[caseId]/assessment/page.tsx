@@ -36,17 +36,17 @@ export default async function CaseAssessmentPage({ params }: { params: Promise<{
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
         <Link href={`/cases/${caseId}`} className="quiet-link">案件</Link>
         <Icon name="chevron-right" size={14} />
-        <span>Assessment</span>
+        <span>評估</span>
       </div>
       <section>
-        <div className="eyebrow">CaseWorkflow · Assessment</div>
+        <div className="eyebrow">案件 · 評估</div>
         <h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2>
         <p className="page-subtitle">K12 · {record.intakeYear} · {record.primaryBindingLabel}</p>
       </section>
       <section className="workspace-section">
         <div className="mb-4">
-          <h3 className="section-title">Assessment</h3>
-          <p className="section-detail">此頁固定讀取建案時綁定的 Manifest；每次編輯仍由服務端重新授權。</p>
+          <h3 className="section-title">評估</h3>
+          <p className="section-detail">評估內容會沿用案件建立時核准的版本。</p>
         </div>
         <AssessmentEditor endpoint={`/api/v1/cases/${caseId}/assessment`} initialView={serializeAssessmentView(assessment)} />
       </section>

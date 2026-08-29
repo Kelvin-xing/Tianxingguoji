@@ -38,7 +38,7 @@ export default function SelectorPage() {
     crawlerApi
       .schools()
       .then(setSchools)
-      .catch((err) => setError(err instanceof Error ? err.message : '載入學校資料失敗'))
+      .catch(() => setError('學校資料暫時無法載入，請稍後重試。'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -92,7 +92,7 @@ export default function SelectorPage() {
           <FilterSelect label="學校類型" value={schoolType} onChange={setSchoolType} options={options.schoolTypes} />
           <FilterSelect label="資助類型" value={financeType} onChange={setFinanceType} options={options.financeTypes} />
           <FilterSelect label={t('selector.admission_type')} value={admissionType} onChange={setAdmissionType} options={[{ value: 'transfer', label: t('schools.type_transfer') }, { value: 's1_admission', label: t('schools.type_s1') }, { value: 'unknown', label: t('schools.type_unknown') }]} />
-          <FilterSelect label={t('selector.confidence')} value={confidence} onChange={setConfidence} options={[{ value: 'high', label: t('schools.confidence_high') }, { value: 'medium', label: t('schools.confidence_medium') }, { value: 'low', label: t('schools.confidence_low') }, { value: 'missing', label: 'Missing' }]} />
+          <FilterSelect label={t('selector.confidence')} value={confidence} onChange={setConfidence} options={[{ value: 'high', label: t('schools.confidence_high') }, { value: 'medium', label: t('schools.confidence_medium') }, { value: 'low', label: t('schools.confidence_low') }, { value: 'missing', label: '未提供' }]} />
           <FilterSelect label="審核狀態" value={reviewStatus} onChange={setReviewStatus} options={[{ value: 'auto_selected', label: '自動通過' }, { value: 'needs_review', label: t('schools.status_needs_review') }, { value: 'approved', label: t('schools.status_approved') }, { value: 'rejected', label: t('schools.status_rejected') }]} />
           <FilterSelect label="宿舍" value={dormitory} onChange={setDormitory} options={[{ value: 'yes', label: '有資料' }, { value: 'no', label: '無資料' }]} />
         </div>
@@ -138,7 +138,7 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
         <option value={ALL}>全部</option>
         {options.map((option) => {
           const value = typeof option === 'string' ? option : option.value
-          const label = typeof option === 'string' ? option : option.label
+          const label = typeof option === 'string' ? optionLabel(value) : option.label
           return <option key={value} value={value}>{label}</option>
         })}
       </select>
@@ -155,21 +155,21 @@ function SchoolCard({ school, onTicket }: { school: AdmissionRecord; onTicket: (
           <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{school.school_name_zh}</div>
           <div className="text-xs mt-0.5 break-words" style={{ color: 'var(--text-muted)' }}>{school.school_name_en}</div>
         </div>
-        <span className="text-xs font-bold shrink-0" style={{ color: confStyle }}>{school.confidence.toUpperCase()}</span>
+        <span className="text-xs font-bold shrink-0" style={{ color: confStyle }}>{confidenceLabel(school.confidence)}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
         <Meta label="地區" value={school.district} />
-        <Meta label="層次" value={school.school_level} />
-        <Meta label="類型" value={school.school_type} />
-        <Meta label="資助" value={school.finance_type} />
+        <Meta label="層次" value={schoolLevelLabel(school.school_level)} />
+        <Meta label="類型" value={schoolTypeLabel(school.school_type)} />
+        <Meta label="資助" value={financeTypeLabel(school.finance_type)} />
         <Meta label="申請" value={school.application_dates || school.application_period || school.submission_deadline} />
-        <Meta label="審核" value={school.review_status} />
+        <Meta label="審核" value={reviewStatusLabel(school.review_status)} />
       </div>
       <div className="text-xs line-clamp-2" style={{ color: 'var(--text-muted)' }}>學費：{school.tuition_info || '未列明'}</div>
       <div className="text-xs line-clamp-2" style={{ color: 'var(--text-muted)' }}>宿舍：{school.dormitory_info || '未列明'}</div>
       <div className="flex items-center justify-between gap-3">
         <a href={school.final_admission_url || school.website} target="_blank" rel="noopener noreferrer" className="text-xs break-all" style={{ color: 'var(--accent)' }}>招生/學校頁面</a>
-        <button onClick={onTicket} className="text-xs px-2.5 py-1 rounded-md shrink-0" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>報錯</button>
+        <button onClick={onTicket} className="text-xs px-2.5 py-1 rounded-md shrink-0" style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>回報資料</button>
       </div>
     </div>
   )
@@ -177,6 +177,53 @@ function SchoolCard({ school, onTicket }: { school: AdmissionRecord; onTicket: (
 
 function Meta({ label, value }: { label: string; value?: string }) {
   return <div><span style={{ color: 'var(--text-muted)' }}>{label}：</span>{value || '—'}</div>
+}
+
+function optionLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    Primary: '小學', Secondary: '中學', 'Post Secondary': '專上教育', primary: '小學', secondary: '中學', post_secondary: '專上教育',
+    government: '官立', aided: '資助', private: '私立', international: '國際', boarding: '寄宿', direct_subsidy: '直資',
+  }
+  return labels[value] ?? value
+}
+
+function schoolLevelLabel(value?: string): string {
+  if (!value) return ''
+  const labels: Readonly<Record<string, string>> = { Primary: '小學', Secondary: '中學', 'Post Secondary': '專上教育', primary: '小學', secondary: '中學', post_secondary: '專上教育' }
+  return labels[value] ?? value
+}
+
+function schoolTypeLabel(value?: string): string {
+  if (!value) return ''
+  const labels: Readonly<Record<string, string>> = { government: '官立', aided: '資助', private: '私立', international: '國際', boarding: '寄宿' }
+  return labels[value] ?? value
+}
+
+function financeTypeLabel(value?: string): string {
+  if (!value) return ''
+  const labels: Readonly<Record<string, string>> = { government: '官立', aided: '資助', private: '私立', direct_subsidy: '直資', international: '國際' }
+  return labels[value] ?? value
+}
+
+function admissionTypeLabel(value: string): string {
+  if (value === 'transfer') return '插班／轉校'
+  if (value === 's1_admission') return '中一入學'
+  return '未知'
+}
+
+function confidenceLabel(value: string): string {
+  if (value === 'high') return '高'
+  if (value === 'medium') return '中'
+  if (value === 'low') return '低'
+  return '未提供'
+}
+
+function reviewStatusLabel(value: string): string {
+  if (value === 'auto_selected') return '自動通過'
+  if (value === 'approved') return '已通過'
+  if (value === 'needs_review') return '待人工審核'
+  if (value === 'rejected') return '已拒絕'
+  return '待審核'
 }
 
 function ReportModal({ schools, onClose }: { schools: AdmissionRecord[]; onClose: () => void }) {
@@ -193,10 +240,10 @@ function ReportModal({ schools, onClose }: { schools: AdmissionRecord[]; onClose
         </div>
         <div id="print-area" className="overflow-auto p-8 flex-1">
           <h1 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>天星顧問 — 選校報告</h1>
-          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>生成日期：{today}</p>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>產生日期：{today}</p>
           <table className="w-full text-sm border-collapse">
             <thead><tr style={{ borderBottom: '2px solid var(--border)' }}>{['#', '學校', '地區', '類型', '申請日期'].map((h) => <th key={h} className="text-left py-2 pr-4 font-semibold">{h}</th>)}</tr></thead>
-            <tbody>{schools.map((school, index) => <tr key={school.school_key} style={{ borderBottom: '1px solid var(--border-subtle)' }}><td className="py-2 pr-4">{index + 1}</td><td className="py-2 pr-4 font-medium">{school.school_name_zh}</td><td className="py-2 pr-4">{school.district}</td><td className="py-2 pr-4">{school.school_type || school.admission_type}</td><td className="py-2">{school.application_dates || '—'}</td></tr>)}</tbody>
+            <tbody>{schools.map((school, index) => <tr key={school.school_key} style={{ borderBottom: '1px solid var(--border-subtle)' }}><td className="py-2 pr-4">{index + 1}</td><td className="py-2 pr-4 font-medium">{school.school_name_zh}</td><td className="py-2 pr-4">{school.district}</td><td className="py-2 pr-4">{school.school_type ? schoolTypeLabel(school.school_type) : admissionTypeLabel(school.admission_type)}</td><td className="py-2">{school.application_dates || '—'}</td></tr>)}</tbody>
           </table>
         </div>
       </div>

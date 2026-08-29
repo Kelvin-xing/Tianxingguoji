@@ -153,7 +153,7 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
     <section id="documents" className="workspace-section space-y-5" aria-labelledby="case-documents-heading" aria-busy={state === "loading"}>
       <div>
         <h3 id="case-documents-heading" className="section-title">案件文件</h3>
-        <p className="section-detail">查看本案已登記的文件資料與目前版本狀態。</p>
+      <p className="section-detail">查看本案已登記的文件資料與目前版本狀態。</p>
       </div>
 
       {state === "loading" ? <DocumentPageState title="正在載入案件文件" detail="請稍候。" /> : null}
@@ -165,7 +165,7 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
         <div className="border-y py-5 space-y-4" style={{ borderColor: "var(--border)" }}>
           <div>
             <h4 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>登記文件</h4>
-            <p className="section-detail">登記文件名稱和保存分類。</p>
+            <p className="section-detail">登記文件名稱和儲存分類。</p>
           </div>
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={submit} aria-busy={pending}>
             <label className="field-label">文件名稱<input ref={nameInput} value={displayName} maxLength={200} required disabled={pending} autoComplete="off" onChange={(event) => { draftChanged(); setDisplayName(event.target.value); }} /></label>

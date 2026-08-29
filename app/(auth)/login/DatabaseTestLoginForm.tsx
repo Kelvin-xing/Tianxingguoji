@@ -27,7 +27,7 @@ export function DatabaseTestLoginForm() {
       onSubmit={handleSubmit}
     >
       <div className="field-label">
-        <label htmlFor="email">測試帳號電郵</label>
+        <label htmlFor="email">帳戶電郵</label>
         <input
           id="email"
           name="email"
@@ -58,7 +58,7 @@ export function DatabaseTestLoginForm() {
       >
         <span className="inline-flex min-w-28 items-center justify-center gap-2" aria-live="polite">
           <Icon name={pending ? 'clock' : 'log-in'} size={16} />
-          {pending ? '登入中…' : '登入測試工作台'}
+          {pending ? '登入中…' : '登入工作台'}
         </span>
       </button>
     </form>

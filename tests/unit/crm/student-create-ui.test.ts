@@ -14,7 +14,7 @@ test("creation entry and page obey only the students.create capability", async (
   assert.match(directory, /capability\) => String\(capability\) === 'students\.create'/);
   assert.doesNotMatch(form, /access\.role|role === ['"](?:founder|advisor|admin)/);
   assert.doesNotMatch(directory, /access\.role|role === ['"](?:founder|advisor|admin)/);
-  assert.match(form, /服務端仍會獨立驗證每次保存/);
+  assert.doesNotMatch(form, /服務端仍會獨立驗證每次保存/);
 });
 
 test("relationship is a fixed native select and no identity or authorization fields are submitted", async () => {
@@ -41,7 +41,7 @@ test("form protects duplicate submits and does not persist or log private fields
 test("form exposes required, contact validation, success and retry-safe unavailable states", async () => {
   const source = await readFile(formPath, "utf8");
   assert.match(source, /validateStudentCreateDraft\(draft\)/);
-  assert.match(source, /Email 和電話至少填寫一項/);
+  assert.match(source, /電郵和電話至少填寫一項/);
   assert.match(source, /學生與主要監護人已建立/);
   assert.match(source, /重試不會重複建立資料/);
   assert.match(source, /router\.push\(`\/students\/\$\{result\.student\.id\}`\)/);

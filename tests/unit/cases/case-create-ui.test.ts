@@ -16,7 +16,7 @@ test("case list and create entry obey only cases.read and cases.create capabilit
   assert.doesNotMatch(form, /access\.role|role === ['"](?:founder|advisor|admin)/);
   assert.doesNotMatch(directory, /access\.role|role === ['"](?:founder|advisor|admin)/);
   assert.match(directory, /loadState === 'ready' && canCreate \? <Link href="\/cases\/new"/);
-  assert.match(form, /服務端仍會獨立驗證每次保存/);
+  assert.doesNotMatch(form, /服務端仍會獨立驗證每次保存/);
 });
 
 test("case pages use the module client without direct fetch or response assertions", async () => {

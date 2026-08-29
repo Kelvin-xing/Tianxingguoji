@@ -62,7 +62,7 @@ export function Sidebar({
               </div>
               <div className="sidebar-brand-copy">
                 <div className="text-sm font-semibold leading-tight" style={{ color: '#f4f7fb' }}>天星顧問</div>
-                <div className="text-[11px] mt-0.5" style={{ color: 'var(--sidebar-text-muted)' }}>Case workspace</div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--sidebar-text-muted)' }}>案件工作區</div>
               </div>
             </div>
             <button type="button" className="icon-button" style={{ color: 'var(--sidebar-text)', height: '2.75rem', width: '2.75rem' }} title={t('layout.close_navigation')} aria-label={t('layout.close_navigation')} onClick={onClose}><Icon name="x" size={18} /></button>
@@ -93,14 +93,14 @@ export function Sidebar({
             </a>
             <Link href="/profile" className="flex items-center gap-2 mt-1 px-2 py-1.5 text-[11px] rounded" style={{ color: 'var(--sidebar-text)' }} onClick={mobileOpen ? (onCloseMobile ?? onClose) : undefined}>
               <Icon name="user" size={13} />
-              <span>个人资料</span>
+              <span>個人資料</span>
             </Link>
             <div className="flex items-center gap-1.5 mt-3 text-[10px]" style={{ color: '#86efac' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
               <span className="sidebar-session-label">{t('layout.session_ready')}</span>
             </div>
           </div>
-          <div className="sidebar-release px-2 pt-3 text-[10px]" style={{ color: 'var(--sidebar-text-muted)' }}>Release 1 · P1 UI slice</div>
+          <div className="sidebar-release px-2 pt-3 text-[10px]" style={{ color: 'var(--sidebar-text-muted)' }}>工作區</div>
         </div>
       </aside>
     </>
@@ -112,7 +112,7 @@ function roleLabel(role: WorkspaceAuthDto['role']): string {
   if (role === 'admin') return 'Admin'
   if (role === 'advisor') return 'Advisor'
   if (role === 'contractor') return 'Contractor'
-  return 'Data Reviewer'
+  return '其他角色'
 }
 
 function NavItem({ item, label, active, onNavigate }: { readonly item: WorkspaceNavigationItem; readonly label: string; readonly active: boolean; readonly onNavigate?: () => void }) {

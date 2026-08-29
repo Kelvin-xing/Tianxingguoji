@@ -85,8 +85,8 @@ export function TaskPageState({
   );
 }
 
-export function taskStateLabel(state: TaskState): string {
-  const labels: Readonly<Record<TaskState, string>> = {
+export function taskStateLabel(state: TaskState | string): string {
+  const labels: Readonly<Record<string, string>> = {
     created: "已建立",
     assigned: "已指派",
     accepted: "已接受",
@@ -98,7 +98,7 @@ export function taskStateLabel(state: TaskState): string {
     overdue: "已逾期",
     cancelled: "已取消",
   };
-  return labels[state];
+  return labels[state] ?? "處理中";
 }
 
 export function transitionLabel(state: TaskState): string {

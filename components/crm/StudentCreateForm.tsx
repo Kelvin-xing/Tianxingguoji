@@ -124,7 +124,7 @@ export function StudentCreateForm() {
       return
     }
     if (!existingGuardianId && (guardianLookup?.warnings.length ?? 0) > 0 && !newGuardianConfirmed) {
-      setValidation({ guardianSelection: '請選擇已有監護人，或明確確認新建監護人。' })
+      setValidation({ guardianSelection: '請選擇已有監護人，或明確確認建立新監護人。' })
       setSubmitState({ kind: 'validation', requestId: null })
       return
     }
@@ -164,8 +164,8 @@ export function StudentCreateForm() {
   async function lookupExistingGuardian(): Promise<void> {
     const guardian = draft.primary_guardian
     if (!guardian.display_name.trim() && !guardian.email.trim() && !guardian.phone.trim()) {
-      setGuardianLookupError('請先輸入監護人姓名、Email 或電話，再查找已有監護人。')
-      setValidation({ guardianSelection: '至少輸入一項監護人資料才能查找。' })
+      setGuardianLookupError('請先輸入監護人姓名、電郵或電話，再查詢現有監護人。')
+      setValidation({ guardianSelection: '至少輸入一項監護人資料才能查詢。' })
       setSubmitState({ kind: 'validation', requestId: null })
       return
     }
@@ -192,13 +192,13 @@ export function StudentCreateForm() {
       }))
       setSubmitState({ kind: 'idle' })
       setValidation({})
-      if (result.warnings.length === 0) setGuardianLookupError('未找到已有監護人；確認資料後可新建。')
+      if (result.warnings.length === 0) setGuardianLookupError('找不到現有監護人；確認資料後可建立。')
     } catch (error: unknown) {
       setGuardianLookupState('idle')
       const failure = classifyStudentRequestFailure(error)
       if (failure === 'unauthenticated') setAccessState('unauthenticated')
       else if (failure === 'forbidden') setAccessState('denied')
-      else setGuardianLookupError('暫時無法查找已有監護人，請稍後重試。')
+      else setGuardianLookupError('暫時無法查詢現有監護人，請稍後重試。')
       setSubmitState({ kind: 'validation', requestId: safeRequestId(error) })
     }
   }
@@ -231,7 +231,7 @@ export function StudentCreateForm() {
 
   if (accessState === 'loading') return <AccessMessage icon="clock" title="正在確認建立權限" detail="請稍候。" />
   if (accessState === 'unauthenticated') return <AccessMessage icon="lock" title="工作階段已失效" detail="請重新登入後再建立學生資料。" href="/login" action="重新登入" />
-  if (accessState === 'denied') return <AccessMessage icon="shield" title="無法建立學生資料" detail="你的帳號目前沒有建立學生的權限。隱藏入口只改善使用體驗，服務端仍會獨立驗證每次保存。" href="/students" action="返回學生名單" />
+  if (accessState === 'denied') return <AccessMessage icon="shield" title="無法建立學生資料" detail="你的帳號目前沒有建立學生的權限。" href="/students" action="返回學生名單" />
   if (accessState === 'error') return <AccessMessage icon="x" title="暫時無法確認權限" detail="請稍後重試。" onRetry={() => { setAccessState('loading'); setAccessReloadToken((value) => value + 1) }} />
 
   const pending = submitState.kind === 'submitting' || submitState.kind === 'success'
@@ -246,7 +246,7 @@ export function StudentCreateForm() {
           <Field label="出生日期" error={validation.studentDateOfBirth} id="student-date-of-birth">
             <input id="student-date-of-birth" name="student_date_of_birth" type="date" value={draft.student.date_of_birth} onChange={(event) => changeStudent('date_of_birth', event.target.value)} aria-invalid={Boolean(validation.studentDateOfBirth)} aria-describedby={validation.studentDateOfBirth ? 'student-date-of-birth-error' : undefined} />
           </Field>
-          <Field label="學生 Email" error={validation.studentEmail} id="student-contact-email">
+          <Field label="學生電郵" error={validation.studentEmail} id="student-contact-email">
             <input id="student-contact-email" name="student_contact_email" type="email" value={draft.student.contact_email} onChange={(event) => changeStudent('contact_email', event.target.value)} autoComplete="email" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(validation.studentEmail)} aria-describedby={validation.studentEmail ? 'student-contact-email-error' : undefined} />
           </Field>
           <Field label="學生電話" id="student-contact-phone">
@@ -256,7 +256,7 @@ export function StudentCreateForm() {
       </section>
 
       <section className="workspace-section space-y-5">
-        <div><div className="eyebrow">步驟 2</div><h3 className="section-title mt-1">主要監護人</h3><p className="section-detail">先查找是否已有監護人；選擇已有資料會建立關係，不會重複建檔。只有確認沒有合適記錄時才新建。若新建，Email 和電話至少填寫一項。</p></div>
+        <div><div className="eyebrow">步驟 2</div><h3 className="section-title mt-1">主要監護人</h3><p className="section-detail">先查詢是否已有監護人；選擇已有資料會建立關係，不會重複建檔。只有確認沒有合適記錄時才建立。若建立新資料，電郵和電話至少填寫一項。</p></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="監護人姓名" required error={validation.guardianDisplayName} id="guardian-display-name">
             <input id="guardian-display-name" name="guardian_display_name" value={draft.primary_guardian.display_name} onChange={(event) => changeGuardian('display_name', event.target.value)} required autoComplete="name" aria-invalid={Boolean(validation.guardianDisplayName)} aria-describedby={validation.guardianDisplayName ? 'guardian-display-name-error' : undefined} />
@@ -268,7 +268,7 @@ export function StudentCreateForm() {
               <option value="other_guardian">其他監護人</option>
             </select>
           </Field>
-          <Field label="監護人 Email" error={validation.guardianEmail} id="guardian-email">
+          <Field label="監護人電郵" error={validation.guardianEmail} id="guardian-email">
             <input id="guardian-email" name="guardian_email" type="email" value={draft.primary_guardian.email} onChange={(event) => changeGuardian('email', event.target.value)} autoComplete="email" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(validation.guardianEmail ?? validation.guardianContact)} aria-describedby={[validation.guardianEmail && 'guardian-email-error', validation.guardianContact && 'guardian-contact-error'].filter(Boolean).join(' ') || undefined} />
           </Field>
           <Field label="監護人電話" id="guardian-phone">
@@ -278,9 +278,9 @@ export function StudentCreateForm() {
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="secondary-button" onClick={() => void lookupExistingGuardian()} disabled={guardianLookupState === 'searching' || pending}>
             <Icon name={guardianLookupState === 'searching' ? 'clock' : 'search'} size={15} />
-            {guardianLookupState === 'searching' ? '查找中…' : '查找已有監護人'}
+            {guardianLookupState === 'searching' ? '查詢中…' : '查詢現有監護人'}
           </button>
-          {draft.primary_guardian.existing_guardian_id ? <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>已選擇現有監護人；保存時只建立 Student 與關係。</span> : null}
+          {draft.primary_guardian.existing_guardian_id ? <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>已選擇現有監護人；儲存時只建立學生與關係。</span> : null}
         </div>
         {guardianLookupError ? <p className="text-xs" role="status" style={{ color: 'var(--text-secondary)' }}>{guardianLookupError}</p> : null}
         {guardianLookup && guardianLookup.warnings.length > 0 && !draft.primary_guardian.existing_guardian_id ? (
@@ -293,11 +293,11 @@ export function StudentCreateForm() {
                 {guardianLookup.warnings.map((candidate) => (
                   <label className="selection-card" key={candidate.id}>
                     <input type="radio" name="existing-guardian" value={candidate.id} onChange={() => chooseExistingGuardian(candidate.id)} />
-                    <span className="min-w-0"><strong>{candidate.display_name_hint ?? '已有監護人'}</strong><small>{[candidate.email_hint, candidate.phone_hint].filter(Boolean).join(' · ') || '未提供聯絡資料'} · 命中：{candidate.matching_fields.join('、')}</small></span>
+                    <span className="min-w-0"><strong>{candidate.display_name_hint ?? '已有監護人'}</strong><small>{[candidate.email_hint, candidate.phone_hint].filter(Boolean).join(' · ') || '未提供聯絡資料'} · 命中：{candidate.matching_fields.map(matchingFieldLabel).join('、')}</small></span>
                   </label>
                 ))}
               </div>
-              <button type="button" className="secondary-button" onClick={chooseNewGuardian}>確認仍新建監護人</button>
+              <button type="button" className="secondary-button" onClick={chooseNewGuardian}>確認仍要建立監護人</button>
             </div>
           </div>
         ) : null}
@@ -320,7 +320,7 @@ export function StudentCreateForm() {
         <Link href="/students" className="secondary-button justify-center" onClick={() => attempt.current.complete()}>取消</Link>
         <button type="submit" className="primary-button justify-center min-w-32" disabled={pending} aria-busy={pending}>
           <Icon name={pending ? 'clock' : 'check'} size={16} />
-          <span aria-live="polite">{submitState.kind === 'success' ? '正在開啟學生資料…' : submitState.kind === 'submitting' ? '保存中…' : '建立學生'}</span>
+          <span aria-live="polite">{submitState.kind === 'success' ? '正在開啟學生資料…' : submitState.kind === 'submitting' ? '儲存中…' : '建立學生'}</span>
         </button>
       </div>
     </form>
@@ -332,13 +332,21 @@ function Field({ label, required, error, id, children }: { readonly label: strin
   return <div className="field-label"><label htmlFor={id}>{label}{required ? <span aria-hidden="true"> *</span> : null}</label>{children}{error ? <span id={errorId} role="alert" className="text-[11px] font-normal text-red-700">{error}</span> : null}</div>
 }
 
+function matchingFieldLabel(field: string): string {
+  if (field === 'display_name') return '姓名'
+  if (field === 'email' || field === 'contact_email') return '電郵'
+  if (field === 'phone' || field === 'contact_phone') return '電話'
+  if (field === 'date_of_birth') return '出生日期'
+  return '聯絡資料'
+}
+
 function SubmitFeedback({ state }: { readonly state: SubmitState }) {
   if (state.kind === 'idle' || state.kind === 'submitting') return null
   if (state.kind === 'success') return <div className="preview-notice" role="status"><Icon name="check-circle" size={15} /><span>學生與主要監護人已建立，正在開啟學生資料。</span></div>
   const message = state.kind === 'validation'
-    ? '部分資料未通過檢查，請修正後再保存。'
+    ? '部分資料未通過檢查，請修正後再儲存。'
     : state.kind === 'conflict'
-      ? '這次保存無法完成。請確認資料後重新提交。'
+      ? '這次儲存無法完成。請確認資料後重新提交。'
       : state.kind === 'forbidden'
         ? '你的帳號無法建立學生資料。'
         : '學生服務暫時不可用，請稍後重試；重試不會重複建立資料。'

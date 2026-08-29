@@ -444,7 +444,7 @@ function isSettled(state: DocumentVersionState | null): state is "available" | "
 
 function TransferNotice({ notice }: { readonly notice: TransferNotice }) {
   if (notice === null) return null;
-  const message = notice === "hashing" ? "正在本機計算文件校驗值。"
+  const message = notice === "hashing" ? "正在計算文件校驗值。"
     : notice === "creating" ? "正在建立待上載版本。"
       : notice === "uploading" ? "正在上載至私人儲存空間。"
         : notice === "scanning" ? "上載完成，正在進行安全掃描。"

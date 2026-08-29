@@ -37,12 +37,12 @@ test("CandidateList workspace exposes bounded states, fields and accessible cont
   const workspace = await source("components/cases/CandidateListWorkspace.tsx");
   for (const copy of [
     "正在載入候選學校名單",
-    "候選學校名單為只讀",
+    "候選學校名單為唯讀",
     "候選學校名單暫時不可用",
     "尚未建立候選名單",
     "建立新版本",
     "Founder 審核",
-    "Guardian 線下確認",
+    "家長確認",
   ]) {
     assert.ok(workspace.includes(copy), `missing ${copy}`);
   }
@@ -52,8 +52,8 @@ test("CandidateList workspace exposes bounded states, fields and accessible cont
   assert.match(workspace, /application_deadline: new Date\(applicationDeadlines\[school\.school_id\]!\)\.toISOString\(\)/);
   assert.match(workspace, /已逾期風險/);
   assert.match(workspace, /未記錄（歷史版本）/);
-  assert.match(workspace, /確認已保存，申請 Task 待自動恢復/);
-  assert.match(workspace, /已自動生成 \$\{receipt\.automation\.provisioned_count\} 項申請 Task/);
+  assert.match(workspace, /確認已儲存，申請任務待自動恢復/);
+  assert.match(workspace, /已自動建立 \$\{receipt\.automation\.provisioned_count\} 項申請任務/);
   assert.match(workspace, /max=\{toLocalDateTime\(new Date\(\)\)\}/);
   assert.match(workspace, /role="group" aria-label="候選學校"/);
   assert.match(workspace, /grid grid-cols-1 md:grid-cols-2/);

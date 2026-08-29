@@ -3,5 +3,5 @@ import Link from 'next/link'
 import { StudentCreateForm } from '@/components/crm/StudentCreateForm'
 
 export default function NewStudentPage() {
-  return <div className="max-w-5xl mx-auto space-y-6"><div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/students" className="quiet-link">Student</Link><span>/</span><span>新建</span></div><section><div className="eyebrow">CRM · Atomic intake</div><h2 className="page-title">新建 Student 与 Primary Guardian</h2><p className="page-subtitle">先查找已有监护人；确认不存在后才新建，并由服务端以一个 CRM 命令保存 Student、Guardian 与关系。</p></section><StudentCreateForm /></div>
+  return <div className="max-w-5xl mx-auto space-y-6"><div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/students" className="quiet-link">學生</Link><span>/</span><span>建立資料</span></div><section><div className="eyebrow">CRM · 學生資料</div><h2 className="page-title">建立學生與主要監護人</h2><p className="page-subtitle">先查詢已有監護人；確認不存在後才建立。</p></section><StudentCreateForm /></div>
 }

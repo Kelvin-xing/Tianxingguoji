@@ -213,8 +213,8 @@ export function CandidateListWorkspace({
   async function reloadAfterGuardianDecision(receipt: CandidateListGuardianReceipt): Promise<void> {
     await reloadAfterCommand(receipt);
     setFeedback(receipt.automation.application_tasks === "pending"
-      ? { kind: "success", message: "確認已保存，申請 Task 待自動恢復。" }
-      : { kind: "success", message: `確認已保存，已自動生成 ${receipt.automation.provisioned_count} 項申請 Task。` });
+      ? { kind: "success", message: "確認已儲存，申請任務待自動恢復。" }
+      : { kind: "success", message: `確認已儲存，已自動建立 ${receipt.automation.provisioned_count} 項申請任務。` });
   }
 
   async function handleCommandFailure(error: unknown): Promise<void> {
@@ -253,11 +253,11 @@ export function CandidateListWorkspace({
     return <CandidateListState busy title="正在載入候選學校名單" detail="正在讀取版本及確認記錄。" />;
   }
   if (readState === "denied") {
-    return <CandidateListState title="候選學校名單為只讀" detail="目前身份沒有查看此案件選校版本的權限。" />;
+    return <CandidateListState title="候選學校名單為唯讀" detail="目前帳號沒有查看此案件選校版本的權限。" />;
   }
   if (readState === "unavailable") {
     return (
-      <CandidateListState title="候選學校名單暫時不可用" detail="已保存的版本不受影響。">
+      <CandidateListState title="候選學校名單暫時不可用" detail="已儲存的版本不受影響。">
         <button type="button" className="secondary-button mt-3" onClick={() => void load()}>
           <Icon name="rotate-ccw" size={15} />重新載入
         </button>
@@ -270,7 +270,7 @@ export function CandidateListWorkspace({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id="candidate-lists-title" className="section-title">候選學校名單</h3>
-          <p className="section-detail">{versions.length} 個版本 · Case v{initialCaseRecordVersion}</p>
+          <p className="section-detail">{versions.length} 個版本 · 案件 v{initialCaseRecordVersion}</p>
         </div>
         <button type="button" className="secondary-button shrink-0" onClick={() => void load()}>
           <Icon name="rotate-ccw" size={15} />重新載入
@@ -280,20 +280,20 @@ export function CandidateListWorkspace({
       {feedback ? <FeedbackNotice feedback={feedback} /> : null}
       {writeDenied ? (
         <div className="inline-callout mt-4" role="status">
-          <Icon name="shield" size={15} /><span>目前以只讀方式顯示；服務端未授予這項操作。</span>
+          <Icon name="shield" size={15} /><span>目前只能查看，無法進行這項操作。</span>
         </div>
       ) : null}
       {canManageCandidateLists && guardianState === "loading" ? (
-        <div className="inline-callout mt-4"><Icon name="clock" size={15} /><span>正在確認 Primary Advisor 操作範圍。</span></div>
+        <div className="inline-callout mt-4"><Icon name="clock" size={15} /><span>正在確認主要顧問的操作權限。</span></div>
       ) : null}
       {canManageCandidateLists && (guardianState === "denied" || guardianState === "unavailable") ? (
         <div className="inline-callout mt-4" role="status">
-          <Icon name="shield" size={15} /><span>名單可查看；Primary Advisor 操作目前不可用。</span>
+          <Icon name="shield" size={15} /><span>名單可以查看；主要顧問目前無法進行操作。</span>
         </div>
       ) : null}
       {schoolState === "denied" || schoolState === "unavailable" ? (
         <div className="inline-callout mt-4" role="status">
-          <Icon name="shield" size={15} /><span>學校選項暫時不可用；既有名單仍以只讀方式顯示。</span>
+          <Icon name="shield" size={15} /><span>學校選項暫時不可用；既有名單仍可查看。</span>
         </div>
       ) : null}
 
@@ -349,7 +349,7 @@ export function CandidateListWorkspace({
                           onChange={() => toggleSchool(school.school_id)}
                         />
                         <span className="selection-mark" aria-hidden="true" />
-                        <span className="min-w-0"><strong>{school.display_name}</strong><small>Resolved revision 已固定</small></span>
+                        <span className="min-w-0"><strong>{school.display_name}</strong><small>學校資料版本已固定</small></span>
                       </label>
                       {selected ? (
                         <label className="mt-2 block text-xs font-medium" htmlFor={`application-deadline-${school.school_id}`}>
@@ -483,7 +483,7 @@ function CandidateListVersionView({
           timestamp={version.founder_approval?.decided_at ?? null}
         />
         <DecisionSummary
-          title="Guardian 決定"
+          title="家長決定"
           value={version.guardian_decision
             ? `${version.guardian_decision.decision === "confirmed" ? "已確認" : "未確認"} · ${channelLabel(version.guardian_decision.channel)}`
             : "待決定"}
@@ -625,17 +625,17 @@ function GuardianDecisionForm({
   if (guardians.length === 0) {
     return (
       <div className="inline-callout warning mt-5" role="status">
-        <Icon name="users" size={15} /><span>目前沒有有效的 Guardian 關係可記錄確認。</span>
+        <Icon name="users" size={15} /><span>目前沒有有效的家長關係可記錄確認。</span>
       </div>
     );
   }
 
   return (
     <form className="mt-5 border-t pt-4 space-y-3" style={{ borderColor: "var(--border-subtle)" }} onSubmit={submit}>
-      <div><h5 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Guardian 線下確認</h5><p className="section-detail">Founder approval hash 已綁定此版本。</p></div>
+      <div><h5 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>家長確認</h5><p className="section-detail">Founder 的審核結果已與此版本綁定。</p></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="block text-sm font-medium" htmlFor={`guardian-${version.id}`}>
-          Guardian 關係
+          家長關係
           <select id={`guardian-${version.id}`} className="assessment-control mt-1 w-full" value={relationshipId} disabled={pending} required onChange={(event) => setRelationshipId(event.target.value)}>
             {guardians.map((guardian) => <option key={guardian.guardian_relationship_id} value={guardian.guardian_relationship_id}>{guardian.display_name} · {relationshipLabel(guardian)}</option>)}
           </select>
@@ -656,7 +656,7 @@ function GuardianDecisionForm({
           </div>
         </fieldset>
       </div>
-      <div className="flex justify-end"><button type="submit" className="primary-button justify-center min-w-32" disabled={pending || !selectedGuardian || !decidedAt}><Icon name={pending ? "clock" : "check"} size={15} />{pending ? "提交中…" : "保存確認"}</button></div>
+      <div className="flex justify-end"><button type="submit" className="primary-button justify-center min-w-32" disabled={pending || !selectedGuardian || !decidedAt}><Icon name={pending ? "clock" : "check"} size={15} />{pending ? "提交中…" : "儲存確認"}</button></div>
     </form>
   );
 }
@@ -677,14 +677,14 @@ function feedbackForFailure(failure: CandidateListFailure): NonNullable<CommandF
   if (failure === "stale") return { kind: "stale", message: "版本已被其他人更新，已重新載入最新名單。" };
   if (failure === "validation") return { kind: "validation", message: "提交內容未通過檢查，草稿已保留。" };
   if (failure === "conflict") return { kind: "conflict", message: "目前案件或名單狀態不允許這項操作，已重新載入。" };
-  if (failure === "denied" || failure === "unauthenticated") return { kind: "denied", message: "服務端未授予這項操作；目前改為只讀顯示。" };
-  return { kind: "unavailable", message: "選校服務暫時不可用；重試會沿用同一冪等憑據。" };
+  if (failure === "denied" || failure === "unauthenticated") return { kind: "denied", message: "目前只能查看，無法進行這項操作。" };
+  return { kind: "unavailable", message: "選校服務暫時不可用，請稍後重試。" };
 }
 
 function statusLabel(status: CandidateListVersion["status"]): string {
   if (status === "draft") return "草稿";
   if (status === "submitted") return "待 Founder 審核";
-  if (status === "awaiting_guardian") return "待 Guardian 確認";
+  if (status === "awaiting_guardian") return "待家長確認";
   if (status === "confirmed") return "已確認";
   return "已退回";
 }
@@ -706,7 +706,12 @@ function relationshipLabel(guardian: GuardianConfirmationOption): string {
   const description = guardian.relationship_description ? ` · ${guardian.relationship_description}` : "";
   const primary = guardian.is_primary_contact ? " · 主要聯絡人" : "";
   const legal = guardian.is_legal_guardian ? " · 法定監護人" : "";
-  return `${guardian.relationship_type}${description}${primary}${legal}`;
+  return `${guardianRelationshipTypeLabel(guardian.relationship_type)}${description}${primary}${legal}`;
+}
+
+function guardianRelationshipTypeLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = { parent: "家長", father: "父親", mother: "母親", step_parent: "繼父母", stepfather: "繼父", stepmother: "繼母", adoptive_parent: "養父母", adoptive_father: "養父", adoptive_mother: "養母", foster_parent: "寄養父母", foster_father: "寄養父", foster_mother: "寄養母", grandparent: "祖父母", paternal_grandfather: "祖父", paternal_grandmother: "祖母", maternal_grandfather: "外祖父", maternal_grandmother: "外祖母", adult_sibling: "成年兄弟姊妹", adult_brother: "成年兄弟", adult_sister: "成年姊妹", uncle: "叔伯或舅父", aunt: "姑姨", court_appointed_guardian: "法院指定監護人", institutional_guardian: "機構監護人", other_relative: "其他親屬", non_relative_guardian: "非親屬監護人", other: "其他" };
+  return labels[value] ?? "監護人";
 }
 
 function formatDateTime(value: string): string {

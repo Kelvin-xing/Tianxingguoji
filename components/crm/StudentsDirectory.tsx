@@ -84,7 +84,7 @@ export function StudentsDirectory() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4">
           <div>
             <h3 className="section-title">學生名單</h3>
-            <p className="section-detail">顯示本機業務系統中已保存的學生資料。</p>
+            <p className="section-detail">顯示目前已儲存的學生資料。</p>
           </div>
           <label className="search-field">
             <Icon name="search" size={15} />

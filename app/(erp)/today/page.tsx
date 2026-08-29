@@ -27,6 +27,27 @@ interface DashboardData {
   readonly cases: readonly DashboardCase[]
 }
 
+const STAGE_LABELS: Readonly<Record<string, string>> = {
+  signed: '已簽約',
+  background_collection: '背景資料收集',
+  school_selection_confirmed: '選校已確認',
+  interview_preparation: '面試準備',
+  application_in_progress: '申請處理中',
+  application_submitted: '已提交申請',
+  awaiting_result: '等待結果',
+  offer_confirmed: '錄取已確認',
+  closed: '已結案',
+}
+
+const ACTION_LABELS: Readonly<Record<string, string>> = {
+  'Review assessment': '查看評估',
+  'Complete assessment': '完成評估',
+  'Confirm shortlist': '確認選校名單',
+  'Prepare application': '準備申請',
+  'Submit application': '提交申請',
+  'Prepare interview': '準備面試',
+}
+
 type TodayState =
   | { readonly status: 'loading' }
   | { readonly status: 'ready'; readonly data: DashboardData }
@@ -59,7 +80,7 @@ export default function TodayPage() {
   if (state.status === 'loading') return <LoadingState title="正在載入今日工作" detail="讀取目前授權範圍內的工作摘要。" />
   if (state.status === 'denied') return <DeniedState title="無法查看今日工作" detail="目前身份沒有今日工作台的授權。" action={<Link className="primary-button" href="/tasks">返回我的任務</Link>} />
   if (state.status === 'stale') return <StaleState title="今日摘要需要更新" detail="看板版本已變更，請重新載入最新的授權摘要。" onRetry={load} />
-  if (state.status === 'unavailable') return <UnavailableState title="今日工作暫時無法使用" detail="目前無法讀取工作摘要，沒有切換到本地或預覽資料。" requestId={state.requestId} onRetry={load} />
+  if (state.status === 'unavailable') return <UnavailableState title="今日工作暫時無法使用" detail="請稍後重試。" requestId={state.requestId} onRetry={load} />
   if (state.status === 'error') return <ErrorState title="今日工作載入失敗" detail="請稍後重試；系統沒有顯示未授權資料。" requestId={state.requestId} onRetry={load} />
   if (state.status === 'empty') return <EmptyState title="目前沒有可處理的工作" detail="新的授權案件或任務出現後會顯示在這裡。" action={<Link className="secondary-button" href="/tasks">查看任務</Link>} />
 
@@ -73,7 +94,7 @@ function TodayReady({ data, onRefresh }: { readonly data: DashboardData; readonl
   return (
     <div className="max-w-[1500px] mx-auto space-y-6">
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-        <div><div className="eyebrow">Today · 授權工作摘要</div><h1 className="page-title">今日工作</h1><p className="page-subtitle">只顯示目前工作階段可查看的案件摘要和下一步。</p></div>
+        <div><div className="eyebrow">今日工作</div><h1 className="page-title">今日工作</h1><p className="page-subtitle">顯示目前可查看的案件摘要和下一步。</p></div>
         <div className="flex items-center gap-2"><Link href="/notifications" className="secondary-button"><Icon name="activity" size={15} />通知</Link><button type="button" className="secondary-button" onClick={onRefresh}><Icon name="rotate-ccw" size={15} />重新載入</button></div>
       </section>
       <section className="metric-strip" aria-label="工作摘要">
@@ -83,7 +104,7 @@ function TodayReady({ data, onRefresh }: { readonly data: DashboardData; readonl
         <Metric label="未讀通知" value={unread} tone="green" />
       </section>
       <section className="workspace-section" aria-labelledby="today-cases-title">
-        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 id="today-cases-title" className="section-title">需要你判斷的案件</h2><p className="section-detail">下一步和阻礙由 Cases projection 提供。</p></div><Link href="/cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link></div>
+        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 id="today-cases-title" className="section-title">需要你判斷的案件</h2><p className="section-detail">顯示案件的下一步與待處理事項。</p></div><Link href="/cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link></div>
         <div className="divide-y" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           {data.cases.map((item) => <CaseRow key={item.case_id} item={item} />)}
         </div>
@@ -95,7 +116,15 @@ function TodayReady({ data, onRefresh }: { readonly data: DashboardData; readonl
 
 function CaseRow({ item }: { readonly item: DashboardCase }) {
   const summary = item.summary
-  return <Link href={`/cases/${item.case_id}`} className="work-row group"><div className="flex items-start gap-3 min-w-0"><div className={`work-icon ${summary?.blocker_count ? 'warning' : 'blue'}`}><Icon name={summary?.blocker_count ? 'clock' : 'briefcase'} size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{summary?.case_number ?? '獲授權案件'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{summary?.stage ?? '摘要'}</span></div><div className="mt-1 text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{summary?.student_display_name ?? '案件摘要'}</div><div className="mt-1 text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{summary?.next_action ?? '暫無下一步'}</div></div></div><Icon name="chevron-right" size={15} className="shrink-0" style={{ color: 'var(--text-muted)' }} /></Link>
+  return <Link href={`/cases/${item.case_id}`} className="work-row group"><div className="flex items-start gap-3 min-w-0"><div className={`work-icon ${summary?.blocker_count ? 'warning' : 'blue'}`}><Icon name={summary?.blocker_count ? 'clock' : 'briefcase'} size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{summary?.case_number ?? '獲授權案件'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{summary ? stageLabel(summary.stage) : '摘要'}</span></div><div className="mt-1 text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{summary?.student_display_name ?? '案件摘要'}</div><div className="mt-1 text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{summary?.next_action ? actionLabel(summary.next_action) : '暫無下一步'}</div></div></div><Icon name="chevron-right" size={15} className="shrink-0" style={{ color: 'var(--text-muted)' }} /></Link>
+}
+
+function stageLabel(value: string): string {
+  return STAGE_LABELS[value] ?? (/[\u3400-\u9fff]/.test(value) ? value : '目前階段')
+}
+
+function actionLabel(value: string): string {
+  return ACTION_LABELS[value] ?? (/[\u3400-\u9fff]/.test(value) ? value : '待處理事項')
 }
 
 function Metric({ label, value, tone }: { readonly label: string; readonly value: number; readonly tone: 'blue' | 'amber' | 'violet' | 'green' }) {

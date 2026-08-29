@@ -141,7 +141,7 @@ export function TaskTransitionControls({
     <section className="workspace-section space-y-4" aria-labelledby="task-transition-heading">
       <div>
         <h3 id="task-transition-heading" className="section-title">更新任務</h3>
-        <p className="section-detail">可用操作由目前任務及服務端權限即時計算。</p>
+        <p className="section-detail">可用操作會按目前任務和帳戶權限更新。</p>
       </div>
       <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
         <label className="field-label" htmlFor={`task-transition-${task.id}`}>

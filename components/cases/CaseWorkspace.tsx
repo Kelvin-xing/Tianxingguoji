@@ -9,6 +9,7 @@ import { Icon, type IconName } from "@/components/workspace/Icon";
 import {
   type CaseWorkspaceProjection,
   type CaseWorkspaceTab,
+  type CaseWorkspaceTabProjection,
   type WorkspaceAction,
   type WorkspacePanelData,
   type WorkspacePanelState,
@@ -88,26 +89,26 @@ export function CaseWorkspace({ projection }: { readonly projection: CaseWorkspa
               <div className={styles.dialogIcon}><Icon name="clock" size={18} /></div>
               <div>
                 <h2 id="workspace-conflict-title" ref={conflictHeadingRef} tabIndex={-1}>{conflict.title}</h2>
-                <p>The record changed before this update was accepted.</p>
+                <p>資料在更新前已經變更。</p>
               </div>
             </div>
             <dl className={styles.conflictValues}>
-              <div><dt>Current version</dt><dd>{conflict.currentSummary}</dd></div>
-              <div><dt>Your draft</dt><dd>{conflict.draftSummary}</dd></div>
+              <div><dt>目前版本</dt><dd>{conflict.currentSummary}</dd></div>
+              <div><dt>你的草稿</dt><dd>{conflict.draftSummary}</dd></div>
             </dl>
-            <p className={styles.conflictVersion}>Latest record version: {conflict.currentVersion}</p>
+            <p className={styles.conflictVersion}>最新資料版本：{conflict.currentVersion}</p>
             <div className={styles.dialogActions}>
               <button type="button" className="secondary-button" onClick={() => {
-                dismissConflict("The latest value was accepted.");
+                dismissConflict("已採用最新資料。");
               }}>
-                Use latest
+                採用最新資料
               </button>
               <button type="button" className="secondary-button" onClick={() => {
-                dismissConflict("Your draft is retained locally. Review it before retrying.");
+                dismissConflict("草稿已保留，請檢查後再試。");
               }}>
-                Keep draft
+                保留草稿
               </button>
-              <Link href={conflict.retryHref} className="primary-button">Retry with current version</Link>
+              <Link href={conflict.retryHref} className="primary-button">以目前版本重試</Link>
             </div>
           </div>
         </section>
@@ -119,8 +120,8 @@ export function CaseWorkspace({ projection }: { readonly projection: CaseWorkspa
 function WorkspaceHeader({ header }: { readonly header: NonNullable<CaseWorkspaceProjection["header"]> }) {
   return (
     <header className={styles.caseHeader}>
-      <div className={styles.breadcrumb} aria-label="Breadcrumb">
-        <Link href="/cases">Cases</Link><Icon name="chevron-right" size={14} /><span>{header.caseNumber}</span>
+      <div className={styles.breadcrumb} aria-label="頁面位置">
+        <Link href="/cases">案件</Link><Icon name="chevron-right" size={14} /><span>{header.caseNumber}</span>
       </div>
       <div className={styles.caseHeaderContent}>
         <div className={styles.headerIdentity}>
@@ -161,7 +162,7 @@ function WorkspaceTabs({
   }
 
   return (
-    <nav className={styles.tabScroller} aria-label="Case workspace tabs">
+    <nav className={styles.tabScroller} aria-label="案件工作區分頁">
       <div className={styles.tabList} role="tablist" aria-orientation="horizontal">
         {tabs.map((tab) => {
           const selected = tab.id === activeTab;
@@ -179,7 +180,7 @@ function WorkspaceTabs({
               onKeyDown={onKeyDown}
             >
               <Icon name={TAB_ICONS[tab.id]} size={15} />
-              <span>{tab.label}</span>
+              <span>{workspaceTabLabel(tab)}</span>
               {typeof tab.count === "number" ? <span className={styles.tabCount}>{tab.count}</span> : null}
             </Link>
           );
@@ -197,10 +198,10 @@ function WorkspacePanel({
   readonly headingRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
   if (panel.kind === "loading") {
-    return <section id="case-workspace-panel" role="tabpanel" className={styles.panel} aria-busy="true"><div className={styles.loadingRows}><span /><span /><span /></div><span className="sr-only">Loading case workspace</span></section>;
+    return <section id="case-workspace-panel" role="tabpanel" className={styles.panel} aria-busy="true"><div className={styles.loadingRows}><span /><span /><span /></div><span className="sr-only">正在載入案件工作區</span></section>;
   }
   if (panel.kind === "denied") {
-    return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><SurfaceState icon="lock" title="This workspace surface is unavailable" detail="Your current access does not include this surface." headingRef={headingRef} /></section>;
+    return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><SurfaceState icon="lock" title="目前無法使用此工作區" detail="目前帳號沒有查看此區域的權限。" headingRef={headingRef} /></section>;
   }
   if (panel.kind === "empty") {
     return <section id="case-workspace-panel" role="tabpanel" className={styles.panel}><SurfaceState icon="activity" title={panel.title} detail={panel.detail} action={panel.action} headingRef={headingRef} /></section>;
@@ -218,26 +219,26 @@ function ReadyPanel({ data, headingRef }: { readonly data: WorkspacePanelData; r
   if (data.tab === "overview") {
     return (
       <>
-        <PanelHeading headingRef={headingRef} title="Overview" detail="Current stage, blockers, and the next permitted action." />
+        <PanelHeading headingRef={headingRef} title="案件概覽" detail="查看目前階段、待處理事項與下一個可用操作。" />
         <dl className={styles.factGrid}>{data.facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>
-        {data.blockers.length > 0 ? <div className={styles.blockers} role="status"><Icon name="clock" size={16} /><div><strong>Needs attention</strong>{data.blockers.map((blocker) => <p key={blocker}>{blocker}</p>)}</div></div> : null}
+        {data.blockers.length > 0 ? <div className={styles.blockers} role="status"><Icon name="clock" size={16} /><div><strong>需要處理</strong>{data.blockers.map((blocker) => <p key={blocker}>{blocker}</p>)}</div></div> : null}
         {data.nextAction ? <WorkspaceActionLink action={data.nextAction} className={styles.nextAction} /> : null}
       </>
     );
   }
   if (data.tab === "assessment") {
-    return <SurfaceState icon="clipboard" title="Assessment is ready" detail={data.answeredLabel} headingRef={headingRef} />;
+    return <SurfaceState icon="clipboard" title="評估已準備好" detail={data.answeredLabel} headingRef={headingRef} />;
   }
   if (data.tab === "timeline") {
     return (
       <>
-        <PanelHeading headingRef={headingRef} title="Timeline" detail="Authorized case activity only." />
+        <PanelHeading headingRef={headingRef} title="案件時間軸" detail="顯示目前可查看的案件活動。" />
         <ol className={styles.timeline}>{data.events.map((event) => <li key={event.id}><span className={`${styles.timelineDot} ${toneClass(event.tone)}`} /><div><strong>{event.title}</strong><p>{event.detail}</p></div><time>{event.occurredLabel}</time></li>)}</ol>
       </>
     );
   }
-  const title = data.tab === "schools" ? "Schools" : data.tab === "tasks" ? "Tasks" : "Documents";
-  const detail = data.tab === "schools" ? "Pinned targets and their current evidence state." : data.tab === "tasks" ? "Assigned work and approved state changes." : "Authorized document versions and scan status.";
+  const title = data.tab === "schools" ? "學校" : data.tab === "tasks" ? "任務" : "文件";
+  const detail = data.tab === "schools" ? "查看已確認的學校目標及目前狀態。" : data.tab === "tasks" ? "查看已指派的工作及處理狀態。" : "查看可用的文件版本及檢查狀態。";
   return (
     <>
       <div className={styles.panelTopline}><PanelHeading headingRef={headingRef} title={title} detail={detail} /><WorkspaceActionLink action={data.action} /></div>
@@ -268,10 +269,10 @@ function SurfaceState({
       <div className={styles.stateIcon}><Icon name={icon} size={20} /></div>
       <h2 ref={headingRef} tabIndex={-1}>{title}</h2>
       <p>{detail}</p>
-      {requestReference ? <p className={styles.requestReference}>Request reference: {requestReference}</p> : null}
+      {requestReference ? <p className={styles.requestReference}>參考編號：{requestReference}</p> : null}
       <div className={styles.stateActions}>
         {action ? <WorkspaceActionLink action={action} /> : null}
-        {retryHref ? <Link href={retryHref} className="secondary-button">Retry</Link> : null}
+        {retryHref ? <Link href={retryHref} className="secondary-button">重新載入</Link> : null}
       </div>
     </div>
   );
@@ -289,4 +290,16 @@ function WorkspaceActionLink({ action, className }: { readonly action: Workspace
 
 function toneClass(tone: WorkspaceStatusTone): string {
   return styles[`tone${tone[0].toUpperCase()}${tone.slice(1)}`] ?? styles.toneNeutral;
+}
+
+function workspaceTabLabel(tab: CaseWorkspaceTabProjection): string {
+  const labels: Readonly<Record<CaseWorkspaceTab, string>> = {
+    overview: "概覽",
+    assessment: "評估",
+    schools: "學校",
+    tasks: "任務",
+    documents: "文件",
+    timeline: "時間軸",
+  };
+  return labels[tab.id];
 }

@@ -322,7 +322,7 @@ export function AssessmentEditor({
       {view.access.can_edit ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-5 border-t" style={{ borderColor: "var(--border-subtle)" }}>
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-            {dirtyEditableFields.length > 0 ? `有 ${dirtyEditableFields.length} 項未儲存修改` : "修改內容會集中保存"}
+            {dirtyEditableFields.length > 0 ? `有 ${dirtyEditableFields.length} 項未儲存修改` : "修改內容會集中儲存"}
           </div>
           <button
             type="button"

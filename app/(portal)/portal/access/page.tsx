@@ -26,7 +26,7 @@ export default function PortalAccessPage() {
       <section className="portal-panel" aria-labelledby="portal-access-title">
         <p className="portal-mark">天星案件門戶</p>
         <h1 id="portal-access-title">查看案件進度</h1>
-        <p className="portal-muted">輸入顧問提供的訪問密鑰。密鑰不會加入網址或保存在此裝置。</p>
+        <p className="portal-muted">輸入顧問提供的訪問密鑰。密鑰不會加入網址或儲存在此裝置。</p>
         <form onSubmit={redeem} className="portal-form">
           <label htmlFor="portal-access-key">訪問密鑰</label>
           <input id="portal-access-key" type="password" autoComplete="off" required minLength={16} value={accessKey} onChange={(event) => setAccessKey(event.target.value)} />

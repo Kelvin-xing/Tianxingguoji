@@ -82,16 +82,16 @@ export function AppFrame({ children }: { readonly children: ReactNode }) {
 
   const auth = authState.auth
   if (!isVisualFixture && !isReleaseOneInternalRole(auth.role)) {
-    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="此身份不在 Release 1 工作台範圍" detail="Data Reviewer 與舊 crawler 入口保持隔離。" action={<Link className="primary-button" href="/login">返回登入</Link>} /></main>
+    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="目前帳號無法進入工作台" detail="目前帳號沒有工作台權限。" action={<Link className="primary-button" href="/login">返回登入</Link>} /></main>
   }
   if (!isVisualFixture && EXCLUDED_INTERNAL_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
-    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="此入口不在 Release 1" detail="請從已批准的工作區進入目前工作。" action={<Link className="primary-button" href={defaultWorkspacePath(auth.capabilities)}>返回工作台</Link>} /></main>
+    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="目前無法使用此入口" detail="請返回工作台。" action={<Link className="primary-button" href={defaultWorkspacePath(auth.capabilities)}>返回工作台</Link>} /></main>
   }
 
   const requiredCapability = capabilityForPath(pathname)
   if (!isVisualFixture && requiredCapability && !hasWorkspaceCapability(auth.capabilities, requiredCapability)) {
     const contractor = hasWorkspaceCapability(auth.capabilities, 'tasks.read') && !hasWorkspaceCapability(auth.capabilities, 'today.read')
-    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="目前身份無法查看此工作區" detail={contractor ? 'Contractor 只可處理目前分派的 Task。' : '目前工作階段沒有此工作區的授權。'} action={contractor ? <Link className="primary-button" href="/tasks">返回我的任務</Link> : undefined} /></main>
+    return <main className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}><DeniedState title="目前帳號無法查看此工作區" detail={contractor ? 'Contractor 只能處理目前分派的任務。' : '目前帳號沒有此工作區的權限。'} action={contractor ? <Link className="primary-button" href="/tasks">返回我的任務</Link> : undefined} /></main>
   }
 
   function closeNavigation() {
