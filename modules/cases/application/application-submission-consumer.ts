@@ -25,11 +25,25 @@ export interface ApplicationSubmissionAutomationResult {
 export interface ApplicationSubmissionConsumerHooks { readonly failBeforeCommit?:()=>void }
 
 export class ApplicationSubmissionConsumer {
-  constructor(private readonly runner:TenantTransactionRunner,
-    private readonly taskFacts:TasksApplicationCompletionEventFactsPort,
-    private readonly evidence:DocumentsCleanEvidencePort,
-    private readonly createId:()=>string=randomUUID,
-    private readonly hooks:ApplicationSubmissionConsumerHooks={}){}
+  private readonly runner: TenantTransactionRunner;
+  private readonly taskFacts: TasksApplicationCompletionEventFactsPort;
+  private readonly evidence: DocumentsCleanEvidencePort;
+  private readonly createId: () => string;
+  private readonly hooks: ApplicationSubmissionConsumerHooks;
+
+  constructor(
+    runner: TenantTransactionRunner,
+    taskFacts: TasksApplicationCompletionEventFactsPort,
+    evidence: DocumentsCleanEvidencePort,
+    createId: () => string = randomUUID,
+    hooks: ApplicationSubmissionConsumerHooks = {},
+  ) {
+    this.runner = runner;
+    this.taskFacts = taskFacts;
+    this.evidence = evidence;
+    this.createId = createId;
+    this.hooks = hooks;
+  }
 
   drainForTask(input:Readonly<{organizationId:string;taskId:string;requestId:string}>) {
     return this.runner.run(systemContext(input.organizationId,input.requestId),async transaction=>{
