@@ -57,8 +57,18 @@ test("Founder remains authorized when combined with Admin, while pure Admin and 
   assert.equal(founder?.task_kind, "manual");
   await assert.rejects(() => service.readTask(actor("admin", FOUNDER_ID), TASK_ID), (error: unknown) =>
     error instanceof P3TaskReadError && error.code === "FORBIDDEN");
-  await assert.rejects(() => service.readTask(actor("contractor", OTHER_ID), TASK_ID), (error: unknown) =>
-    error instanceof P3TaskReadError && error.code === "FORBIDDEN");
+  assert.equal(await service.readTask(actor("contractor", OTHER_ID), TASK_ID), null);
+});
+
+test("Contractor may read and act on an assigned application task", async () => {
+  const row: P3TaskReadRow = Object.freeze({
+    ...baseRow("application_prepare_submit"),
+    current_assignment: Object.freeze({
+      id: ASSIGNMENT_ID, assignee_user_id: OTHER_ID, assignee_role: "contractor", status: "assigned",
+    }),
+  });
+  const result = await new P3TaskReadService(repository(row)).readTask(actor("contractor", OTHER_ID), TASK_ID);
+  assert.deepEqual(result?.allowed_actions, ["accept", "reject"]);
 });
 
 test("assigned listing is scoped to the current user and automatic task actions are state-bound", async () => {

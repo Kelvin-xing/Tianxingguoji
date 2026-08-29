@@ -9,14 +9,14 @@ test("Release1 Contractor receives only coarse task read/transition capabilities
   assert.equal(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE.contractor.some((value) => value.startsWith("cases.") || value.startsWith("documents.")), false);
 });
 
-test("Contractor task repository revalidates latest interview assignment and terminal resources each request", () => {
+test("Contractor task repository revalidates latest application/interview assignment and terminal resources each request", () => {
   const source = readFileSync("modules/tasks/infrastructure/postgresql-workspace-repository.ts", "utf8");
-  assert.match(source, /task\.task_kind='interview_support'/);
+  assert.match(source, /task\.task_kind IN \('application_prepare_submit','interview_support'\)/);
   assert.match(source, /task\.state NOT IN \('completed','cancelled','rejected'\)/);
   assert.match(source, /service_case\.stage <> 'closed'/);
   assert.match(source, /student\.status = 'active'/);
   assert.match(source, /tasks_task_assignments current_assignment/);
-  assert.match(source, /current_assignment\.status IN \('assigned','reassigned'\)/);
+  assert.match(source, /current_assignment\.status IN \('assigned','accepted','reassigned'\)/);
   assert.match(source, /current_assignment\.redaction_profile='task_only'/);
   assert.match(source, /current_assignment\.id = \(SELECT latest_assignment\.id/);
   assert.match(source, /ORDER BY latest_assignment\.created_at DESC,latest_assignment\.id DESC/);

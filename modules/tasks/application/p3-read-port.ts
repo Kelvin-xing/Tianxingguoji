@@ -21,10 +21,12 @@ export interface P3TaskReadRepository {
     readonly userId: string;
     readonly isFounder: boolean;
     readonly taskId: string;
+    readonly actorRole: "founder" | "advisor" | "contractor";
   }>): Promise<P3TaskReadRow | null>;
   listAssigned(input: Readonly<{
     readonly organizationId: string;
     readonly userId: string;
     readonly isFounder: boolean;
+    readonly actorRole: "founder" | "advisor" | "contractor";
   }>): Promise<readonly P3TaskReadRow[]>;
 }

@@ -58,8 +58,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
             throw new P3TaskError("NOT_FOUND");
           }
           const expectedState = input.kind === "application_prepare_submit" ? "preparing" : "interview";
-          if (facts.state !== expectedState ||
-              (input.kind === "application_prepare_submit" && facts.assigneeRole !== "advisor")) {
+          if (facts.state !== expectedState) {
             throw new P3TaskError("CONFLICT");
           }
           const actor = await this.accessFacts.readActorBindingFacts(transaction, {
@@ -278,8 +277,8 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
     const userId = input.nextAssigneeUserId!;
     const bindings = await this.accessFacts.readActorBindingFacts(transaction, { organizationId: input.actor.organizationId, userId });
     if (!bindings) throw new P3TaskError("FORBIDDEN");
-    const role = task.task_kind === "application_prepare_submit" ? "advisor" :
-      (bindings.bindings.some((binding) => binding.role === "advisor") ? "advisor" : "contractor");
+    const role = bindings.bindings.some((binding) => binding.role === "advisor")
+      ? "advisor" : "contractor";
     const binding = bindings.bindings.find((candidate) => candidate.role === role);
     if (!binding) throw new P3TaskError("FORBIDDEN");
     const can = await this.accessFacts.canAssigneeOperate(transaction, { organizationId: input.actor.organizationId,

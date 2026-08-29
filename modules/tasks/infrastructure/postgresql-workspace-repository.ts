@@ -108,17 +108,20 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       if (serviceCase.workflow_status !== "active") conflict();
       await assertApprovedPolicy(tx);
       const assignee = await lockAssignee(tx, input.assigneeUserId); if (!assignee) notFound();
+      // The legacy workspace create form creates manual tasks. Contractor
+      // assignments belong to the redacted automatic-task paths only.
+      if (assignee.role !== "advisor") notFound();
       await tx.query(`INSERT INTO tasks_tasks
         (id,organization_id,service_case_id,title,task_brief,due_at,state,assignee_user_id,
          assignee_role,assignee_redaction_profile,owner_user_id,record_version)
         VALUES ($1,$2,$3,$4,$5,$6,'assigned',$7,$8,$9,$10,1)`,
       [input.taskId,input.organizationId,input.caseId,input.title,input.taskBrief,input.dueAt,
-        assignee.user_id,assignee.role,assignee.role === "contractor" ? "task_only" : null,serviceCase.primary_user_id]);
+        assignee.user_id,assignee.role,null,serviceCase.primary_user_id]);
       await tx.query(`INSERT INTO tasks_task_assignments
         (id,organization_id,task_id,assignee_user_id,assignee_role,redaction_profile,assigned_by_user_id,status,reason)
         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,'assigned','initial_assignment')`,
       [input.organizationId,input.taskId,assignee.user_id,assignee.role,
-        assignee.role === "contractor" ? "task_only" : null,input.actorUserId]);
+        null,input.actorUserId]);
       const result = Object.freeze({ id: input.taskId, recordVersion: 1 });
       await appendAtomicMutationEffects(tx, input.effects); this.hooks.failBeforeCommit?.("create");
       await completeReceipt(tx, input, CREATE_OPERATION, result); return result;
@@ -245,7 +248,7 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
       AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
         OR ($3='contractor' AND task.assignee_user_id=$4 AND task.assignee_role='contractor'
           AND task.assignee_redaction_profile='task_only'
-          AND task.task_kind='interview_support'
+          AND task.task_kind IN ('application_prepare_submit','interview_support')
           AND task.state NOT IN ('completed','cancelled','rejected')
           AND service_case.stage <> 'closed'
           AND student.status = 'active'
@@ -255,7 +258,7 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
               AND current_assignment.assignee_user_id=$4
               AND current_assignment.assignee_role='contractor'
               AND current_assignment.redaction_profile='task_only'
-              AND current_assignment.status IN ('assigned','reassigned')
+              AND current_assignment.status IN ('assigned','accepted','reassigned')
               AND current_assignment.id = (SELECT latest_assignment.id
                 FROM tasks_task_assignments latest_assignment
                 WHERE latest_assignment.task_id=task.id
@@ -327,7 +330,11 @@ function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransit
     assigneeRole: row.current_assignment_role ?? row.assignee_role,
     status: row.current_assignment_status ?? "assigned",
   }) : null;
-  const allowedActions = actor.actorRole === "contractor" || row.task_kind === "manual" ? Object.freeze([]) : Object.freeze([
+  const contractorCanOperate = actor.actorRole === "contractor" &&
+    currentAssignment?.assigneeUserId === actor.actorUserId &&
+    ["application_prepare_submit", "interview_support"].includes(row.task_kind);
+  const allowedActions = row.task_kind === "manual" || (actor.actorRole === "contractor" && !contractorCanOperate)
+    ? Object.freeze([]) : Object.freeze([
     ...(row.state === "assigned" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["accept", "reject"] as const : []),
     ...(row.state === "accepted" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["complete"] as const : []),
     ...(actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&

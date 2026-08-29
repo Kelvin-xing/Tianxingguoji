@@ -8,5 +8,8 @@ test("completed application receipt is not a tautology", () => {
   assert.match(sql,/alternative_evidence_document_id IS NOT NULL/);
   assert.doesNotMatch(sql,/OR to_state = 'completed'/);
 });
-test("Contractor cannot receive application task", () => assert.match(sql,/application_prepare_submit/));
+test("application task may be delivered to Contractor with task-only redaction", () => {
+  assert.match(sql,/application_prepare_submit/);
+  assert.match(sql,/assignee_role IN \('advisor','contractor'\)/);
+});
 test("paused deadline is not rewritten", () => assert.match(sql,/Case pause never rewrites or extends this deadline/));

@@ -40,6 +40,7 @@ implements CasesApplicationTaskRequestFactsPort {
                     target.application_deadline,fact.application_deadline AS fact_deadline,
                     target.record_version AS target_record_version,
                     assignment.id AS assignment_id,assignment.assignee_user_id,
+                    assignment.assignee_role,
                     assignment.assignee_membership_id,assignment.advisor_role_binding_id,
                     service_case.primary_user_id AS owner_user_id,
                     fact.actor_user_id AS source_actor_user_id
@@ -64,12 +65,11 @@ implements CasesApplicationTaskRequestFactsPort {
                 AND binding.organization_id=assignment.organization_id
                 AND binding.membership_id=assignment.assignee_membership_id
                 AND binding.user_id=assignment.assignee_user_id
-                AND binding.role='advisor'
+                AND binding.role=assignment.assignee_role
               WHERE fact.organization_id=$1 AND fact.school_target_id=$2 AND fact.id=$3
                 AND fact.from_state='candidate' AND fact.to_state='preparing'
-                AND target.state='preparing' AND assignment.assignee_role='advisor'
+                AND target.state='preparing'
                 AND assignment.ends_at IS NULL
-                AND assignment.assignee_user_id=service_case.primary_user_id
                 AND membership.status='active' AND binding.status='active'
                 AND service_case.workflow_status='active'
                 AND service_case.stage='application_in_progress'
@@ -84,6 +84,7 @@ implements CasesApplicationTaskRequestFactsPort {
       sourceEventId: row.source_event_id,targetId: row.target_id,caseId: row.case_id,
       applicationRound: Number(row.application_round),applicationDeadline: deadline,
       assignmentId: row.assignment_id,assigneeUserId: row.assignee_user_id,
+      assigneeRole: row.assignee_role as "advisor" | "contractor",
       assigneeMembershipId: row.assignee_membership_id,
       assigneeRoleBindingId: row.advisor_role_binding_id,ownerUserId: row.owner_user_id,
       sourceActorUserId: row.source_actor_user_id,
@@ -98,7 +99,7 @@ interface RequestFactRow extends RequestRefRow {
   readonly application_deadline: Date | string | null;
   readonly fact_deadline: Date | string | null;
   readonly target_record_version: number | string; readonly assignment_id: string;
-  readonly assignee_user_id: string; readonly assignee_membership_id: string;
+  readonly assignee_user_id: string; readonly assignee_role: string; readonly assignee_membership_id: string;
   readonly advisor_role_binding_id: string; readonly owner_user_id: string;
   readonly source_actor_user_id: string;
 }

@@ -4,9 +4,9 @@ import { readFile } from "node:fs/promises";
 import { canCompleteTargetTask, canCreateTargetTask, isTaskDueAtStableWhenPaused, isValidApplicationCompletion } from "../../../modules/tasks/domain/p3-be-05-policy.ts";
 
 const actor = { userId: "10000000-0000-4000-8000-000000000001", organizationId: "10000000-0000-4000-8000-000000000002", roles: ["advisor"] as const, workspaceCapabilities: ["tasks.create","tasks.transition"] as const };
-test("preparing creates only Advisor application task and allows collaborator", () => {
+test("preparing creates Advisor or Contractor application task and allows collaborator", () => {
   assert.equal(canCreateTargetTask({ actor,kind: "application_prepare_submit",assigneeRole: "advisor",isPrimaryAdvisor: false,isCaseAdvisorCollaborator: true,targetState: "preparing",workflowStatus: "active" }),true);
-  assert.equal(canCreateTargetTask({ actor,kind: "application_prepare_submit",assigneeRole: "contractor",isPrimaryAdvisor: true,isCaseAdvisorCollaborator: false,targetState: "preparing",workflowStatus: "active" }),false);
+  assert.equal(canCreateTargetTask({ actor,kind: "application_prepare_submit",assigneeRole: "contractor",isPrimaryAdvisor: false,isCaseAdvisorCollaborator: false,targetState: "preparing",workflowStatus: "active" }),true);
 });
 test("interview task may use Contractor but completion never advances result", () => {
   assert.equal(canCreateTargetTask({ actor,kind: "interview_support",assigneeRole: "contractor",isPrimaryAdvisor: false,isCaseAdvisorCollaborator: false,targetState: "interview",workflowStatus: "active" }),true);

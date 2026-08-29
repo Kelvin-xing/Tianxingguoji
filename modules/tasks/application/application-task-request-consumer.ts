@@ -131,11 +131,11 @@ export class ApplicationTaskRequestConsumer {
          assignee_role,assignee_redaction_profile,owner_user_id,record_version,created_at,updated_at)
        VALUES ($1,current_setting('app.organization_id')::uuid,$2,$3,
          'application_prepare_submit',$4,'case_event',$5,$6,$7,$8,'assigned',$9,
-         'advisor',NULL,$10,1,$11,$11)`,
+         $10,CASE WHEN $10='contractor' THEN 'task_only' ELSE NULL END,$11,1,$12,$12)`,
       values:[taskId,facts.caseId,facts.targetId,taskKey,facts.sourceEventId,
         "Prepare and submit school application",
-        "Prepare the required application materials and submit the application.",
-         facts.applicationDeadline,facts.assigneeUserId,facts.ownerUserId,occurredAt],
+         "Prepare the required application materials and submit the application.",
+         facts.applicationDeadline,facts.assigneeUserId,facts.assigneeRole,facts.ownerUserId,occurredAt],
     });
     await transaction.query({
       text: `INSERT INTO tasks_task_assignments
@@ -143,10 +143,11 @@ export class ApplicationTaskRequestConsumer {
          assignee_membership_id,assignee_role_binding_id,case_collaborator_id,
          assigned_by_user_id,assigned_by_actor_kind,assigned_by_actor_id,status,reason,
          assignment_reason,assigned_at,record_version,updated_at)
-       VALUES ($1,current_setting('app.organization_id')::uuid,$2,$3,'advisor',NULL,
-         $4,$5,NULL,$6,'system',$7,'assigned','case_event','case_event',$8,1,$8)`,
-      values:[taskAssignmentId,taskId,facts.assigneeUserId,facts.assigneeMembershipId,
-        facts.assigneeRoleBindingId,facts.sourceActorUserId,facts.sourceEventId,occurredAt],
+       VALUES ($1,current_setting('app.organization_id')::uuid,$2,$3,$4,
+         CASE WHEN $4='contractor' THEN 'task_only' ELSE NULL END,
+         $5,$6,NULL,$7,'system',$8,'assigned','case_event','case_event',$9,1,$9)`,
+      values:[taskAssignmentId,taskId,facts.assigneeUserId,facts.assigneeRole,
+        facts.assigneeMembershipId,facts.assigneeRoleBindingId,facts.sourceActorUserId,facts.sourceEventId,occurredAt],
     });
     const auditId=this.createId();
     const audit=buildAuditEvent({ id:auditId,organizationId:(await organizationId(transaction)),

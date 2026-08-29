@@ -19,6 +19,8 @@ In scope:
 - authoritative internal and assigned-Contractor Task list/detail reads;
 - Case-scoped Task creation and initial assignment;
 - existing assignee, current Primary Advisor, and separate Founder transitions;
+  automatic application-submission Tasks may be assigned to an Advisor or
+  Contractor, while Founder remains outside the assignee list;
 - a Case detail Task panel, `/tasks`, and `/tasks/{taskId}`;
 - strict client DTOs, idempotent writes, authoritative refresh and stale recovery;
 - additive schema completion, local Release 1 policy fixture, real PostgreSQL HTTP

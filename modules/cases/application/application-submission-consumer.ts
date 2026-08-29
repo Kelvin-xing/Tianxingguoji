@@ -56,19 +56,26 @@ export class ApplicationSubmissionConsumer {
       }
       const targetResult=await transaction.query<TargetRow>({
         text:`SELECT target.id,target.service_case_id,target.state,target.record_version,
-                    target.current_assignment_id,assignment.assignee_user_id
+                    target.current_assignment_id,assignment.assignee_user_id AS target_assignee_user_id,
+                    task.assignee_user_id AS task_assignee_user_id
                FROM cases_school_targets AS target
                JOIN cases_school_target_assignments AS assignment
                  ON assignment.id=target.current_assignment_id
                 AND assignment.organization_id=target.organization_id
                 AND assignment.school_target_id=target.id
+               JOIN tasks_tasks AS task
+                 ON task.id=$4 AND task.organization_id=target.organization_id
+                AND task.service_case_id=target.service_case_id
+                AND task.school_target_id=target.id
+                AND task.task_kind='application_prepare_submit'
+                AND task.state='completed'
               WHERE target.organization_id=$1 AND target.id=$2
                 AND target.service_case_id=$3 FOR UPDATE OF target,assignment`,
-        values:[input.organizationId,completion.targetId,completion.caseId],
+        values:[input.organizationId,completion.targetId,completion.caseId,completion.taskId],
       });
       const target=targetResult.rows[0];
       if (!target || target.state!=="preparing" ||
-          target.assignee_user_id!==completion.actorUserId) return pending(completion.targetId);
+          target.task_assignee_user_id!==completion.actorUserId) return pending(completion.targetId);
       const claim=await claimAuditOutboxSourceTransaction(transaction,{
         id:source.id,organizationId:input.organizationId,
       });
@@ -129,7 +136,7 @@ export class ApplicationSubmissionConsumer {
 
 interface TargetRow{readonly id:string;readonly service_case_id:string;readonly state:string;
   readonly record_version:number|string;readonly current_assignment_id:string;
-  readonly assignee_user_id:string}
+  readonly target_assignee_user_id:string;readonly task_assignee_user_id:string}
 async function readSubmittedTarget(transaction:TenantTransaction,organizationId:string,
   targetId:string,receiptId:string){const result=await transaction.query<{record_version:number|string}>({
     text:`SELECT target.record_version FROM cases_school_targets AS target

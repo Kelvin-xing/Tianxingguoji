@@ -59,6 +59,7 @@ export interface ApplicationTaskRequestFacts {
   readonly applicationDeadline: string | null;
   readonly assignmentId: string;
   readonly assigneeUserId: string;
+  readonly assigneeRole: TaskFactsAssigneeRole;
   readonly assigneeMembershipId: string;
   readonly assigneeRoleBindingId: string;
   readonly ownerUserId: string;

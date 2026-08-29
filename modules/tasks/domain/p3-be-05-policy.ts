@@ -11,8 +11,9 @@ export function canCreateTargetTask(input: Readonly<{
 }>): boolean {
   if (!hasRequestCapability(input.actor, "tasks.create") || input.workflowStatus !== "active") return false;
   if (input.kind === "application_prepare_submit") {
-    return input.assigneeRole === "advisor" &&
-      (input.isPrimaryAdvisor || input.isCaseAdvisorCollaborator) && input.targetState === "preparing";
+    return (input.assigneeRole === "advisor" || input.assigneeRole === "contractor") &&
+      (input.assigneeRole === "contractor" || input.isPrimaryAdvisor || input.isCaseAdvisorCollaborator) &&
+      input.targetState === "preparing";
   }
   return input.assigneeRole === "advisor" || input.assigneeRole === "contractor";
 }

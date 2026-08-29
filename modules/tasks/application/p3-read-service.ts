@@ -52,13 +52,15 @@ export class P3TaskReadService {
         organizationId: actor.organizationId,
         userId: actor.userId,
         isFounder: access.isFounder,
+        actorRole: access.actorRole,
         taskId,
       });
     } catch (error) {
       if (error instanceof P3TaskReadError) throw error;
       throw new P3TaskReadError("UNAVAILABLE");
     }
-    return row === null ? null : project(row, actor);
+    return row === null || (access.actorRole === "contractor" && row.task_kind === "manual")
+      ? null : project(row, actor);
   }
 
   async listAssigned(actor: RequestAccessActor): Promise<readonly P3TaskReadDto[]> {
@@ -69,24 +71,28 @@ export class P3TaskReadService {
         organizationId: actor.organizationId,
         userId: actor.userId,
         isFounder: access.isFounder,
+        actorRole: access.actorRole,
       });
     } catch (error) {
       if (error instanceof P3TaskReadError) throw error;
       throw new P3TaskReadError("UNAVAILABLE");
     }
-    return Object.freeze(rows.map((row) => project(row, actor)));
+    return Object.freeze(rows
+      .filter((row) => access.actorRole !== "contractor" || row.task_kind !== "manual")
+      .map((row) => project(row, actor)));
   }
 }
 
-function authorize(actor: RequestAccessActor): Readonly<{ isFounder: boolean }> {
+function authorize(actor: RequestAccessActor): Readonly<{ isFounder: boolean; actorRole: "founder" | "advisor" | "contractor" }> {
   if (!actor || !UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
       !hasRequestCapability(actor, "tasks.read")) {
     throw new P3TaskReadError("FORBIDDEN");
   }
   const roles = actor.roles ?? [];
   const isFounder = roles.includes("founder");
-  if (!isFounder && !roles.includes("advisor")) throw new P3TaskReadError("FORBIDDEN");
-  return Object.freeze({ isFounder });
+  const actorRole = isFounder ? "founder" : roles.includes("advisor") ? "advisor" : roles.includes("contractor") ? "contractor" : null;
+  if (actorRole === null) throw new P3TaskReadError("FORBIDDEN");
+  return Object.freeze({ isFounder, actorRole });
 }
 
 function project(row: P3TaskReadRow, actor: RequestAccessActor): P3TaskReadDto {

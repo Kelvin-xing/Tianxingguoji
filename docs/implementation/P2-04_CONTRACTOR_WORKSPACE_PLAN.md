@@ -10,7 +10,7 @@
 
 ## Problem, Stakeholders, And Boundary
 
-Contractors need enough information to accept, deliver, or return a currently assigned Task without receiving the surrounding Service Case. The contractor is the direct stakeholder; the Founder, Primary Advisor, family, privacy owner, and security owner need assignment revocation and data minimization to hold at the server boundary rather than only in navigation or React rendering.
+Contractors need enough information to accept, deliver, or return a currently assigned application-submission or interview-support Task without receiving the surrounding Service Case. The contractor is the direct stakeholder; the Founder, Primary Advisor, family, privacy owner, and security owner need assignment revocation and data minimization to hold at the server boundary rather than only in navigation or React rendering.
 
 In scope: one authenticated contractor reads one currently assigned Task through a dedicated repository transaction, receives an allowlisted task-only DTO, and opens a contractor-only server page. The direct API and page both fail closed when the actor, organization, assignment, task-only redaction, or production HK RDS composition is absent.
 

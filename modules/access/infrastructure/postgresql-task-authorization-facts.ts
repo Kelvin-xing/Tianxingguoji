@@ -30,10 +30,10 @@ export class PostgresqlAccessTaskFactsPort implements AccessTaskFactsPort {
     organizationId: string; caseId: string; userId: string; kind: TaskFactsKind;
     assigneeRole: "advisor" | "contractor"; isPrimaryAdvisor: boolean; collaboratorId: string | null;
   }>): Promise<boolean> {
-    if (input.kind === "application_prepare_submit" && input.assigneeRole !== "advisor") return false;
+    if (input.kind === "application_prepare_submit" && !["advisor", "contractor"].includes(input.assigneeRole)) return false;
     if (input.kind === "interview_support" && !["advisor", "contractor"].includes(input.assigneeRole)) return false;
     if (input.assigneeRole === "advisor" && input.isPrimaryAdvisor) return true;
-    if (input.kind === "interview_support" && input.assigneeRole === "contractor") {
+    if (input.assigneeRole === "contractor") {
       const contractor = await transaction.query<{ allowed: boolean }>({
         text: `SELECT EXISTS (
                  SELECT 1 FROM access_organization_memberships AS membership

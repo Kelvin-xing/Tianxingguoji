@@ -18,6 +18,7 @@ interface DatabaseRow extends Record<string, unknown> {
   current_assignee_user_id: string | null;
   current_assignee_role: "advisor" | "contractor" | null;
   current_assignment_status: string | null;
+  current_assignment_redaction_profile: string | null;
 }
 
 export class PostgresqlP3TaskReadRepository implements P3TaskReadRepository {
@@ -30,8 +31,8 @@ export class PostgresqlP3TaskReadRepository implements P3TaskReadRepository {
   async readTask(input: Parameters<P3TaskReadRepository["readTask"]>[0]): Promise<P3TaskReadRow | null> {
     return this.runner.run({ organizationId: input.organizationId, actorUserId: input.userId }, async (transaction) => {
       const result = await transaction.query<DatabaseRow>({
-        text: selectSql("AND task.id=$4::uuid"),
-        values: [input.organizationId, input.userId, input.isFounder, input.taskId],
+        text: selectSql("AND task.id=$5::uuid"),
+        values: [input.organizationId, input.userId, input.isFounder, input.actorRole, input.taskId],
       });
       return result.rows[0] === undefined ? null : mapRow(result.rows[0]);
     });
@@ -41,7 +42,7 @@ export class PostgresqlP3TaskReadRepository implements P3TaskReadRepository {
     return this.runner.run({ organizationId: input.organizationId, actorUserId: input.userId }, async (transaction) => {
       const result = await transaction.query<DatabaseRow>({
         text: selectSql("AND task.assignee_user_id=$2::uuid", true),
-        values: [input.organizationId, input.userId, input.isFounder],
+        values: [input.organizationId, input.userId, input.isFounder, input.actorRole],
       });
       return Object.freeze(result.rows.map(mapRow));
     });
@@ -55,12 +56,14 @@ function selectSql(extraPredicate: string, assignedOnly = false): string {
       current_assignment.id AS current_assignment_id,
       current_assignment.assignee_user_id AS current_assignee_user_id,
       current_assignment.assignee_role AS current_assignee_role,
-      current_assignment.status AS current_assignment_status
+      current_assignment.status AS current_assignment_status,
+      current_assignment.redaction_profile AS current_assignment_redaction_profile
     FROM tasks_tasks AS task
     JOIN cases_service_cases AS service_case
       ON service_case.id=task.service_case_id AND service_case.organization_id=task.organization_id
     LEFT JOIN LATERAL (
-      SELECT assignment.id,assignment.assignee_user_id,assignment.assignee_role,assignment.status
+      SELECT assignment.id,assignment.assignee_user_id,assignment.assignee_role,assignment.status,
+             assignment.redaction_profile
         FROM tasks_task_assignments AS assignment
        WHERE assignment.organization_id=task.organization_id
          AND assignment.task_id=task.id AND assignment.ended_at IS NULL
@@ -68,7 +71,18 @@ function selectSql(extraPredicate: string, assignedOnly = false): string {
     ) AS current_assignment ON true
     WHERE task.organization_id=$1::uuid
       ${extraPredicate}
-      AND (${assignedOnly ? "false" : "$3::boolean"} OR task.assignee_user_id=$2::uuid OR service_case.primary_user_id=$2::uuid)
+      AND (($3::boolean AND ${assignedOnly ? "task.assignee_user_id=$2::uuid" : "true"})
+        OR ($4::text='advisor' AND (task.assignee_user_id=$2::uuid OR service_case.primary_user_id=$2::uuid))
+        OR ($4::text='contractor'
+          AND task.assignee_user_id=$2::uuid
+          AND task.assignee_role='contractor'
+          AND task.assignee_redaction_profile='task_only'
+          AND task.task_kind IN ('application_prepare_submit','interview_support')
+          AND task.state NOT IN ('completed','cancelled','rejected')
+          AND current_assignment.assignee_user_id=$2::uuid
+          AND current_assignment.assignee_role='contractor'
+          AND current_assignment.redaction_profile='task_only'
+          AND current_assignment.status IN ('assigned','accepted','reassigned')))
       AND EXISTS (
         SELECT 1
           FROM access_organization_memberships AS membership
@@ -77,7 +91,7 @@ function selectSql(extraPredicate: string, assignedOnly = false): string {
            AND binding.user_id=membership.user_id AND binding.status='active'
          WHERE membership.organization_id=task.organization_id
            AND membership.user_id=$2::uuid AND membership.status='active'
-           AND binding.role = CASE WHEN $3::boolean THEN 'founder' ELSE 'advisor' END
+           AND binding.role = $4::text
       )
     ORDER BY task.updated_at DESC,task.id`;
 }
