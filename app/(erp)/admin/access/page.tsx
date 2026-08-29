@@ -177,8 +177,8 @@ function MemberEditor({ user, onClose, onSaved }: { readonly user: UserDirectory
             {(['FULL_TIME', 'PART_TIME'] as const).map((value) => <label key={value} className={`selection-card ${employmentType === value ? 'selected' : ''}`}><input type="radio" name="employment-type" checked={employmentType === value} onChange={() => { setEmploymentType(value); setMessage(null) }} /><span className="selection-mark" aria-hidden="true" /><span><strong>{value === 'FULL_TIME' ? '正式员工' : '兼职'}</strong><small>{value}</small></span></label>)}
           </div></fieldset>
 
-          <fieldset><legend className="text-sm font-medium">当前角色</legend><div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {EDITABLE_ROLES.map((role) => <label key={role} className={`selection-card ${roles.includes(role) ? 'selected' : ''}`}><input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} /><span className="selection-mark" aria-hidden="true" /><span><strong>{roleLabel(role)}</strong></span></label>)}
+          <fieldset><legend className="text-sm font-medium">当前角色</legend><div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {EDITABLE_ROLES.map((role) => <label key={role} className={`selection-card min-w-0 ${roles.includes(role) ? 'selected' : ''}`}><input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" checked={roles.includes(role)} onChange={() => toggleRole(role)} /><span className="min-w-0"><strong className="break-words">{roleLabel(role)}</strong></span></label>)}
           </div></fieldset>
 
           {(message || validation) && <div className="form-error" role="alert"><Icon name="shield" size={15} /><span>{message ?? validation}</span></div>}

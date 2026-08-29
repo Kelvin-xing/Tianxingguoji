@@ -23,6 +23,9 @@ test("access page reads users and submits the frozen member access command", asy
   assert.match(source, /method: 'PATCH'/);
   assert.match(source, /expected_access_version: user\.access_version/);
   assert.match(source, /Contractor 必须是唯一角色/);
+  assert.match(source, /grid-cols-1 gap-2 sm:grid-cols-2/);
+  assert.match(source, /type="checkbox" className="mt-0\.5 h-5 w-5 shrink-0"/);
+  assert.match(source, /<strong className="break-words">\{roleLabel\(role\)\}<\/strong>/);
   assert.match(source, />昵称</);
   assert.match(source, /未设置昵称/);
   assert.doesNotMatch(source, /显示名称|未设置姓名/);
