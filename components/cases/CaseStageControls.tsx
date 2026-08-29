@@ -46,6 +46,7 @@ export function CaseWorkflowControls({
   const [recordVersion, setRecordVersion] = useState(initialRecordVersion);
   const [availableActions, setAvailableActions] = useState(initialAvailableWorkflowActions);
   const [reason, setReason] = useState("");
+  const [pauseEditorOpen, setPauseEditorOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
 
@@ -94,6 +95,7 @@ export function CaseWorkflowControls({
       applyAuthoritative(authoritative);
       attempt.current.complete();
       setReason("");
+      setPauseEditorOpen(false);
       setFeedback({
         kind: "success",
         message: action === "pause"
@@ -169,34 +171,64 @@ export function CaseWorkflowControls({
       ) : null}
 
       {canPause ? (
-        <form
-          className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (pauseReasonValid) void submit("pause");
-          }}
-        >
-          <label className="block min-w-0 text-sm font-medium" htmlFor="case-workflow-pause-reason">
-            暫停原因
-            <textarea
-              id="case-workflow-pause-reason"
-              className="mt-1 min-h-20 w-full min-w-0"
-              value={reason}
-              minLength={1}
-              maxLength={1000}
-              required
-              disabled={pending}
-              onChange={(event) => {
-                setReason(event.target.value);
-                setFeedback(null);
-              }}
-            />
-          </label>
-          <button type="submit" className="secondary-button" disabled={!pauseReasonValid || pending}>
-            <Icon name={pending ? "clock" : "activity"} size={15} />
-            {pending ? "處理中…" : "暫停案件"}
+        pauseEditorOpen ? (
+          <form
+            className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (pauseReasonValid) void submit("pause");
+            }}
+          >
+            <label className="block min-w-0 text-sm font-medium" htmlFor="case-workflow-pause-reason">
+              暫停原因
+              <textarea
+                id="case-workflow-pause-reason"
+                className="mt-1 min-h-20 w-full min-w-0"
+                value={reason}
+                minLength={1}
+                maxLength={1000}
+                required
+                disabled={pending}
+                autoFocus
+                onChange={(event) => {
+                  setReason(event.target.value);
+                  setFeedback(null);
+                }}
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={pending}
+                onClick={() => {
+                  setPauseEditorOpen(false);
+                  setReason("");
+                  setFeedback(null);
+                }}
+              >
+                取消
+              </button>
+              <button type="submit" className="secondary-button" disabled={!pauseReasonValid || pending}>
+                <Icon name={pending ? "clock" : "activity"} size={15} />
+                {pending ? "處理中…" : "確認暫停"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="secondary-button mt-4"
+            disabled={pending}
+            onClick={() => {
+              setPauseEditorOpen(true);
+              setFeedback(null);
+            }}
+          >
+            <Icon name="activity" size={15} />
+            暫停案件
           </button>
-        </form>
+        )
       ) : null}
 
       {canResume ? (

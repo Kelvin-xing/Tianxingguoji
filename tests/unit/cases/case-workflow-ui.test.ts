@@ -17,6 +17,12 @@ test("Case detail projects the frozen workflow contract into capability-only con
   assert.match(controls, /String\(capability\) === "cases\.workflow\.manage"/);
   assert.match(controls, /availableActions\.includes\("pause"\)/);
   assert.match(controls, /availableActions\.includes\("resume"\)/);
+  assert.match(controls, /const \[pauseEditorOpen, setPauseEditorOpen\] = useState\(false\)/);
+  assert.match(controls, /pauseEditorOpen \? \(/);
+  assert.match(controls, /setPauseEditorOpen\(true\)/);
+  assert.match(controls, /暫停案件/);
+  assert.match(controls, /確認暫停/);
+  assert.match(controls, /autoFocus/);
   assert.doesNotMatch(controls, /access\.role|role\s*===|founder|advisor/);
   assert.doesNotMatch(controls, /terminate|closeCase|to_stage|workflow\/advance|workflow\/rollback/);
 });

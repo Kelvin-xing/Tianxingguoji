@@ -389,8 +389,11 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
     await workflowSection.getByRole("heading", { name: "案件流程", exact: true, level: 3 }).waitFor({ state: "visible" });
     const pauseReason = workflowSection.getByRole("textbox", { name: "暫停原因", exact: true });
     const pauseButton = workflowSection.getByRole("button", { name: "暫停案件", exact: true });
-    await pauseReason.waitFor({ state: "visible" });
     evidence.workflow_entry = await pauseButton.count() === 1;
+    assert.equal(await pauseReason.count(), 0);
+    await pauseButton.click();
+    await pauseReason.waitFor({ state: "visible" });
+    const confirmPauseButton = workflowSection.getByRole("button", { name: "確認暫停", exact: true });
     const assessmentReadOnly = page.getByText(
       "你目前可以查看評估，但沒有編輯權限。",
       { exact: true },
@@ -425,8 +428,8 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
     };
     page.on("request", countWorkflowValidation);
     await pauseReason.fill(" ");
-    assert.equal(await pauseButton.isDisabled(), true);
-    await pauseButton.evaluate((button) => (button as HTMLButtonElement).click());
+    assert.equal(await confirmPauseButton.isDisabled(), true);
+    await confirmPauseButton.evaluate((button) => (button as HTMLButtonElement).click());
     page.off("request", countWorkflowValidation);
     evidence.pause_validation_zero_post = validationWorkflowPosts === 0;
     assert.equal(evidence.pause_validation_zero_post, true);
@@ -442,10 +445,10 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
       else await route.continue();
     });
     await pauseReason.fill("等待監護人補充資料");
-    await pauseButton.click();
+    await confirmPauseButton.click();
     await waitUntil(() => workflowPostCount === 1);
     await workflowUnavailableAlert(page);
-    await pauseButton.click();
+    await confirmPauseButton.click();
     await waitUntil(() => workflowPostCount === 2);
     await workflowUnavailableAlert(page);
     evidence.pause_retry_same_key = workflowKeys[0] !== "" && workflowKeys[0] === workflowKeys[1];
@@ -457,7 +460,7 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
       response.request().method() === "POST" && new URL(response.url()).pathname === workflowPath);
     const pauseAuthorityResponse = page.waitForResponse((response) => isGetPath(response, caseApiPath));
     stage = "pause_submit";
-    await pauseButton.evaluate((button) => {
+    await confirmPauseButton.evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
@@ -541,8 +544,10 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
     const staleResponse = page.waitForResponse((response) =>
       response.request().method() === "POST" && new URL(response.url()).pathname === workflowPath);
     const staleAuthorityResponse = page.waitForResponse((response) => isGetPath(response, caseApiPath));
+    const stalePauseButton = workflowSection.getByRole("button", { name: "暫停案件", exact: true });
+    await stalePauseButton.click();
     await workflowSection.getByRole("textbox", { name: "暫停原因", exact: true }).fill("提交陳舊版本以重新載入");
-    await workflowSection.getByRole("button", { name: "暫停案件", exact: true }).click();
+    await workflowSection.getByRole("button", { name: "確認暫停", exact: true }).click();
     const staleResult = await safeApiError(await staleResponse);
     const staleAuthority = await exactCaseAuthority(await staleAuthorityResponse, founderCaseId);
     stage = "workflow_stale_recovery";
