@@ -11,6 +11,7 @@ import {
   type AvailableTaskTransitionView,
   type TaskAcknowledgement,
   type TaskActorContext,
+  type TaskAssigneeView,
   type TaskAssigneeRole,
   type TaskCollectionView,
   type TaskDetailView,
@@ -88,8 +89,11 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
         JOIN identity_users AS actor ON actor.id=binding.user_id
         WHERE binding.role IN ('advisor','contractor') AND binding.status='active'
           AND membership.status='active' AND actor.status='active'
-        ORDER BY binding.role,binding.id LIMIT 100`);
-      return Object.freeze({ assignees: Object.freeze(result.rows.map(assigneeView)) });
+        ORDER BY binding.role,
+          RIGHT(binding.id::text,8),binding.user_id LIMIT 100`);
+      return Object.freeze({ assignees: Object.freeze(
+        result.rows.map(assigneeView).sort(compareAssigneeViews),
+      ) });
     });
   }
 
@@ -352,6 +356,11 @@ function canActorUseRule(
 }
 function assigneeView(row: AssigneeRow) { return Object.freeze({ id: row.user_id,role: row.role,
   label: `${row.role === "advisor" ? "Advisor" : "Contractor"} · ${row.id.slice(-8)}` }); }
+function compareAssigneeViews(left: TaskAssigneeView, right: TaskAssigneeView) {
+  return left.role.localeCompare(right.role) ||
+    left.label.localeCompare(right.label) ||
+    left.id.localeCompare(right.id);
+}
 async function claimReceipt(tx: Db, input: TaskActorContext & { idempotencyKey: string; requestHash: string }, operation: string) {
   const inserted = await tx.query(`INSERT INTO shared_idempotency_records
     (id,organization_id,actor_user_id,operation,idempotency_key,request_hash,state)

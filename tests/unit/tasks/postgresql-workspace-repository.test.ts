@@ -69,6 +69,48 @@ test("legacy transition boundary rejects automatic P3 tasks", async () => {
   );
 });
 
+test("assignee options stay in the client canonical role, label and user order", async () => {
+  let optionsQuery = "";
+  const runner: TenantTransactionRunner = Object.freeze({
+    async run<Result>(
+      _context: { readonly organizationId: string; readonly actorUserId: string },
+      operation: (transaction: TenantTransaction) => Promise<Result>,
+    ): Promise<Result> {
+      return operation(Object.freeze({
+        async query<Row = Record<string, unknown>>(
+          query: DatabaseQuery,
+        ): Promise<DatabaseQueryResult<Row>> {
+          if (query.text.includes("SELECT binding.role FROM identity_users")) {
+            return result([{ role: "advisor" }]) as DatabaseQueryResult<Row>;
+          }
+          if (query.text.includes("SELECT service_case.id,service_case.primary_user_id")) {
+            return result([caseRow()]) as DatabaseQueryResult<Row>;
+          }
+          if (query.text.includes("FROM access_role_bindings AS binding") &&
+              query.text.includes("binding.role IN ('advisor','contractor')")) {
+            optionsQuery = query.text;
+            return result([
+              { id: "71000000-0000-4000-8000-0000000000ff", user_id: ASSIGNEE_ID, role: "advisor" },
+              { id: "71000000-0000-4000-8000-000000000001", user_id: OLD_OWNER_ID, role: "advisor" },
+              { id: "71000000-0000-4000-8000-000000000002", user_id: CURRENT_PRIMARY_ID, role: "contractor" },
+            ]) as DatabaseQueryResult<Row>;
+          }
+          throw new Error("Unexpected repository query in Task options test seam.");
+        },
+      }));
+    },
+  });
+
+  const options = await service(runner).options(ACTOR, CASE_ID);
+
+  assert.deepEqual(options?.assignees.map(({ id, role, label }) => ({ id, role, label })), [
+    { id: OLD_OWNER_ID, role: "advisor", label: "Advisor · 00000001" },
+    { id: ASSIGNEE_ID, role: "advisor", label: "Advisor · 000000ff" },
+    { id: CURRENT_PRIMARY_ID, role: "contractor", label: "Contractor · 00000002" },
+  ]);
+  assert.match(optionsQuery, /ORDER BY binding\.role,\s*RIGHT\(binding\.id::text,8\),binding\.user_id LIMIT 100/);
+});
+
 function service(runner: TenantTransactionRunner): TaskWorkspaceService {
   let index = 0;
   return new TaskWorkspaceService(
