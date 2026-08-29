@@ -175,7 +175,7 @@ export function TaskTransitionControls({
               onChange={(event) => { commandChanged(); setNextAssigneeId(event.target.value); }}
             >
               <option value="">{optionsLoading ? "正在載入負責人" : "選擇負責人"}</option>
-              {assignees.filter((assignee) => assignee.role === "advisor").map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · 顧問</option>)}
+              {assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>)}
             </select>
           </label>
         ) : null}

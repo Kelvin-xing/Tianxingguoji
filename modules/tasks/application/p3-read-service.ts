@@ -59,8 +59,7 @@ export class P3TaskReadService {
       if (error instanceof P3TaskReadError) throw error;
       throw new P3TaskReadError("UNAVAILABLE");
     }
-    return row === null || (access.actorRole === "contractor" && row.task_kind === "manual")
-      ? null : project(row, actor);
+    return row === null ? null : project(row, actor);
   }
 
   async listAssigned(actor: RequestAccessActor): Promise<readonly P3TaskReadDto[]> {
@@ -77,9 +76,7 @@ export class P3TaskReadService {
       if (error instanceof P3TaskReadError) throw error;
       throw new P3TaskReadError("UNAVAILABLE");
     }
-    return Object.freeze(rows
-      .filter((row) => access.actorRole !== "contractor" || row.task_kind !== "manual")
-      .map((row) => project(row, actor)));
+    return Object.freeze(rows.map((row) => project(row, actor)));
   }
 }
 
@@ -122,7 +119,6 @@ function project(row: P3TaskReadRow, actor: RequestAccessActor): P3TaskReadDto {
 }
 
 function allowedActions(row: P3TaskReadRow, actorUserId: string, actorRoles: readonly string[]): readonly P3ReadAction[] {
-  if (row.task_kind === "manual") return Object.freeze([]);
   const actions: P3ReadAction[] = [];
   const assigned = row.current_assignment?.assignee_user_id === actorUserId;
   const owner = row.owner_user_id === actorUserId;

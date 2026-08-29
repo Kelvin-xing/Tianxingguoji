@@ -50,7 +50,7 @@ test("Primary Advisor can reassign a rejected application Task with no active as
   assert.deepEqual(interview?.allowed_actions, ["cancel"]);
 });
 
-test("Founder remains authorized when combined with Admin, while pure Admin and Contractor are denied", async () => {
+test("Founder remains authorized when combined with Admin, while pure Admin is denied and Contractor requires assignment", async () => {
   const row = baseRow("manual");
   const service = new P3TaskReadService(repository(row));
   const founder = await service.readTask(actor(["founder", "admin"], FOUNDER_ID), TASK_ID);
@@ -58,6 +58,14 @@ test("Founder remains authorized when combined with Admin, while pure Admin and 
   await assert.rejects(() => service.readTask(actor("admin", FOUNDER_ID), TASK_ID), (error: unknown) =>
     error instanceof P3TaskReadError && error.code === "FORBIDDEN");
   assert.equal(await service.readTask(actor("contractor", OTHER_ID), TASK_ID), null);
+
+  const contractorManual = await new P3TaskReadService(repository(Object.freeze({
+    ...row,
+    current_assignment: Object.freeze({
+      id: ASSIGNMENT_ID, assignee_user_id: OTHER_ID, assignee_role: "contractor", status: "assigned",
+    }),
+  }))).readTask(actor("contractor", OTHER_ID), TASK_ID);
+  assert.deepEqual(contractorManual?.allowed_actions, ["accept", "reject"]);
 });
 
 test("Contractor may read and act on an assigned application task", async () => {
@@ -88,7 +96,10 @@ test("assigned listing is scoped to the current user and automatic task actions 
 
 function repository(row: P3TaskReadRow): P3TaskReadRepository {
   return Object.freeze({
-    async readTask() { return row; },
+    async readTask(input: Parameters<P3TaskReadRepository["readTask"]>[0]) {
+      if (input.actorRole === "contractor" && row.current_assignment?.assignee_user_id !== input.userId) return null;
+      return row;
+    },
     async listAssigned() { return [row]; },
   });
 }

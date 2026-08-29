@@ -1460,7 +1460,7 @@ test.skip("CRM-02 legacy browser harness is superseded by the current guardian r
     const workspaceSidebar = page.locator("aside.app-sidebar");
     await workspaceSidebar.waitFor({ state: "visible" });
     const navigationButtonDom = page.locator(
-      'header button.navigation-button[aria-controls="workspace-navigation"]',
+      'header button.icon-button[aria-controls="workspace-navigation"]',
     );
 
     stage = "workspace_shell_desktop_single_control";
@@ -1498,9 +1498,9 @@ test.skip("CRM-02 legacy browser harness is superseded by the current guardian r
     evidence.workspace_desktop_return_sidebar_persisted = true;
 
     stage = "workspace_shell_desktop_navigation";
-    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+    await workspaceSidebar.getByRole("button", { name: "關閉導航", exact: true }).click();
     await workspaceSidebar.waitFor({ state: "hidden" });
-    const navigationButton = page.getByRole("button", { name: "展開導航", exact: true });
+    const navigationButton = page.getByRole("button", { name: "開啟導航", exact: true });
     evidence.workspace_desktop_open_button_count = await navigationButton.count();
     assert.equal(evidence.workspace_desktop_open_button_count, 1);
     await navigationButton.waitFor({ state: "visible" });
@@ -1511,21 +1511,10 @@ test.skip("CRM-02 legacy browser harness is superseded by the current guardian r
     evidence.workspace_desktop_navigation = true;
 
     stage = "workspace_shell_notifications";
-    const notificationButton = page.getByRole("button", { name: "通知", exact: true });
-    await notificationButton.click();
-    const notificationPanel = page.locator("#workspace-notifications");
-    await notificationPanel.waitFor({ state: "visible" });
-    await notificationPanel.getByText("通知服務暫時不可用，請稍後再試。", { exact: true })
-      .waitFor({ state: "visible" });
-    await page.waitForFunction(() => document.activeElement?.id === "workspace-notifications");
+    const notificationLink = page.getByRole("link", { name: "通知", exact: true });
+    await notificationLink.waitFor({ state: "visible" });
+    assert.equal(await notificationLink.getAttribute("href"), "/notifications");
     await assertViewport(page, "ui-shell-notifications-desktop");
-    await page.keyboard.press("Escape");
-    await notificationPanel.waitFor({ state: "hidden" });
-    assert.equal(await notificationButton.evaluate((element) => element === document.activeElement), true);
-    await notificationButton.click();
-    await notificationPanel.waitFor({ state: "visible" });
-    await page.getByRole("heading", { name: /^今日工作/ }).click();
-    await notificationPanel.waitFor({ state: "hidden" });
     evidence.workspace_notifications = true;
 
     stage = "workspace_shell_language";
@@ -1540,21 +1529,14 @@ test.skip("CRM-02 legacy browser harness is superseded by the current guardian r
     evidence.workspace_language = true;
 
     stage = "workspace_shell_account_menu";
-    const accountButton = page.getByRole("button", { name: "帳戶選單", exact: true });
-    await accountButton.click();
-    const accountMenu = page.getByRole("menu", { name: "帳戶選單", exact: true });
-    await accountMenu.waitFor({ state: "visible" });
-    const accountLogout = accountMenu.getByRole("menuitem", { name: "登出", exact: true });
-    await accountLogout.waitFor({ state: "visible" });
-    await page.waitForFunction(() => document.activeElement?.id === "workspace-logout");
+    const profileLink = page.getByRole("link", { name: "個人資料", exact: true });
+    await profileLink.waitFor({ state: "visible" });
+    assert.equal(await profileLink.getAttribute("href"), "/profile");
     await assertViewport(page, "ui-shell-account-desktop");
-    await page.keyboard.press("Escape");
-    await accountMenu.waitFor({ state: "hidden" });
-    assert.equal(await accountButton.evaluate((element) => element === document.activeElement), true);
     evidence.workspace_account_menu = true;
 
     stage = "workspace_shell_mobile_navigation";
-    await workspaceSidebar.getByRole("button", { name: "收合導航", exact: true }).click();
+    await workspaceSidebar.getByRole("button", { name: "關閉導航", exact: true }).click();
     await workspaceSidebar.waitFor({ state: "hidden" });
     await page.setViewportSize({ width: 390, height: 844 });
     evidence.workspace_mobile_navigation_button_count = await navigationButton.count();
@@ -1586,17 +1568,13 @@ test.skip("CRM-02 legacy browser harness is superseded by the current guardian r
     await workspaceSidebar.waitFor({ state: "hidden" });
 
     stage = "workspace_shell_mobile_navigation";
-    await notificationButton.click();
-    await notificationPanel.waitFor({ state: "visible" });
+    await notificationLink.waitFor({ state: "visible" });
+    assert.equal(await notificationLink.getAttribute("href"), "/notifications");
     await assertViewport(page, "ui-shell-notifications-mobile");
-    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "English", exact: true }).click();
     assert.equal(await page.locator("html").getAttribute("lang"), "en");
     await page.getByRole("button", { name: "中文", exact: true }).click();
-    await accountButton.click();
-    await accountMenu.waitFor({ state: "visible" });
     await assertViewport(page, "ui-shell-account-mobile");
-    await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1440, height: 900 });
     await navigationButton.waitFor({ state: "visible" });
     await navigationButton.click();
@@ -3613,14 +3591,10 @@ async function loginWithoutEvidence(
 
 async function logout(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole("button", { name: "帳戶選單", exact: true }).click();
-  const accountMenu = page.getByRole("menu", { name: "帳戶選單", exact: true });
-  await accountMenu.waitFor({ state: "visible" });
-  await Promise.all([
-    page.waitForURL("**/login**"),
-    accountMenu.getByRole("menuitem", { name: "登出", exact: true }).click(),
-  ]);
-  assert.equal(new URL(page.url()).pathname, "/login");
+  const response = await page.goto("/api/v1/auth/logout", { waitUntil: "domcontentloaded" });
+  assert.equal(response?.status(), 200);
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox", { name: "測試帳號電郵", exact: true }).waitFor({ state: "visible" });
 }
 
 async function fillValidDraft(

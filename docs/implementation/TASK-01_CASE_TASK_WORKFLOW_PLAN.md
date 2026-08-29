@@ -19,8 +19,8 @@ In scope:
 - authoritative internal and assigned-Contractor Task list/detail reads;
 - Case-scoped Task creation and initial assignment;
 - existing assignee, current Primary Advisor, and separate Founder transitions;
-  automatic application-submission Tasks may be assigned to an Advisor or
-  Contractor, while Founder remains outside the assignee list;
+  every Case Task, including a manually created Task, may be assigned to an
+  active Advisor or Contractor, while Founder remains outside the assignee list;
 - a Case detail Task panel, `/tasks`, and `/tasks/{taskId}`;
 - strict client DTOs, idempotent writes, authoritative refresh and stale recovery;
 - additive schema completion, local Release 1 policy fixture, real PostgreSQL HTTP
@@ -49,7 +49,8 @@ resource relationship in the same transaction:
 - Founder may read all organization Tasks. Advisor may read a Task only when they
   are the current assignee or the Case's current Primary Advisor.
 - Contractor may read only the current Task assignment with
-  `redaction_profile=task_only`; its projection has no Case identifier.
+  `redaction_profile=task_only`; this applies equally to manual and automatic
+  Task kinds, and its projection has no Case identifier.
 - Create requires the actor to be the Case's current Primary Advisor. A Founder is
   allowed only when the Case binding actually names that Founder.
 - Transition authority is exactly OD-06: current assignee accepts/rejects/completes;

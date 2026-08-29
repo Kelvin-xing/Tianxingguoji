@@ -172,6 +172,9 @@ select:focus {
 .metric-amber { border-top-color: #f59e0b; }
 .metric-violet { border-top-color: #8b5cf6; }
 .metric-green { border-top-color: #10b981; }
+.metric-link { color: inherit; display: block; text-decoration: none; }
+.metric-link:hover { background: var(--bg); }
+.metric-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .workspace-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
 .section-icon { align-items: center; background: var(--accent-subtle); border-radius: 6px; color: var(--accent); display: flex; height: 2rem; justify-content: center; width: 2rem; }

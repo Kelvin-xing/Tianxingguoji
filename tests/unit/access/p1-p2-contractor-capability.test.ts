@@ -9,9 +9,8 @@ test("Release1 Contractor receives only coarse task read/transition capabilities
   assert.equal(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE.contractor.some((value) => value.startsWith("cases.") || value.startsWith("documents.")), false);
 });
 
-test("Contractor task repository revalidates latest application/interview assignment and terminal resources each request", () => {
+test("Contractor task repository revalidates latest task-only assignment and terminal resources each request", () => {
   const source = readFileSync("modules/tasks/infrastructure/postgresql-workspace-repository.ts", "utf8");
-  assert.match(source, /task\.task_kind IN \('application_prepare_submit','interview_support'\)/);
   assert.match(source, /task\.state NOT IN \('completed','cancelled','rejected'\)/);
   assert.match(source, /service_case\.stage <> 'closed'/);
   assert.match(source, /student\.status = 'active'/);

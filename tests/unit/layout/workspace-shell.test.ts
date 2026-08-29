@@ -83,3 +83,16 @@ test("Today consumes the typed v1 client rather than preview case data", async (
   assert.match(today, /UnavailableState/);
   assert.doesNotMatch(today, /previewCaseWorkspaceAdapter/);
 });
+
+test("sidebar shows the nickname and today metrics link to their authoritative work surfaces", async () => {
+  const sidebar = await readFile(new URL("../../../components/layout/Sidebar.tsx", import.meta.url), "utf8");
+  const today = await readFile(new URL("../../../app/(erp)/today/page.tsx", import.meta.url), "utf8");
+
+  assert.match(sidebar, /effectiveAuth\.nickname\?\.trim\(\) \|\| '未设置昵称'/);
+  assert.doesNotMatch(sidebar, /roleLabel\(effectiveAuth\.role\)/);
+  assert.match(today, /href="\/cases" label="可查看案件"/);
+  assert.match(today, /href="\/today\?focus=blockers#today-cases" label="待處理阻礙"/);
+  assert.match(today, /href="\/tasks" label="未完成任務"/);
+  assert.match(today, /href="\/notifications" label="未讀通知"/);
+  assert.match(today, /focus === 'blockers' \? '待處理阻礙案件'/);
+});

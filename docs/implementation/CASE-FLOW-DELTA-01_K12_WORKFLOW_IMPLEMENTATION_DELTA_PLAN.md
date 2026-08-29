@@ -242,8 +242,9 @@ to `offer_confirmed|offer_declined` in one transaction.
 Each confirmed target entering `preparing` receives a current Application
 Assignee: the Primary Advisor or an active Advisor CaseCollaborator with required
 case scope. Assignment changes append history. The generated application Task
-may be reassigned to an active Contractor with `task_only` redaction; that task
-assignment never grants access to the surrounding Case workspace.
+may be reassigned to an active Contractor with `task_only` redaction; explicitly
+created manual Tasks follow the same rule, and the assignment never grants
+access to the surrounding Case workspace.
 
 ### 4.5 Task
 
@@ -270,8 +271,9 @@ reference number or an authorized clean Case Document reference. Interview
 completion appends its bounded type-specific record. Evidence does not create a
 parallel Material or SubmissionEvidence aggregate.
 
-Contractor access includes the current `application_prepare_submit` or
-`interview_support` assignment and its redacted workspace. It expires immediately on reject, complete, cancel, reassign
+Contractor access includes any current task-only assignment, including
+`application_prepare_submit`, `interview_support`, or `manual`, and its redacted
+workspace. It expires immediately on reject, complete, cancel, reassign
 or Case close and never grants Assessment, Guardian/contact, internal note,
 Document, other target or Case access.
 

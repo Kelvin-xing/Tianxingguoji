@@ -14,47 +14,39 @@ test("workspace navigation can collapse and reopen on desktop and mobile", async
   const openNavigation = requiredRecord(zh.layout).open_navigation;
 
   assert.match(appFrame, /desktopNavigationOpen, setDesktopNavigationOpen/);
-  assert.match(appFrame, /onCloseDesktop=\{\(\) => \{[\s\S]*setDesktopNavigationOpen\(false\)[\s\S]*setMobileNavigationOpen\(false\)/);
+  assert.match(appFrame, /function closeNavigation\(\)/);
+  assert.match(appFrame, /setDesktopNavigationOpen\(false\)/);
+  assert.match(appFrame, /setMobileNavigationOpen\(false\)/);
+  assert.match(appFrame, /onClose=\{closeNavigation\}/);
   assert.match(appFrame, /onCloseMobile=\{\(\) => setMobileNavigationOpen\(false\)\}/);
-  assert.match(appFrame, /onOpenDesktopNavigation=\{\(\) => \{[\s\S]*setDesktopNavigationOpen\(true\)[\s\S]*setMobileNavigationOpen\(false\)/);
-  assert.match(appFrame, /onOpenMobileNavigation=\{\(\) => setMobileNavigationOpen\(true\)\}/);
-  const desktopOpenHandler = appFrame.match(/onOpenDesktopNavigation=\{\(\) => \{([\s\S]*?)\}\}/)?.[1];
-  assert.ok(desktopOpenHandler);
-  assert.doesNotMatch(desktopOpenHandler, /setMobileNavigationOpen\(true\)/);
+  assert.match(appFrame, /onOpenNavigation=\{\(\) => \{[\s\S]*setDesktopNavigationOpen\(true\)[\s\S]*setMobileNavigationOpen\(true\)/);
   assert.match(sidebar, /desktopOpen \? 'md:flex' : 'md:hidden'/);
   assert.match(sidebar, /title=\{t\('layout\.close_navigation'\)\}/);
   assert.match(sidebar, /<aside id="workspace-navigation"/);
   assert.match(sidebar, /aria-label=\{t\('layout\.close_navigation'\)\}/);
-  assert.match(sidebar, /onNavigate=\{mobileOpen \? onCloseMobile : undefined\}/);
-  assert.doesNotMatch(sidebar, /onNavigate=\{mobileOpen \? onCloseDesktop/);
+  assert.match(sidebar, /onNavigate=\{mobileOpen \? \(onCloseMobile \?\? onClose\) : undefined\}/);
   assert.equal(topBar.match(/name="menu"/g)?.length, 1);
-  assert.match(topBar, /className="icon-button navigation-button desktop-navigation-button mobile-navigation-button"/);
-  assert.match(topBar, /aria-label=\{t\('layout\.open_navigation'\)\} aria-controls="workspace-navigation"/);
-  assert.match(topBar, /window\.matchMedia\('\(min-width: 768px\)'\)\.matches[\s\S]*onOpenDesktopNavigation\?\.\(\)[\s\S]*onOpenMobileNavigation\?\.\(\)/);
-  assert.match(styles, /\.navigation-button \{ display: inline-flex; \}/);
-  assert.match(styles, /@media \(min-width: 768px\)[\s\S]*\.navigation-button\[data-desktop-navigation-open="true"\] \{ display: none; \}/);
-  assert.equal(openNavigation, "展開導航");
+  assert.match(topBar, /className="icon-button"/);
+  assert.match(topBar, /aria-controls="workspace-navigation" aria-expanded=\{desktopNavigationOpen\}[\s\S]*aria-label=\{t\('layout\.open_navigation'\)\}/);
+  assert.doesNotMatch(styles, /\.navigation-button/);
+  assert.equal(openNavigation, "開啟導航");
   assert.equal(
     browserHarness.includes(
       `getByRole("button", { name: ${JSON.stringify(openNavigation)}, exact: true })`,
     ),
     true,
   );
-  assert.doesNotMatch(browserHarness, /name: "開啟導航"/);
+  assert.doesNotMatch(browserHarness, /name: "展開導航"/);
 });
 
 test("workspace navigation is registry-backed, capability-only and fail-closed", async () => {
   const sidebar = await source("components/layout/Sidebar.tsx");
 
-  assert.match(sidebar, /import \{ NAVIGATION_REGISTRY, type NavigationRegistryItem \}/);
-  assert.match(sidebar, /getWorkspaceAccessSnapshot\(controller\.signal\)/);
-  assert.match(sidebar, /accessState === 'ready' && accessSnapshot[\s\S]*NAVIGATION_REGISTRY\.filter\(\(item\) => accessSnapshot\.capabilities\.includes\(item\.requiredCapability\)\)[\s\S]*: \[\]/);
-  assert.match(sidebar, /visibleNavigationItems\.filter\(\(item\) => item\.audience === 'workspace'\)/);
-  assert.match(sidebar, /visibleNavigationItems\.filter\(\(item\) => item\.audience === 'administration'\)/);
-  assert.match(sidebar, /workspaceItems\.length > 0 \?/);
-  assert.match(sidebar, /administrationItems\.length > 0 \?/);
-  assert.doesNotMatch(sidebar, /const (?:navItems|adminItems)/);
-  assert.doesNotMatch(sidebar, /workspaceCapabilitiesForRole|BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE/);
+  assert.match(sidebar, /visibleWorkspaceNavigation\(effectiveAuth\?\.capabilities \?\? \[\]\)/);
+  assert.match(sidebar, /navItems\.filter\(\(item\) => item\.href !== '\/admin\/access'\)/);
+  assert.match(sidebar, /navItems\.some\(\(item\) => item\.href === '\/admin\/access'\)/);
+  assert.match(sidebar, /requestApi\(\{ path: '\/api\/v1\/auth\/me'/);
+  assert.doesNotMatch(sidebar, /workspaceCapabilitiesForRole|BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE|NAVIGATION_REGISTRY/);
   assert.doesNotMatch(sidebar, /\/admin\/knowledge/);
   assert.doesNotMatch(sidebar, /\/api\/auth\/me/);
   assert.doesNotMatch(sidebar, /\.email\b|initials\(/);
@@ -63,17 +55,12 @@ test("workspace navigation is registry-backed, capability-only and fail-closed",
 test("notification and account controls expose bounded real actions", async () => {
   const sourceText = await source("components/layout/TopBar.tsx");
 
-  assert.match(sourceText, /aria-expanded=\{openMenu === 'notifications'\}/);
-  assert.match(sourceText, /layout\.notifications_unavailable/);
-  assert.doesNotMatch(sourceText, /notification[s]?[\s\S]*\.map\(/i);
-  assert.match(sourceText, /aria-expanded=\{openMenu === 'account'\}/);
-  assert.match(sourceText, /href="\/api\/auth\/logout"/);
-  assert.match(sourceText, /role="menuitem"/);
-  assert.match(sourceText, /event\.key !== 'Escape'/);
-  assert.match(sourceText, /requestAnimationFrame\(\(\) => trigger\?\.focus\(\)\)/);
-  assert.match(sourceText, /document\.addEventListener\('pointerdown', closeMenus\)/);
-  assert.match(sourceText, /notificationPanelRef\.current\?\.focus\(\)/);
-  assert.match(sourceText, /logoutLinkRef\.current\?\.focus\(\)/);
+  assert.match(sourceText, /href="\/notifications"/);
+  assert.match(sourceText, /aria-label="通知"/);
+  assert.match(sourceText, /unreadCount\(\)/);
+  assert.match(sourceText, /href="\/profile"/);
+  assert.match(sourceText, /nicknameInitial\(effectiveAuth\.nickname\)/);
+  assert.doesNotMatch(sourceText, /openMenu|帳戶選單|workspace-notifications|role="menuitem"/);
 });
 
 test("language toggle updates the translated shell and document language", async () => {
@@ -86,7 +73,7 @@ test("language toggle updates the translated shell and document language", async
   assert.match(provider, /document\.documentElement\.lang/);
   assert.match(provider, /catch \{[\s\S]*Language switching remains available/);
   assert.match(sidebar, /t\(item\.labelKey\)/);
-  assert.match(topBar, /const title = titleKey \? t\(titleKey\) : t\('layout\.erp_title'\)/);
+  assert.match(topBar, /titleKey \? t\(titleKey\) : t\('layout\.erp_title'\)/);
   assert.deepEqual(Object.keys(requiredRecord(zh.layout)).sort(), Object.keys(requiredRecord(en.layout)).sort());
   assert.deepEqual(Object.keys(requiredRecord(zh.nav)).sort(), Object.keys(requiredRecord(en.nav)).sort());
 });

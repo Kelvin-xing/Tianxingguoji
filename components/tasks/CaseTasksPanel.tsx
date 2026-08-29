@@ -25,12 +25,15 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
   const { workflowStatus } = useCaseWorkflowContext();
   const mounted = useRef(false);
   const controller = useRef<AbortController | null>(null);
+  const optionsController = useRef<AbortController | null>(null);
   const submitting = useRef(false);
   const attempt = useRef<TaskIdempotencyAttempt | null>(null);
   const titleInput = useRef<HTMLInputElement | null>(null);
   if (attempt.current === null) attempt.current = new TaskIdempotencyAttempt();
 
   const [state, setState] = useState<LoadState>("loading");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [tasks, setTasks] = useState<readonly CaseWorkspaceTask[]>([]);
   const [canCreate, setCanCreate] = useState(false);
   const [optionsState, setOptionsState] = useState<OptionsState>("idle");
@@ -47,7 +50,11 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
     const nextController = new AbortController();
     controller.current = nextController;
     setState("loading");
+    optionsController.current?.abort();
+    optionsController.current = null;
     setOptionsState("idle");
+    setPanelOpen(false);
+    setCreateOpen(false);
     try {
       const [taskResult, access] = await Promise.all([
         listTasks(caseId, nextController.signal),
@@ -66,30 +73,43 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
         access.capabilities.some((capability) => String(capability) === "tasks.create");
       setCanCreate(createAllowed);
       setState("ready");
-      if (createAllowed) {
-        setOptionsState("loading");
-        try {
-          const options = await getTaskAssigneeOptions(caseId, nextController.signal);
-          if (!mounted.current || nextController.signal.aborted) return;
-          setAssignees(options.assignees);
-          setOptionsState("ready");
-        } catch {
-          if (!mounted.current || nextController.signal.aborted) return;
-          setAssignees([]);
-          setOptionsState("unavailable");
-        }
-      }
     } catch (error) {
       if (!mounted.current || nextController.signal.aborted) return;
       const failure = classifyTaskFailure(error);
       setTasks([]);
       setCanCreate(false);
       setAssignees([]);
+      setOptionsState("idle");
       setState(failure === "unauthenticated" ? "unauthenticated" : failure === "forbidden" || failure === "not_found" ? "denied" : "unavailable");
     } finally {
       if (controller.current === nextController) controller.current = null;
     }
   }, [caseId, workflowStatus]);
+
+  const openCreate = useCallback(() => {
+    if (!canCreate || workflowStatus !== "active") return;
+    setPanelOpen(true);
+    setCreateOpen(true);
+    if (optionsState !== "idle") return;
+    const nextController = new AbortController();
+    optionsController.current?.abort();
+    optionsController.current = nextController;
+    setOptionsState("loading");
+    void getTaskAssigneeOptions(caseId, nextController.signal)
+      .then((options) => {
+        if (!mounted.current || nextController.signal.aborted) return;
+        setAssignees(options.assignees);
+        setOptionsState("ready");
+      })
+      .catch(() => {
+        if (!mounted.current || nextController.signal.aborted) return;
+        setAssignees([]);
+        setOptionsState("unavailable");
+      })
+      .finally(() => {
+        if (optionsController.current === nextController) optionsController.current = null;
+      });
+  }, [canCreate, caseId, optionsState, workflowStatus]);
 
   useEffect(() => {
     mounted.current = true;
@@ -97,6 +117,7 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
     return () => {
       mounted.current = false;
       controller.current?.abort();
+      optionsController.current?.abort();
     };
   }, [load]);
 
@@ -156,23 +177,30 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
 
   return (
     <section id="tasks" className="workspace-section space-y-5" aria-labelledby="case-tasks-heading" aria-busy={state === "loading"}>
-      <div>
-        <h3 id="case-tasks-heading" className="section-title">案件任務</h3>
-        <p className="section-detail">集中查看本案的工作內容、負責人和到期時間。</p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h3 id="case-tasks-heading" className="section-title">案件任務</h3>
+          <p className="section-detail">集中查看本案的工作內容、負責人和到期時間。</p>
+        </div>
+        <div className="flex flex-wrap gap-2 sm:shrink-0">
+          {state === "ready" && canCreate ? <button type="button" className="primary-button justify-center" onClick={createOpen ? () => setCreateOpen(false) : openCreate} aria-expanded={createOpen} aria-controls="case-task-create-form"><Icon name={createOpen ? "x" : "plus"} size={15} />{createOpen ? "收起新增任務" : "新增任務"}</button> : null}
+          <button type="button" className="secondary-button justify-center" onClick={() => setPanelOpen((open) => !open)} aria-expanded={panelOpen} aria-controls="case-task-content"><Icon name={panelOpen ? "x" : "chevron-right"} size={15} />{panelOpen ? "收起任務" : "查看任務"}</button>
+        </div>
       </div>
 
-      {state === "loading" ? <TaskPageState title="正在載入案件任務" detail="請稍候。" /> : null}
-      {state === "unauthenticated" ? <TaskPageState title="工作階段已失效" detail="請重新登入後查看案件任務。" login /> : null}
-      {state === "denied" ? <TaskPageState title="無法查看案件任務" detail="目前帳號不能查看本案任務。" /> : null}
-      {state === "unavailable" ? <TaskPageState title="任務服務暫時不可用" detail="請稍後重試。" onRetry={() => void load()} /> : null}
+      {panelOpen ? <div id="case-task-content" className="space-y-5">
+        {state === "loading" ? <TaskPageState title="正在載入案件任務" detail="請稍候。" /> : null}
+        {state === "unauthenticated" ? <TaskPageState title="工作階段已失效" detail="請重新登入後查看案件任務。" login /> : null}
+        {state === "denied" ? <TaskPageState title="無法查看案件任務" detail="目前帳號不能查看本案任務。" /> : null}
+        {state === "unavailable" ? <TaskPageState title="任務服務暫時不可用" detail="請稍後重試。" onRetry={() => void load()} /> : null}
 
-      {state === "ready" && canCreate ? (
-        <div className="border-y py-5 space-y-4" style={{ borderColor: "var(--border)" }}>
+      {state === "ready" && canCreate && createOpen ? (
+        <div id="case-task-create-form" className="border-y py-5 space-y-4" style={{ borderColor: "var(--border)" }}>
           <div><h4 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>新增任務</h4><p className="section-detail">負責人只能從目前可用名單中選擇；到期時間使用香港時間。</p></div>
           {optionsState === "unavailable" ? <div className="form-error" role="alert"><Icon name="x" size={15} /><span>暫時無法載入負責人選項，請重新載入後再試。</span></div> : null}
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={submit} aria-busy={pending}>
             <label className="field-label"><span>任務標題 *</span><input aria-label="任務標題" ref={titleInput} value={title} maxLength={300} required disabled={pending} onChange={(event) => { draftChanged(); setTitle(event.target.value); }} /></label>
-            <label className="field-label"><span>負責人 *</span><select aria-label="負責人" value={assigneeId} required disabled={pending || optionsState !== "ready"} onChange={(event) => { draftChanged(); setAssigneeId(event.target.value); }}><option value="">{optionsState === "loading" ? "正在載入負責人" : "選擇負責人"}</option>{assignees.filter((assignee) => assignee.role === "advisor").map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · 顧問</option>)}</select></label>
+            <label className="field-label"><span>負責人 *</span><select aria-label="負責人" value={assigneeId} required disabled={pending || optionsState !== "ready"} onChange={(event) => { draftChanged(); setAssigneeId(event.target.value); }}><option value="">{optionsState === "loading" ? "正在載入負責人" : "選擇負責人"}</option>{assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>)}</select></label>
             <label className="field-label md:col-span-2"><span>工作內容 *</span><textarea aria-label="工作內容" value={brief} maxLength={4_000} rows={4} required disabled={pending} onChange={(event) => { draftChanged(); setBrief(event.target.value); }} /></label>
             <label className="field-label"><span>到期時間（香港時間）*</span><input aria-label="到期時間（香港時間）" type="datetime-local" value={dueLocal} required disabled={pending} onChange={(event) => { draftChanged(); setDueLocal(event.target.value); }} /></label>
             <div className="flex items-end justify-end"><button type="submit" className="primary-button justify-center min-w-32" disabled={pending || optionsState !== "ready"} aria-busy={pending}><Icon name={pending ? "clock" : "plus"} size={15} />{pending ? "正在建立" : "建立任務"}</button></div>
@@ -187,6 +215,7 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
 
       {state === "ready" && tasks.length === 0 ? <TaskPageState title="本案目前沒有任務" detail="建立後的任務會顯示在這裡。" /> : null}
       {state === "ready" && tasks.length > 0 ? <ul>{tasks.map((task) => <TaskListItem key={task.id} task={task} />)}</ul> : null}
+      </div> : null}
     </section>
   );
 }

@@ -77,7 +77,6 @@ function selectSql(extraPredicate: string, assignedOnly = false): string {
           AND task.assignee_user_id=$2::uuid
           AND task.assignee_role='contractor'
           AND task.assignee_redaction_profile='task_only'
-          AND task.task_kind IN ('application_prepare_submit','interview_support')
           AND task.state NOT IN ('completed','cancelled','rejected')
           AND current_assignment.assignee_user_id=$2::uuid
           AND current_assignment.assignee_role='contractor'

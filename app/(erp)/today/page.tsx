@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { ErrorState, EmptyState, DeniedState, StaleState, UnavailableState, LoadingState } from '@/components/states/WorkspaceState'
 import { Icon } from '@/components/workspace/Icon'
@@ -57,8 +58,16 @@ type TodayState =
   | { readonly status: 'unavailable'; readonly requestId: string | null }
   | { readonly status: 'error'; readonly requestId: string | null }
 
+type TodayFocus = 'all' | 'blockers'
+
 export default function TodayPage() {
+  return <Suspense fallback={<LoadingState title="正在載入今日工作" detail="讀取目前授權範圍內的工作摘要。" />}><TodayContent /></Suspense>
+}
+
+function TodayContent() {
+  const searchParams = useSearchParams()
   const [state, setState] = useState<TodayState>({ status: 'loading' })
+  const focus: TodayFocus = searchParams.get('focus') === 'blockers' ? 'blockers' : 'all'
   const load = useCallback(() => {
     const controller = new AbortController()
     setState({ status: 'loading' })
@@ -84,13 +93,16 @@ export default function TodayPage() {
   if (state.status === 'error') return <ErrorState title="今日工作載入失敗" detail="請稍後重試；系統沒有顯示未授權資料。" requestId={state.requestId} onRetry={load} />
   if (state.status === 'empty') return <EmptyState title="目前沒有可處理的工作" detail="新的授權案件或任務出現後會顯示在這裡。" action={<Link className="secondary-button" href="/tasks">查看任務</Link>} />
 
-  return <TodayReady data={state.data} onRefresh={load} />
+  return <TodayReady data={state.data} onRefresh={load} focus={focus} />
 }
 
-function TodayReady({ data, onRefresh }: { readonly data: DashboardData; readonly onRefresh: () => void }) {
+function TodayReady({ data, onRefresh, focus }: { readonly data: DashboardData; readonly onRefresh: () => void; readonly focus: TodayFocus }) {
   const blockers = data.cases.reduce((total, item) => total + (item.summary?.blocker_count ?? 0), 0)
   const tasks = data.cases.reduce((total, item) => total + (item.tasks?.open_count ?? 0), 0)
   const unread = data.cases.reduce((total, item) => total + (item.communications?.unread_count ?? 0), 0)
+  const visibleCases = focus === 'blockers'
+    ? data.cases.filter((item) => (item.summary?.blocker_count ?? 0) > 0)
+    : data.cases
   return (
     <div className="max-w-[1500px] mx-auto space-y-6">
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -98,16 +110,17 @@ function TodayReady({ data, onRefresh }: { readonly data: DashboardData; readonl
         <div className="flex items-center gap-2"><Link href="/notifications" className="secondary-button"><Icon name="activity" size={15} />通知</Link><button type="button" className="secondary-button" onClick={onRefresh}><Icon name="rotate-ccw" size={15} />重新載入</button></div>
       </section>
       <section className="metric-strip" aria-label="工作摘要">
-        <Metric label="可查看案件" value={data.cases.length} tone="blue" />
-        <Metric label="待處理阻礙" value={blockers} tone="amber" />
-        <Metric label="未完成任務" value={tasks} tone="violet" />
-        <Metric label="未讀通知" value={unread} tone="green" />
+        <Metric href="/cases" label="可查看案件" value={data.cases.length} tone="blue" />
+        <Metric href="/today?focus=blockers#today-cases" label="待處理阻礙" value={blockers} tone="amber" />
+        <Metric href="/tasks" label="未完成任務" value={tasks} tone="violet" />
+        <Metric href="/notifications" label="未讀通知" value={unread} tone="green" />
       </section>
-      <section className="workspace-section" aria-labelledby="today-cases-title">
-        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 id="today-cases-title" className="section-title">需要你判斷的案件</h2><p className="section-detail">顯示案件的下一步與待處理事項。</p></div><Link href="/cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link></div>
+      <section id="today-cases" className="workspace-section" aria-labelledby="today-cases-title">
+        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 id="today-cases-title" className="section-title">{focus === 'blockers' ? '待處理阻礙案件' : '需要你判斷的案件'}</h2><p className="section-detail">{focus === 'blockers' ? '只顯示目前有待處理阻礙的案件。' : '顯示案件的下一步與待處理事項。'}</p></div>{focus === 'blockers' ? <Link href="/today#today-cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link> : <Link href="/cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link>}</div>
         <div className="divide-y" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-          {data.cases.map((item) => <CaseRow key={item.case_id} item={item} />)}
+          {visibleCases.map((item) => <CaseRow key={item.case_id} item={item} />)}
         </div>
+        {visibleCases.length === 0 ? <div className="empty-state">目前沒有待處理阻礙案件。</div> : null}
         <p className="mt-4 text-[11px]" style={{ color: 'var(--text-muted)' }}>資料時間：{formatDate(data.source_captured_at_ms)}</p>
       </section>
     </div>
@@ -127,8 +140,8 @@ function actionLabel(value: string): string {
   return ACTION_LABELS[value] ?? (/[\u3400-\u9fff]/.test(value) ? value : '待處理事項')
 }
 
-function Metric({ label, value, tone }: { readonly label: string; readonly value: number; readonly tone: 'blue' | 'amber' | 'violet' | 'green' }) {
-  return <div className={`metric metric-${tone}`}><div className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div><div className="mt-1 text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</div></div>
+function Metric({ href, label, value, tone }: { readonly href: string; readonly label: string; readonly value: number; readonly tone: 'blue' | 'amber' | 'violet' | 'green' }) {
+  return <Link href={href} className={`metric metric-link metric-${tone}`} aria-label={`${label}：${value}`}><div className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div><div className="mt-1 text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</div></Link>
 }
 
 function decodeDashboardData(value: unknown): DashboardData {

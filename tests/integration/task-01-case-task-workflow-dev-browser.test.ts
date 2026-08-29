@@ -577,14 +577,16 @@ async function createCaseFixture(
 async function openCaseTasks(page: Page, baseUrl: string, caseId: string): Promise<void> {
   const listResponse = page.waitForResponse((response) => isGetPath(response, "/api/v1/tasks") && new URL(response.url()).searchParams.get("case_id") === caseId);
   const accessResponse = page.waitForResponse((response) => isGetPath(response, "/api/v1/auth/me"));
-  const optionsResponse = page.waitForResponse((response) => isGetPath(response, "/api/v1/tasks/options") && new URL(response.url()).searchParams.get("case_id") === caseId);
   const navigation = await page.goto(`${baseUrl}/cases/${caseId}`, { waitUntil: "domcontentloaded" });
   assert.equal(navigation?.status(), 200);
   assert.equal((await listResponse).status(), 200);
   assert.equal((await accessResponse).status(), 200);
-  assert.equal((await optionsResponse).status(), 200);
   await page.getByRole("heading", { name: "案件任務", exact: true, level: 3 }).waitFor({ state: "visible" });
-  await page.getByText("正在載入案件任務", { exact: true }).waitFor({ state: "hidden" });
+  assert.equal(await page.getByRole("textbox", { name: "任務標題", exact: true }).count(), 0);
+  const optionsResponse = page.waitForResponse((response) => isGetPath(response, "/api/v1/tasks/options") && new URL(response.url()).searchParams.get("case_id") === caseId);
+  await page.getByRole("button", { name: "新增任務", exact: true }).click();
+  assert.equal((await optionsResponse).status(), 200);
+  await page.getByRole("textbox", { name: "任務標題", exact: true }).waitFor({ state: "visible" });
 }
 
 async function openTasks(page: Page, baseUrl: string): Promise<void> {

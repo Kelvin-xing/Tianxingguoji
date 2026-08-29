@@ -490,11 +490,14 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
     await workflowSection.getByRole("button", { name: "恢復案件", exact: true }).waitFor({ state: "visible" });
     evidence.paused_reload_persisted = await workflowSection.getByText("已暫停", { exact: true }).count() >= 1;
     await page.getByRole("heading", { name: "案件任務", exact: true, level: 3 }).waitFor({ state: "visible" });
-    await page.getByText("案件暫停期間不能建立臨時任務；現有任務仍可查看。", { exact: true }).waitFor({ state: "visible" });
     evidence.paused_task_create_absent = await page.getByRole("button", { name: "建立任務", exact: true }).count() === 0;
     evidence.paused_lists_readable =
       await page.getByRole("heading", { name: "學校目標", exact: true, level: 3 }).count() === 1 &&
       await page.getByRole("heading", { name: "案件任務", exact: true, level: 3 }).count() === 1;
+    const caseTasksToggle = page.getByRole("button", { name: "查看任務", exact: true });
+    await caseTasksToggle.waitFor({ state: "visible" });
+    await caseTasksToggle.click();
+    await page.getByText("案件暫停期間不能建立臨時任務；現有任務仍可查看。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(evidence.paused_reload_persisted, true);
     assert.equal(evidence.paused_task_create_absent, true);
     assert.equal(evidence.paused_lists_readable, true);

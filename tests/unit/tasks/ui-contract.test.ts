@@ -17,6 +17,17 @@ test("Task routes use authoritative frontend components and Case detail mounts t
   assert.doesNotMatch(list, /previewCaseWorkspaceAdapter|Preview adapter|mock|fetch\(/i);
 });
 
+test("Case task panel is collapsed by default and opens the create form on demand", async () => {
+  const panel = await source("components/tasks/CaseTasksPanel.tsx");
+  assert.match(panel, /useState\(false\)/);
+  assert.match(panel, /aria-controls="case-task-content"/);
+  assert.match(panel, /aria-controls="case-task-create-form"/);
+  assert.match(panel, /const openCreate = useCallback/);
+  assert.match(panel, /getTaskAssigneeOptions\(caseId, nextController\.signal\)/);
+  assert.match(panel, /assignees\.map\(\(assignee\)/);
+  assert.doesNotMatch(panel, /assignees\.filter\(\(assignee\) => assignee\.role === "advisor"\)/);
+});
+
 test("Task commands are capability-only and consume server available transitions", async () => {
   const [list, detail, panel, transitions] = await Promise.all([
     source("components/tasks/TasksDirectory.tsx"),
