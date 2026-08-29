@@ -598,7 +598,7 @@ test.skip("CASE-01 legacy browser harness is superseded by the current Advisor-l
     await advisorAssessment.getByText(/15 項資料/).waitFor({ state: "visible" });
     evidence.advisor_assessment_full_editable_15 =
       await advisorAssessment.getByText(/15 項資料/).count() === 1 &&
-      await advisorAssessment.getByRole("button", { name: "儲存", exact: true }).count() === 15 &&
+      await advisorAssessment.getByRole("button", { name: "儲存全部修改", exact: true }).count() === 1 &&
       await advisorAssessment.getByRole("button", { name: "完成背景收集", exact: true }).count() === 1;
     assert.equal(evidence.advisor_assessment_full_editable_15, true);
     evidence.advisor_created = true;

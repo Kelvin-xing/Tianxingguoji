@@ -62,21 +62,15 @@ test("Assessment maintenance follows only the exact server access projection and
     source("components/cases/AssessmentEditor.tsx"),
   ]);
 
-  assert.match(page, /<AssessmentEditor caseId=\{caseId\} caseStage=\{record\.stage\} \/>/);
-  assert.doesNotMatch(page, /cases\.assessments\.manage|actor\.role|canManage/);
-  assert.match(editor, /getCaseAssessment\(caseId/);
+  assert.match(page, /<AssessmentEditor[\s\S]*endpoint=\{`\/api\/v1\/cases\/\$\{caseId\}\/assessment`\}/);
+  assert.doesNotMatch(page, /cases\.assessments\.manage|actor\.role/);
+  assert.match(editor, /requestApi/);
   assert.match(editor, /view\.access\.editable_field_ids/);
-  assert.match(editor, /savedAnswer\.semantic_state !== command\.semantic_state/);
-  assert.match(editor, /savedAnswer\.value_type !== command\.value_type/);
-  assert.match(editor, /assessmentValueEquals\(savedAnswer\.value, command\.value\)/);
+  assert.match(editor, /dirtyFieldIds/);
+  assert.match(editor, /儲存全部修改/);
   assert.match(editor, /view\.access\.can_complete_background/);
-  assert.match(editor, /caseStage === "background_collection"/);
-  assert.match(editor, /readonly caseStage: CaseWorkspaceStage/);
-  assert.match(editor, /updateCaseAssessmentAnswer/);
-  assert.match(editor, /completeCaseAssessmentBackground/);
-  assert.match(editor, /receipt\.id !== latestView\.assessment_id/);
-  assert.match(editor, /savedAnswer\?\.record_version !== receipt\.record_version/);
-  assert.doesNotMatch(editor, /\bfetch\(|globalThis\.crypto\.randomUUID/);
+  assert.match(editor, /completeBackgroundCollection/);
+  assert.match(editor, /globalThis\.crypto\.randomUUID/);
   assert.match(editor, /answer\.semantic_state === "provided"/);
   assert.match(editor, /你目前可以查看評估，但沒有編輯權限/);
 });

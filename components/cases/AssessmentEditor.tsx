@@ -68,7 +68,8 @@ export function AssessmentEditor({
 }) {
   const [view, setView] = useState(initialView);
   const [drafts, setDrafts] = useState(() => createDrafts(initialView));
-  const [savingFieldId, setSavingFieldId] = useState<string | null>(null);
+  const [dirtyFieldIds, setDirtyFieldIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [savingAll, setSavingAll] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
@@ -83,12 +84,15 @@ export function AssessmentEditor({
   const completedBlockers = blockingFieldIds.filter((fieldId) => answeredFieldIds.has(fieldId)).length;
   const canComplete = view.access.can_complete_background &&
     view.status === "draft" && completedBlockers === blockingFieldIds.length;
+  const editableFields = view.schema.fields.filter((field) =>
+    view.access.can_edit && view.access.editable_field_ids.includes(field.field_id),
+  );
+  const dirtyEditableFields = editableFields.filter((field) => dirtyFieldIds.has(field.field_id));
 
-  async function save(field: AssessmentEditorView["schema"]["fields"][number]) {
+  async function save(field: AssessmentEditorView["schema"]["fields"][number]): Promise<boolean> {
     const draft = drafts[field.field_id];
-    if (!draft) return;
+    if (!draft) return false;
     setNotice(null);
-    setSavingFieldId(field.field_id);
     try {
       const typedValue = draft.semanticState === "provided" ? toTypedValue(field, draft.value) : null;
       const payload = await requestApi({
@@ -129,8 +133,14 @@ export function AssessmentEditor({
         ...current,
         [field.field_id]: { ...draft, recordVersion: savedRecordVersion },
       }));
+      setDirtyFieldIds((current) => {
+        const next = new Set(current);
+        next.delete(field.field_id);
+        return next;
+      });
       setConflict(null);
       setNotice("已儲存。");
+      return true;
     } catch (error) {
       if (error instanceof ApiClientError && error.code === "STALE_VERSION") {
         try {
@@ -142,9 +152,19 @@ export function AssessmentEditor({
       } else {
         setNotice("無法儲存此欄位，草稿已保留。");
       }
-    } finally {
-      setSavingFieldId(null);
+      return false;
     }
+  }
+
+  async function saveAll(): Promise<void> {
+    if (savingAll || dirtyEditableFields.length === 0) return;
+    setNotice(null);
+    setSavingAll(true);
+    for (const field of dirtyEditableFields) {
+      const saved = await save(field);
+      if (!saved) break;
+    }
+    setSavingAll(false);
   }
 
   async function completeBackgroundCollection() {
@@ -201,57 +221,56 @@ export function AssessmentEditor({
         {view.schema.fields.map((field) => {
           const draft = drafts[field.field_id];
           if (!draft) return null;
+          const editable = view.access.can_edit && view.access.editable_field_ids.includes(field.field_id);
+          const dirty = dirtyFieldIds.has(field.field_id);
           return (
             <div key={field.field_id} className="border-b pb-4 last:border-b-0 last:pb-0" style={{ borderColor: "var(--border-subtle)" }}>
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(12rem,.38fr)_minmax(0,1fr)] gap-x-6 gap-y-2 items-start max-w-4xl">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{fieldLabel(field)}</div>
                   <div className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                     {layerLabel(field.layer)}
                     {field.blocking_stages.includes("background_collection") ? " · 背景收集必填" : " · 後續選校資料"}
                   </div>
+                  <div className="mt-1 text-[11px]" style={{ color: dirty ? "var(--text-primary)" : "var(--text-muted)" }}>
+                    {dirty ? "有未儲存修改" : `版本 v${draft.recordVersion}`}
+                  </div>
                 </div>
-                <span className="inline-status" style={{ color: "var(--text-muted)" }}>v{draft.recordVersion}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(180px,.6fr)_auto] gap-2 mt-3">
-                <AssessmentValueControl
-                  field={field}
-                  draft={draft}
-                  disabled={!view.access.can_edit || !view.access.editable_field_ids.includes(field.field_id)}
-                  onChange={(value) => setDrafts((current) => ({
-                    ...current,
-                    [field.field_id]: { ...draft, value },
-                  }))}
-                />
-                <select
-                  aria-label={`${field.field_id} semantic state`}
-                  className="assessment-control"
-                  disabled={!view.access.can_edit || !view.access.editable_field_ids.includes(field.field_id)}
-                  value={draft.semanticState}
-                  onChange={(event) => setDrafts((current) => ({
-                    ...current,
-                    [field.field_id]: {
-                      ...draft,
-                      semanticState: event.target.value as SemanticState,
-                    },
-                  }))}
-                >
-                  <option value="provided">已提供</option>
-                  <option value="unknown">暫時未知</option>
-                  <option value="not_applicable">不適用</option>
-                  <option value="declined_to_provide">拒絕提供</option>
-                </select>
-                {view.access.can_edit && view.access.editable_field_ids.includes(field.field_id) ? (
-                  <button
-                    type="button"
-                    className="primary-button"
-                    disabled={savingFieldId === field.field_id}
-                    onClick={() => void save(field)}
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(150px,12rem)] gap-2 max-w-xl">
+                  <AssessmentValueControl
+                    field={field}
+                    draft={draft}
+                    disabled={!editable || savingAll}
+                    onChange={(value) => {
+                      setDrafts((current) => ({
+                        ...current,
+                        [field.field_id]: { ...draft, value },
+                      }));
+                      setDirtyFieldIds((current) => new Set(current).add(field.field_id));
+                    }}
+                  />
+                  <select
+                    aria-label={`${field.field_id} semantic state`}
+                    className="assessment-control"
+                    disabled={!editable || savingAll}
+                    value={draft.semanticState}
+                    onChange={(event) => {
+                      setDrafts((current) => ({
+                        ...current,
+                        [field.field_id]: {
+                          ...draft,
+                          semanticState: event.target.value as SemanticState,
+                        },
+                      }));
+                      setDirtyFieldIds((current) => new Set(current).add(field.field_id));
+                    }}
                   >
-                    <Icon name={savingFieldId === field.field_id ? "clock" : "check"} size={15} />
-                    {savingFieldId === field.field_id ? "儲存中" : "儲存"}
-                  </button>
-                ) : null}
+                    <option value="provided">已提供</option>
+                    <option value="unknown">暫時未知</option>
+                    <option value="not_applicable">不適用</option>
+                    <option value="declined_to_provide">拒絕提供</option>
+                  </select>
+                </div>
               </div>
               {conflict?.fieldId === field.field_id && (
                 <div className="inline-callout warning mt-3" role="alert">
@@ -265,6 +284,11 @@ export function AssessmentEditor({
                         className="secondary-button"
                         onClick={() => {
                           setDrafts((current) => ({ ...current, [field.field_id]: conflict.current }));
+                          setDirtyFieldIds((current) => {
+                            const next = new Set(current);
+                            next.delete(field.field_id);
+                            return next;
+                          });
                           setConflict(null);
                         }}
                       >
@@ -281,6 +305,7 @@ export function AssessmentEditor({
                               recordVersion: conflict.current.recordVersion,
                             },
                           }));
+                          setDirtyFieldIds((current) => new Set(current).add(field.field_id));
                           setConflict(null);
                         }}
                       >
@@ -294,6 +319,23 @@ export function AssessmentEditor({
           );
         })}
       </div>
+      {view.access.can_edit ? (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-5 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {dirtyEditableFields.length > 0 ? `有 ${dirtyEditableFields.length} 項未儲存修改` : "修改內容會集中保存"}
+          </div>
+          <button
+            type="button"
+            className="primary-button justify-center"
+            disabled={dirtyEditableFields.length === 0 || savingAll}
+            aria-busy={savingAll}
+            onClick={() => void saveAll()}
+          >
+            <Icon name={savingAll ? "clock" : "check"} size={15} />
+            {savingAll ? "儲存中…" : "儲存全部修改"}
+          </button>
+        </div>
+      ) : null}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-5 border-t" style={{ borderColor: "var(--border-subtle)" }}>
         <div>
           <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>背景資料收集</div>
@@ -307,7 +349,7 @@ export function AssessmentEditor({
           <button
             type="button"
             className="primary-button"
-            disabled={!canComplete || completing}
+            disabled={!canComplete || completing || savingAll}
             onClick={() => void completeBackgroundCollection()}
           >
             <Icon name={completing ? "clock" : "check-circle"} size={15} />

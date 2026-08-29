@@ -288,12 +288,12 @@ export function StudentCreateForm() {
             <Icon name="users" size={15} />
             <div className="space-y-2 w-full">
               <strong>找到可能已有的監護人</strong>
-              <p className="text-xs">請選擇要關聯的資料；系統不會依姓名或聯絡方式自動關聯。</p>
+              <p className="text-xs">以下顯示完整姓名與聯絡方式，請人工確認後選擇；系統不會依姓名或聯絡方式自動關聯。</p>
               <div className="space-y-2">
                 {guardianLookup.warnings.map((candidate) => (
                   <label className="selection-card" key={candidate.id}>
                     <input type="radio" name="existing-guardian" value={candidate.id} onChange={() => chooseExistingGuardian(candidate.id)} />
-                    <span className="min-w-0"><strong>{candidate.display_name_hint ?? '已有監護人'}</strong><small>{[candidate.email_hint, candidate.phone_hint].filter(Boolean).join(' · ') || '聯絡資料已隱藏'} · 命中：{candidate.matching_fields.join('、')}</small></span>
+                    <span className="min-w-0"><strong>{candidate.display_name_hint ?? '已有監護人'}</strong><small>{[candidate.email_hint, candidate.phone_hint].filter(Boolean).join(' · ') || '未提供聯絡資料'} · 命中：{candidate.matching_fields.join('、')}</small></span>
                   </label>
                 ))}
               </div>
