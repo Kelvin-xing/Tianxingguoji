@@ -10,7 +10,9 @@ import {
   StudentCreateIdempotencyAttempt,
   classifyStudentRequestFailure,
   createStudentWithPrimaryGuardian,
+  precheckPotentialDuplicates,
   validateStudentCreateDraft,
+  type PotentialDuplicateResult,
   type RelationshipType,
   type StudentCreateDraft,
   type StudentCreateValidation,
@@ -53,6 +55,10 @@ export function StudentCreateForm() {
   const [validation, setValidation] = useState<StudentCreateValidation>({})
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: 'idle' })
   const [accessReloadToken, setAccessReloadToken] = useState(0)
+  const [guardianLookup, setGuardianLookup] = useState<PotentialDuplicateResult | null>(null)
+  const [guardianLookupState, setGuardianLookupState] = useState<'idle' | 'searching' | 'ready'>('idle')
+  const [guardianLookupError, setGuardianLookupError] = useState<string | null>(null)
+  const [newGuardianConfirmed, setNewGuardianConfirmed] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -81,8 +87,18 @@ export function StudentCreateForm() {
     attempt.current.markBusinessFieldChanged()
     setDraft((current) => ({
       ...current,
-      primary_guardian: { ...current.primary_guardian, [field]: value },
+      primary_guardian: {
+        ...current.primary_guardian,
+        [field]: value,
+        ...(field === 'existing_guardian_id' ? {} : { existing_guardian_id: undefined, warning_token: undefined }),
+      },
     }))
+    if (field !== 'existing_guardian_id') {
+      setGuardianLookup(null)
+      setGuardianLookupState('idle')
+      setGuardianLookupError(null)
+      setNewGuardianConfirmed(false)
+    }
     clearSubmissionFeedback()
   }
 
@@ -98,6 +114,17 @@ export function StudentCreateForm() {
     const errors = validateStudentCreateDraft(draft)
     if (Object.keys(errors).length > 0) {
       setValidation(errors)
+      setSubmitState({ kind: 'validation', requestId: null })
+      return
+    }
+
+    const existingGuardianId = draft.primary_guardian.existing_guardian_id?.trim() ?? ''
+    if (!existingGuardianId && guardianLookupState !== 'ready') {
+      await lookupExistingGuardian()
+      return
+    }
+    if (!existingGuardianId && (guardianLookup?.warnings.length ?? 0) > 0 && !newGuardianConfirmed) {
+      setValidation({ guardianSelection: '請選擇已有監護人，或明確確認新建監護人。' })
       setSubmitState({ kind: 'validation', requestId: null })
       return
     }
@@ -134,6 +161,74 @@ export function StudentCreateForm() {
     }
   }
 
+  async function lookupExistingGuardian(): Promise<void> {
+    const guardian = draft.primary_guardian
+    if (!guardian.display_name.trim() && !guardian.email.trim() && !guardian.phone.trim()) {
+      setGuardianLookupError('請先輸入監護人姓名、Email 或電話，再查找已有監護人。')
+      setValidation({ guardianSelection: '至少輸入一項監護人資料才能查找。' })
+      setSubmitState({ kind: 'validation', requestId: null })
+      return
+    }
+    setGuardianLookupState('searching')
+    setGuardianLookupError(null)
+    setValidation({})
+    try {
+      const result = await precheckPotentialDuplicates({
+        kind: 'guardian',
+        name: guardian.display_name,
+        email: guardian.email || null,
+        phone: guardian.phone || null,
+      })
+      setGuardianLookup(result)
+      setGuardianLookupState('ready')
+      setNewGuardianConfirmed(result.warnings.length === 0)
+      setDraft((current) => ({
+        ...current,
+        primary_guardian: {
+          ...current.primary_guardian,
+          existing_guardian_id: undefined,
+          warning_token: result.warnings.length === 0 ? null : undefined,
+        },
+      }))
+      setSubmitState({ kind: 'idle' })
+      setValidation({})
+      if (result.warnings.length === 0) setGuardianLookupError('未找到已有監護人；確認資料後可新建。')
+    } catch (error: unknown) {
+      setGuardianLookupState('idle')
+      const failure = classifyStudentRequestFailure(error)
+      if (failure === 'unauthenticated') setAccessState('unauthenticated')
+      else if (failure === 'forbidden') setAccessState('denied')
+      else setGuardianLookupError('暫時無法查找已有監護人，請稍後重試。')
+      setSubmitState({ kind: 'validation', requestId: safeRequestId(error) })
+    }
+  }
+
+  function chooseExistingGuardian(id: string) {
+    attempt.current.markBusinessFieldChanged()
+    setDraft((current) => ({
+      ...current,
+      primary_guardian: { ...current.primary_guardian, existing_guardian_id: id, warning_token: undefined },
+    }))
+    setNewGuardianConfirmed(false)
+    setValidation({})
+    setSubmitState({ kind: 'idle' })
+  }
+
+  function chooseNewGuardian() {
+    attempt.current.markBusinessFieldChanged()
+    setDraft((current) => ({
+      ...current,
+      primary_guardian: {
+        ...current.primary_guardian,
+        existing_guardian_id: undefined,
+        warning_token: guardianLookup?.warning_token ?? null,
+      },
+    }))
+    setNewGuardianConfirmed(true)
+    setValidation({})
+    setSubmitState({ kind: 'idle' })
+  }
+
   if (accessState === 'loading') return <AccessMessage icon="clock" title="正在確認建立權限" detail="請稍候。" />
   if (accessState === 'unauthenticated') return <AccessMessage icon="lock" title="工作階段已失效" detail="請重新登入後再建立學生資料。" href="/login" action="重新登入" />
   if (accessState === 'denied') return <AccessMessage icon="shield" title="無法建立學生資料" detail="你的帳號目前沒有建立學生的權限。隱藏入口只改善使用體驗，服務端仍會獨立驗證每次保存。" href="/students" action="返回學生名單" />
@@ -161,7 +256,7 @@ export function StudentCreateForm() {
       </section>
 
       <section className="workspace-section space-y-5">
-        <div><div className="eyebrow">步驟 2</div><h3 className="section-title mt-1">主要監護人</h3><p className="section-detail">本次保存會建立一位新的主要監護人。Email 和電話至少填寫一項。</p></div>
+        <div><div className="eyebrow">步驟 2</div><h3 className="section-title mt-1">主要監護人</h3><p className="section-detail">先查找是否已有監護人；選擇已有資料會建立關係，不會重複建檔。只有確認沒有合適記錄時才新建。若新建，Email 和電話至少填寫一項。</p></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="監護人姓名" required error={validation.guardianDisplayName} id="guardian-display-name">
             <input id="guardian-display-name" name="guardian_display_name" value={draft.primary_guardian.display_name} onChange={(event) => changeGuardian('display_name', event.target.value)} required autoComplete="name" aria-invalid={Boolean(validation.guardianDisplayName)} aria-describedby={validation.guardianDisplayName ? 'guardian-display-name-error' : undefined} />
@@ -180,7 +275,34 @@ export function StudentCreateForm() {
             <input id="guardian-phone" name="guardian_phone" type="tel" value={draft.primary_guardian.phone} onChange={(event) => changeGuardian('phone', event.target.value)} autoComplete="tel" aria-invalid={Boolean(validation.guardianContact)} aria-describedby={validation.guardianContact ? 'guardian-contact-error' : undefined} />
           </Field>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="secondary-button" onClick={() => void lookupExistingGuardian()} disabled={guardianLookupState === 'searching' || pending}>
+            <Icon name={guardianLookupState === 'searching' ? 'clock' : 'search'} size={15} />
+            {guardianLookupState === 'searching' ? '查找中…' : '查找已有監護人'}
+          </button>
+          {draft.primary_guardian.existing_guardian_id ? <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>已選擇現有監護人；保存時只建立 Student 與關係。</span> : null}
+        </div>
+        {guardianLookupError ? <p className="text-xs" role="status" style={{ color: 'var(--text-secondary)' }}>{guardianLookupError}</p> : null}
+        {guardianLookup && guardianLookup.warnings.length > 0 && !draft.primary_guardian.existing_guardian_id ? (
+          <div className="inline-callout" role="alert">
+            <Icon name="users" size={15} />
+            <div className="space-y-2 w-full">
+              <strong>找到可能已有的監護人</strong>
+              <p className="text-xs">請選擇要關聯的資料；系統不會依姓名或聯絡方式自動關聯。</p>
+              <div className="space-y-2">
+                {guardianLookup.warnings.map((candidate) => (
+                  <label className="selection-card" key={candidate.id}>
+                    <input type="radio" name="existing-guardian" value={candidate.id} onChange={() => chooseExistingGuardian(candidate.id)} />
+                    <span className="min-w-0"><strong>{candidate.display_name_hint ?? '已有監護人'}</strong><small>{[candidate.email_hint, candidate.phone_hint].filter(Boolean).join(' · ') || '聯絡資料已隱藏'} · 命中：{candidate.matching_fields.join('、')}</small></span>
+                  </label>
+                ))}
+              </div>
+              <button type="button" className="secondary-button" onClick={chooseNewGuardian}>確認仍新建監護人</button>
+            </div>
+          </div>
+        ) : null}
         {validation.guardianContact ? <p id="guardian-contact-error" role="alert" className="text-xs text-red-700">{validation.guardianContact}</p> : null}
+        {validation.guardianSelection ? <p id="guardian-selection-error" role="alert" className="text-xs text-red-700">{validation.guardianSelection}</p> : null}
         <label className="flex items-start gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
           <input type="checkbox" name="is_legal_guardian" checked={draft.primary_guardian.is_legal_guardian} onChange={(event) => changeGuardian('is_legal_guardian', event.target.checked)} className="mt-1" />
           <span><strong className="block" style={{ color: 'var(--text-primary)' }}>法定監護人</strong><span className="text-xs">預設為是；如實際情況不同，請取消勾選。</span></span>

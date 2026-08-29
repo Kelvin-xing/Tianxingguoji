@@ -8,6 +8,7 @@ import {
   createStudentWithPrimaryGuardian,
   getStudent,
   listStudents,
+  precheckPotentialDuplicates,
   validateStudentCreateDraft,
   type StudentCreateDraft,
 } from "../../../modules/crm/client.ts";
@@ -96,6 +97,81 @@ test("create sends only the frozen aggregate fields and its idempotency key", as
     primary_guardian: { id: GUARDIAN_ID, record_version: 1 },
     relationship: { id: RELATIONSHIP_ID, record_version: 1 },
   });
+});
+
+test("existing guardian selection checks candidates and submits only the relationship", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let requestNumber = 0;
+  globalThis.fetch = async (input, init) => {
+    requestNumber += 1;
+    if (requestNumber === 1) {
+      assert.equal(input, "/api/v1/crm/potential-duplicates");
+      assert.equal(init?.method, "POST");
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        kind: "guardian",
+        name: "Synthetic Guardian",
+        email: "guardian@example.invalid",
+        phone: null,
+      });
+      return apiResponse({
+        warnings: [{
+          id: GUARDIAN_ID,
+          matching_fields: ["email"],
+          display_name_hint: "Synthetic Guardian",
+          email_hint: "g***@example.invalid",
+          phone_hint: null,
+        }],
+        warning_token: "synthetic-warning-token",
+      });
+    }
+    assert.equal(input, "/api/v1/students");
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      student: {
+        display_name: "Synthetic Student",
+        date_of_birth: "2013-06-18",
+        gender: null,
+        contact_email: null,
+        contact_phone: null,
+      },
+      primary_guardian: {
+        kind: "existing",
+        guardian_id: GUARDIAN_ID,
+        relationship_type: "father",
+        relationship_description: null,
+        is_legal_guardian: true,
+        is_emergency_contact: false,
+        is_billing_contact: false,
+        notification_consent: false,
+      },
+    });
+    return apiResponse({
+      student: { id: STUDENT_ID, record_version: 1 },
+      primary_guardian: { id: GUARDIAN_ID, record_version: 1 },
+      relationship: { id: RELATIONSHIP_ID, record_version: 1 },
+    });
+  };
+
+  const lookup = await precheckPotentialDuplicates({
+    kind: "guardian",
+    name: " Synthetic Guardian ",
+    email: "guardian@example.invalid",
+    phone: null,
+  });
+  assert.equal(lookup.warning_token, "synthetic-warning-token");
+  assert.equal(lookup.warnings[0]?.id, GUARDIAN_ID);
+
+  const draft = validDraft();
+  const existingDraft: StudentCreateDraft = {
+    ...draft,
+    primary_guardian: { ...draft.primary_guardian, existing_guardian_id: GUARDIAN_ID },
+  };
+  assert.deepEqual(validateStudentCreateDraft({
+    ...existingDraft,
+    primary_guardian: { ...existingDraft.primary_guardian, display_name: "", email: "", phone: "" },
+  }), {});
+  await createStudentWithPrimaryGuardian(existingDraft, "student-existing-guardian-test");
 });
 
 test("create decoder validates every ADR-002 field and rejects contract drift", async (context) => {

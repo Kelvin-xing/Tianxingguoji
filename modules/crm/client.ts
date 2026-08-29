@@ -7,6 +7,7 @@ import {
   expectRecord,
   expectString,
   requestApi,
+  type ApiRequestBody,
 } from "../../lib/api/client.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -124,7 +125,24 @@ export interface StudentCreateDraft {
     readonly is_emergency_contact: boolean;
     readonly is_billing_contact: boolean;
     readonly notification_consent: boolean;
+    /** Set only after the user explicitly selects an existing Guardian. */
+    readonly existing_guardian_id?: string;
+    /** Set after the duplicate precheck when the user explicitly confirms creating a new Guardian. */
+    readonly warning_token?: string | null;
   };
+}
+
+export interface PotentialDuplicateCandidate {
+  readonly id: string;
+  readonly matching_fields: readonly ("display_name" | "email" | "phone")[];
+  readonly display_name_hint: string | null;
+  readonly email_hint: string | null;
+  readonly phone_hint: string | null;
+}
+
+export interface PotentialDuplicateResult {
+  readonly warnings: readonly PotentialDuplicateCandidate[];
+  readonly warning_token: string | null;
 }
 
 export interface StudentCreateValidation {
@@ -134,6 +152,7 @@ export interface StudentCreateValidation {
   readonly guardianDisplayName?: string;
   readonly guardianEmail?: string;
   readonly guardianContact?: string;
+  readonly guardianSelection?: string;
 }
 
 export interface CreatedStudentAggregate {
@@ -682,6 +701,34 @@ export function createStudentWithPrimaryGuardian(
   );
 }
 
+export function precheckPotentialDuplicates(
+  input: {
+    readonly kind: "student" | "guardian";
+    readonly name: string;
+    readonly email: string | null;
+    readonly phone: string | null;
+  },
+  signal?: AbortSignal,
+): Promise<PotentialDuplicateResult> {
+  if (input.kind !== "student" && input.kind !== "guardian") {
+    throw new TypeError("Invalid duplicate check kind.");
+  }
+  return requestApi(
+    {
+      path: "/api/v1/crm/potential-duplicates",
+      method: "POST",
+      body: {
+        kind: input.kind,
+        name: input.name.trim(),
+        email: input.email?.trim() || null,
+        phone: input.phone?.trim() || null,
+      },
+      signal,
+    },
+    decodePotentialDuplicateResult,
+  );
+}
+
 export function getGuardianRelationships(
   studentId: string,
   signal?: AbortSignal,
@@ -904,14 +951,19 @@ export function validateStudentCreateDraft(draft: StudentCreateDraft): StudentCr
   if (draft.student.contact_email && !isValidEmail(draft.student.contact_email)) {
     errors.studentEmail = "請輸入有效的學生 Email。";
   }
-  if (!draft.primary_guardian.display_name.trim()) {
-    errors.guardianDisplayName = "請輸入主要監護人姓名。";
-  }
-  if (draft.primary_guardian.email && !isValidEmail(draft.primary_guardian.email)) {
-    errors.guardianEmail = "請輸入有效的監護人 Email。";
-  }
-  if (!draft.primary_guardian.email.trim() && !draft.primary_guardian.phone.trim()) {
-    errors.guardianContact = "監護人 Email 和電話至少填寫一項。";
+  const existingGuardianId = draft.primary_guardian.existing_guardian_id?.trim() ?? "";
+  if (existingGuardianId) {
+    if (!UUID.test(existingGuardianId)) errors.guardianSelection = "請重新選擇有效的已有監護人。";
+  } else {
+    if (!draft.primary_guardian.display_name.trim()) {
+      errors.guardianDisplayName = "請輸入主要監護人姓名。";
+    }
+    if (draft.primary_guardian.email && !isValidEmail(draft.primary_guardian.email)) {
+      errors.guardianEmail = "請輸入有效的監護人 Email。";
+    }
+    if (!draft.primary_guardian.email.trim() && !draft.primary_guardian.phone.trim()) {
+      errors.guardianContact = "監護人 Email 和電話至少填寫一項。";
+    }
   }
   return Object.freeze(errors);
 }
@@ -1250,7 +1302,8 @@ export function guardianHandoffFingerprint(
   return `${successorGuardianId}:${expectedPrimaryRecordVersion}`;
 }
 
-function normalizeStudentCreateDraft(draft: StudentCreateDraft) {
+function normalizeStudentCreateDraft(draft: StudentCreateDraft): ApiRequestBody {
+  const existingGuardianId = draft.primary_guardian.existing_guardian_id?.trim() || null;
   return {
     student: {
       display_name: draft.student.display_name.trim(),
@@ -1259,21 +1312,33 @@ function normalizeStudentCreateDraft(draft: StudentCreateDraft) {
       contact_email: nullable(draft.student.contact_email),
       contact_phone: nullable(draft.student.contact_phone),
     },
-    primary_guardian: {
-      kind: "new",
-      display_name: draft.primary_guardian.display_name.trim(),
-      email: nullable(draft.primary_guardian.email),
-      phone: nullable(draft.primary_guardian.phone),
-      date_of_birth: nullable(draft.primary_guardian.date_of_birth),
-      gender: draft.primary_guardian.gender || null,
-      relationship_type: draft.primary_guardian.relationship_type,
-      relationship_description: nullable(draft.primary_guardian.relationship_description),
-      is_legal_guardian: draft.primary_guardian.is_legal_guardian,
-      is_emergency_contact: draft.primary_guardian.is_emergency_contact,
-      is_billing_contact: draft.primary_guardian.is_billing_contact,
-      notification_consent: draft.primary_guardian.notification_consent,
-    },
-  } as const;
+    primary_guardian: existingGuardianId
+      ? {
+          kind: "existing" as const,
+          guardian_id: existingGuardianId,
+          relationship_type: draft.primary_guardian.relationship_type,
+          relationship_description: nullable(draft.primary_guardian.relationship_description),
+          is_legal_guardian: draft.primary_guardian.is_legal_guardian,
+          is_emergency_contact: draft.primary_guardian.is_emergency_contact,
+          is_billing_contact: draft.primary_guardian.is_billing_contact,
+          notification_consent: draft.primary_guardian.notification_consent,
+        }
+      : {
+          kind: "new" as const,
+          display_name: draft.primary_guardian.display_name.trim(),
+          email: nullable(draft.primary_guardian.email),
+          phone: nullable(draft.primary_guardian.phone),
+          date_of_birth: nullable(draft.primary_guardian.date_of_birth),
+          gender: draft.primary_guardian.gender || null,
+          relationship_type: draft.primary_guardian.relationship_type,
+          relationship_description: nullable(draft.primary_guardian.relationship_description),
+          is_legal_guardian: draft.primary_guardian.is_legal_guardian,
+          is_emergency_contact: draft.primary_guardian.is_emergency_contact,
+          is_billing_contact: draft.primary_guardian.is_billing_contact,
+          notification_consent: draft.primary_guardian.notification_consent,
+          ...(draft.primary_guardian.warning_token ? { warning_token: draft.primary_guardian.warning_token } : {}),
+        },
+  } as ApiRequestBody;
 }
 
 function normalizeStudentProfileDraft(draft: StudentProfileDraft) {
@@ -1479,6 +1544,34 @@ function decodeStudentDetail(value: unknown): StudentDetail {
     contactPhone: nullableNonEmptyString(record.contactPhone, "contactPhone"),
     recordVersion: positiveInteger(record.recordVersion, "recordVersion"),
     guardians: Object.freeze([...guardians]),
+  });
+}
+
+function decodePotentialDuplicateResult(value: unknown): PotentialDuplicateResult {
+  const record = exactRecord(value, ["warnings", "warning_token"]);
+  const warnings = expectArray(record.warnings, (candidate) => {
+    const item = exactRecord(candidate, [
+      "id", "matching_fields", "display_name_hint", "email_hint", "phone_hint",
+    ]);
+    const matchingFields = expectArray(item.matching_fields, (field) => {
+      if (field !== "display_name" && field !== "email" && field !== "phone") {
+        throw new TypeError("Invalid duplicate matching field.");
+      }
+      return field;
+    });
+    return Object.freeze({
+      id: uuid(item.id, "duplicate.id"),
+      matching_fields: Object.freeze([...matchingFields]),
+      display_name_hint: nullableNonEmptyString(item.display_name_hint, "display_name_hint"),
+      email_hint: nullableNonEmptyString(item.email_hint, "email_hint"),
+      phone_hint: nullableNonEmptyString(item.phone_hint, "phone_hint"),
+    });
+  });
+  const warningToken = nullableNonEmptyString(record.warning_token, "warning_token");
+  assertUnique(warnings.map(({ id }) => id), "duplicate.id");
+  return Object.freeze({
+    warnings: Object.freeze([...warnings]),
+    warning_token: warningToken,
   });
 }
 
