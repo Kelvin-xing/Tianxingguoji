@@ -30,6 +30,8 @@ interface CaseRow extends Record<string, unknown> {
   assessment_status?: CaseWorkspaceDetail["assessmentStatus"];
   manifest_id?: string;
   primary_role_binding_id?: string;
+  primary_display_name?: string | null;
+  primary_email?: string | null;
   record_version: number | string;
 }
 
@@ -69,6 +71,8 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
                 service_case.updated_at,
                 service_case.primary_role, service_case.primary_user_id,
                 service_case.primary_role_binding_id,
+                primary_identity.normalized_email AS primary_email,
+                primary_profile.display_name AS primary_display_name,
                 service_case.record_version, assessment.id AS assessment_id,
                 assessment.status AS assessment_status, assessment.manifest_id,
                 EXISTS (
@@ -87,6 +91,15 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
            JOIN cases_assessments AS assessment
              ON assessment.service_case_id = service_case.id
             AND assessment.organization_id = service_case.organization_id
+           LEFT JOIN access_role_bindings AS primary_binding
+             ON primary_binding.id = service_case.primary_role_binding_id
+            AND primary_binding.organization_id = service_case.organization_id
+            AND primary_binding.user_id = service_case.primary_user_id
+           LEFT JOIN access_employee_profiles AS primary_profile
+             ON primary_profile.membership_id = primary_binding.membership_id
+            AND primary_profile.organization_id = primary_binding.organization_id
+           LEFT JOIN identity_users AS primary_identity
+             ON primary_identity.id = service_case.primary_user_id
           WHERE ${actorFilter}`,
         values,
       );
@@ -99,7 +112,7 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         assessmentId: row.assessment_id,
         assessmentStatus: row.assessment_status,
         manifestId: row.manifest_id,
-        primaryBindingLabel: `Advisor · ${row.primary_role_binding_id.slice(-8)}`,
+        primaryBindingLabel: formatAdvisorLabel(row.primary_display_name, row.primary_email),
         primaryUserId: row.primary_user_id,
       }) satisfies CaseWorkspaceDetail;
     });
@@ -116,19 +129,29 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         id: string;
         role: "advisor";
         user_id: string;
+        normalized_email: string;
+        display_name: string | null;
       }>(
-          `SELECT role_binding.id, role_binding.role, role_binding.user_id
+          `SELECT role_binding.id, role_binding.role, role_binding.user_id,
+                  identity_user.normalized_email,
+                  employee_profile.display_name
              FROM access_role_bindings AS role_binding
              JOIN access_organization_memberships AS membership
                ON membership.id = role_binding.membership_id
               AND membership.organization_id = role_binding.organization_id
+             JOIN identity_users AS identity_user
+               ON identity_user.id = role_binding.user_id
+             LEFT JOIN access_employee_profiles AS employee_profile
+               ON employee_profile.membership_id = membership.id
+              AND employee_profile.organization_id = membership.organization_id
             WHERE role_binding.role = 'advisor'
               AND role_binding.status = 'active'
               AND membership.status = 'active'
               AND identity_user_is_active(role_binding.user_id)
               AND access_organization_is_active(role_binding.organization_id)
               AND ($1::boolean = false OR role_binding.user_id = $2)
-            ORDER BY role_binding.role, role_binding.id`,
+            ORDER BY COALESCE(NULLIF(BTRIM(employee_profile.display_name), ''), ''),
+              identity_user.normalized_email, role_binding.id`,
           [input.actorRole === "advisor", input.actorUserId],
         );
       const manifests = await transaction.query<{ id: string; composition_version: string }>(
@@ -144,7 +167,11 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
         primaryBindings: Object.freeze(bindings.rows.map((row) => Object.freeze({
           id: row.id,
           role: row.role,
-          label: `${row.user_id === input.actorUserId ? "我的 " : ""}${row.role === "advisor" ? "Advisor" : "Founder"} · ${row.id.slice(-8)}`,
+          label: formatAdvisorLabel(
+            row.display_name,
+            row.normalized_email,
+            row.user_id === input.actorUserId ? "我的 " : "",
+          ),
         }))),
         manifests: Object.freeze(manifests.rows.map((row) => Object.freeze({
           id: row.id,
@@ -449,6 +476,16 @@ function workflowActions(row: CaseRow): CaseWorkspaceListItem["availableWorkflow
     !row.has_submitted_target
   ) return Object.freeze(["pause"] as const);
   return Object.freeze([]);
+}
+
+function formatAdvisorLabel(
+  displayName: string | null | undefined,
+  email: string | null | undefined,
+  prefix = "",
+): string {
+  const nickname = displayName?.trim() || "未设置昵称";
+  const contact = email?.trim() || "未提供邮箱";
+  return `${prefix}${nickname} · ${contact}`;
 }
 
 function isActiveCaseDuplicateViolation(
