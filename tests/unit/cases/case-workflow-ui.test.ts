@@ -27,6 +27,21 @@ test("Case detail projects the frozen workflow contract into capability-only con
   assert.doesNotMatch(controls, /terminate|closeCase|to_stage|workflow\/advance|workflow\/rollback/);
 });
 
+test("Case stage timeline shows the responsible people for every workflow stage", async () => {
+  const [page, timeline] = await Promise.all([
+    source("app/(erp)/cases/[caseId]/page.tsx"),
+    source("components/cases/CaseStageTimeline.tsx"),
+  ]);
+
+  assert.match(page, /<CaseStageTimeline caseId=\{caseId\} stage=\{record\.stage\} primaryOwnerLabel=\{record\.primaryBindingLabel\} \/>/);
+  assert.match(timeline, /負責人：/);
+  assert.match(timeline, /listTasks\(caseId/);
+  assert.match(timeline, /application_prepare_submit/);
+  assert.match(timeline, /interview_support/);
+  assert.match(timeline, /Founder/);
+  assert.match(timeline, /家長/);
+});
+
 test("pause and resume follow the frozen reason and idempotency contracts", async () => {
   const controls = await source("components/cases/CaseStageControls.tsx");
 

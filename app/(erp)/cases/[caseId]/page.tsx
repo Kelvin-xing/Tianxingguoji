@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/AssessmentEditor'
 import { CandidateListWorkspace } from '@/components/cases/CandidateListWorkspace'
 import { CaseWorkflowControls } from '@/components/cases/CaseStageControls'
+import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
 import { Icon } from '@/components/workspace/Icon'
@@ -18,14 +19,6 @@ import { requireApiRequestAccessContext } from '@/app/api/v1/request-access'
 import { ApiContractError } from '@/modules/shared/public'
 
 export const dynamic = 'force-dynamic'
-
-const stages: ReadonlyArray<{ key: CaseWorkspaceStage; label: string }> = [
-  { key: 'signed', label: '已簽約' },
-  { key: 'background_collection', label: '背景資料' },
-  { key: 'school_selection_confirmed', label: '選校確認' },
-  { key: 'application_in_progress', label: '申請處理' },
-  { key: 'closed', label: '已結案' },
-]
 
 export default async function CaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params
@@ -44,7 +37,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
     throw error
   }
   if (!record || !assessment) notFound()
-  const stageIndex = stages.findIndex(({ key }) => key === record.stage)
   const { roles: actorRoles } = actor
 
   return (
@@ -52,7 +44,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>{record.caseNumber}</span></div>
       <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">案件</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />查看學生</Link></section>
 
-      <section className="workspace-section"><div className="mb-5"><h3 className="section-title">案件階段</h3><p className="section-detail">評估完成後，請按流程逐步推進案件。</p></div><div className="overflow-x-auto"><div className="stage-track">{stages.map((stage, index) => { const done = index < stageIndex; const active = index === stageIndex; return <div className="stage-node" key={stage.key}><div className={`stage-dot ${done ? 'done' : ''} ${active ? 'active' : ''}`}>{done ? <Icon name="check" size={13} /> : index + 1}</div><span className={active ? 'active-label' : ''}>{stage.label}</span>{index < stages.length - 1 && <div className={`stage-line ${done ? 'done' : ''}`} />}</div> })}</div></div></section>
+      <CaseStageTimeline caseId={caseId} stage={record.stage} primaryOwnerLabel={record.primaryBindingLabel} />
 
       <CaseWorkflowProvider initialWorkflowStatus={record.workflowStatus}>
         <CaseWorkflowControls
