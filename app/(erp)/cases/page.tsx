@@ -41,8 +41,17 @@ const caseStageLabels: Record<CaseStage, string> = {
   closed: '已結案',
 }
 
+type CaseStatusFilter = 'all' | 'active' | 'closed'
+
+const caseStatusLabels: Record<CaseStatusFilter, string> = {
+  all: '全部狀態',
+  active: '進行中',
+  closed: '已結案',
+}
+
 export default function CasesPage() {
   const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<CaseStatusFilter>('all')
   const [stage, setStage] = useState<CaseStage | 'all'>('all')
   const [caseRecords, setCaseRecords] = useState<CaseListItem[]>([])
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -74,8 +83,9 @@ export default function CasesPage() {
   const filtered = useMemo(() => caseRecords.filter((item) => {
     const query = search.trim().toLowerCase()
     const matchesSearch = !query || `${item.caseNumber} ${item.studentName} ${item.studentId}`.toLowerCase().includes(query)
-    return matchesSearch && (stage === 'all' || item.stage === stage)
-  }), [caseRecords, search, stage])
+    const matchesStatus = status === 'all' || (status === 'closed' ? item.stage === 'closed' : item.stage !== 'closed')
+    return matchesSearch && matchesStatus && (stage === 'all' || item.stage === stage)
+  }), [caseRecords, search, stage, status])
 
   return (
     <div className="max-w-[1500px] mx-auto space-y-6">
@@ -84,24 +94,18 @@ export default function CasesPage() {
         <Link href="/cases/new" className="primary-button"><Icon name="plus" size={16} />建立案件</Link>
       </section>
 
-      <section className="metric-strip">
-        <Metric label="全部案件" value={String(caseRecords.length)} tone="blue" />
-        <Metric label="進行中" value={String(caseRecords.filter((item) => item.stage !== 'closed').length)} tone="amber" />
-        <Metric label="已確認 Offer" value={String(caseRecords.filter((item) => item.stage === 'offer_confirmed').length)} tone="green" />
-        <Metric label="顧問負責" value={String(caseRecords.filter((item) => item.primaryRole === 'advisor').length)} tone="violet" />
-      </section>
-
       <section className="workspace-section overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4">
-          <div><h3 className="section-title">案件清單</h3><p className="section-detail">顯示目前可查看的案件。</p></div>
+          <div><h3 className="section-title">案件清單</h3><p className="section-detail">共 {caseRecords.length} 宗案件，使用篩選查看需要的資料。</p></div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="search-field"><Icon name="search" size={15} /><input type="search" placeholder="搜尋案件或學生" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="搜尋案件" /></label>
+            <label className="select-field"><Icon name="filter" size={14} /><select value={status} onChange={(event) => setStatus(event.target.value as CaseStatusFilter)} aria-label="案件狀態">{Object.entries(caseStatusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
             <label className="select-field"><Icon name="filter" size={14} /><select value={stage} onChange={(event) => setStage(event.target.value as CaseStage | 'all')} aria-label="案件階段"><option value="all">全部階段</option>{Object.entries(caseStageLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
           </div>
         </div>
         {loadState === 'loading' && <div className="empty-state"><Icon name="clock" size={20} /><strong>正在載入案件</strong><span>請稍候。</span></div>}
         {loadState === 'error' && <div className="empty-state"><Icon name="x" size={20} /><strong>案件服務暫時不可用</strong><span>請稍後重試。</span><button type="button" className="secondary-button mt-3" onClick={loadCases}>重新載入</button></div>}
-        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[760px]"><thead><tr><th>案件</th><th>學生</th><th>階段</th><th>主要角色</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((item) => <CaseRow key={item.id} item={item} />)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的案件。</div>}</div><div className="pt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}><span>顯示 {filtered.length} / {caseRecords.length} 案件</span></div></>}
+        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[760px]"><thead><tr><th>案件</th><th>學生</th><th>階段</th><th>主要顧問</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((item) => <CaseRow key={item.id} item={item} />)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的案件。</div>}</div><div className="pt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}><span>顯示 {filtered.length} / {caseRecords.length} 案件</span></div></>}
       </section>
     </div>
   )
@@ -109,10 +113,8 @@ export default function CasesPage() {
 
 function CaseRow({ item }: { item: CaseListItem }) {
   const stageStyle = stageStyles[item.stage]
-  return <tr className="data-row"><td><Link href={`/cases/${item.id}`} className="table-primary">{item.caseNumber}</Link><div className="table-secondary">{item.intakeYear} · {item.admissionType === 's1_admission' ? 'S1 入學' : '插班'}</div></td><td><Link href={`/students/${item.studentId}`} className="table-primary">{item.studentName || '未命名學生'}</Link><div className="table-secondary">{item.studentId}</div></td><td><span className="status-pill" style={stageStyle}>{caseStageLabels[item.stage]}</span></td><td className="table-muted">{item.primaryRole === 'advisor' ? 'Advisor' : 'Founder'}</td><td className="table-muted">{formatDate(item.updatedAt)}</td><td><Link href={`/cases/${item.id}`} className="icon-button" title="查看案件" aria-label="查看案件"><Icon name="chevron-right" size={16} /></Link></td></tr>
+  return <tr className="data-row"><td><Link href={`/cases/${item.id}`} className="table-primary">{item.caseNumber}</Link><div className="table-secondary">{item.intakeYear} · {item.admissionType === 's1_admission' ? 'S1 入學' : '插班'}</div></td><td><Link href={`/students/${item.studentId}`} className="table-primary">{item.studentName || '未命名學生'}</Link></td><td><span className="status-pill" style={stageStyle}>{caseStageLabels[item.stage]}</span></td><td className="table-muted">{item.primaryRole === 'advisor' ? 'Advisor' : 'Founder'}</td><td className="table-muted">{formatDate(item.updatedAt)}</td><td><Link href={`/cases/${item.id}`} className="icon-button" title="查看案件" aria-label="查看案件"><Icon name="chevron-right" size={16} /></Link></td></tr>
 }
-
-function Metric({ label, value, tone }: { label: string; value: string; tone: 'blue' | 'amber' | 'violet' | 'green' }) { return <div className={`metric metric-${tone}`}><div className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div><div className="mt-1 text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</div></div> }
 
 function formatDate(value: string): string {
   const date = new Date(value)

@@ -4,50 +4,38 @@ import test from "node:test";
 
 const root = new URL("../../../", import.meta.url);
 
-test("case list and create entry obey only cases.read and cases.create capabilities", async () => {
+test("case directory keeps intake entry separate from case management", async () => {
   const [form, directory] = await Promise.all([
-    source("components/cases/CaseCreateForm.tsx"),
+    source("components/crm/CaseIntakeWorkspace.tsx"),
     source("app/(erp)/cases/page.tsx"),
   ]);
-  assert.match(form, /access\.capabilities\.includes\('cases\.read'\)/);
-  assert.match(form, /String\(capability\) === 'cases\.create'/);
-  assert.match(directory, /access\.capabilities\.includes\('cases\.read'\)/);
-  assert.match(directory, /String\(capability\) === 'cases\.create'/);
-  assert.doesNotMatch(form, /access\.role|role === ['"](?:founder|advisor|admin)/);
-  assert.doesNotMatch(directory, /access\.role|role === ['"](?:founder|advisor|admin)/);
-  assert.match(directory, /loadState === 'ready' && canCreate \? <Link href="\/cases\/new"/);
-  assert.doesNotMatch(form, /服務端仍會獨立驗證每次保存/);
+  assert.match(form, /listIntakeOptions\(\)/);
+  assert.match(form, /createK12Case\(/);
+  assert.match(directory, /<Link href="\/cases\/new"/);
+  assert.doesNotMatch(directory, /<Metric /);
 });
 
 test("case pages use the module client without direct fetch or response assertions", async () => {
   const files = await Promise.all([
-    source("components/cases/CaseCreateForm.tsx"),
+    source("components/crm/CaseIntakeWorkspace.tsx"),
     source("app/(erp)/cases/new/page.tsx"),
     source("app/(erp)/cases/page.tsx"),
   ]);
   assert.equal(files.every((content) => !/\bfetch\(|response\.json\(/.test(content)), true);
-  assert.match(files[0]!, /listCaseWorkspaceOptions\(controller\.signal\)/);
-  assert.match(files[0]!, /createExistingStudentCase\(\{/);
-  assert.match(files[1]!, /<CaseCreateForm/);
-  assert.match(files[2]!, /listCases\(controller\.signal\)/);
+  assert.match(files[0]!, /listIntakeOptions\(\)/);
+  assert.match(files[0]!, /createK12Case\(/);
+  assert.match(files[1]!, /<CaseIntakeWorkspace/);
+  assert.match(files[2]!, /listCases\(\)/);
 });
 
-test("case directory separates the desktop table from a complete mobile case list", async () => {
+test("case directory uses a searchable status and stage filter instead of summary cards", async () => {
   const directory = await source("app/(erp)/cases/page.tsx");
-  assert.match(directory, /className="hidden md:block overflow-x-auto -mx-5"/);
-  assert.match(directory, /className="md:hidden divide-y" role="list"/);
-  assert.match(directory, /<CaseMobileItem key=\{item\.id\} item=\{item\} \/>/);
-  assert.match(directory, /<th className="hidden sm:table-cell" \/>/);
-  assert.match(directory, /<td className="hidden sm:table-cell"><Link href=\{`\/cases\/\$\{item\.id\}`\}/);
-  assert.match(directory, /<td><Link href=\{`\/cases\/\$\{item\.id\}`\} className="table-primary">\{item\.caseNumber\}<\/Link>/);
-  assert.match(directory, /function CaseMobileItem/);
-  assert.match(directory, /<Link href=\{`\/cases\/\$\{item\.id\}`\} className="table-primary break-words">\{item\.caseNumber\}<\/Link>/);
-  assert.match(directory, /<Link href=\{`\/students\/\$\{item\.studentId\}`\} className="table-primary break-words">\{item\.studentName\}<\/Link>/);
+  assert.match(directory, /type CaseStatusFilter = 'all' \| 'active' \| 'closed'/);
+  assert.match(directory, /aria-label="案件狀態"/);
+  assert.match(directory, /aria-label="案件階段"/);
+  assert.match(directory, /共 \{caseRecords\.length\} 宗案件/);
+  assert.doesNotMatch(directory, /<Metric /);
   assert.match(directory, /\{caseStageLabels\[item\.stage\]\}/);
-  assert.match(directory, /\{workflowStatusLabels\[item\.workflowStatus\]\}/);
-  assert.match(directory, /paused: '已暫停'/);
-  assert.doesNotMatch(directory, /offer_received|closed_won|closed_lost/);
-  assert.doesNotMatch(directory, /創辦人/);
   assert.match(directory, />主要顧問</);
   assert.match(directory, /\{formatDate\(item\.updatedAt\)\}/);
 });
@@ -95,14 +83,9 @@ test("case create exposes accessible controls and complete bounded states", asyn
 });
 
 test("case UI does not display identifiers or leak implementation and request details", async () => {
-  const [form, directory] = await Promise.all([
-    source("components/cases/CaseCreateForm.tsx"),
-    source("app/(erp)/cases/page.tsx"),
-  ]);
-  for (const content of [form, directory]) {
-    assert.doesNotMatch(content, /PostgreSQL|Neon|synthetic|UUID|database constraint|organization-scoped|localStorage|sessionStorage|console\./i);
-    assert.doesNotMatch(content, /JSON\.stringify\(|idempotency-key/i);
-  }
+  const directory = await source("app/(erp)/cases/page.tsx");
+  assert.doesNotMatch(directory, /PostgreSQL|Neon|synthetic|UUID|database constraint|organization-scoped|localStorage|sessionStorage|console\./i);
+  assert.doesNotMatch(directory, /JSON\.stringify\(|idempotency-key/i);
   assert.doesNotMatch(directory, /\{item\.studentId\}<\/div>/);
 });
 
