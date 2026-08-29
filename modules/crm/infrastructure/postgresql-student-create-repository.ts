@@ -76,10 +76,15 @@ async function assertCurrentStudentCreator(transaction: TenantTransaction, input
   const result = await transaction.query<{ ok: boolean }>({
     text: `SELECT true AS ok
       FROM identity_users u
-      JOIN identity_memberships m ON m.user_id=u.id AND m.organization_id=$1 AND m.status='active'
-      JOIN access_role_bindings rb ON rb.membership_id=m.id AND rb.status='active'
+      JOIN access_organization_memberships m
+        ON m.user_id=u.id AND m.organization_id=$1 AND m.status='active'
+      JOIN access_role_bindings rb
+        ON rb.membership_id=m.id
+       AND rb.organization_id=m.organization_id
+       AND rb.user_id=m.user_id
+       AND rb.status='active'
       WHERE u.id=$2 AND u.status='active' AND rb.role IN ('founder','advisor')
-      FOR SHARE`, values: [input.organizationId, input.actorUserId],
+      FOR SHARE OF u,m,rb`, values: [input.organizationId, input.actorUserId],
   });
   if (result.rows.length === 0) throw new StudentCreateRepositoryError("STUDENT_CREATE_FORBIDDEN");
 }
