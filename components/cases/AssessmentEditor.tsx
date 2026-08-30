@@ -467,6 +467,8 @@ function AssessmentValueControl({
       value={asText(draft.value)}
       placeholder={field.value_type === "text" ? "請輸入" : undefined}
       onChange={(event) => onChange(event.target.value)}
+      onInput={(event) => onChange(event.currentTarget.value)}
+      onBlur={(event) => onChange(event.currentTarget.value)}
     />
   );
 }

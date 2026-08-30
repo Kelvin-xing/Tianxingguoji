@@ -38,6 +38,8 @@ test('FE-02 uses shared typed client and unavailable states for missing APIs', a
   assert.match(assessment, /requestApi/)
   assert.match(assessment, /blockingFieldIds/)
   assert.match(assessment, /answer\.semantic_state === "provided"/)
+  assert.match(assessment, /onInput=\{\(event\) => onChange\(event\.currentTarget\.value\)\}/)
+  assert.match(assessment, /onBlur=\{\(event\) => onChange\(event\.currentTarget\.value\)\}/)
   assert.match(assessment, /payload\.id !== view\.assessment_id/)
   assert.doesNotMatch(assessment, /payload\.status !== "background_complete"/)
   assert.match(caseDetail, /initialAvailableWorkflowActions/)
