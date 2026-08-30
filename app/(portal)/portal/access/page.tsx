@@ -29,7 +29,7 @@ export default function PortalAccessPage() {
         <p className="portal-muted">輸入顧問提供的訪問密鑰。密鑰不會加入網址或儲存在此裝置。</p>
         <form onSubmit={redeem} className="portal-form">
           <label htmlFor="portal-access-key">訪問密鑰</label>
-          <input id="portal-access-key" type="password" autoComplete="off" required minLength={16} value={accessKey} onChange={(event) => setAccessKey(event.target.value)} />
+          <input id="portal-access-key" type="password" autoComplete="off" required minLength={64} maxLength={512} value={accessKey} onChange={(event) => setAccessKey(event.target.value)} />
           <button type="submit" disabled={state === 'loading'}>{state === 'loading' ? '正在驗證…' : '進入案件門戶'}</button>
         </form>
         <div aria-live="polite" className="portal-state">

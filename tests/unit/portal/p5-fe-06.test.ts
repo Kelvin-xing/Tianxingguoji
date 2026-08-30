@@ -15,4 +15,7 @@ test('portal FE-06 stays read-only, isolated, and capability/DTO driven', async 
   assert.doesNotMatch(source, /actor\.role|billing|internal notification|upload/i)
   assert.doesNotMatch(source, /case_number|case number|contact|guardian_email/i)
   assert.match(client, /api\/v1\/portal\/(sessions|workspace)/)
+  assert.match(client, /idempotencyKey:\s*crypto\.randomUUID\(\)/)
+  assert.match(access, /minLength=\{64\}/)
+  assert.match(access, /maxLength=\{512\}/)
 })

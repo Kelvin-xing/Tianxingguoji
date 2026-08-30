@@ -11,6 +11,6 @@ function decodeWorkspace(value: unknown): PortalWorkspaceDto {
   const documents = expectArray(row.documents, (item) => { const x = expectRecord(item); return { name: expectString(x.name), published_at: expectString(x.published_at) } })
   return { status: (typeof row.status === 'string' ? row.status : 'active') as PortalStatus, student, stage: expectString(row.stage ?? row.customer_facing_stage), schools, applications, documents, allowed_actions: strings(row.allowed_actions) }
 }
-export function redeemPortalAccess(accessKey: string) { return requestApi({ path: '/api/v1/portal/sessions', method: 'POST', body: { access_key: accessKey }, responseMode: 'raw' }, (value) => expectRecord(value)) }
+export function redeemPortalAccess(accessKey: string) { return requestApi({ path: '/api/v1/portal/sessions', method: 'POST', body: { access_key: accessKey }, idempotencyKey: crypto.randomUUID(), responseMode: 'raw' }, (value) => expectRecord(value)) }
 export function getPortalWorkspace() { return requestApi({ path: '/api/v1/portal/workspace', responseMode: 'raw' }, decodeWorkspace) }
 export function logoutPortal() { return requestApi({ path: '/api/v1/portal/sessions', method: 'DELETE', responseMode: 'raw' }, (value) => expectRecord(value)) }
