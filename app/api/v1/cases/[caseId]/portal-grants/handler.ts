@@ -243,7 +243,7 @@ function toGrantJson(grant: PortalGrantSummary) {
   };
 }
 
-async function readCaseId(context: CaseContext): Promise<string> {
+export async function readCaseId(context: CaseContext): Promise<string> {
   const { caseId } = await context.params;
   if (!UUID.test(caseId)) throw new RequestInvalid();
   return caseId;

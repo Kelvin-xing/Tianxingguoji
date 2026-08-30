@@ -36,6 +36,15 @@ export interface PortalSessionRecord {
   readonly recordVersion: number;
 }
 
+export interface PortalViewerRecord {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly serviceCaseId: string;
+  readonly guardianRelationshipId: string;
+  readonly status: "active" | "inactive";
+  readonly recordVersion: number;
+}
+
 export type PortalRepositoryErrorCode =
   | "PORTAL_CONTEXT_MISMATCH"
   | "PORTAL_GRANT_NOT_FOUND"
@@ -73,6 +82,13 @@ export interface PortalGrantSecretInput {
 }
 
 export interface PortalRepository {
+  /** Ensure one active Case-scoped Guardian viewer before issuing a grant. */
+  ensureViewer?(input: PortalGrantMutationContext & {
+    readonly viewerId: string;
+    readonly guardianRelationshipId: string;
+    readonly createdAtMs: number;
+  }): Promise<PortalViewerRecord>;
+
   /**
    * In one tenant transaction: lock case/viewer/issuer authorization facts,
    * claim idempotency, insert the grant, audit, outbox, and security evidence.

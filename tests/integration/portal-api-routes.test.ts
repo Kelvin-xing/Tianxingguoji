@@ -8,6 +8,10 @@ import {
 import { createPortalGrantItemHandlers } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/handler.ts";
 import { createPortalGrantRotateHandler } from "../../app/api/v1/cases/[caseId]/portal-grants/[grantId]/rotate/handler.ts";
 import {
+  createPortalViewerCollectionHandlers,
+  type PortalViewerRouteDependencies,
+} from "../../app/api/v1/cases/[caseId]/portal-viewers/handler.ts";
+import {
   PORTAL_SESSION_COOKIE_NAME,
   createPortalSessionHandlers,
 } from "../../app/api/v1/portal/sessions/handler.ts";
@@ -18,6 +22,7 @@ import { PortalRuntimeUnavailable } from "../../modules/external-portal/infrastr
 const CASE_ID = "11111111-1111-4111-8111-111111111111";
 const GRANT_ID = "22222222-2222-4222-8222-222222222222";
 const VIEWER_ID = "33333333-3333-4333-8333-333333333333";
+const RELATIONSHIP_ID = "66666666-6666-4666-8666-666666666666";
 const context = { params: Promise.resolve({ caseId: CASE_ID }) };
 const itemContext = { params: Promise.resolve({ caseId: CASE_ID, grantId: GRANT_ID }) };
 
@@ -45,6 +50,48 @@ function internalDependencies(overrides: Partial<PortalGrantRouteDependencies> =
     ...overrides,
   };
 }
+
+test("Primary Advisor selects a Guardian relationship and ensures its opaque Portal viewer", async () => {
+  let observed: unknown;
+  const dependencies: PortalViewerRouteDependencies = {
+    authenticateInternal: async () => ({
+      actorUserId: "44444444-4444-4444-8444-444444444444",
+      organizationId: "77777777-7777-4777-8777-777777777777",
+      workspaceCapabilities: ["cases.workflow.manage"],
+      roles: ["advisor"],
+    }),
+    ensureViewer: async (input) => {
+      observed = input;
+      return {
+        viewerId: VIEWER_ID,
+        guardianRelationshipId: RELATIONSHIP_ID,
+        status: "active",
+        recordVersion: 1,
+      };
+    },
+  };
+  const handlers = createPortalViewerCollectionHandlers(dependencies);
+  const response = await handlers.POST(new Request(`https://app.test/api/v1/cases/${CASE_ID}/portal-viewers`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "idempotency-key": "viewer-1", origin: "https://app.test" },
+    body: JSON.stringify({ guardian_relationship_id: RELATIONSHIP_ID }),
+  }), context);
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(await response.json(), {
+    portal_viewer_id: VIEWER_ID,
+    guardian_relationship_id: RELATIONSHIP_ID,
+    status: "active",
+    record_version: 1,
+  });
+  assert.deepEqual(observed, {
+    actorUserId: "44444444-4444-4444-8444-444444444444",
+    actor: await dependencies.authenticateInternal(),
+    caseId: CASE_ID,
+    guardianRelationshipId: RELATIONSHIP_ID,
+    idempotencyKey: "viewer-1",
+  });
+});
 
 test("internal grant routes require idempotency and expected versions and expose raw secrets once", async () => {
   let issueInput: unknown;

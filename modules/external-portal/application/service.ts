@@ -59,6 +59,14 @@ export interface PortalGrantResult {
   readonly recordVersion: number;
 }
 
+export interface PortalViewerCommandInput {
+  readonly actor: PortalInternalCommandActor;
+  readonly serviceCaseId: string;
+  readonly guardianRelationshipId: string;
+  readonly idempotencyKey: string;
+  readonly requestId: string;
+}
+
 export class PortalService {
   private readonly repository: PortalRepository;
   private readonly pepper: Buffer;
@@ -71,6 +79,39 @@ export class PortalService {
     this.pepper = Buffer.from(options.secretPepper, "utf8");
     this.clock = options.clock ?? { nowMs: () => Date.now() };
     this.createId = options.createId ?? randomUUID;
+  }
+
+  async ensureViewer(input: PortalViewerCommandInput) {
+    if (!this.repository.ensureViewer) throw new PortalPolicyError("PORTAL_RUNTIME_UNAVAILABLE");
+    assertViewerInput(input);
+    assertGrantCommandActor(input.actor, "issue");
+    const nowMs = this.clock.nowMs();
+    const viewerId = this.createId();
+    return this.repository.ensureViewer({
+      organizationId: input.actor.organizationId,
+      serviceCaseId: input.serviceCaseId,
+      actorUserId: input.actor.actorUserId,
+      viewerId,
+      guardianRelationshipId: input.guardianRelationshipId,
+      createdAtMs: nowMs,
+      idempotencyKey: input.idempotencyKey,
+      requestHash: hashRequestPayload({
+        operation: "ensure_viewer",
+        service_case_id: input.serviceCaseId,
+        guardian_relationship_id: input.guardianRelationshipId,
+      }),
+      effects: this.effects({
+        organizationId: input.actor.organizationId,
+        actorUserId: input.actor.actorUserId,
+        aggregateId: viewerId,
+        aggregateType: "portal_viewer",
+        eventPrefix: "portal.viewer",
+        operation: "ensure",
+        idempotencyKey: input.idempotencyKey,
+        requestId: input.requestId,
+        occurredAtMs: nowMs,
+      }),
+    });
   }
 
   async issueGrant(input: PortalGrantCommandInput): Promise<PortalGrantResult> {
@@ -253,23 +294,35 @@ export class PortalService {
   private effects(input: Readonly<{
     organizationId: string; actorUserId: string; aggregateId: string; operation: string;
     idempotencyKey: string; requestId: string; occurredAtMs: number;
+    aggregateType?: string; eventPrefix?: string;
   }>) {
+    const aggregateType = input.aggregateType ?? "portal_access_grant";
+    const eventPrefix = input.eventPrefix ?? "portal.grant";
     const occurredAt = new Date(input.occurredAtMs).toISOString();
     const audit = buildAuditEvent({
       id: this.createId(), organizationId: input.organizationId, actorUserId: input.actorUserId,
-      actorKind: "user", eventType: `portal.grant.${input.operation}`, eventVersion: 1,
-      action: input.operation, resourceType: "portal_access_grant", resourceId: input.aggregateId,
+      actorKind: "user", eventType: `${eventPrefix}.${input.operation}`, eventVersion: 1,
+      action: input.operation, resourceType: aggregateType, resourceId: input.aggregateId,
       outcome: "succeeded", requestId: input.requestId, occurredAt,
       metadata: { effect_type: input.operation, request_id: input.requestId },
     });
     const outbox = buildOutboxMessage({
       id: this.createId(), auditEventId: audit.id, organizationId: input.organizationId,
-      aggregateType: "portal_access_grant", aggregateId: input.aggregateId,
+      aggregateType, aggregateId: input.aggregateId,
       eventType: audit.eventType, eventVersion: 1, idempotencyKey: input.idempotencyKey,
       requestId: input.requestId, payload: { aggregate_id: input.aggregateId, request_id: input.requestId, effect_type: input.operation, operation: input.operation },
       availableAt: occurredAt, createdAt: occurredAt,
     });
     return buildAtomicMutationEffects({ audit, outbox });
+  }
+}
+
+function assertViewerInput(input: PortalViewerCommandInput): void {
+  if (!input || !input.actor || !UUID.test(input.serviceCaseId) ||
+      !UUID.test(input.guardianRelationshipId) ||
+      !UUID.test(input.actor.actorUserId) || !UUID.test(input.actor.organizationId) ||
+      !SAFE_IDEMPOTENCY_KEY.test(input.idempotencyKey) || input.requestId.length < 1) {
+    throw new PortalPolicyError("PORTAL_INPUT_INVALID");
   }
 }
 
