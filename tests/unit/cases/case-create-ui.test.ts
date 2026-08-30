@@ -36,6 +36,7 @@ test("case directory uses a searchable status and stage filter instead of summar
   assert.match(directory, /共 \{caseRecords\.length\} 宗案件/);
   assert.doesNotMatch(directory, /<Metric /);
   assert.match(directory, /\{caseStageLabels\[item\.stage\]\}/);
+  assert.match(directory, /application_in_progress: '申請處理中'/);
   assert.match(directory, />主要顧問</);
   assert.match(directory, /\{formatDate\(item\.updatedAt\)\}/);
 });

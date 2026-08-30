@@ -146,6 +146,7 @@ export const caseStageLabels: Record<CaseRecord['stage'], string> = {
   signed: '已簽約',
   background_collection: '收集背景資料',
   school_selection_confirmed: '已確認選校',
+  application_in_progress: '申請處理中',
   interview_preparation: '面試準備',
   application_submitted: '已提交申請',
   awaiting_result: '等待結果',

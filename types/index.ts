@@ -145,6 +145,7 @@ export type CaseStage =
   | 'signed'
   | 'background_collection'
   | 'school_selection_confirmed'
+  | 'application_in_progress'
   | 'interview_preparation'
   | 'application_submitted'
   | 'awaiting_result'
