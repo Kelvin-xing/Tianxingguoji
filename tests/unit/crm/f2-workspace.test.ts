@@ -20,6 +20,8 @@ test('FE-02 case intake carries Advisor, referral source and signed_at, not a cl
   assert.match(intake, /primary_advisor_role_binding_id/)
   assert.match(intake, /referral_source_id/)
   assert.match(intake, /signed_at/)
+  assert.match(intake, /signedAtInput\.current\?\.value/)
+  assert.match(intake, /onBlur=\{\(event\) => setSignedAt\(event\.currentTarget\.value\)\}/)
   assert.match(intake, /選擇學生/)
   assert.doesNotMatch(intake, /background_collection/)
   assert.doesNotMatch(intake, /manifest_id|ManifestStep/)
