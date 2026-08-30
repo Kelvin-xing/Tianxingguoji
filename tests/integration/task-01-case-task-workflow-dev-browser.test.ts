@@ -193,6 +193,7 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
   let devServer: ChildProcess | undefined;
   let context: BrowserContext | undefined;
   let failureStage: Stage | null = null;
+  let failureDetail: string | null = null;
 
   try {
     await Promise.all([access(DOCKER), access(CHROME)]);
@@ -441,8 +442,11 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
     assert.equal(evidence.sensitive_log_matches, 0);
     assertNoSensitiveDevLogs(devServer, sensitiveValues);
     stage = "complete";
-  } catch {
+  } catch (error) {
     failureStage = stage;
+    failureDetail = error instanceof Error
+      ? `${error.name}: ${error.message.split(/\r?\n/, 1)[0]}`
+      : "Unknown browser gate failure";
   } finally {
     cleanup.context_closed = await closeContext(context);
     cleanup.dev_stopped = await stopNextDev(devServer);
@@ -456,6 +460,7 @@ test("TASK-01 works through a real local browser and disposable PostgreSQL 17", 
   process.stdout.write(`${JSON.stringify({
     status: failureStage === null && cleanupComplete ? "pass" : "failed",
     stage: failureStage ?? (cleanupComplete ? "complete" : "cleanup"),
+    failure_detail: failureDetail,
     evidence,
     cleanup,
     local_dev: failureStage === null && cleanupComplete ? "pass" : "failed",
@@ -471,12 +476,19 @@ function principal(role: Actor) {
   return value as typeof value & { readonly role: Actor };
 }
 
-async function login(page: Page, baseUrl: string, email: string, password: string, destination: "/today" | "/tasks" = "/today"): Promise<void> {
+async function login(
+  page: Page,
+  baseUrl: string,
+  email: string,
+  password: string,
+  destination: "/today" | "/tasks" = "/today",
+  headingOverride?: string | null,
+): Promise<void> {
   const navigation = await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" });
   assert.equal(navigation?.status(), 200);
-  const emailInput = page.getByRole("textbox", { name: "測試帳號電郵", exact: true });
+  const emailInput = page.getByRole("textbox", { name: "帳戶電郵", exact: true });
   const passwordInput = page.getByLabel("密碼", { exact: true });
-  const submit = page.getByRole("button", { name: "登入測試工作台", exact: true });
+  const submit = page.getByRole("button", { name: "登入工作台", exact: true });
   await emailInput.waitFor({ state: "visible" });
   await passwordInput.waitFor({ state: "visible" });
   await submit.waitFor({ state: "visible" });
@@ -489,14 +501,17 @@ async function login(page: Page, baseUrl: string, email: string, password: strin
   assert.equal((await submitResponse).status(), 303);
   await page.waitForURL((url) => url.pathname === destination);
   assert.equal((await accessResponse).status(), 200);
-  await page.getByRole("heading", { name: destination === "/today" ? "今日工作" : "任務", exact: true }).first().waitFor({ state: "visible" });
+  if (headingOverride !== null) {
+    const heading = headingOverride ?? (destination === "/today" ? "今日工作" : "任務");
+    await page.getByRole("heading", { name: heading, exact: true }).first().waitFor({ state: "visible" });
+  }
 }
 
 async function logout(page: Page): Promise<void> {
   const response = await page.goto("/api/v1/auth/logout", { waitUntil: "domcontentloaded" });
   assert.equal(response?.status(), 200);
   await page.goto("/login", { waitUntil: "domcontentloaded" });
-  await page.getByRole("textbox", { name: "測試帳號電郵", exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("textbox", { name: "帳戶電郵", exact: true }).waitFor({ state: "visible" });
 }
 
 async function createCaseFixture(
@@ -796,9 +811,21 @@ function decodeCompletedTaskDetail(
     isObject(item) && hasExactKeys(item, ["to", "requires_reason", "requires_assignee"]) &&
     typeof item.to === "string" && typeof item.requires_reason === "boolean" && typeof item.requires_assignee === "boolean");
   const assignee = task.assignee;
+  const currentAssignment = task.current_assignment;
+  const exactCurrentAssignment = currentAssignment === null ||
+    (isObject(currentAssignment) && hasExactKeys(currentAssignment, [
+      "id", "assignee_user_id", "assignee_role", "status",
+    ]) && isUuid(currentAssignment.id) && isUuid(currentAssignment.assignee_user_id) &&
+      (currentAssignment.assignee_role === "advisor" || currentAssignment.assignee_role === "contractor") &&
+      typeof currentAssignment.status === "string" && currentAssignment.status.trim() !== "");
+  const allowedActions = task.allowed_actions;
+  const exactAllowedActions = Array.isArray(allowedActions) && allowedActions.every((action) =>
+    action === "accept" || action === "reject" || action === "reassign" ||
+    action === "complete" || action === "cancel");
   const exact = hasExactKeys(task, [
     "id", "case_id", "case_number", "title", "task_brief", "due_at", "state",
-    "assignee", "record_version", "updated_at", "available_transitions",
+    "assignee", "record_version", "updated_at", "available_transitions", "task_kind",
+    "school_target_id", "is_overdue", "current_assignment", "allowed_actions",
   ]) && task.id === taskId && isUuid(task.case_id) &&
     typeof task.case_number === "string" && task.case_number.trim() !== "" &&
     typeof task.title === "string" && task.title.trim() !== "" &&
@@ -808,7 +835,9 @@ function decodeCompletedTaskDetail(
     (assignee.role === "advisor" || assignee.role === "contractor") &&
     typeof assignee.label === "string" && assignee.label.trim() !== "" &&
     Number.isSafeInteger(task.record_version) && Number(task.record_version) > 0 &&
-    isIsoInstant(task.updated_at) && exactTransitionArray;
+    isIsoInstant(task.updated_at) && exactTransitionArray && task.task_kind === "manual" &&
+    task.school_target_id === null && typeof task.is_overdue === "boolean" &&
+    exactCurrentAssignment && exactAllowedActions;
   return {
     exact,
     stateCompleted: task.state === "completed",
@@ -872,10 +901,10 @@ async function directTransition(
 
 async function inspectDeniedActor(page: Page, baseUrl: string, email: string, password: string, caseId: string) {
   await logout(page);
-  await login(page, baseUrl, email, password);
+  await login(page, baseUrl, email, password, "/today", null);
   const navigation = await page.goto(`${baseUrl}/tasks`, { waitUntil: "domcontentloaded" });
   assert.equal(navigation?.status(), 200);
-  await page.getByText("目前身份無法查看此工作區", { exact: true }).waitFor({ state: "visible" });
+  await page.getByText("目前帳號無法查看此工作區", { exact: true }).waitFor({ state: "visible" });
   const entriesHidden = await page.locator('a[href^="/tasks/"]').count() === 0;
   const direct = await page.evaluate(async (payload) => {
     try {
