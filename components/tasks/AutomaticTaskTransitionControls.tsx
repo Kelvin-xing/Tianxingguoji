@@ -74,6 +74,7 @@ export function AutomaticTaskTransitionControls({
   const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const [validationDetail, setValidationDetail] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedAction !== "reassign" || caseId === null) {
@@ -98,6 +99,7 @@ export function AutomaticTaskTransitionControls({
   function commandChanged() {
     attempt.current!.rotate();
     setNotice(null);
+    setValidationDetail(null);
     setConfirmed(false);
   }
 
@@ -114,6 +116,7 @@ export function AutomaticTaskTransitionControls({
     setEvidenceReference("");
     setConfirmed(false);
     setNotice(nextNotice);
+    setValidationDetail(null);
     queueMicrotask(() => actionSelect.current?.focus());
   }
 
@@ -121,8 +124,13 @@ export function AutomaticTaskTransitionControls({
     event.preventDefault();
     if (submitting.current || pending || selectedAction === "") return;
     const commandConfirmed = new FormData(event.currentTarget).has("command_confirmed");
+    if (!commandConfirmed) {
+      setValidationDetail("請先勾選確認執行這項操作。");
+      setNotice("validation");
+      return;
+    }
     const completionInput = selectedAction === "complete" ? buildCompletionInput(event.currentTarget) : null;
-    if (!commandConfirmed || (["reject", "reassign", "cancel"] as const).includes(selectedAction as "reject" | "reassign" | "cancel") && reason.trim() === "" ||
+    if ((["reject", "reassign", "cancel"] as const).includes(selectedAction as "reject" | "reassign" | "cancel") && reason.trim() === "" ||
         (selectedAction === "reassign" && nextAssigneeId === "") ||
         (selectedAction === "complete" && completionInput === null)) {
       setNotice("validation");
@@ -194,18 +202,31 @@ export function AutomaticTaskTransitionControls({
     const channelValue = formData.get("submission_channel");
     const referenceValue = formData.get("official_reference");
     const evidenceValue = formData.get("evidence_reference");
-    if (task.task_kind !== "application_prepare_submit" || task.school_target_id === null ||
-        typeof submittedValue !== "string" || typeof confirmedValue !== "string" ||
+    if (task.task_kind !== "application_prepare_submit" || task.school_target_id === null) {
+      setValidationDetail("這項申請任務缺少學校目標資料，暫時不能完成。");
+      return null;
+    }
+    if (typeof submittedValue !== "string" || typeof confirmedValue !== "string" ||
         typeof channelValue !== "string" || !(channelValue in CHANNEL_LABELS) ||
-        !formData.has("checklist_complete")) return null;
+        !formData.has("checklist_complete")) {
+      setValidationDetail("請填妥提交時間、提交渠道、核對時間，並確認資料已完成。");
+      return null;
+    }
     const submittedIso = localDateTimeToIso(submittedValue);
     const confirmedIso = localDateTimeToIso(confirmedValue);
-    if (submittedIso === null || confirmedIso === null || Date.parse(submittedIso) > Date.now() || Date.parse(confirmedIso) > Date.now()) return null;
+    if (submittedIso === null || confirmedIso === null || Date.parse(submittedIso) > Date.now() || Date.parse(confirmedIso) > Date.now()) {
+      setValidationDetail("提交時間與核對時間必須是有效且不晚於目前的香港時間。");
+      return null;
+    }
     const reference = typeof referenceValue === "string" ? referenceValue.trim() : "";
     const evidence = typeof evidenceValue === "string" ? evidenceValue.trim() : "";
     const noReference = formData.has("no_reference_declared");
     if ((!noReference && reference === "") || (noReference && (reference !== "" || !isUuid(evidence))) ||
-        (evidence !== "" && !isUuid(evidence))) return null;
+        (evidence !== "" && !isUuid(evidence))) {
+      setValidationDetail("請填寫官方提交編號；如學校沒有編號，須改為勾選無編號並提供有效的證據文件識別碼。");
+      return null;
+    }
+    setValidationDetail(null);
     return {
       action: "complete",
       expected_record_version: task.record_version,
@@ -320,7 +341,7 @@ export function AutomaticTaskTransitionControls({
             </label>
           ) : null}
 
-          <AutomaticTransitionNotice notice={notice} />
+          <AutomaticTransitionNotice notice={notice} validationDetail={validationDetail} />
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <button type="button" className="secondary-button justify-center" disabled={pending} onClick={() => { attempt.current!.complete(); resetForm(null); }}>重設</button>
             <button type="submit" className="primary-button justify-center min-w-36" disabled={pending || selectedAction === ""} aria-busy={pending}>
@@ -381,9 +402,9 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
   );
 }
 
-function AutomaticTransitionNotice({ notice }: { readonly notice: Notice }) {
+function AutomaticTransitionNotice({ notice, validationDetail }: { readonly notice: Notice; readonly validationDetail: string | null }) {
   if (notice === null) return null;
-  const message = notice === "validation" ? "請填妥所有必填資料；時間不能在未來，官方編號與無編號聲明只能選一項。"
+  const message = notice === "validation" ? validationDetail ?? "請填妥所有必填資料；時間不能在未來，官方編號與無編號聲明只能選一項。"
     : notice === "stale" ? "任務已有較新版本，已重新載入最新內容。"
       : notice === "conflict" ? "目前狀態不接受這項操作，請重新確認。"
         : notice === "denied" ? "目前帳號不能執行這項任務操作。"

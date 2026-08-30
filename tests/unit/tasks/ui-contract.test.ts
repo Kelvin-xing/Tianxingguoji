@@ -107,6 +107,7 @@ test("Task detail owns transition success after authoritative refresh without du
   assert.match(automatic, /name="submitted_at"/);
   assert.match(automatic, /name="official_reference"/);
   assert.match(automatic, /new Date\(`\$\{value\}:00\+08:00`\)/);
+  assert.match(automatic, /提交時間與核對時間必須是有效且不晚於目前的香港時間/);
   assert.match(automatic, /onInput=\{\(event\) => onChange\("submittedAt", event\.currentTarget\.value\)\}/);
   assert.match(automatic, /onInput=\{\(event\) => onChange\("confirmedAt", event\.currentTarget\.value\)\}/);
   assert.match(automatic, /transitionAutomaticTask\(/);
