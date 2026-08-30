@@ -13,7 +13,7 @@ test("Task routes use authoritative frontend components and Case detail mounts t
   ]);
   assert.match(listPage, /<TasksDirectory \/>/);
   assert.match(detailPage, /<TaskDetailView taskId=\{taskId\} \/>/);
-  assert.match(casePage, /<CaseTasksPanel caseId=\{caseId\} \/>/);
+  assert.match(casePage, /<CaseTasksPanel key=\{`\$\{record\.id\}-\$\{record\.recordVersion\}`\} caseId=\{caseId\} \/>/);
   assert.doesNotMatch(list, /previewCaseWorkspaceAdapter|Preview adapter|mock|fetch\(/i);
 });
 

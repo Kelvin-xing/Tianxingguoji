@@ -56,7 +56,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
           initialRecordVersion={record.recordVersion}
           initialAvailableWorkflowActions={record.availableWorkflowActions}
         />
-        <CaseTasksPanel caseId={caseId} />
+        <CaseTasksPanel key={`${record.id}-${record.recordVersion}`} caseId={caseId} />
       </CaseWorkflowProvider>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
