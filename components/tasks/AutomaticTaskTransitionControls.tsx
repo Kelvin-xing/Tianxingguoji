@@ -120,7 +120,7 @@ export function AutomaticTaskTransitionControls({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || pending || selectedAction === "") return;
-    const completionInput = selectedAction === "complete" ? buildCompletionInput() : null;
+    const completionInput = selectedAction === "complete" ? buildCompletionInput(event.currentTarget) : null;
     if (!confirmed || (["reject", "reassign", "cancel"] as const).includes(selectedAction as "reject" | "reassign" | "cancel") && reason.trim() === "" ||
         (selectedAction === "reassign" && nextAssigneeId === "") ||
         (selectedAction === "complete" && completionInput === null)) {
@@ -186,29 +186,38 @@ export function AutomaticTaskTransitionControls({
     }
   }
 
-  function buildCompletionInput(): CompleteApplicationTaskInput | null {
+  function buildCompletionInput(form: HTMLFormElement): CompleteApplicationTaskInput | null {
+    const formData = new FormData(form);
+    const submittedValue = formData.get("submitted_at");
+    const confirmedValue = formData.get("confirmed_at");
+    const channelValue = formData.get("submission_channel");
+    const referenceValue = formData.get("official_reference");
+    const evidenceValue = formData.get("evidence_reference");
     if (task.task_kind !== "application_prepare_submit" || task.school_target_id === null ||
-        submittedAt === "" || confirmedAt === "" || !checklistComplete) return null;
-    const submittedIso = localDateTimeToIso(submittedAt);
-    const confirmedIso = localDateTimeToIso(confirmedAt);
+        typeof submittedValue !== "string" || typeof confirmedValue !== "string" ||
+        typeof channelValue !== "string" || !(channelValue in CHANNEL_LABELS) ||
+        !formData.has("checklist_complete")) return null;
+    const submittedIso = localDateTimeToIso(submittedValue);
+    const confirmedIso = localDateTimeToIso(confirmedValue);
     if (submittedIso === null || confirmedIso === null || Date.parse(submittedIso) > Date.now() || Date.parse(confirmedIso) > Date.now()) return null;
-    const reference = officialReference.trim();
-    const evidence = evidenceReference.trim();
-    if ((!noReferenceDeclared && reference === "") || (noReferenceDeclared && (reference !== "" || !isUuid(evidence))) ||
+    const reference = typeof referenceValue === "string" ? referenceValue.trim() : "";
+    const evidence = typeof evidenceValue === "string" ? evidenceValue.trim() : "";
+    const noReference = formData.has("no_reference_declared");
+    if ((!noReference && reference === "") || (noReference && (reference !== "" || !isUuid(evidence))) ||
         (evidence !== "" && !isUuid(evidence))) return null;
     return {
       action: "complete",
       expected_record_version: task.record_version,
       completion_record: {
         submitted_at: submittedIso,
-        submission_channel: submissionChannel,
+        submission_channel: channelValue as SubmissionChannel,
         submitter_user_id: actorUserId,
         checklist_snapshot: {
           all_required_items_complete: true,
           confirmed_at: confirmedIso,
         },
-        official_submission_reference: noReferenceDeclared ? null : reference,
-        no_reference_declared: noReferenceDeclared,
+        official_submission_reference: noReference ? null : reference,
+        no_reference_declared: noReference,
       },
       evidence_reference: evidence === "" ? null : evidence,
     };
@@ -337,31 +346,31 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
       <legend className="section-title px-1">申請提交記錄</legend>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="field-label" htmlFor={`task-submitted-at-${taskId}`}>提交時間 <span aria-hidden="true">*</span>
-          <input id={`task-submitted-at-${taskId}`} type="datetime-local" value={values.submittedAt} disabled={pending} required onInput={(event) => onChange("submittedAt", event.currentTarget.value)} onBlur={(event) => onChange("submittedAt", event.currentTarget.value)} onChange={(event) => onChange("submittedAt", event.target.value)} />
+          <input id={`task-submitted-at-${taskId}`} name="submitted_at" type="datetime-local" value={values.submittedAt} disabled={pending} required onInput={(event) => onChange("submittedAt", event.currentTarget.value)} onBlur={(event) => onChange("submittedAt", event.currentTarget.value)} onChange={(event) => onChange("submittedAt", event.target.value)} />
         </label>
         <label className="field-label" htmlFor={`task-submission-channel-${taskId}`}>提交渠道 <span aria-hidden="true">*</span>
-          <select id={`task-submission-channel-${taskId}`} value={values.submissionChannel} disabled={pending} required onChange={(event) => onChange("submissionChannel", event.target.value)}>
+          <select id={`task-submission-channel-${taskId}`} name="submission_channel" value={values.submissionChannel} disabled={pending} required onChange={(event) => onChange("submissionChannel", event.target.value)}>
             {Object.entries(CHANNEL_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
           </select>
         </label>
       </div>
       <label className="flex items-start gap-3 text-sm">
-        <input type="checkbox" checked={values.checklistComplete} disabled={pending} required onChange={(event) => onChange("checklistComplete", event.target.checked)} />
+        <input name="checklist_complete" type="checkbox" checked={values.checklistComplete} disabled={pending} required onChange={(event) => onChange("checklistComplete", event.target.checked)} />
         <span>所有必需申請資料已完成並核對。</span>
       </label>
       <label className="field-label" htmlFor={`task-checklist-confirmed-at-${taskId}`}>核對完成時間 <span aria-hidden="true">*</span>
-        <input id={`task-checklist-confirmed-at-${taskId}`} type="datetime-local" value={values.confirmedAt} disabled={pending} required onInput={(event) => onChange("confirmedAt", event.currentTarget.value)} onBlur={(event) => onChange("confirmedAt", event.currentTarget.value)} onChange={(event) => onChange("confirmedAt", event.target.value)} />
+        <input id={`task-checklist-confirmed-at-${taskId}`} name="confirmed_at" type="datetime-local" value={values.confirmedAt} disabled={pending} required onInput={(event) => onChange("confirmedAt", event.currentTarget.value)} onBlur={(event) => onChange("confirmedAt", event.currentTarget.value)} onChange={(event) => onChange("confirmedAt", event.target.value)} />
       </label>
       <label className="field-label" htmlFor={`task-official-reference-${taskId}`}>學校官方提交編號
-        <input id={`task-official-reference-${taskId}`} type="text" value={values.officialReference} disabled={pending || values.noReferenceDeclared} onChange={(event) => onChange("officialReference", event.target.value)} />
+        <input id={`task-official-reference-${taskId}`} name="official_reference" type="text" value={values.officialReference} disabled={pending || values.noReferenceDeclared} onChange={(event) => onChange("officialReference", event.target.value)} />
       </label>
       <label className="flex items-start gap-3 text-sm">
-        <input type="checkbox" checked={values.noReferenceDeclared} disabled={pending} onChange={(event) => onChange("noReferenceDeclared", event.target.checked)} />
+        <input name="no_reference_declared" type="checkbox" checked={values.noReferenceDeclared} disabled={pending} onChange={(event) => onChange("noReferenceDeclared", event.target.checked)} />
         <span>學校沒有提供官方提交編號。</span>
       </label>
       <label className="field-label" htmlFor={`task-evidence-reference-${taskId}`}>
         證據文件識別碼{values.noReferenceDeclared ? <span aria-hidden="true"> *</span> : null}
-        <input id={`task-evidence-reference-${taskId}`} type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />
+        <input id={`task-evidence-reference-${taskId}`} name="evidence_reference" type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />
         <small>沒有官方編號時，必須引用一份已授權且通過檢查的案件文件。</small>
       </label>
       <div className="inline-callout">
