@@ -363,6 +363,8 @@ export function CandidateListWorkspace({
                             disabled={creating}
                             aria-describedby={overdue ? `application-deadline-risk-${school.school_id}` : undefined}
                             onChange={(event) => setApplicationDeadline(school.school_id, event.target.value)}
+                            onInput={(event) => setApplicationDeadline(school.school_id, event.currentTarget.value)}
+                            onBlur={(event) => setApplicationDeadline(school.school_id, event.currentTarget.value)}
                           />
                           {overdue ? (
                             <span
@@ -646,7 +648,7 @@ function GuardianDecisionForm({
         </label>
         <label className="block text-sm font-medium" htmlFor={`guardian-decided-at-${version.id}`}>
           確認時間
-          <input id={`guardian-decided-at-${version.id}`} type="datetime-local" className="assessment-control mt-1 w-full" value={decidedAt} max={toLocalDateTime(new Date())} required disabled={pending} onChange={(event) => setDecidedAt(event.target.value)} />
+          <input id={`guardian-decided-at-${version.id}`} type="datetime-local" className="assessment-control mt-1 w-full" value={decidedAt} max={toLocalDateTime(new Date())} required disabled={pending} onChange={(event) => setDecidedAt(event.target.value)} onInput={(event) => setDecidedAt(event.currentTarget.value)} onBlur={(event) => setDecidedAt(event.currentTarget.value)} />
         </label>
         <fieldset disabled={pending}>
           <legend className="text-sm font-medium">決定</legend>

@@ -49,6 +49,8 @@ test("CandidateList workspace exposes bounded states, fields and accessible cont
   assert.match(workspace, /maxLength=\{1000\}/);
   assert.match(workspace, /selectedSchoolIds\.length >= 50/);
   assert.match(workspace, /type="datetime-local"/);
+  assert.match(workspace, /onInput=\{\(event\) => setApplicationDeadline\(school\.school_id, event\.currentTarget\.value\)\}/);
+  assert.match(workspace, /onInput=\{\(event\) => setDecidedAt\(event\.currentTarget\.value\)\}/);
   assert.match(workspace, /application_deadline: new Date\(applicationDeadlines\[school\.school_id\]!\)\.toISOString\(\)/);
   assert.match(workspace, /已逾期風險/);
   assert.match(workspace, /未記錄（歷史版本）/);
