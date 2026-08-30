@@ -57,6 +57,10 @@ test("Task create and transition use sync locks, idempotency attempts and author
   assert.match(panel, /attempt\.current!\.keyFor\(createTaskFingerprint\(input\)\)/);
   assert.match(panel, /const authoritative = await listTasks\(caseId\)/);
   assert.match(panel, /created\.record_version !== receipt\.record_version/);
+  assert.match(panel, /new FormData\(event\.currentTarget\)\.get\("due_local"\)/);
+  assert.match(panel, /name="due_local"/);
+  assert.match(panel, /onInput=/);
+  assert.match(panel, /onBlur=/);
   assert.match(transitions, /if \(submitting\.current \|\| pending \|\| selected === null\) return/);
   assert.match(transitions, /attempt\.current!\.keyFor\(transitionTaskFingerprint\(task\.id, input\)\)/);
   assert.match(transitions, /const authoritative = await getTask\(task\.id\)/);

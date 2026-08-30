@@ -129,7 +129,8 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || pending || !canCreate || optionsState !== "ready") return;
-    const dueAt = hongKongLocalToIso(dueLocal);
+    const dueValue = new FormData(event.currentTarget).get("due_local");
+    const dueAt = hongKongLocalToIso(typeof dueValue === "string" ? dueValue : dueLocal);
     if (title.trim().length < 1 || title.trim().length > 300 || brief.trim().length < 1 || brief.trim().length > 4_000 || dueAt === null || assigneeId === "") {
       setNotice("validation");
       return;
@@ -202,7 +203,7 @@ export function CaseTasksPanel({ caseId }: { readonly caseId: string }) {
             <label className="field-label"><span>任務標題 *</span><input aria-label="任務標題" ref={titleInput} value={title} maxLength={300} required disabled={pending} onChange={(event) => { draftChanged(); setTitle(event.target.value); }} /></label>
             <label className="field-label"><span>負責人 *</span><select aria-label="負責人" value={assigneeId} required disabled={pending || optionsState !== "ready"} onChange={(event) => { draftChanged(); setAssigneeId(event.target.value); }}><option value="">{optionsState === "loading" ? "正在載入負責人" : "選擇負責人"}</option>{assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>)}</select></label>
             <label className="field-label md:col-span-2"><span>工作內容 *</span><textarea aria-label="工作內容" value={brief} maxLength={4_000} rows={4} required disabled={pending} onChange={(event) => { draftChanged(); setBrief(event.target.value); }} /></label>
-            <label className="field-label"><span>到期時間（香港時間）*</span><input aria-label="到期時間（香港時間）" type="datetime-local" value={dueLocal} required disabled={pending} onChange={(event) => { draftChanged(); setDueLocal(event.target.value); }} /></label>
+            <label className="field-label"><span>到期時間（香港時間）*</span><input aria-label="到期時間（香港時間）" name="due_local" type="datetime-local" value={dueLocal} required disabled={pending} onInput={(event) => { draftChanged(); setDueLocal(event.currentTarget.value); }} onBlur={(event) => setDueLocal(event.currentTarget.value)} onChange={(event) => { draftChanged(); setDueLocal(event.target.value); }} /></label>
             <div className="flex items-end justify-end"><button type="submit" className="primary-button justify-center min-w-32" disabled={pending || optionsState !== "ready"} aria-busy={pending}><Icon name={pending ? "clock" : "plus"} size={15} />{pending ? "正在建立" : "建立任務"}</button></div>
           </form>
           <CreateNotice notice={notice} />
