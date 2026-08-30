@@ -29,6 +29,7 @@ test("public provision route is removed; only post-commit consumer may create au
 test("transition DTO rejects extra fields and keeps Cases eventual", () => {
   assert.match(transitionRoute, /const expected = action === "accept"/);
   assert.match(transitionRoute, /keys\.join\(\",\"\) !== expected/);
+  assert.match(transitionRoute, /checklist_snapshot,no_reference_declared,official_submission_reference,submission_channel,submitted_at,submitter_user_id/);
   assert.doesNotMatch(transitionRoute, /getSchoolTargetRuntime/);
 });
 

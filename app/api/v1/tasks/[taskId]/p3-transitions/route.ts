@@ -72,7 +72,7 @@ function parseBody(value: unknown): TransitionBody {
     if (!body.completion_record || typeof body.completion_record !== "object" || Array.isArray(body.completion_record) ||
         (body.evidence_reference !== null && typeof body.evidence_reference !== "string")) throw createApiError("VALIDATION_FAILED");
     const completionKeys = Object.keys(body.completion_record as Record<string, unknown>).sort().join(",");
-    if (!["checklist_snapshot,official_submission_reference,no_reference_declared,submission_channel,submitted_at,submitter_user_id",
+    if (!["checklist_snapshot,no_reference_declared,official_submission_reference,submission_channel,submitted_at,submitter_user_id",
       "coaching_summary,completed_at,interview_method"].includes(completionKeys)) throw createApiError("VALIDATION_FAILED");
   }
   return body as TransitionBody;
