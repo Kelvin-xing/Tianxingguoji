@@ -101,6 +101,8 @@ test("Task detail owns transition success after authoritative refresh without du
   assert.match(detail, /canTransition && task\.task_kind === "manual" && task\.available_transitions\.length > 0/);
   assert.match(detail, /task\.task_kind !== "manual"/);
   assert.match(automatic, /completeApplicationTask\(/);
+  assert.match(automatic, /onInput=\{\(event\) => onChange\("submittedAt", event\.currentTarget\.value\)\}/);
+  assert.match(automatic, /onInput=\{\(event\) => onChange\("confirmedAt", event\.currentTarget\.value\)\}/);
   assert.match(automatic, /transitionAutomaticTask\(/);
   assert.doesNotMatch(automatic, /\/api\/v1\/tasks\/\$\{task\.id\}\/transitions["']/);
   assert.match(automatic, /task\.task_kind === "interview_support"/);

@@ -337,7 +337,7 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
       <legend className="section-title px-1">申請提交記錄</legend>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="field-label" htmlFor={`task-submitted-at-${taskId}`}>提交時間 <span aria-hidden="true">*</span>
-          <input id={`task-submitted-at-${taskId}`} type="datetime-local" value={values.submittedAt} disabled={pending} required onChange={(event) => onChange("submittedAt", event.target.value)} />
+          <input id={`task-submitted-at-${taskId}`} type="datetime-local" value={values.submittedAt} disabled={pending} required onInput={(event) => onChange("submittedAt", event.currentTarget.value)} onBlur={(event) => onChange("submittedAt", event.currentTarget.value)} onChange={(event) => onChange("submittedAt", event.target.value)} />
         </label>
         <label className="field-label" htmlFor={`task-submission-channel-${taskId}`}>提交渠道 <span aria-hidden="true">*</span>
           <select id={`task-submission-channel-${taskId}`} value={values.submissionChannel} disabled={pending} required onChange={(event) => onChange("submissionChannel", event.target.value)}>
@@ -350,7 +350,7 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
         <span>所有必需申請資料已完成並核對。</span>
       </label>
       <label className="field-label" htmlFor={`task-checklist-confirmed-at-${taskId}`}>核對完成時間 <span aria-hidden="true">*</span>
-        <input id={`task-checklist-confirmed-at-${taskId}`} type="datetime-local" value={values.confirmedAt} disabled={pending} required onChange={(event) => onChange("confirmedAt", event.target.value)} />
+        <input id={`task-checklist-confirmed-at-${taskId}`} type="datetime-local" value={values.confirmedAt} disabled={pending} required onInput={(event) => onChange("confirmedAt", event.currentTarget.value)} onBlur={(event) => onChange("confirmedAt", event.currentTarget.value)} onChange={(event) => onChange("confirmedAt", event.target.value)} />
       </label>
       <label className="field-label" htmlFor={`task-official-reference-${taskId}`}>學校官方提交編號
         <input id={`task-official-reference-${taskId}`} type="text" value={values.officialReference} disabled={pending || values.noReferenceDeclared} onChange={(event) => onChange("officialReference", event.target.value)} />
