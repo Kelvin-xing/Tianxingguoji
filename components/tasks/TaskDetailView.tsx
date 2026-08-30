@@ -14,7 +14,7 @@ import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./Au
 import { TaskTransitionControls } from "./TaskTransitionControls";
 import { TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
-type LoadState = "loading" | "ready" | "unauthenticated" | "denied" | "not_found" | "unavailable";
+type LoadState = "loading" | "ready" | "assignment_ended" | "unauthenticated" | "denied" | "not_found" | "unavailable";
 
 export function TaskDetailView({ taskId }: { readonly taskId: string }) {
   const mounted = useRef(false);
@@ -71,11 +71,17 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
 
   if (state !== "ready" || result === null) {
     const content = state === "loading" ? ["正在載入任務", "請稍候。"]
+      : state === "assignment_ended" ? ["任務已更新", "此指派已結束，任務已從你的工作清單移除。"]
       : state === "unauthenticated" ? ["工作階段已失效", "請重新登入後查看任務。"]
         : state === "denied" ? ["無法查看任務", "目前帳號不能查看這項任務。"]
           : state === "not_found" ? ["找不到任務", "這項任務不存在或目前帳號不可查看。"]
             : ["任務服務暫時不可用", "請稍後重試。"];
-    return <div className="max-w-3xl mx-auto"><TaskPageState title={content[0]} detail={content[1]} login={state === "unauthenticated"} onRetry={state === "unavailable" ? () => void load() : undefined} /></div>;
+    return (
+      <div className="max-w-3xl mx-auto space-y-4">
+        <TaskPageState title={content[0]} detail={content[1]} login={state === "unauthenticated"} onRetry={state === "unavailable" ? () => void load() : undefined} />
+        {state === "assignment_ended" ? <div className="flex justify-center"><Link href="/tasks" className="primary-button">返回任務清單</Link></div> : null}
+      </div>
+    );
   }
 
   const task = result.task;
@@ -132,6 +138,12 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
             setTransitionOutcome(outcome === "success" ? "manual" : "stale");
             setCanTransition(true);
           }}
+          onAssignmentEnded={() => {
+            setResult(null);
+            setCanTransition(false);
+            setTransitionOutcome(null);
+            setState("assignment_ended");
+          }}
         />
       ) : null}
       {canTransition && task.task_kind !== "manual" && actorUserId !== null && (task.allowed_actions.length > 0) ? (
@@ -142,6 +154,12 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
             setResult(next);
             setTransitionOutcome(outcome);
             setCanTransition(true);
+          }}
+          onAssignmentEnded={() => {
+            setResult(null);
+            setCanTransition(false);
+            setTransitionOutcome(null);
+            setState("assignment_ended");
           }}
         />
       ) : null}

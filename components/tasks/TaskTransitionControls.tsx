@@ -26,10 +26,12 @@ export function TaskTransitionControls({
   task,
   caseId,
   onAuthoritativeChange,
+  onAssignmentEnded,
 }: {
   readonly task: TaskItem;
   readonly caseId?: string;
   readonly onAuthoritativeChange: (result: TaskDetailResult, outcome: AuthoritativeOutcome) => void;
+  readonly onAssignmentEnded: () => void;
 }) {
   const submitting = useRef(false);
   const attempt = useRef<TaskIdempotencyAttempt | null>(null);
@@ -104,7 +106,19 @@ export function TaskTransitionControls({
         input,
         attempt.current!.keyFor(transitionTaskFingerprint(task.id, input)),
       );
-      const authoritative = await getTask(task.id);
+      let authoritative: TaskDetailResult;
+      try {
+        authoritative = await getTask(task.id);
+      } catch (error) {
+        const assignmentEnded = caseId === undefined &&
+          (input.to === "completed" || input.to === "awaiting_reassignment") &&
+          classifyTaskFailure(error) === "not_found";
+        if (!assignmentEnded) throw error;
+        attempt.current!.complete();
+        resetForm(null);
+        onAssignmentEnded();
+        return;
+      }
       if (authoritative.task.id !== receipt.id || authoritative.task.record_version !== receipt.record_version) {
         throw new TypeError("Task authority mismatch.");
       }

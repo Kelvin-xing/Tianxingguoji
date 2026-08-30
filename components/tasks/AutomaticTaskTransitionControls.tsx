@@ -44,10 +44,12 @@ export function AutomaticTaskTransitionControls({
   task,
   actorUserId,
   onAuthoritativeChange,
+  onAssignmentEnded,
 }: {
   readonly task: TaskItem;
   readonly actorUserId: string;
   readonly onAuthoritativeChange: (result: TaskDetailResult, outcome: AutomaticTaskOutcome) => void;
+  readonly onAssignmentEnded: () => void;
 }) {
   const submitting = useRef(false);
   const attempt = useRef<TaskIdempotencyAttempt | null>(null);
@@ -149,7 +151,16 @@ export function AutomaticTaskTransitionControls({
       const key = attempt.current!.keyFor(automaticTaskTransitionFingerprint(task.id, input));
       if (input.action === "complete") {
         const receipt = await completeApplicationTask(task.id, task.school_target_id!, input, key);
-        const authoritative = await getTask(task.id);
+        let authoritative: TaskDetailResult;
+        try {
+          authoritative = await getTask(task.id);
+        } catch (error) {
+          if (caseId !== null || classifyTaskFailure(error) !== "not_found") throw error;
+          attempt.current!.complete();
+          resetForm(null);
+          onAssignmentEnded();
+          return;
+        }
         if (authoritative.task.id !== receipt.id || authoritative.task.record_version !== receipt.record_version) {
           throw new TypeError("Task authority mismatch.");
         }
@@ -162,7 +173,18 @@ export function AutomaticTaskTransitionControls({
         return;
       }
       const receipt = await transitionAutomaticTask(task.id, input, key);
-      const authoritative = await getTask(task.id);
+      let authoritative: TaskDetailResult;
+      try {
+        authoritative = await getTask(task.id);
+      } catch (error) {
+        const assignmentEnded = caseId === null && input.action === "reject" &&
+          classifyTaskFailure(error) === "not_found";
+        if (!assignmentEnded) throw error;
+        attempt.current!.complete();
+        resetForm(null);
+        onAssignmentEnded();
+        return;
+      }
       if (authoritative.task.id !== receipt.id || authoritative.task.record_version !== receipt.record_version) {
         throw new TypeError("Task authority mismatch.");
       }
