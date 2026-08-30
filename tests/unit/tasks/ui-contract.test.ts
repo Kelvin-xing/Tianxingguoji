@@ -102,6 +102,8 @@ test("Task detail owns transition success after authoritative refresh without du
   assert.match(detail, /task\.task_kind !== "manual"/);
   assert.match(automatic, /completeApplicationTask\(/);
   assert.match(automatic, /new FormData\(form\)/);
+  assert.match(automatic, /new FormData\(event\.currentTarget\)\.has\("command_confirmed"\)/);
+  assert.match(automatic, /name="command_confirmed"/);
   assert.match(automatic, /name="submitted_at"/);
   assert.match(automatic, /name="official_reference"/);
   assert.match(automatic, /onInput=\{\(event\) => onChange\("submittedAt", event\.currentTarget\.value\)\}/);

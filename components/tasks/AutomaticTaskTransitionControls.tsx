@@ -120,8 +120,9 @@ export function AutomaticTaskTransitionControls({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current || pending || selectedAction === "") return;
+    const commandConfirmed = new FormData(event.currentTarget).has("command_confirmed");
     const completionInput = selectedAction === "complete" ? buildCompletionInput(event.currentTarget) : null;
-    if (!confirmed || (["reject", "reassign", "cancel"] as const).includes(selectedAction as "reject" | "reassign" | "cancel") && reason.trim() === "" ||
+    if (!commandConfirmed || (["reject", "reassign", "cancel"] as const).includes(selectedAction as "reject" | "reassign" | "cancel") && reason.trim() === "" ||
         (selectedAction === "reassign" && nextAssigneeId === "") ||
         (selectedAction === "complete" && completionInput === null)) {
       setNotice("validation");
@@ -314,7 +315,7 @@ export function AutomaticTaskTransitionControls({
 
           {selectedAction ? (
             <label className="flex items-start gap-3 text-sm">
-              <input type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => { attempt.current!.rotate(); setNotice(null); setConfirmed(event.target.checked); }} />
+              <input name="command_confirmed" type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => { attempt.current!.rotate(); setNotice(null); setConfirmed(event.target.checked); }} />
               <span>我確認執行「{ACTION_LABELS[selectedAction]}」，並儲存這次處理記錄。</span>
             </label>
           ) : null}
