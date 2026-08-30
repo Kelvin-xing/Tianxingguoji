@@ -84,15 +84,16 @@ test("Today consumes the typed v1 client rather than preview case data", async (
   assert.doesNotMatch(today, /previewCaseWorkspaceAdapter/);
 });
 
-test("sidebar shows the nickname and today metrics link to their authoritative work surfaces", async () => {
+test("sidebar shows the nickname and today metrics filter before panel navigation", async () => {
   const sidebar = await readFile(new URL("../../../components/layout/Sidebar.tsx", import.meta.url), "utf8");
   const today = await readFile(new URL("../../../app/(erp)/today/page.tsx", import.meta.url), "utf8");
 
   assert.match(sidebar, /effectiveAuth\.nickname\?\.trim\(\) \|\| '未设置昵称'/);
   assert.doesNotMatch(sidebar, /roleLabel\(effectiveAuth\.role\)/);
-  assert.match(today, /href="\/cases" label="可查看案件"/);
-  assert.match(today, /href="\/today\?focus=blockers#today-cases" label="待處理阻礙"/);
-  assert.match(today, /href="\/tasks" label="未完成任務"/);
-  assert.match(today, /href="\/notifications" label="未讀通知"/);
-  assert.match(today, /focus === 'blockers' \? '待處理阻礙案件'/);
+  assert.match(today, /type="button" role="tab"/);
+  assert.match(today, /onClick=\{\(\) => onSelect\(focus\)\}/);
+  assert.match(today, /focus === 'tasks'/);
+  assert.match(today, /focus === 'notifications'/);
+  assert.match(today, /<Link href=\{view\.href\} className="quiet-link">查看全部/);
+  assert.doesNotMatch(today, /<Metric href=/);
 });

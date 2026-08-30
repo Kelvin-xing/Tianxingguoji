@@ -1,8 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
 
 import { ErrorState, EmptyState, DeniedState, StaleState, UnavailableState, LoadingState } from '@/components/states/WorkspaceState'
 import { Icon } from '@/components/workspace/Icon'
@@ -58,16 +57,47 @@ type TodayState =
   | { readonly status: 'unavailable'; readonly requestId: string | null }
   | { readonly status: 'error'; readonly requestId: string | null }
 
-type TodayFocus = 'all' | 'blockers'
+type TodayFocus = 'cases' | 'blockers' | 'tasks' | 'notifications'
+
+const FOCUS_VIEW: Readonly<Record<TodayFocus, Readonly<{
+  title: string
+  detail: string
+  empty: string
+  href: '/cases' | '/tasks' | '/notifications'
+}>>> = {
+  cases: {
+    title: '可查看案件',
+    detail: '顯示目前授權範圍內的案件與下一步。',
+    empty: '目前沒有可查看的案件。',
+    href: '/cases',
+  },
+  blockers: {
+    title: '待處理阻礙案件',
+    detail: '只顯示目前有待處理阻礙的案件。',
+    empty: '目前沒有待處理阻礙案件。',
+    href: '/cases',
+  },
+  tasks: {
+    title: '有未完成任務的案件',
+    detail: '只顯示目前仍有未完成任務的案件。',
+    empty: '目前沒有未完成任務。',
+    href: '/tasks',
+  },
+  notifications: {
+    title: '有未讀通知的案件',
+    detail: '只顯示目前仍有未讀通知的案件。',
+    empty: '目前沒有未讀通知。',
+    href: '/notifications',
+  },
+}
 
 export default function TodayPage() {
-  return <Suspense fallback={<LoadingState title="正在載入今日工作" detail="讀取目前授權範圍內的工作摘要。" />}><TodayContent /></Suspense>
+  return <TodayContent />
 }
 
 function TodayContent() {
-  const searchParams = useSearchParams()
   const [state, setState] = useState<TodayState>({ status: 'loading' })
-  const focus: TodayFocus = searchParams.get('focus') === 'blockers' ? 'blockers' : 'all'
+  const [focus, setFocus] = useState<TodayFocus>('cases')
   const load = useCallback(() => {
     const controller = new AbortController()
     setState({ status: 'loading' })
@@ -93,43 +123,55 @@ function TodayContent() {
   if (state.status === 'error') return <ErrorState title="今日工作載入失敗" detail="請稍後重試；系統沒有顯示未授權資料。" requestId={state.requestId} onRetry={load} />
   if (state.status === 'empty') return <EmptyState title="目前沒有可處理的工作" detail="新的授權案件或任務出現後會顯示在這裡。" action={<Link className="secondary-button" href="/tasks">查看任務</Link>} />
 
-  return <TodayReady data={state.data} onRefresh={load} focus={focus} />
+  return <TodayReady data={state.data} onRefresh={load} focus={focus} onFocus={setFocus} />
 }
 
-function TodayReady({ data, onRefresh, focus }: { readonly data: DashboardData; readonly onRefresh: () => void; readonly focus: TodayFocus }) {
+function TodayReady({ data, onRefresh, focus, onFocus }: { readonly data: DashboardData; readonly onRefresh: () => void; readonly focus: TodayFocus; readonly onFocus: (focus: TodayFocus) => void }) {
   const blockers = data.cases.reduce((total, item) => total + (item.summary?.blocker_count ?? 0), 0)
   const tasks = data.cases.reduce((total, item) => total + (item.tasks?.open_count ?? 0), 0)
   const unread = data.cases.reduce((total, item) => total + (item.communications?.unread_count ?? 0), 0)
-  const visibleCases = focus === 'blockers'
-    ? data.cases.filter((item) => (item.summary?.blocker_count ?? 0) > 0)
-    : data.cases
+  const visibleCases = data.cases.filter((item) => {
+    if (focus === 'blockers') return (item.summary?.blocker_count ?? 0) > 0
+    if (focus === 'tasks') return (item.tasks?.open_count ?? 0) > 0
+    if (focus === 'notifications') return (item.communications?.unread_count ?? 0) > 0
+    return true
+  })
+  const view = FOCUS_VIEW[focus]
   return (
     <div className="max-w-[1500px] mx-auto space-y-6">
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div><div className="eyebrow">今日工作</div><h1 className="page-title">今日工作</h1><p className="page-subtitle">顯示目前可查看的案件摘要和下一步。</p></div>
-        <div className="flex items-center gap-2"><Link href="/notifications" className="secondary-button"><Icon name="activity" size={15} />通知</Link><button type="button" className="secondary-button" onClick={onRefresh}><Icon name="rotate-ccw" size={15} />重新載入</button></div>
+        <button type="button" className="secondary-button" onClick={onRefresh}><Icon name="rotate-ccw" size={15} />重新載入</button>
       </section>
-      <section className="metric-strip" aria-label="工作摘要">
-        <Metric href="/cases" label="可查看案件" value={data.cases.length} tone="blue" />
-        <Metric href="/today?focus=blockers#today-cases" label="待處理阻礙" value={blockers} tone="amber" />
-        <Metric href="/tasks" label="未完成任務" value={tasks} tone="violet" />
-        <Metric href="/notifications" label="未讀通知" value={unread} tone="green" />
+      <section className="metric-strip" role="tablist" aria-label="工作摘要">
+        <Metric focus="cases" selected={focus === 'cases'} onSelect={onFocus} label="可查看案件" value={data.cases.length} tone="blue" />
+        <Metric focus="blockers" selected={focus === 'blockers'} onSelect={onFocus} label="待處理阻礙" value={blockers} tone="amber" />
+        <Metric focus="tasks" selected={focus === 'tasks'} onSelect={onFocus} label="未完成任務" value={tasks} tone="violet" />
+        <Metric focus="notifications" selected={focus === 'notifications'} onSelect={onFocus} label="未讀通知" value={unread} tone="green" />
       </section>
-      <section id="today-cases" className="workspace-section" aria-labelledby="today-cases-title">
-        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 id="today-cases-title" className="section-title">{focus === 'blockers' ? '待處理阻礙案件' : '需要你判斷的案件'}</h2><p className="section-detail">{focus === 'blockers' ? '只顯示目前有待處理阻礙的案件。' : '顯示案件的下一步與待處理事項。'}</p></div>{focus === 'blockers' ? <Link href="/today#today-cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link> : <Link href="/cases" className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link>}</div>
+      <section id="today-results" role="tabpanel" aria-labelledby={`today-focus-${focus}`} className="workspace-section">
+        <div className="flex items-start justify-between gap-4 pb-4"><div><h2 className="section-title">{view.title}</h2><p className="section-detail">{view.detail}</p></div><Link href={view.href} className="quiet-link">查看全部<Icon name="arrow-right" size={14} /></Link></div>
         <div className="divide-y" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-          {visibleCases.map((item) => <CaseRow key={item.case_id} item={item} />)}
+          {visibleCases.map((item) => <CaseRow key={item.case_id} item={item} focus={focus} />)}
         </div>
-        {visibleCases.length === 0 ? <div className="empty-state">目前沒有待處理阻礙案件。</div> : null}
+        {visibleCases.length === 0 ? <div className="empty-state">{view.empty}</div> : null}
         <p className="mt-4 text-[11px]" style={{ color: 'var(--text-muted)' }}>資料時間：{formatDate(data.source_captured_at_ms)}</p>
       </section>
     </div>
   )
 }
 
-function CaseRow({ item }: { readonly item: DashboardCase }) {
+function CaseRow({ item, focus }: { readonly item: DashboardCase; readonly focus: TodayFocus }) {
   const summary = item.summary
-  return <Link href={`/cases/${item.case_id}`} className="work-row group"><div className="flex items-start gap-3 min-w-0"><div className={`work-icon ${summary?.blocker_count ? 'warning' : 'blue'}`}><Icon name={summary?.blocker_count ? 'clock' : 'briefcase'} size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{summary?.case_number ?? '獲授權案件'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{summary ? stageLabel(summary.stage) : '摘要'}</span></div><div className="mt-1 text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{summary?.student_display_name ?? '案件摘要'}</div><div className="mt-1 text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{summary?.next_action ? actionLabel(summary.next_action) : '暫無下一步'}</div></div></div><Icon name="chevron-right" size={15} className="shrink-0" style={{ color: 'var(--text-muted)' }} /></Link>
+  const detail = focus === 'blockers'
+    ? `${summary?.blocker_count ?? 0} 項待處理阻礙`
+    : focus === 'tasks'
+      ? `${item.tasks?.open_count ?? 0} 項未完成任務`
+      : focus === 'notifications'
+        ? `${item.communications?.unread_count ?? 0} 項未讀通知`
+        : summary?.next_action ? actionLabel(summary.next_action) : '暫無下一步'
+  const icon = focus === 'blockers' ? 'clock' : focus === 'tasks' ? 'clipboard' : focus === 'notifications' ? 'activity' : 'briefcase'
+  return <Link href={`/cases/${item.case_id}`} className="work-row group"><div className="flex items-start gap-3 min-w-0"><div className={`work-icon ${focus === 'blockers' ? 'warning' : 'blue'}`}><Icon name={icon} size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>{summary?.case_number ?? '獲授權案件'}</span><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{summary ? stageLabel(summary.stage) : '摘要'}</span></div><div className="mt-1 text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{summary?.student_display_name ?? '案件摘要'}</div><div className="mt-1 text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{detail}</div></div></div><Icon name="chevron-right" size={15} className="shrink-0" style={{ color: 'var(--text-muted)' }} /></Link>
 }
 
 function stageLabel(value: string): string {
@@ -140,8 +182,8 @@ function actionLabel(value: string): string {
   return ACTION_LABELS[value] ?? (/[\u3400-\u9fff]/.test(value) ? value : '待處理事項')
 }
 
-function Metric({ href, label, value, tone }: { readonly href: string; readonly label: string; readonly value: number; readonly tone: 'blue' | 'amber' | 'violet' | 'green' }) {
-  return <Link href={href} className={`metric metric-link metric-${tone}`} aria-label={`${label}：${value}`}><div className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</div><div className="mt-1 text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</div></Link>
+function Metric({ focus, selected, onSelect, label, value, tone }: { readonly focus: TodayFocus; readonly selected: boolean; readonly onSelect: (focus: TodayFocus) => void; readonly label: string; readonly value: number; readonly tone: 'blue' | 'amber' | 'violet' | 'green' }) {
+  return <button type="button" role="tab" id={`today-focus-${focus}`} aria-controls="today-results" aria-selected={selected} className={`metric metric-button metric-${tone}`} onClick={() => onSelect(focus)}><span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</span><strong className="mt-1 block text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</strong></button>
 }
 
 function decodeDashboardData(value: unknown): DashboardData {

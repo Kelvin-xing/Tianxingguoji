@@ -166,15 +166,16 @@ select:focus {
 .quiet-link:hover { color: var(--accent-hover); }
 
 .metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.metric { min-height: 6.75rem; padding: 1rem 1.15rem; border-right: 1px solid var(--border-subtle); border-top: 2px solid transparent; }
+.metric { background: transparent; border: 0; border-right: 1px solid var(--border-subtle); border-top: 2px solid transparent; min-height: 6.75rem; padding: 1rem 1.15rem; }
 .metric:last-child { border-right: 0; }
 .metric-blue { border-top-color: #3b82f6; }
 .metric-amber { border-top-color: #f59e0b; }
 .metric-violet { border-top-color: #8b5cf6; }
 .metric-green { border-top-color: #10b981; }
-.metric-link { color: inherit; display: block; text-decoration: none; }
-.metric-link:hover { background: var(--bg); }
-.metric-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.metric-button { color: inherit; cursor: pointer; display: block; font: inherit; text-align: left; width: 100%; }
+.metric-button:hover { background: var(--bg); }
+.metric-button[aria-selected="true"] { background: var(--bg); box-shadow: inset 0 -2px 0 var(--accent); }
+.metric-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .workspace-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
 .section-icon { align-items: center; background: var(--accent-subtle); border-radius: 6px; color: var(--accent); display: flex; height: 2rem; justify-content: center; width: 2rem; }
