@@ -12,13 +12,11 @@ export default function PortalWorkspacePage() {
   const [state, setState] = useState<ViewState>('loading')
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   useEffect(() => {
-    const controller = new AbortController()
-    getPortalWorkspace()
-      .then((value) => {
-        if (value.status === 'paused' || value.status === 'closed') return setState('denied')
-        if (value.status === 'expired' || value.status === 'revoked') return setState('expired')
+      const controller = new AbortController()
+      getPortalWorkspace()
+        .then((value) => {
         setWorkspace(value)
-        setState(value.schools.length + value.applications.length + value.documents.length === 0 ? 'empty' : 'ready')
+        setState(value.schools.length + value.action_items.length + value.messages.length === 0 ? 'empty' : 'ready')
       }).catch((error) => { if (!controller.signal.aborted) setState(error instanceof Error && 'status' in error && (error as {status?: number}).status === 401 ? 'expired' : 'unavailable') })
     return () => controller.abort()
   }, [])
@@ -28,12 +26,12 @@ export default function PortalWorkspacePage() {
   if (!workspace) return <PortalState state="unavailable" />
   return (
     <main className="portal-shell portal-workspace">
-      <header className="portal-workspace-header"><div><p className="portal-mark">案件進度</p><h1>{stageLabel(workspace.stage)}</h1>{workspace.student && <p className="portal-muted">學生：{workspace.student.display_name}</p>}</div><button className="portal-secondary" onClick={signOut}>退出</button></header>
+      <header className="portal-workspace-header"><div><p className="portal-mark">案件進度</p><h1>{stageLabel(workspace.stage)}</h1><p className="portal-muted">更新時間：{formatDate(workspace.updated_at)}</p></div><button className="portal-secondary" onClick={signOut}>退出</button></header>
       {state === 'empty' && <section className="portal-panel"><h2>暫無新進度</h2><p className="portal-muted">顧問發布對客更新後會顯示在這裡。</p></section>}
       <section className="portal-grid">
         <PortalList title="已確認學校" items={workspace.schools.map((item) => `${item.name} · ${statusLabel(item.status)}`)} />
-        <PortalList title="申請狀態" items={workspace.applications.map((item) => `${item.school_name} · ${statusLabel(item.status)}`)} />
-        <PortalList title="已發布文件" items={workspace.documents.map((item) => `${item.name} · ${formatDate(item.published_at)}`)} />
+        <PortalList title="行動項目" items={workspace.action_items.map((item) => `${item.title}${item.deadline ? ` · ${formatDate(item.deadline)}` : ''} · ${item.completed ? '已完成' : '待處理'}`)} />
+        <PortalList title="最新消息" items={workspace.messages.map((item) => `${item.body} · ${formatDate(item.published_at)}`)} />
       </section>
     </main>
   )

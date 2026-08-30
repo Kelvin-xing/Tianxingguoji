@@ -12,9 +12,10 @@ test('portal FE-06 stays read-only, isolated, and capability/DTO driven', async 
   const source = `${access}\n${workspace}\n${client}`
   assert.match(source, /requestApi/)
   assert.match(source, /paused|closed|revoked|expired|unavailable/)
-  assert.match(source, /allowed_actions/)
+  assert.match(source, /action_items|messages/)
   assert.doesNotMatch(source, /actor\.role|billing|internal notification|upload/i)
   assert.doesNotMatch(source, /case_number|case number|contact|guardian_email/i)
+  assert.doesNotMatch(source, /student\.display_name|documents|已發布文件/)
   assert.match(client, /api\/v1\/portal\/(sessions|workspace)/)
   assert.match(client, /idempotencyKey:\s*crypto\.randomUUID\(\)/)
   assert.match(access, /minLength=\{64\}/)
