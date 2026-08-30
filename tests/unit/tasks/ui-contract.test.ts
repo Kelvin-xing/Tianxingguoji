@@ -106,6 +106,7 @@ test("Task detail owns transition success after authoritative refresh without du
   assert.match(automatic, /name="command_confirmed"/);
   assert.match(automatic, /name="submitted_at"/);
   assert.match(automatic, /name="official_reference"/);
+  assert.match(automatic, /new Date\(`\$\{value\}:00\+08:00`\)/);
   assert.match(automatic, /onInput=\{\(event\) => onChange\("submittedAt", event\.currentTarget\.value\)\}/);
   assert.match(automatic, /onInput=\{\(event\) => onChange\("confirmedAt", event\.currentTarget\.value\)\}/);
   assert.match(automatic, /transitionAutomaticTask\(/);
