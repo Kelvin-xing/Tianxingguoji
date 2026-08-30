@@ -31,6 +31,7 @@ test('FE-02 uses shared typed client and unavailable states for missing APIs', a
   const caseDetail = await readFile(new URL('../../../app/(erp)/cases/[caseId]/page.tsx', import.meta.url), 'utf8')
   const assessment = await readFile(new URL('../../../components/cases/AssessmentEditor.tsx', import.meta.url), 'utf8')
   assert.match(students, /listStudents/)
+  assert.doesNotMatch(students, /\{student\.id\}<\/div>/)
   assert.match(cases, /CaseIntakeWorkspace/)
   assert.match(assessment, /requestApi/)
   assert.match(assessment, /blockingFieldIds/)
