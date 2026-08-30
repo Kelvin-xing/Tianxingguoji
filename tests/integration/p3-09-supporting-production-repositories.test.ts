@@ -70,6 +70,17 @@ test("module transaction rejects cross-module writes before database execution",
   assert.equal(runner.rolledBack, true);
 });
 
+test("module transaction does not mistake FOR UPDATE SKIP LOCKED for a table", async () => {
+  const runner = new RecordingRunner();
+  await runSupportingModuleTransaction({
+    runner, module: "notifications", context,
+    operation: (transaction) => transaction.query({
+      text: "SELECT id FROM audit_outbox FOR UPDATE SKIP LOCKED",
+    }),
+  });
+  assert.equal(runner.queries.length, 1);
+});
+
 test("mandatory audit failure rolls the owning mutation transaction back", async () => {
   const runner = new RecordingRunner();
   runner.failOn = "INSERT INTO audit_events";

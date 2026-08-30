@@ -57,7 +57,7 @@ export interface AtomicMutationTransaction {
   ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number }>;
 }
 
-const TABLE_REFERENCE = /\b(?:from|join|into|update|delete\s+from)\s+([a-z][a-z0-9_]*)/gi;
+const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
 const SHARED_TABLES = new Set([
   "shared_idempotency_records",
   "audit_outbox",

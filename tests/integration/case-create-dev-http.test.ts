@@ -3132,6 +3132,13 @@ async function prepareOtherAdvisor(target: OneRoleBaselineTarget): Promise<void>
         OTHER_ADVISOR.userId, FOUNDER.userId],
     );
     await client.query(
+      `INSERT INTO access_employee_profiles
+        (membership_id,organization_id,display_name,employment_type)
+       VALUES ($1,$2,$3,'FULL_TIME')`,
+      [OTHER_ADVISOR.membershipId, NEON_TEST_ORGANIZATION.id,
+        "CASE-01 Synthetic Other Advisor"],
+    );
+    await client.query(
       `INSERT INTO access_role_bindings
         (id,organization_id,membership_id,user_id,role,status,created_by_user_id)
        VALUES ($1,$2,$3,$4,'advisor','active',$5)`,
@@ -3226,6 +3233,13 @@ async function prepareForeignAdvisor(target: OneRoleBaselineTarget): Promise<voi
        VALUES ($1,$2,$3,'active',transaction_timestamp(),$4)`,
       [FOREIGN_ADVISOR.membershipId, FOREIGN_ORGANIZATION_ID,
         ADVISOR.userId, FOUNDER.userId],
+    );
+    await client.query(
+      `INSERT INTO access_employee_profiles
+        (membership_id,organization_id,display_name,employment_type)
+       VALUES ($1,$2,$3,'FULL_TIME')`,
+      [FOREIGN_ADVISOR.membershipId, FOREIGN_ORGANIZATION_ID,
+        "CASE-01 Synthetic Foreign Advisor"],
     );
     stage = "role_binding_insert";
     await client.query(

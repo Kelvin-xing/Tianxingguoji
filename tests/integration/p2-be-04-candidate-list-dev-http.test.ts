@@ -414,6 +414,13 @@ async function seedCandidateFixture(target: OneRoleBaselineTarget, password: str
         [principal.membershipId, NEON_TEST_ORGANIZATION.id, principal.userId, founder.userId],
       );
       await client.query(
+        `INSERT INTO access_employee_profiles
+          (membership_id, organization_id, display_name, employment_type)
+         VALUES ($1,$2,$3,$4)`,
+        [principal.membershipId, NEON_TEST_ORGANIZATION.id,
+          principal.displayName, principal.employmentType],
+      );
+      await client.query(
         `INSERT INTO access_role_bindings
           (id, organization_id, membership_id, user_id, role, status, created_by_user_id)
          VALUES ($1,$2,$3,$4,$5,'active',$6)`,

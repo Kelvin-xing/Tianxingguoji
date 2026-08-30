@@ -16,6 +16,27 @@ const USER = "10000000-0000-4000-8000-000000000002";
 const NOTICE = "10000000-0000-4000-8000-000000000003";
 const KEY = "read:notice-1";
 
+test("delivery claim locks only the audit outbox row across nullable joins", async () => {
+  const queries: string[] = [];
+  const runner: TenantTransactionRunner = {
+    run: async (_context, operation) => operation({
+      query: async <Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>> => {
+        queries.push(query.text);
+        return { rows: [], rowCount: 0 };
+      },
+    }),
+  };
+  const repository = new PostgresqlInAppNotificationRepository({ runner, organizationId: ORG });
+  const result = await repository.claimNextInAppDelivery({
+    workerId: USER,
+    outboxId: null,
+    claimedAtMs: Date.parse("2026-08-26T00:00:00.000Z"),
+    leaseUntilMs: Date.parse("2026-08-26T00:01:00.000Z"),
+  });
+  assert.equal(result.status, "idle");
+  assert.equal(queries.some((query) => /FOR UPDATE OF o SKIP LOCKED/.test(query)), true);
+});
+
 test("notification read uses a scoped idempotency claim and replays the completed result", async () => {
   let completed = false;
   let storedHash = "";

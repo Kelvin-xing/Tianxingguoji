@@ -72,7 +72,7 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
                  'task_due_in_1_day','task_overdue_daily','case_closure_choice_required'
                )
              ORDER BY o.available_at, o.created_at
-             FOR UPDATE SKIP LOCKED LIMIT 1`,
+             FOR UPDATE OF o SKIP LOCKED LIMIT 1`,
           values: [this.organizationId],
         });
         const candidate = row[0];
