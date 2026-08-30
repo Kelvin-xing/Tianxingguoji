@@ -38,11 +38,12 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   }
   if (!record || !assessment) notFound()
   const { roles: actorRoles } = actor
+  const canOpenPortalAccess = actorRoles.includes('founder') || actor.userId === record.primaryUserId
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>{record.caseNumber}</span></div>
-      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">案件</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />查看學生</Link></section>
+      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">案件</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><div className="flex flex-wrap gap-2"><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />查看學生</Link>{canOpenPortalAccess && <Link href={`/cases/${caseId}/access`} className="secondary-button"><Icon name="lock" size={15} />家長入口</Link>}</div></section>
 
       <CaseStageTimeline caseId={caseId} stage={record.stage} primaryOwnerLabel={record.primaryBindingLabel} />
 

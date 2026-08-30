@@ -97,7 +97,7 @@ export class PostgreSqlPortalRepository implements PortalRepository {
         }) : null;
         if (!actor || !caseFacts || !relationship?.active ||
             actor.organizationStatus !== "active" || actor.userStatus !== "active" ||
-            actor.membershipStatus !== "active" || caseFacts.workflowStatus !== "active" ||
+            actor.membershipStatus !== "active" || !isPortalCaseAvailable(caseFacts.workflowStatus) ||
             caseFacts.primaryUserId !== input.actorUserId) {
           throw new PortalRepositoryError("PORTAL_CONTEXT_MISMATCH");
         }
@@ -364,7 +364,7 @@ export class PostgreSqlPortalRepository implements PortalRepository {
       this.accessReadPort.readActorFacts(tx, { organizationId, actorUserId }),
       this.casesReadPort.readCaseFacts(tx, { organizationId, serviceCaseId: caseId }),
     ]);
-    if (!actor || !caseFacts || actor.organizationStatus !== "active" || actor.userStatus !== "active" || actor.membershipStatus !== "active" || caseFacts.workflowStatus !== "active") throw new PortalRepositoryError("PORTAL_CONTEXT_MISMATCH");
+    if (!actor || !caseFacts || actor.organizationStatus !== "active" || actor.userStatus !== "active" || actor.membershipStatus !== "active" || !isPortalCaseAvailable(caseFacts.workflowStatus)) throw new PortalRepositoryError("PORTAL_CONTEXT_MISMATCH");
     if (viewerId) {
       const viewer = await tx.query<{ guardian_relationship_id: string | null; status: string }>({ text: "SELECT guardian_relationship_id,status FROM portal_viewers WHERE id=$1 AND organization_id=$2 AND service_case_id=$3", values: [viewerId, organizationId, caseId] });
       const relationshipId = viewer.rows[0]?.guardian_relationship_id;
@@ -383,7 +383,7 @@ export class PostgreSqlPortalRepository implements PortalRepository {
     const issuer = row ? await this.accessReadPort.readActorFacts(tx, { organizationId, actorUserId: row.issued_by_user_id }) : null;
     const relationshipId = row?.guardian_relationship_id;
     const relationship = row && relationshipId && caseFacts ? await this.crmReadPort.readGuardianRelationship(tx, { organizationId, relationshipId, studentId: caseFacts.studentId }) : null;
-    if (!row || row.status !== "active" || new Date(row.expires_at).getTime() <= nowMs || (secretHash && !this.equalHash(row.keyed_secret_hash, secretHash)) || row.viewer_status !== "active" || !relationship?.active || !issuer || issuer.organizationStatus !== "active" || issuer.userStatus !== "active" || issuer.membershipStatus !== "active" || !caseFacts || caseFacts.workflowStatus !== "active" || caseFacts.primaryUserId !== row.issued_by_user_id) throw new PortalRepositoryError("PORTAL_SECRET_INVALID");
+    if (!row || row.status !== "active" || new Date(row.expires_at).getTime() <= nowMs || (secretHash && !this.equalHash(row.keyed_secret_hash, secretHash)) || row.viewer_status !== "active" || !relationship?.active || !issuer || issuer.organizationStatus !== "active" || issuer.userStatus !== "active" || issuer.membershipStatus !== "active" || !caseFacts || !isPortalCaseAvailable(caseFacts.workflowStatus) || caseFacts.primaryUserId !== row.issued_by_user_id) throw new PortalRepositoryError("PORTAL_SECRET_INVALID");
   }
 
   private async readWorkspaceSource(tx: Queryable, organizationId: string, caseId: string): Promise<PortalWorkspaceSource> {
@@ -401,6 +401,10 @@ export class PostgreSqlPortalRepository implements PortalRepository {
 type GrantRow = Record<string, any> & { id: string; organization_id: string; service_case_id: string; record_version: number; status: string; issued_at: string | Date; expires_at: string | Date; secret_fingerprint: string; keyed_secret_hash: Buffer | string | null; portal_viewer_id: string; issued_by_user_id: string; lifecycle_id: string; capability_set_version: "portal_case_read_v1"; revoked_by_user_id: string | null; revoked_at: string | Date | null; revoke_reason_code: string | null };
 type SessionRow = Record<string, any> & { id: string; organization_id: string; service_case_id: string; grant_id: string; status: string; created_at: string | Date; last_seen_at: string | Date; idle_expires_at: string | Date; absolute_expires_at: string | Date; record_version: number; keyed_session_hash: Buffer | string | null };
 type ViewerRow = Record<string, any> & { id: string; organization_id: string; service_case_id: string; guardian_relationship_id: string; status: string; record_version: number };
+
+function isPortalCaseAvailable(status: string): boolean {
+  return status === "active" || status === "paused";
+}
 
 function mapGrant(row: GrantRow | undefined): PortalAccessGrant {
   if (!row) throw new PortalRepositoryError("PORTAL_GRANT_NOT_FOUND");

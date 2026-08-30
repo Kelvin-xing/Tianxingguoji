@@ -22,3 +22,9 @@ test("P5-BE-08 keeps private read SQL behind public adapters and never returns a
   assert.doesNotMatch(workspaceRoute, /case_number|caseNumber/);
   assert.match(workspaceRoute, /Promise<PortalCaseReadV1>/);
 });
+
+test("P5-BE-08 keeps Portal access available while a Case is paused", () => {
+  assert.match(repository, /function isPortalCaseAvailable/);
+  assert.match(repository, /status === "active" \|\| status === "paused"/);
+  assert.doesNotMatch(repository, /workflowStatus !== "active"/);
+});

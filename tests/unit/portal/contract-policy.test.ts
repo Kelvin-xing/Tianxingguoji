@@ -149,7 +149,7 @@ test("DP-03 denies from current Release 1 facts without a Subscription input", (
   }
 });
 
-test("P5-BE-08 uses request-time capability union and invalidates paused/termination states", () => {
+test("P5-BE-08 uses request-time capability union, permits paused and invalidates termination states", () => {
   const command: PortalGrantCommandAccessInput = {
     actor: { userId: ids.actor, organizationId: ids.organization, workspaceCapabilities: ["cases.workflow.manage"] },
     isCurrentPrimaryAdvisor: true,
