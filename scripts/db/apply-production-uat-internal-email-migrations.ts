@@ -73,6 +73,9 @@ try {
   if (!preflight.prerequisitesReady) {
     throw new Error("Production UAT internal-email migration prerequisites are missing.");
   }
+  console.log(
+    `production_uat_internal_email_migrations=038,053-057 preflight=${serializeFeatureState(preflight.features)}`,
+  );
   assertNoPartialFeatures(preflight.features);
 
   const applied: string[] = [];
@@ -287,6 +290,12 @@ function featureState(count: number, readyCount: number): "absent" | "ready" | "
   if (count === 0) return "absent";
   if (count === readyCount) return "ready";
   return "partial";
+}
+
+function serializeFeatureState(features: FeatureState): string {
+  return MIGRATIONS
+    .map((migration) => `${migration.feature}:${features[migration.feature]}`)
+    .join(",");
 }
 
 function assertTargetIdentity(databaseName: string, userName: string): void {

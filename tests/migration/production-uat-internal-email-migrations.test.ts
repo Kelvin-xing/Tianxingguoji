@@ -28,6 +28,7 @@ test("Production UAT applies internal-email prerequisites and migrations transac
   assert.match(script, /await client\.query\(dryRun \? "ROLLBACK" : "COMMIT"\)/);
   assert.match(script, /await client\.query\("ROLLBACK"\)/);
   assert.match(script, /assertNoPartialFeatures/);
+  assert.match(script, /serializeFeatureState/);
   assert.match(script, /backfillEmployeeProfiles/);
   assert.match(script, /relaxIdentityAccessRlsForMigration/);
   assert.match(script, /restoreIdentityAccessRlsAfterMigration/);
