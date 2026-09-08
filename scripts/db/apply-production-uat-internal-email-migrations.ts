@@ -76,6 +76,11 @@ try {
   console.log(
     `production_uat_internal_email_migrations=038,053-057 preflight=${serializeFeatureState(preflight.features)}`,
   );
+  if (preflight.features.identityAccessFoundation === "partial") {
+    console.log(
+      `production_uat_internal_email_migrations=038 foundation_components=${await readFoundationComponents()}`,
+    );
+  }
   assertNoPartialFeatures(preflight.features);
 
   const applied: string[] = [];
@@ -295,6 +300,25 @@ function featureState(count: number, readyCount: number): "absent" | "ready" | "
 function serializeFeatureState(features: FeatureState): string {
   return MIGRATIONS
     .map((migration) => `${migration.feature}:${features[migration.feature]}`)
+    .join(",");
+}
+
+async function readFoundationComponents(): Promise<string> {
+  const result = await client.query<Record<string, boolean>>({
+    text: `SELECT
+      to_regclass('public.access_employee_profiles') IS NOT NULL AS employee_profiles,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='identity_users' AND column_name='activated_at') AS user_lifecycle,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='access_organization_memberships' AND column_name='activated_at') AS membership_lifecycle,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='identity_invites' AND column_name='expired_at') AS invite_expiry,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='identity_invites' AND column_name='credential_version') AS invite_credential,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='access_scope_grants' AND column_name='expired_at') AS scope_expiry,
+      to_regprocedure('public.identity_resolve_session_principal(bytea,timestamp with time zone,boolean)') IS NOT NULL AS session_resolver,
+      to_regprocedure('public.access_resolve_workspace_context(uuid)') IS NOT NULL AS workspace_resolver`,
+  });
+  const row = result.rows[0];
+  if (!row) return "inspection_failed";
+  return Object.entries(row)
+    .map(([name, present]) => `${name}:${present ? "1" : "0"}`)
     .join(",");
 }
 
