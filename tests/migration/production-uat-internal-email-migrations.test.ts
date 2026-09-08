@@ -30,6 +30,8 @@ test("Production UAT applies internal-email prerequisites and migrations transac
   assert.match(script, /assertNoPartialFeatures/);
   assert.match(script, /serializeFeatureState/);
   assert.match(script, /readFoundationComponents/);
+  assert.match(script, /onlyWorkspaceResolverMissing/);
+  assert.match(script, /installWorkspaceResolverRepair/);
   assert.match(script, /backfillEmployeeProfiles/);
   assert.match(script, /relaxIdentityAccessRlsForMigration/);
   assert.match(script, /restoreIdentityAccessRlsAfterMigration/);

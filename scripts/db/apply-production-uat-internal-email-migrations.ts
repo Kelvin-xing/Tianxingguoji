@@ -73,15 +73,22 @@ try {
   if (!preflight.prerequisitesReady) {
     throw new Error("Production UAT internal-email migration prerequisites are missing.");
   }
+  let preflightFeatures = preflight.features;
   console.log(
-    `production_uat_internal_email_migrations=038,053-057 preflight=${serializeFeatureState(preflight.features)}`,
+    `production_uat_internal_email_migrations=038,053-057 preflight=${serializeFeatureState(preflightFeatures)}`,
   );
-  if (preflight.features.identityAccessFoundation === "partial") {
+  if (preflightFeatures.identityAccessFoundation === "partial") {
+    const foundationComponents = await readFoundationComponents();
     console.log(
-      `production_uat_internal_email_migrations=038 foundation_components=${await readFoundationComponents()}`,
+      `production_uat_internal_email_migrations=038 foundation_components=${serializeFoundationComponents(foundationComponents)}`,
     );
+    if (!onlyWorkspaceResolverMissing(foundationComponents)) {
+      throw new Error("Production UAT internal-email migrations found an unsupported foundation state.");
+    }
+    await installWorkspaceResolverRepair();
+    preflightFeatures = (await readState()).features;
   }
-  assertNoPartialFeatures(preflight.features);
+  assertNoPartialFeatures(preflightFeatures);
 
   const applied: string[] = [];
   for (const migration of MIGRATIONS) {
@@ -303,8 +310,19 @@ function serializeFeatureState(features: FeatureState): string {
     .join(",");
 }
 
-async function readFoundationComponents(): Promise<string> {
-  const result = await client.query<Record<string, boolean>>({
+type FoundationComponents = Readonly<{
+  employee_profiles: boolean;
+  user_lifecycle: boolean;
+  membership_lifecycle: boolean;
+  invite_expiry: boolean;
+  invite_credential: boolean;
+  scope_expiry: boolean;
+  session_resolver: boolean;
+  workspace_resolver: boolean;
+}>;
+
+async function readFoundationComponents(): Promise<FoundationComponents> {
+  const result = await client.query<FoundationComponents>({
     text: `SELECT
       to_regclass('public.access_employee_profiles') IS NOT NULL AS employee_profiles,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='identity_users' AND column_name='activated_at') AS user_lifecycle,
@@ -316,10 +334,66 @@ async function readFoundationComponents(): Promise<string> {
       to_regprocedure('public.access_resolve_workspace_context(uuid)') IS NOT NULL AS workspace_resolver`,
   });
   const row = result.rows[0];
-  if (!row) return "inspection_failed";
-  return Object.entries(row)
+  if (!row) throw new Error("Production UAT foundation inspection returned no row.");
+  return Object.freeze(row);
+}
+
+function serializeFoundationComponents(components: FoundationComponents): string {
+  return Object.entries(components)
     .map(([name, present]) => `${name}:${present ? "1" : "0"}`)
     .join(",");
+}
+
+function onlyWorkspaceResolverMissing(components: FoundationComponents): boolean {
+  return !components.workspace_resolver
+    && Object.entries(components).every(([name, present]) =>
+      name === "workspace_resolver" || present
+    );
+}
+
+async function installWorkspaceResolverRepair(): Promise<void> {
+  await client.query(`
+    CREATE OR REPLACE FUNCTION public.access_resolve_workspace_context(p_user_id uuid)
+    RETURNS TABLE (
+      user_id uuid,
+      organization_id uuid,
+      membership_id uuid,
+      role_binding_id uuid,
+      role text,
+      membership_record_version bigint,
+      role_binding_record_version bigint
+    )
+    LANGUAGE sql
+    SECURITY DEFINER
+    SET search_path = pg_catalog, public
+    AS $function$
+      SELECT membership.user_id,
+             membership.organization_id,
+             membership.id,
+             role_binding.id,
+             role_binding.role,
+             membership.record_version,
+             role_binding.record_version
+        FROM public.identity_users AS identity_user
+        JOIN public.access_organization_memberships AS membership
+          ON membership.user_id = identity_user.id
+         AND membership.status = 'active'
+        JOIN public.access_organizations AS organization
+          ON organization.id = membership.organization_id
+         AND organization.status = 'active'
+        JOIN public.access_role_bindings AS role_binding
+          ON role_binding.organization_id = membership.organization_id
+         AND role_binding.membership_id = membership.id
+         AND role_binding.user_id = membership.user_id
+         AND role_binding.status = 'active'
+         AND role_binding.role IN ('founder', 'admin', 'advisor', 'contractor')
+       WHERE identity_user.id = p_user_id
+         AND identity_user.status = 'active'
+       ORDER BY role_binding.id
+    $function$;
+    REVOKE ALL ON FUNCTION public.access_resolve_workspace_context(uuid) FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION public.access_resolve_workspace_context(uuid) TO tianxing_app;
+  `);
 }
 
 function assertTargetIdentity(databaseName: string, userName: string): void {
