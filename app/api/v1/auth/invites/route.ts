@@ -5,29 +5,55 @@ import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
 import { IdentityServiceError } from "@/modules/identity/server";
-
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-type InvitableRole = "founder" | "admin" | "advisor" | "data_reviewer" | "contractor";
-
-const INVITABLE_ROLES = new Set<InvitableRole>([
-  "founder",
-  "admin",
-  "advisor",
-  "data_reviewer",
-  "contractor",
-] as const);
+import { InternalEmailServiceError } from "@/modules/identity/server";
+import { resolveRequestAccessContext, RequestAccessContextError } from "@/modules/access/server";
+import { InternalEmailInviteRequestError, readInternalEmailInviteRequest } from "./route-contract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   return handleApiRequest(request, async () => {
-    const command = await parseInviteCommand(request);
+    let command;
+    try {
+      command = await readInternalEmailInviteRequest(request);
+    } catch (error) {
+      if (error instanceof InternalEmailInviteRequestError) throw createApiError(error.code);
+      throw createApiError("INVALID_REQUEST");
+    }
     const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
 
     try {
       const runtime = getIdentityRuntime();
+      if (runtime.authMode === "internal-email" && runtime.internalEmail) {
+        let access;
+        try {
+          access = await resolveRequestAccessContext({ cookieSecret, sensitiveAction: true });
+        } catch (error) {
+          if (error instanceof RequestAccessContextError && error.code === "REQUEST_ACCESS_UNAUTHENTICATED") throw createApiError("UNAUTHENTICATED");
+          if (error instanceof RequestAccessContextError && error.code === "REQUEST_ACCESS_FORBIDDEN") throw createApiError("FORBIDDEN");
+          throw createApiError("SERVICE_UNAVAILABLE");
+        }
+        const invite = await runtime.internalEmail.createFounderInvite({
+          actor: { userId: access.userId, organizationId: access.organizationId, roles: access.roles },
+          normalizedEmail: command.normalizedEmail,
+          role: command.role,
+          employmentType: command.employmentType,
+          displayName: command.displayName,
+          idempotencyKey: command.idempotencyKey,
+        });
+        return {
+          invite_id: invite.inviteId,
+          target_user_id: invite.targetUserId,
+          expires_at_ms: invite.expiresAtMs,
+          delivery_receipt: {
+            channel_policy_id: invite.deliveryReceipt.channelPolicyId,
+            receipt_reference: invite.deliveryReceipt.receiptReference,
+            delivered_at_ms: invite.deliveryReceipt.deliveredAtMs,
+          },
+        };
+      }
       const actor = await runtime.service.requireSession({
         cookieSecret,
         sensitiveAction: true,
@@ -67,47 +93,13 @@ export async function POST(request: Request): Promise<Response> {
         }
         throw createApiError("VALIDATION_FAILED");
       }
+      if (error instanceof InternalEmailServiceError) {
+        if (error.code === "FOUNDER_REQUIRED") throw createApiError("FORBIDDEN");
+        if (error.code === "INVITE_ALREADY_EXISTS") throw createApiError("CONFLICT");
+        if (error.code === "INVITE_DELIVERY_FAILED") throw createApiError("SERVICE_UNAVAILABLE");
+        throw createApiError("VALIDATION_FAILED");
+      }
       throw createApiError("SERVICE_UNAVAILABLE");
     }
   });
-}
-
-async function parseInviteCommand(request: Request): Promise<{
-  readonly normalizedEmail: string;
-  readonly role: InvitableRole;
-  readonly idempotencyKey: string;
-}> {
-  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
-  if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
-    throw createApiError("INVALID_REQUEST");
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    throw createApiError("INVALID_REQUEST");
-  }
-  if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
-  const normalizedEmail = body.normalized_email;
-  const role = body.role;
-  if (
-    typeof normalizedEmail !== "string" ||
-    normalizedEmail.length === 0 ||
-    normalizedEmail.length > 320 ||
-    normalizedEmail !== normalizedEmail.trim().toLowerCase() ||
-    typeof role !== "string" ||
-    !INVITABLE_ROLES.has(role as InvitableRole)
-  ) {
-    throw createApiError("VALIDATION_FAILED");
-  }
-  return {
-    normalizedEmail,
-    role: role as InvitableRole,
-    idempotencyKey,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

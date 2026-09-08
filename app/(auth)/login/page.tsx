@@ -2,6 +2,7 @@ import { Icon } from '@/components/workspace/Icon'
 import { loadAuthMode, type AuthMode } from '@/modules/identity/server'
 
 import { DatabaseTestLoginForm } from './DatabaseTestLoginForm'
+import { InternalEmailLoginForm } from './InternalEmailLoginForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -141,6 +142,8 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
 
   if (authMode === 'database-test') return <DatabaseTestLoginForm />
 
+  if (authMode === 'internal-email') return <InternalEmailLoginForm />
+
   if (authMode === 'cognito') {
     return (
       <>
@@ -181,6 +184,15 @@ function getLoginPresentation(authMode: AuthMode | null): LoginPresentation {
     }
   }
 
+  if (authMode === 'internal-email') {
+    return {
+      eyebrow: '公司工作台',
+      description: '使用公司電郵和密碼登入工作台。',
+      desktopFooter: '帳戶登入',
+      securityNotice: '帳戶由 Founder 邀請建立；不提供公開註冊。',
+    }
+  }
+
   if (authMode === 'cognito') {
     return {
       eyebrow: '公司工作台',
@@ -201,7 +213,7 @@ function getLoginPresentation(authMode: AuthMode | null): LoginPresentation {
 function getLoginError(authMode: AuthMode | null, errorCode: string | undefined): string | undefined {
   if (authMode === null) return LOGIN_ERROR_MESSAGES.configuration
   if (!errorCode) return undefined
-  if (authMode === 'database-test' && !DATABASE_TEST_ERROR_CODES.has(errorCode)) {
+  if ((authMode === 'database-test' || authMode === 'internal-email') && !DATABASE_TEST_ERROR_CODES.has(errorCode)) {
     return FALLBACK_LOGIN_ERROR
   }
   return LOGIN_ERROR_MESSAGES[errorCode] ?? FALLBACK_LOGIN_ERROR

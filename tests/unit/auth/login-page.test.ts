@@ -4,6 +4,8 @@ import test from 'node:test'
 
 const pagePath = new URL('../../../app/(auth)/login/page.tsx', import.meta.url)
 const formPath = new URL('../../../app/(auth)/login/DatabaseTestLoginForm.tsx', import.meta.url)
+const internalFormPath = new URL('../../../app/(auth)/login/InternalEmailLoginForm.tsx', import.meta.url)
+const activationFormPath = new URL('../../../app/(auth)/login/activate/InviteActivationForm.tsx', import.meta.url)
 
 test('renders mutually exclusive entries from the server auth mode', async () => {
   const source = await readFile(pagePath, 'utf8')
@@ -11,8 +13,32 @@ test('renders mutually exclusive entries from the server auth mode', async () =>
   assert.match(source, /authMode = loadAuthMode\(\)/)
   assert.match(source, /authMode === 'local-synthetic'[\s\S]*name="role"/)
   assert.match(source, /authMode === 'database-test'\) return <DatabaseTestLoginForm \/>/)
+  assert.match(source, /authMode === 'internal-email'\) return <InternalEmailLoginForm \/>/)
   assert.match(source, /authMode === 'cognito'[\s\S]*href="\/login\/activate"/)
   assert.match(source, /return null\s*}/)
+})
+
+test('internal email login posts only email and password and exposes no registration path', async () => {
+  const [page, form] = await Promise.all([
+    readFile(pagePath, 'utf8'),
+    readFile(internalFormPath, 'utf8'),
+  ])
+  assert.match(form, /action="\/api\/v1\/auth\/login"/)
+  assert.match(form, /encType="application\/x-www-form-urlencoded"/)
+  assert.deepEqual((form.match(/<input[\s\S]*?\/>/g) ?? []).map(fieldName), ['email', 'password'])
+  assert.doesNotMatch(form, /name="(?:role|next)"|localStorage|sessionStorage/)
+  assert.match(page, /帳戶由 Founder 邀請建立；不提供公開註冊。/)
+  assert.doesNotMatch(page, /href="\/(?:register|signup|sign-up)"/i)
+})
+
+test('invite activation reads the one-time token from the URL fragment and initializes nickname and password', async () => {
+  const source = await readFile(activationFormPath, 'utf8')
+  assert.match(source, /window\.location\.hash/)
+  assert.match(source, /window\.history\.replaceState/)
+  assert.match(source, /name="activation_credential"/)
+  assert.match(source, /name="display_name"/)
+  assert.equal((source.match(/name="password(?:_confirmation)?"/g) ?? []).length, 2)
+  assert.doesNotMatch(source, /localStorage|sessionStorage/)
 })
 
 test('database-test posts exactly email and password with browser credential hints', async () => {
@@ -74,17 +100,15 @@ test('database-test has explicit labels and no activation or browser storage pat
   assert.doesNotMatch(source, /\/login\/activate|Cognito|香港|organization|capabilit/i)
 })
 
-test('database-test copy is synthetic-only and authentication failure stays generic', async () => {
+test('login copy has no development explanation and authentication failure stays generic', async () => {
   const source = await readFile(pagePath, 'utf8')
   const databasePresentation = source.match(
     /if \(authMode === 'database-test'\) \{[\s\S]*?\n  }/,
   )?.[0]
 
   assert.ok(databasePresentation)
-  assert.match(databasePresentation, /合成測試帳號/)
-  assert.match(databasePresentation, /只包含合成測試資料/)
-  assert.match(databasePresentation, /隔離測試環境/)
-  assert.doesNotMatch(databasePresentation, /Cognito|香港|生產/)
+  assert.match(databasePresentation, /使用公司帳戶登入工作台。/)
+  assert.doesNotMatch(databasePresentation, /合成|測試|Cognito|香港|生產/)
   assert.match(
     source,
     /authentication_failed: '登入驗證失敗，請重新嘗試或聯絡管理員。'/,

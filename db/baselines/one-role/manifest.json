@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "e252f30df91ec303e7472c5073dfe73f2085899593ebdf6981592ff4ce2bc97b",
+  "source_history_manifest_sha256": "1e3ceac998565852932cb964957637572299a5d2a31dbac038779514e202a778",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -387,6 +387,27 @@
       "generated_file": "053_202608290010_054_support_multi_role_identity_sessions.sql",
       "generated_sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202609070010_055_internal_email_identity.sql",
+      "source_sha256": "f8e68c33af9477600ce070d96cea3efb2ace94667832079a50ba7c99ad4e70ec",
+      "generated_file": "054_202609070010_055_internal_email_identity.sql",
+      "generated_sha256": "f8e68c33af9477600ce070d96cea3efb2ace94667832079a50ba7c99ad4e70ec",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609080010_056_email_provider_settings.sql",
+      "source_sha256": "348e85bb2c467d06ae14ba8eaeec90b4a1a56868831455df21e1ff7ac6e74de5",
+      "generated_file": "055_202609080010_056_email_provider_settings.sql",
+      "generated_sha256": "348e85bb2c467d06ae14ba8eaeec90b4a1a56868831455df21e1ff7ac6e74de5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609080020_057_email_invitation_template.sql",
+      "source_sha256": "dce512c488f0e9509294f8e4726ea0f62091e6ec66631d77c61994e69363fdc4",
+      "generated_file": "056_202609080020_057_email_invitation_template.sql",
+      "generated_sha256": "dce512c488f0e9509294f8e4726ea0f62091e6ec66631d77c61994e69363fdc4",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -653,6 +674,21 @@
     {
       "name": "053_202608290010_054_support_multi_role_identity_sessions.sql",
       "sha256": "643ac6f38e1e304a5df16351b59233668a9463caa89959afe9851ac8a3a38e78",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "054_202609070010_055_internal_email_identity.sql",
+      "sha256": "f8e68c33af9477600ce070d96cea3efb2ace94667832079a50ba7c99ad4e70ec",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "055_202609080010_056_email_provider_settings.sql",
+      "sha256": "348e85bb2c467d06ae14ba8eaeec90b4a1a56868831455df21e1ff7ac6e74de5",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "056_202609080020_057_email_invitation_template.sql",
+      "sha256": "dce512c488f0e9509294f8e4726ea0f62091e6ec66631d77c61994e69363fdc4",
       "transform": "copy-v1"
     },
     {

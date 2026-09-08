@@ -2,7 +2,7 @@ import "server-only";
 
 export const APP_ENVIRONMENTS = ["development", "test", "production"] as const;
 export const APP_RUNTIME_MODES = ["local-synthetic", "test-database", "production-aws"] as const;
-export const AUTH_MODES = ["local-synthetic", "database-test", "cognito"] as const;
+export const AUTH_MODES = ["local-synthetic", "database-test", "internal-email", "cognito"] as const;
 export const TEST_WEB_FORBIDDEN_DATABASE_VARIABLES = Object.freeze([
   "DATABASE_URL",
   "DATABASE_URL_UNPOOLED",
@@ -71,7 +71,7 @@ export function loadRuntimeEnvironment(
   if (appEnvironment === "development") {
     requireValue(nodeEnvironment, "development", "NODE_ENV");
     requireValue(appRuntimeMode, "local-synthetic", "APP_RUNTIME_MODE");
-    requireValue(authMode, "database-test", "AUTH_MODE");
+    requireOneOf(authMode, ["database-test", "internal-email"], "AUTH_MODE");
     rejectPresent(environment, "VERCEL");
     rejectPresent(environment, "VERCEL_ENV");
     rejectLegacyLocalDatabaseUrls(environment);
@@ -87,7 +87,7 @@ export function loadRuntimeEnvironment(
   if (appEnvironment === "test") {
     requireValue(nodeEnvironment, "production", "NODE_ENV");
     requireValue(appRuntimeMode, "test-database", "APP_RUNTIME_MODE");
-    requireValue(authMode, "database-test", "AUTH_MODE");
+    requireOneOf(authMode, ["database-test", "internal-email"], "AUTH_MODE");
     requireValue(environment.VERCEL?.trim(), "1", "VERCEL");
     const vercelEnvironment = exact(
       environment,
@@ -106,7 +106,7 @@ export function loadRuntimeEnvironment(
 
   requireValue(nodeEnvironment, "production", "NODE_ENV");
   requireValue(appRuntimeMode, "production-aws", "APP_RUNTIME_MODE");
-  requireValue(authMode, "cognito", "AUTH_MODE");
+  requireValue(authMode, "internal-email", "AUTH_MODE");
   rejectPresent(environment, "VERCEL");
   rejectPresent(environment, "VERCEL_ENV");
   rejectProductionTestDatabaseUrls(environment);
@@ -164,6 +164,10 @@ function exact<const Values extends readonly string[]>(
 
 function requireValue(actual: string | undefined, expected: string, variable: string): void {
   if (actual !== expected) throw new RuntimeEnvironmentConfigurationError(variable);
+}
+
+function requireOneOf(actual: string | undefined, expected: readonly string[], variable: string): void {
+  if (!actual || !expected.includes(actual)) throw new RuntimeEnvironmentConfigurationError(variable);
 }
 
 function rejectPresent(environment: RuntimeEnvironment, variable: string): void {

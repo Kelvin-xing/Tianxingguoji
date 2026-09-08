@@ -15,6 +15,7 @@ export async function GET(request: Request): Promise<Response> {
       const actor = await requireApiRequestAccessContext();
       const users = await getUserDirectoryRuntime().service.listUsers(actor);
       return {
+        can_invite_users: actor.roles.includes("founder"),
         total: users.length,
         users: users.map((user) => ({
           user_id: user.userId,
@@ -25,6 +26,8 @@ export async function GET(request: Request): Promise<Response> {
           employment_type: user.employmentType,
           profile_record_version: user.profileRecordVersion,
           access_version: user.accessVersion,
+          pending_invite_id: user.pendingInviteId,
+          pending_invite_expires_at: user.pendingInviteExpiresAt,
           roles: user.roles.map((role) => ({
             role: role.role,
             status: role.status,

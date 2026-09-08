@@ -8,9 +8,11 @@ test("auth/users is a request-time Access directory without credential fields", 
   assert.match(source, /requireApiRequestAccessContext\(\)/);
   assert.match(source, /service\.listUsers\(actor\)/);
   assert.match(source, /total: users\.length/);
+  assert.match(source, /can_invite_users: actor\.roles\.includes\("founder"\)/);
   assert.match(source, /user_id: user\.userId/);
   assert.match(source, /roles: user\.roles\.map/);
   assert.match(source, /access_version: user\.accessVersion/);
+  assert.match(source, /pending_invite_id: user\.pendingInviteId/);
   assert.doesNotMatch(source, /password|secret|token|session_hash/i);
 });
 
@@ -20,6 +22,7 @@ test("access page reads users and submits the frozen member access command", asy
   assert.match(source, /\/api\/v1\/auth\/users/);
   assert.match(source, /共 \{total\} 位使用者/);
   assert.match(source, /重新載入/);
+  assert.match(source, /重發邀請/);
   assert.match(source, /method: 'PATCH'/);
   assert.match(source, /expected_access_version: user\.access_version/);
   assert.match(source, /Contractor 必須是唯一角色/);

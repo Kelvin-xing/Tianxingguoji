@@ -24,6 +24,8 @@ export interface UserDirectoryEntry {
   readonly employmentType: EmploymentType | null;
   readonly profileRecordVersion: number | null;
   readonly accessVersion: string;
+  readonly pendingInviteId: string | null;
+  readonly pendingInviteExpiresAt: string | null;
   readonly roles: readonly UserDirectoryRole[];
   readonly updatedAt: string;
 }

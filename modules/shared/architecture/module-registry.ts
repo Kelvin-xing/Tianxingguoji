@@ -1,6 +1,7 @@
 export type ReleaseOneModuleId =
   | "shared"
   | "identity"
+  | "email"
   | "access"
   | "crm"
   | "schools"
@@ -67,6 +68,7 @@ function defineModule(definition: ModuleDefinition): ModuleDefinition {
 export const RELEASE_ONE_ACTIVE_MODULE_IDS = Object.freeze([
   "shared",
   "identity",
+  "email",
   "access",
   "crm",
   "schools",
@@ -105,6 +107,16 @@ export const MODULE_REGISTRY = Object.freeze({
     historicalEntrypoints: [],
     retainedHistoricalImporters: [],
     owns: ["User", "Session", "Invite"],
+    historicalOwns: [],
+  }),
+  email: defineModule({
+    id: "email",
+    releaseOneState: "active",
+    sourceRoots: ["modules/email"],
+    publicEntrypoints: ["modules/email/public.ts", "modules/email/server.ts"],
+    historicalEntrypoints: [],
+    retainedHistoricalImporters: [],
+    owns: ["EmailMessage", "EmailDeliveryReceipt", "EmailProviderSettings", "EmailTemplate"],
     historicalOwns: [],
   }),
   access: defineModule({

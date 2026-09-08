@@ -15,6 +15,7 @@ export interface DatabaseClient {
 
 interface AuthPool {
   connect(): Promise<DatabaseClient>
+  end(): Promise<void>
 }
 
 const globalForAuth = globalThis as typeof globalThis & {
@@ -31,11 +32,18 @@ export function getAuthPool(): AuthPool {
   return globalForAuth.__txAuthPool
 }
 
+export async function closeAuthPoolForTests(): Promise<void> {
+  const pool = globalForAuth.__txAuthPool
+  if (!pool) return
+  delete globalForAuth.__txAuthPool
+  await pool.end()
+}
+
 export function resolveAuthPoolConfiguration(environment: RuntimeEnvironment):
   | { readonly kind: 'node-pg'; readonly options: ConstructorParameters<typeof NodePool>[0] }
   | { readonly kind: 'neon'; readonly options: ConstructorParameters<typeof Pool>[0] } {
   const runtime = loadRuntimeEnvironment(environment)
-  if (runtime.authMode === 'database-test') {
+  if (runtime.authMode === 'database-test' || (runtime.authMode === 'internal-email' && runtime.appEnvironment !== 'production')) {
     const test = loadTestDatabaseConfiguration(environment)
     return Object.freeze({ kind: 'node-pg' as const, options: Object.freeze({
       connectionString: test.database.connectionString,

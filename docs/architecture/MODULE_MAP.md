@@ -51,6 +51,7 @@ layer or adapter.
 |---|---|---|
 | `shared` | Shared idempotency and request contracts | `public.ts`, `server.ts` |
 | `identity` | User, session, and invite | `public.ts`, `server.ts`, `web.ts` |
+| `email` | Internal account invitation message composition and delivery transport | `public.ts`, `server.ts` |
 | `access` | Organization membership, roles, grants, and collaborators | `public.ts`, `server.ts` |
 | `crm` | Student, guardian, relationships, and merge revisions | `public.ts`, `server.ts`, `client.ts` |
 | `cases` | ServiceCase, assessment, school targets, outcomes, and reconstruction | `public.ts`, `server.ts` |

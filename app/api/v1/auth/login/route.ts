@@ -13,6 +13,7 @@ import {
 import { LocalSyntheticConfigurationError } from "@/lib/runtime/local-synthetic-config";
 import { createPkcePair } from "@/modules/identity/server";
 import { getIdentityRuntime } from "@/modules/identity/server";
+import { InternalEmailServiceError, normalizeInternalEmail } from "@/modules/identity/server";
 import {
   DatabaseTestAuthenticationError,
   DatabaseTestIdentityRoleError,
@@ -32,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     if (loadAuthMode() !== "cognito") {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-    return beginCognitoLogin(request);
+    return beginCognitoLogin();
   } catch (error) {
     const code = isConfigurationError(error) ? "configuration" : "service_unavailable";
     return NextResponse.redirect(new URL(`/login?error=${code}`, request.url));
@@ -48,12 +49,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (mode === "cognito") {
     try {
-      return beginCognitoLogin(request);
+      return beginCognitoLogin();
     } catch (error) {
       return loginError(request, isConfigurationError(error) ? "configuration" : "service_unavailable");
     }
   }
   if (mode === "database-test") return databaseTestLogin(request);
+  if (mode === "internal-email") return internalEmailLogin(request);
 
   try {
     const formData = await request.formData();
@@ -117,6 +119,32 @@ async function databaseTestLogin(request: Request): Promise<Response> {
   }
 }
 
+async function internalEmailLogin(request: Request): Promise<Response> {
+  let credentials: { email: string; password: string };
+  try {
+    const submitted = await readDatabaseTestLoginRequest(request);
+    const email = normalizeInternalEmail(submitted.email);
+    const password = submitted.password;
+    if (!email) return loginError(request, "authentication_failed");
+    credentials = { email, password };
+  } catch (error) {
+    if (!(error instanceof DatabaseTestLoginRequestError)) return loginError(request, "service_unavailable");
+    return loginError(request, "authentication_failed");
+  }
+  try {
+    const login = getIdentityRuntime().internalEmail;
+    if (!login) return loginError(request, "configuration");
+    const session = await login.createSession(credentials);
+    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
+    response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
+    return response;
+  } catch (error) {
+    if (error instanceof InternalEmailServiceError && error.code === "AUTHENTICATION_FAILED") return loginError(request, "authentication_failed");
+    if (error instanceof RuntimeEnvironmentConfigurationError || error instanceof AuthConfigurationError) return loginError(request, "configuration");
+    return loginError(request, "service_unavailable");
+  }
+}
+
 function isConfigurationError(error: unknown): boolean {
   return error instanceof RuntimeEnvironmentConfigurationError ||
     error instanceof LocalSyntheticConfigurationError ||
@@ -134,7 +162,7 @@ function loginDestination(role: string): "/today" | "/tasks" {
   return role === "contractor" ? "/tasks" : "/today";
 }
 
-function beginCognitoLogin(request: Request): Response {
+function beginCognitoLogin(): Response {
     const config = getCognitoAuthConfig();
     const pkce = createPkcePair();
     const response = NextResponse.redirect(

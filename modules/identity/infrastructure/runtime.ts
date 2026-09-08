@@ -25,7 +25,9 @@ import { loadTestDatabaseConfiguration } from "../../../lib/runtime/test-databas
 import {
   getPostgresqlDatabaseTestSessionRepository,
 } from "./postgresql-database-test-repository.ts";
-import type { CanonicalIdentitySessionActor } from "../domain/actor.ts";
+import type { CanonicalIdentitySessionActor, IdentitySessionActor } from "../domain/actor.ts";
+import { getInternalEmailRuntime } from "./internal-email-runtime.ts";
+import { InternalEmailServiceError, type InternalEmailService } from "../application/internal-email.ts";
 
 export type IdentityRuntimeService = Pick<
   IdentityService,
@@ -46,6 +48,7 @@ export interface IdentityRuntime {
   readonly managedLoginVerifier: CognitoManagedLoginVerifier | null;
   readonly localLogin: LocalSyntheticLoginService | null;
   readonly databaseTestLogin: DatabaseTestLoginService | null;
+  readonly internalEmail: InternalEmailService | null;
   readonly legacySessionReader: Readonly<{
     findByCookieSecret(cookieSecret: string): Promise<SessionActor>;
   }>;
@@ -62,6 +65,7 @@ export function getIdentityRuntime(): IdentityRuntime {
   const mode = loadAuthMode();
   if (mode === "local-synthetic") return getLocalSyntheticRuntime();
   if (mode === "database-test") return getDatabaseTestRuntime();
+  if (mode === "internal-email") return getInternalEmailRuntimeIdentity();
   return getCognitoRuntime();
 }
 
@@ -111,6 +115,7 @@ function getLocalSyntheticRuntime(): IdentityRuntime {
       managedLoginVerifier: null,
       localLogin: new LocalSyntheticLoginService(repository),
       databaseTestLogin: null,
+      internalEmail: null,
       legacySessionReader: Object.freeze({
         async findByCookieSecret(cookieSecret: string) {
           try {
@@ -177,6 +182,7 @@ function getDatabaseTestRuntime(): IdentityRuntime {
       managedLoginVerifier: null,
       localLogin: null,
       databaseTestLogin: new DatabaseTestLoginService(repository),
+      internalEmail: null,
       legacySessionReader: Object.freeze({
         async findByCookieSecret(cookieSecret: string) {
           const actor = await repository.findLegacyActorBySessionSecretHash({
@@ -243,8 +249,61 @@ function getCognitoRuntime(): IdentityRuntime {
     managedLoginVerifier: null,
     localLogin: null,
     databaseTestLogin: null,
+    internalEmail: null,
     legacySessionReader: Object.freeze({
       findByCookieSecret: findActorBySecret,
+    }),
+  });
+}
+
+function getInternalEmailRuntimeIdentity(): IdentityRuntime {
+  const internal = getInternalEmailRuntime().service;
+  const unavailable = async (): Promise<never> => {
+    throw new IdentityRuntimeUnavailable();
+  };
+  const service: IdentityRuntimeService = {
+    createFounderInvite: unavailable,
+    claimInviteActivation: unavailable,
+    completeManagedLogin: unavailable,
+    async requireSession(input) {
+      try {
+        const actor = await internal.requireSession(input) as IdentitySessionActor & { membershipId: string; roleBindingId: string };
+        return Object.freeze({
+          ...actor,
+          membershipId: actor.membershipId,
+          roleBindingId: actor.roleBindingId,
+        });
+      } catch (error) {
+        if (error instanceof InternalEmailServiceError && error.code === "SESSION_NOT_FOUND") {
+          throw new IdentityServiceError("SESSION_NOT_FOUND");
+        }
+        throw error;
+      }
+    },
+    revokeSession: internal.revokeSession.bind(internal),
+  };
+  return Object.freeze({
+    authMode: "internal-email",
+    service,
+    managedLoginVerifier: null,
+    localLogin: null,
+    databaseTestLogin: null,
+    internalEmail: internal,
+    legacySessionReader: Object.freeze({
+      async findByCookieSecret(cookieSecret: string) {
+        const actor = await internal.requireSession({ cookieSecret, sensitiveAction: false }) as IdentitySessionActor & { membershipId: string; roleBindingId: string };
+        return {
+          userId: actor.userId,
+          normalizedEmail: "",
+          organizationId: actor.organizationId,
+          membershipId: actor.membershipId,
+          roleBindingId: actor.roleBindingId,
+          role: actor.role,
+          sessionId: actor.sessionId,
+          capturedSessionVersion: actor.capturedSessionVersion,
+          reauthenticatedAt: actor.reauthenticatedAtMs,
+        };
+      },
     }),
   });
 }

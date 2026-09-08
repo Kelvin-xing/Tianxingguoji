@@ -197,7 +197,7 @@ function productionEnvironment(configured: boolean): Record<string, string | und
     APP_ENV: "production",
     NODE_ENV: "production",
     APP_RUNTIME_MODE: "production-aws",
-    AUTH_MODE: "cognito",
+    AUTH_MODE: "internal-email",
     ...(configured
       ? {
           DOCUMENT_TRANSPORT_MODE: "production-s3",

@@ -23,6 +23,8 @@ interface UserDirectoryRow {
   role_record_version: number | string | null;
   role: OrganizationRole | null;
   role_status: RoleBindingStatus | null;
+  pending_invite_id: string | null;
+  pending_invite_expires_at: Date | string | null;
   updated_at: Date | string;
 }
 
@@ -51,6 +53,8 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
                    role_binding.record_version AS role_record_version,
                    role_binding.role,
                    role_binding.status AS role_status,
+                   pending_invite.id AS pending_invite_id,
+                   pending_invite.expires_at AS pending_invite_expires_at,
                    GREATEST(identity_user.updated_at, membership.updated_at,
                      COALESCE(employee_profile.updated_at, identity_user.updated_at),
                      COALESCE(role_binding.updated_at, identity_user.updated_at)) AS updated_at
@@ -67,6 +71,15 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
                   AND role_binding.user_id = identity_user.id
                   AND role_binding.status = 'active'
                   AND role_binding.role IN ('founder','admin','advisor','contractor')
+                 LEFT JOIN LATERAL (
+                   SELECT invite.id, invite.expires_at
+                     FROM identity_invites AS invite
+                    WHERE invite.organization_id = membership.organization_id
+                      AND invite.target_user_id = identity_user.id
+                      AND invite.status = 'created'
+                    ORDER BY invite.updated_at DESC, invite.id
+                    LIMIT 1
+                 ) AS pending_invite ON true
                  WHERE membership.organization_id = $1
                  ORDER BY COALESCE(employee_profile.display_name, ''),
                    identity_user.normalized_email, identity_user.id, role_binding.id`,
@@ -90,6 +103,8 @@ function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirecto
     readonly profileRecordVersion: number | null;
     readonly roles: UserDirectoryRole[];
     readonly roleVersions: { readonly bindingId: string; readonly recordVersion: number }[];
+    readonly pendingInviteId: string | null;
+    readonly pendingInviteExpiresAt: string | null;
     updatedAt: string;
   }>();
 
@@ -126,6 +141,10 @@ function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirecto
       roleVersions: row.role_binding_id !== null && row.role_record_version !== null
         ? [{ bindingId: row.role_binding_id, recordVersion: positiveInteger(row.role_record_version) }]
         : [],
+      pendingInviteId: row.pending_invite_id,
+      pendingInviteExpiresAt: row.pending_invite_expires_at === null
+        ? null
+        : toIsoString(row.pending_invite_expires_at),
       updatedAt,
     });
   }
@@ -143,6 +162,8 @@ function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirecto
       profileRecordVersion: user.profileRecordVersion,
       roles: user.roleVersions,
     }),
+    pendingInviteId: user.pendingInviteId,
+    pendingInviteExpiresAt: user.pendingInviteExpiresAt,
     roles: Object.freeze(user.roles.map((role) => Object.freeze(role))),
     updatedAt: user.updatedAt,
   })));

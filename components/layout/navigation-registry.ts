@@ -11,6 +11,8 @@ export type NavigationLabelKey =
   | "nav.tasks"
   | "nav.documents"
   | "nav.access"
+  | "nav.emailSettings"
+  | "nav.emailTemplates"
   | "nav.schoolGovernance"
   | "nav.dataReview";
 
@@ -31,6 +33,8 @@ export const NAVIGATION_REGISTRY = Object.freeze([
   defineNavigationItem({ route: "/tasks", labelKey: "nav.tasks", iconKey: "clipboard", requiredCapability: "tasks.read", audience: "workspace", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/documents", labelKey: "nav.documents", iconKey: "file-text", requiredCapability: "documents.read", audience: "workspace", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/admin/access", labelKey: "nav.access", iconKey: "shield", requiredCapability: "access.manage", audience: "administration", activeMatch: "prefix" }),
+  defineNavigationItem({ route: "/admin/email", labelKey: "nav.emailSettings", iconKey: "mail", requiredCapability: "email.settings.manage", audience: "administration", activeMatch: "exact" }),
+  defineNavigationItem({ route: "/admin/email/templates", labelKey: "nav.emailTemplates", iconKey: "file-text", requiredCapability: "email.templates.manage", audience: "administration", activeMatch: "exact" }),
   defineNavigationItem({ route: "/admin/schools", labelKey: "nav.schoolGovernance", iconKey: "book-open", requiredCapability: "schools.manage", audience: "administration", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/admin/crawler", labelKey: "nav.dataReview", iconKey: "settings", requiredCapability: "crawler.manage", audience: "administration", activeMatch: "prefix" }),
 ] as const satisfies readonly NavigationRegistryItem[]);

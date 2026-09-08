@@ -44,6 +44,7 @@ test("freezes the approved Release 1 active module snapshot", () => {
   assert.deepEqual(RELEASE_ONE_ACTIVE_MODULE_IDS, [
     "shared",
     "identity",
+    "email",
     "access",
     "crm",
     "schools",

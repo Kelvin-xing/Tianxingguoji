@@ -14,9 +14,13 @@ test("selects database-test locally and blocks unsupported environment combinati
   assert.equal(loadAuthMode({
     APP_ENV: "production",
     APP_RUNTIME_MODE: "production-aws",
-    AUTH_MODE: "cognito",
+    AUTH_MODE: "internal-email",
     NODE_ENV: "production",
-  }), "cognito");
+  }), "internal-email");
+  assert.throws(
+    () => loadAuthMode({ APP_ENV: "production", APP_RUNTIME_MODE: "production-aws", AUTH_MODE: "cognito", NODE_ENV: "production" }),
+    (error: unknown) => error instanceof AuthModeConfigurationError && error.variable === "AUTH_MODE",
+  );
   assert.equal(loadAuthMode({
     APP_ENV: "test",
     APP_RUNTIME_MODE: "test-database",

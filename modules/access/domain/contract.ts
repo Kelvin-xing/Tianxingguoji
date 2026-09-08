@@ -70,6 +70,8 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "documents.upload",
   "documents.download",
   "access.manage",
+  "email.settings.manage",
+  "email.templates.manage",
   "schools.manage",
   "crawler.manage",
 ] as const);
@@ -109,6 +111,8 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
   admin: Object.freeze([
     "today.read",
     "access.manage",
+    "email.settings.manage",
+    "email.templates.manage",
     "schools.manage",
     "crawler.manage",
   ] as const),

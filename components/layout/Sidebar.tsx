@@ -71,10 +71,10 @@ export function Sidebar({
 
         <nav className="flex-1 px-3 py-4 space-y-1" aria-label={t('layout.workspace_navigation')}>
           <div className="sidebar-section-label px-2 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>{t('layout.workspace_section')}</div>
-          {navItems.filter((item) => item.href !== '/admin/access').map((item) => <NavItem key={item.href} item={item} label={t(item.labelKey)} active={isActive(item)} onNavigate={mobileOpen ? (onCloseMobile ?? onClose) : undefined} />)}
-          {navItems.some((item) => item.href === '/admin/access') ? <>
+          {navItems.filter((item) => !item.href.startsWith('/admin/')).map((item) => <NavItem key={item.href} item={item} label={t(item.labelKey)} active={isActive(item)} onNavigate={mobileOpen ? (onCloseMobile ?? onClose) : undefined} />)}
+          {navItems.some((item) => item.href.startsWith('/admin/')) ? <>
             <div className="sidebar-section-label px-2 pt-6 pb-2 text-[10px] uppercase tracking-[0.12em] font-semibold" style={{ color: 'var(--sidebar-text-muted)' }}>{t('layout.administration_section')}</div>
-            {navItems.filter((item) => item.href === '/admin/access').map((item) => <NavItem key={item.href} item={item} label={t(item.labelKey)} active={isActive(item)} onNavigate={mobileOpen ? (onCloseMobile ?? onClose) : undefined} />)}
+            {navItems.filter((item) => item.href.startsWith('/admin/')).map((item) => <NavItem key={item.href} item={item} label={t(item.labelKey)} active={isActive(item)} onNavigate={mobileOpen ? (onCloseMobile ?? onClose) : undefined} />)}
           </> : null}
         </nav>
 

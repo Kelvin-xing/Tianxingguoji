@@ -19,6 +19,8 @@ const PAGE_TITLE_KEYS: Array<{ prefix: string; titleKey: string }> = [
   { prefix: '/tasks', titleKey: 'nav.tasks' },
   { prefix: '/documents', titleKey: 'nav.documents' },
   { prefix: '/admin/access', titleKey: 'nav.access' },
+  { prefix: '/admin/email/templates', titleKey: 'nav.emailTemplates' },
+  { prefix: '/admin/email', titleKey: 'nav.emailSettings' },
   { prefix: '/profile', titleKey: 'layout.profile' },
 ]
 

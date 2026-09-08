@@ -1,5 +1,11 @@
 # ENV-01 Vercel Synthetic Test Runtime Plan
 
+> Note: the current confirmed authentication direction is recorded in
+> `P1-03_INTERNAL_EMAIL_INVITE_PLAN.md`: production and test deployments may
+> use the internal-email mode with Founder-only invitations. The historical
+> database-test/Cognito matrix below remains as compatibility evidence and is
+> not a public registration contract.
+
 | Control | Value |
 | --- | --- |
 | Ticket | `ENV-01` Vercel synthetic database test runtime |

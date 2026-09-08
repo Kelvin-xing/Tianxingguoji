@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { InviteActivationForm } from "./InviteActivationForm";
+
 const errorMessages: Readonly<Record<string, string>> = {
   invalid_invite: "啟用資訊無效、已使用或已過期。",
   service_unavailable: "啟用服務暫時不可用，請聯絡系統管理員。",
@@ -29,22 +31,7 @@ export default async function InviteActivationPage({
         {errorMessage ? (
           <p className="form-error mb-4" role="alert">{errorMessage}</p>
         ) : null}
-        <form action="/api/v1/auth/invite-activations" method="post" className="space-y-4">
-          <label className="block text-sm font-medium" htmlFor="activation_credential">
-            啟用資訊
-          </label>
-          <input
-            className="w-full"
-            id="activation_credential"
-            name="activation_credential"
-            type="password"
-            autoComplete="one-time-code"
-            required
-          />
-          <button className="primary-button w-full justify-center" type="submit">
-            繼續啟用
-          </button>
-        </form>
+        <InviteActivationForm />
         <Link className="inline-block mt-6 text-sm" href="/login">
           返回登入
         </Link>

@@ -15,7 +15,7 @@ export interface WorkspaceAuthDto {
 export interface WorkspaceNavigationItem {
   readonly href: string;
   readonly labelKey: string;
-  readonly icon: "activity" | "book-open" | "briefcase" | "clipboard" | "file-text" | "layout-dashboard" | "shield" | "users";
+  readonly icon: "activity" | "book-open" | "briefcase" | "clipboard" | "file-text" | "layout-dashboard" | "mail" | "shield" | "users";
   readonly capability: WorkspaceCapability;
   readonly exact?: boolean;
 }
@@ -31,6 +31,8 @@ export const WORKSPACE_NAVIGATION = Object.freeze([
 
 export const ADMIN_NAVIGATION = Object.freeze([
   { href: "/admin/access", labelKey: "nav.access", icon: "shield", capability: "access.manage" },
+  { href: "/admin/email", labelKey: "nav.emailSettings", icon: "mail", capability: "email.settings.manage", exact: true },
+  { href: "/admin/email/templates", labelKey: "nav.emailTemplates", icon: "file-text", capability: "email.templates.manage", exact: true },
 ] as const satisfies readonly WorkspaceNavigationItem[]);
 
 const ALL_NAVIGATION: readonly WorkspaceNavigationItem[] = [...WORKSPACE_NAVIGATION, ...ADMIN_NAVIGATION];

@@ -26,7 +26,7 @@ test("freezes the only three legal runtime environment combinations", () => {
     appEnvironment: "production",
     nodeEnvironment: "production",
     appRuntimeMode: "production-aws",
-    authMode: "cognito",
+    authMode: "internal-email",
     vercel: false,
   });
 });
@@ -42,6 +42,7 @@ test("rejects every cross-environment mode substitution fail closed", () => {
     [testEnvironment(), "AUTH_MODE", "local-synthetic", "AUTH_MODE"],
     [productionEnvironment(), "APP_RUNTIME_MODE", "test-database", "APP_RUNTIME_MODE"],
     [productionEnvironment(), "AUTH_MODE", "database-test", "AUTH_MODE"],
+    [productionEnvironment(), "AUTH_MODE", "cognito", "AUTH_MODE"],
   ] as const;
   for (const [environment, variable, value, expectedVariable] of cases) {
     assertConfigurationError(
@@ -216,7 +217,7 @@ function productionEnvironment(): Record<string, string | undefined> {
     APP_ENV: "production",
     NODE_ENV: "production",
     APP_RUNTIME_MODE: "production-aws",
-    AUTH_MODE: "cognito",
+    AUTH_MODE: "internal-email",
   };
 }
 

@@ -33,7 +33,7 @@ test("local readiness is hidden outside local mode", async () => {
     environment: {
       APP_ENV: "production",
       APP_RUNTIME_MODE: "production-aws",
-      AUTH_MODE: "cognito",
+      AUTH_MODE: "internal-email",
       NODE_ENV: "production",
     },
     checkReadiness: async () => {

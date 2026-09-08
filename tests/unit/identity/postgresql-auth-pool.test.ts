@@ -13,8 +13,8 @@ test("database-test auth pool uses the approved local URL without DATABASE_URL",
   assert.equal(config.options?.connectionString, "postgresql://tianxing_app:secret@127.0.0.1:5432/tianxing");
 });
 
-test("production cognito auth pool still validates DATABASE_URL", () => {
-  const base = { APP_ENV: "production", NODE_ENV: "production", APP_RUNTIME_MODE: "production-aws", AUTH_MODE: "cognito" };
+test("production internal-email auth pool validates DATABASE_URL", () => {
+  const base = { APP_ENV: "production", NODE_ENV: "production", APP_RUNTIME_MODE: "production-aws", AUTH_MODE: "internal-email" };
   assert.throws(() => resolveAuthPoolConfiguration(base), /DATABASE_URL/);
   assert.equal(resolveAuthPoolConfiguration({ ...base, DATABASE_URL: "postgresql://tianxing_app:secret@db.example.com/prod" }).kind, "neon");
 });

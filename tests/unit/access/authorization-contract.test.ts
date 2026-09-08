@@ -46,7 +46,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "schools.manage",
     "crawler.manage",
   ]),
-  admin: Object.freeze(["today.read", "access.manage", "schools.manage", "crawler.manage"]),
+  admin: Object.freeze(["today.read", "access.manage", "email.settings.manage", "email.templates.manage", "schools.manage", "crawler.manage"]),
   advisor: Object.freeze([
     "today.read",
     "cases.read",
@@ -132,7 +132,7 @@ test("runtime validators and bootstrap evaluation fail closed for unknown vocabu
 
 test("publishes one deterministic serializable bootstrap policy manifest", () => {
   assert.equal(ACCESS_POLICY_MANIFEST_VERSION, "access-policy-manifest/v1");
-  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v13");
+  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v15");
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.manifestVersion, ACCESS_POLICY_MANIFEST_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.policyVersion, BOOTSTRAP_ACCESS_POLICY_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.defaultDecision, "deny");
