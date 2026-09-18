@@ -1,4 +1,6 @@
 import "server-only";
+import { TaskDocumentLinkService } from "../application/task-link-service.ts";
+import { PostgresqlTaskDocumentLinkRepository } from "./postgresql-task-link-repository.ts";
 
 import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 import { getApplicationTenantRunner } from "../../shared/server.ts";
@@ -7,6 +9,7 @@ import { PostgresqlDocumentWorkspaceRepository } from "./postgresql-workspace-re
 
 export interface DocumentWorkspaceRuntime {
   readonly service: DocumentWorkspaceService;
+  readonly taskLinks:TaskDocumentLinkService;
 }
 
 export class DocumentWorkspaceRuntimeUnavailable extends Error {
@@ -37,6 +40,7 @@ export function getDocumentWorkspaceRuntime(): DocumentWorkspaceRuntime {
   if (!runtime) {
     try {
       runtime = Object.freeze({
+        taskLinks:new TaskDocumentLinkService(new PostgresqlTaskDocumentLinkRepository(getApplicationTenantRunner())),
         service: new DocumentWorkspaceService(
           new PostgresqlDocumentWorkspaceRepository(getApplicationTenantRunner()),
         ),

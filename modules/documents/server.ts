@@ -42,3 +42,6 @@ export async function requireDocumentActor() {
     trialPrincipal: access.trialPrincipal,
   });
 }
+
+export * from "./application/task-link-service.ts";
+export * from "./infrastructure/postgresql-task-link-repository.ts";

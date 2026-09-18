@@ -708,3 +708,35 @@ async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promi
     signal?.addEventListener("abort", abort, { once: true });
   });
 }
+
+export type TaskFileAction="document.read"|"document.upload"|"document.download";
+export interface TaskFileLink {
+  id:string;document_id:string;display_name:string;record_version:number;
+  allowed_actions:readonly TaskFileAction[];configured_actions?:readonly TaskFileAction[];available_version:boolean;
+}
+export interface TaskFileLinks {
+  can_manage:boolean;can_grant:boolean;document_options:readonly {id:string;display_name:string}[];links:readonly TaskFileLink[];
+}
+function taskFileActions(value:unknown):readonly TaskFileAction[] {
+  return expectArray(value,entry=>{
+    const action=expectString(entry);
+    if(!['document.read','document.upload','document.download'].includes(action)) throw new Error('Invalid task file action');
+    return action as TaskFileAction;
+  });
+}
+export function getTaskFileLinks(taskId:string,signal?:AbortSignal):Promise<TaskFileLinks> {
+  if(!UUID.test(taskId)) throw new Error('Invalid task identifier');
+  return requestApi({path:`/api/v1/tasks/${taskId}/documents`,signal},value=>{
+    const row=expectRecord(value);
+    return {can_manage:expectBoolean(row.can_manage),can_grant:expectBoolean(row.can_grant),
+      document_options:expectArray(row.document_options,item=>{const r=expectRecord(item);return {id:expectString(r.id),display_name:expectString(r.display_name)};}),
+      links:expectArray(row.links,item=>{const r=expectRecord(item);return {id:expectString(r.id),document_id:expectString(r.document_id),
+        display_name:expectString(r.display_name),record_version:expectNumber(r.record_version),allowed_actions:taskFileActions(r.allowed_actions),
+        ...(r.configured_actions===undefined?{}:{configured_actions:taskFileActions(r.configured_actions)}),available_version:expectBoolean(r.available_version)};})};
+  });
+}
+export function setTaskFileLink(taskId:string,input:{document_id:string;expected_record_version:number;allowed_actions:TaskFileAction[];reason:string},key:string) {
+  if(!UUID.test(taskId)||!UUID.test(input.document_id)||!IDEMPOTENCY_KEY.test(key)) throw new Error('Invalid task file command');
+  return requestApi({path:`/api/v1/tasks/${taskId}/documents`,method:'POST',headers:{'idempotency-key':key},body:input},
+    value=>decodeWriteReceipt(value,input.expected_record_version+1));
+}

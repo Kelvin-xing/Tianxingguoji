@@ -12,6 +12,7 @@ import {
 } from "@/modules/tasks/client";
 import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./AutomaticTaskTransitionControls";
 import { TaskAssignmentRevocationControl } from "./TaskAssignmentRevocationControl";
+import { TaskDocumentLinks } from "./TaskDocumentLinks";
 import { TaskTransitionControls } from "./TaskTransitionControls";
 import { taskAssigneeRoleLabel, TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
@@ -133,6 +134,7 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
       {task.state === "completed" || (task.available_transitions.length === 0 && task.allowed_actions.length === 0) ? (
         <div className="inline-callout" role="status"><Icon name="shield" size={15} /><span>此任務目前為唯讀。</span></div>
       ) : null}
+      <TaskDocumentLinks taskId={task.id} taskVersion={task.record_version} kind={task.task_kind}/>
       {canTransition && result.audience==="case_workspace" && "case_id" in result.task && task.allowed_actions.includes("revoke_access") ? (
         <TaskAssignmentRevocationControl task={result.task} onUpdate={(next)=>{setResult(next);setTransitionOutcome(null);}}/>
       ) : null}

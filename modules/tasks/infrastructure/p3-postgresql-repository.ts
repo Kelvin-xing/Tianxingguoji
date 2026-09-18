@@ -245,13 +245,10 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
         if (completion.submitter_user_id !== input.actor.userId || assignment.assignee_user_id !== input.actor.userId) throw new P3TaskError("COMPLETION_INVALID");
         if (completion.no_reference_declared === true &&
             !input.evidenceReference) throw new P3TaskError("COMPLETION_INVALID");
-        // BR-015: task file grants must be wired before L3 can cite case documents.
-        // A guessed case-document UUID must not become an implicit task-file grant.
-        if (principal?.level === "l3" && input.evidenceReference) throw new P3TaskError("COMPLETION_INVALID");
         if (input.evidenceReference &&
             !await this.evidence.readCleanCaseEvidence(transaction, { organizationId: input.actor.organizationId,
               caseId: task.service_case_id, targetId: task.school_target_id, taskId: task.id,
-              evidenceId: input.evidenceReference! })) throw new P3TaskError("COMPLETION_INVALID");
+              evidenceId: input.evidenceReference!, actorUserId:principal?.level === "l3" ? input.actor.userId : undefined })) throw new P3TaskError("COMPLETION_INVALID");
       } else {
         if (!input.completionRecord) throw new P3TaskError("COMPLETION_INVALID");
         assertInterviewCompletion(input.completionRecord);

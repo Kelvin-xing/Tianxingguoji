@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { getTaskFileLinks,type TaskFileLink } from "@/modules/documents/client";
 import { Icon } from "@/components/workspace/Icon";
 import {
   TaskIdempotencyAttempt,
@@ -344,6 +345,7 @@ export function AutomaticTaskTransitionControls({
           {selectedAction === "complete" && task.task_kind === "application_prepare_submit" ? (
             <ApplicationCompletionFields
               taskId={task.id}
+              taskOnly={!("case_id" in task)}
               values={{ submittedAt, confirmedAt, submissionChannel, checklistComplete, officialReference, noReferenceDeclared, evidenceReference }}
               pending={pending}
               onChange={(field, value) => {
@@ -379,8 +381,9 @@ export function AutomaticTaskTransitionControls({
   );
 }
 
-function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
+function ApplicationCompletionFields({ taskId, taskOnly, values, pending, onChange }: {
   readonly taskId: string;
+  readonly taskOnly:boolean;
   readonly values: Readonly<{
     submittedAt: string; confirmedAt: string; submissionChannel: SubmissionChannel;
     checklistComplete: boolean; officialReference: string; noReferenceDeclared: boolean; evidenceReference: string;
@@ -388,6 +391,16 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
   readonly pending: boolean;
   readonly onChange: (field: keyof typeof values, value: string | boolean) => void;
 }) {
+  const [files,setFiles]=useState<readonly TaskFileLink[]>([]);
+  const [filesUnavailable,setFilesUnavailable]=useState(false);
+  useEffect(()=>{
+    if(!taskOnly)return;
+    const controller=new AbortController();
+    getTaskFileLinks(taskId,controller.signal).then(result=>{
+      setFiles(result.links.filter(link=>link.available_version&&link.allowed_actions.includes("document.read")));setFilesUnavailable(false);
+    }).catch(()=>{if(!controller.signal.aborted){setFiles([]);setFilesUnavailable(true);}});
+    return()=>controller.abort();
+  },[taskId,taskOnly]);
   return (
     <fieldset className="space-y-4 border-y py-4" style={{ borderColor: "var(--border)" }}>
       <legend className="section-title px-1">申請提交記錄</legend>
@@ -416,9 +429,12 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
         <span>學校沒有提供官方提交編號。</span>
       </label>
       <label className="field-label" htmlFor={`task-evidence-reference-${taskId}`}>
-        證據文件識別碼{values.noReferenceDeclared ? <span aria-hidden="true"> *</span> : null}
-        <input id={`task-evidence-reference-${taskId}`} name="evidence_reference" type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />
-        <small>沒有官方編號時，必須引用一份已授權且通過檢查的案件文件。</small>
+        {taskOnly?"提交憑證":"證據文件識別碼"}{values.noReferenceDeclared ? <span aria-hidden="true"> *</span> : null}
+        {taskOnly?<select id={`task-evidence-reference-${taskId}`} name="evidence_reference" value={values.evidenceReference} disabled={pending||filesUnavailable} required={values.noReferenceDeclared} onChange={event=>onChange("evidenceReference",event.target.value)}>
+          <option value="">{filesUnavailable?"暫時無法載入憑證":"請選擇已授權的憑證"}</option>
+          {files.map(file=><option key={file.document_id} value={file.document_id}>{file.display_name}</option>)}
+        </select>:<input id={`task-evidence-reference-${taskId}`} name="evidence_reference" type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />}
+        <small>沒有官方編號時，必須選用一份已授權且掃描通過的文件。</small>
       </label>
       <div className="inline-callout">
         <Icon name="shield" size={15} /><span>提交人會使用目前登入帳號自動記錄，不能在此更改。</span>

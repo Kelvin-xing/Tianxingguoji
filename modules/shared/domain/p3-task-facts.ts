@@ -32,7 +32,7 @@ export interface AccessTaskFactsPort {
 }
 
 export interface DocumentsCleanEvidencePort {
-  readCleanCaseEvidence(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; caseId: string; targetId: string; taskId: string; evidenceId: string }>): Promise<boolean>;
+  readCleanCaseEvidence(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; caseId: string; targetId: string; taskId: string; evidenceId: string; actorUserId?: string }>): Promise<boolean>;
 }
 
 export interface TaskCompletionFacts {

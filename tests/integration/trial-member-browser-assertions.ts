@@ -1,6 +1,7 @@
+import { seedSyntheticCleanTaskVersion } from './trial-task-document-assertions.ts'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { randomBytes,randomUUID } from 'node:crypto'
 import { cp, mkdtemp, readdir, rm, symlink } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -181,13 +182,33 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(automaticRow.assignee_role,'l1')
     const automaticTaskId=automaticRow.id as string
     await restricted.goto(`${baseUrl}/tasks/${automaticTaskId}`)
-    await restricted.getByRole('combobox').selectOption('reassign')
+    await restricted.locator(`#automatic-task-action-${automaticTaskId}`).selectOption('reassign')
     await restricted.locator(`#automatic-task-reason-${automaticTaskId}`).fill('Synthetic manager reassignment')
     await restricted.locator(`#automatic-task-assignee-${automaticTaskId}`).selectOption(people.find((p)=>p.level==='l3')!.user_id)
     await restricted.locator('input[name="command_confirmed"]').check()
     const reassigned=restricted.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
     await restricted.getByRole('button',{name:'確認更新',exact:true}).click()
     assert.equal((await reassigned).status(),200)
+    const taskFileId=randomUUID()
+    await client.query(`INSERT INTO documents_documents(id,organization_id,owner_kind,service_case_id,display_name,classification)
+      VALUES($1,$2,'case',$3,'Synthetic assigned task file','operational_attachment')`,[taskFileId,NEON_TEST_ORGANIZATION.id,createdData.case_id])
+    await client.query('BEGIN')
+    await seedSyntheticCleanTaskVersion(client,NEON_TEST_ORGANIZATION.id,taskFileId,l1.user_id)
+    await client.query('COMMIT')
+    await restricted.reload()
+    const taskFileView=await restrictedContext.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`)
+    assert.equal(taskFileView.status(),200)
+    assert.equal((await taskFileView.json()).data.can_manage,true)
+    await restricted.locator(`#task-file-choice-${automaticTaskId}`).selectOption(taskFileId)
+    await restricted.getByRole('checkbox',{name:'允許上傳新版本',exact:true}).check()
+    await restricted.getByRole('checkbox',{name:'允許下載掃描通過的版本',exact:true}).check()
+    await restricted.getByLabel('文件授權原因',{exact:true}).fill('Synthetic browser task-file grant')
+    await restricted.getByRole('checkbox',{name:'我確認此任務的文件授權。',exact:true}).check()
+    assert.equal(await restricted.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
+    await restricted.screenshot({path:'/tmp/access-trial-task-files-manager.png',fullPage:true})
+    const fileGrant=restricted.waitForResponse(r=>r.url().endsWith(`/tasks/${automaticTaskId}/documents`)&&r.request().method()==='POST')
+    await restricted.getByRole('button',{name:'儲存文件授權',exact:true}).click()
+    assert.equal((await fileGrant).status(),200)
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -247,7 +268,9 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByRole('combobox').selectOption('complete')
     await l3Page.locator('input[name="submitted_at"]').fill('2026-09-18T10:00')
     await l3Page.locator('input[name="confirmed_at"]').fill('2026-09-18T10:00')
-    await l3Page.locator('input[name="official_reference"]').fill('SYNTHETIC-BROWSER-REFERENCE')
+    await l3Page.locator('input[name="no_reference_declared"]').check()
+    await l3Page.locator(`#task-evidence-reference-${automaticTaskId}`).selectOption(taskFileId)
+    await l3Page.screenshot({path:'/tmp/access-trial-task-file-completion-mobile.png',fullPage:true})
     await l3Page.locator('input[name="checklist_complete"]').check()
     await l3Page.locator('input[name="command_confirmed"]').check()
     const autoCompleted=l3Page.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
@@ -260,6 +283,14 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(await l3Page.getByRole('button',{name:'確認更新',exact:true}).count(),0)
     assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'submitted')
     assert.equal(await l3Page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)
+    const linkedFiles=(await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`)).json()).data
+    assert.equal(linkedFiles.can_manage,false)
+    assert.deepEqual(linkedFiles.document_options,[])
+    assert.equal(linkedFiles.links[0].display_name,'Synthetic assigned task file')
+    assert.deepEqual(linkedFiles.links[0].allowed_actions,['document.read','document.download'])
+    assert.equal('case_id' in linkedFiles.links[0],false)
+    assert.equal((await l3Context.request.post(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`,{headers:{'idempotency-key':randomUUID()},data:{
+      document_id:taskFileId,expected_record_version:1,allowed_actions:[],reason:'Synthetic L3 grant forbidden'}})).status(),403)
     await l3Page.screenshot({path:'/tmp/access-trial-l3-application-task-mobile.png',fullPage:true})
     const revokeUrl=`${baseUrl}/api/v1/tasks/${automaticTaskId}/assignment-revocations`
     const beforeRevocation=(await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}`)).json()).data
@@ -273,6 +304,14 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.getByLabel('密碼',{exact:true}).fill(password)
     await Promise.all([revokePage.waitForURL('**/today'),revokePage.getByRole('button',{name:'登入工作台',exact:true}).click()])
     await revokePage.goto(`${baseUrl}/tasks/${automaticTaskId}`)
+    await revokePage.locator(`#task-file-choice-${automaticTaskId}`).selectOption(taskFileId)
+    await revokePage.getByLabel('文件授權原因',{exact:true}).fill('Synthetic remove completed task file grant')
+    await revokePage.getByRole('checkbox',{name:'我確認此任務的文件授權。',exact:true}).check()
+    const fileRevoked=revokePage.waitForResponse(r=>r.url().endsWith(`/tasks/${automaticTaskId}/documents`)&&r.request().method()==='POST')
+    await revokePage.getByRole('button',{name:'撤銷文件授權',exact:true}).click()
+    assert.equal((await fileRevoked).status(),200)
+    assert.deepEqual((await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`)).json()).data.links,[])
+    process.stdout.write(JSON.stringify({trial_task_file_browser:'pass',l1:'grant_and_revoke_ui',l3:'metadata_only_current_link',clean_evidence:'selected_and_completed',completed_upload:'denied'})+'\n')
     await revokePage.getByLabel('撤銷原因').fill('Synthetic completed task access revocation')
     await revokePage.getByRole('checkbox',{name:'我確認收回原負責人的任務存取權。'}).check()
     const revocationResponse=revokePage.waitForResponse(r=>r.url()===revokeUrl && r.request().method()==='POST')

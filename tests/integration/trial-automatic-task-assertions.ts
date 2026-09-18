@@ -1,3 +1,4 @@
+import { assertTrialTaskDocuments } from "./trial-task-document-assertions.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { Client } from "pg";
@@ -91,9 +92,12 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,submitter_user_id:root.userId},...keys()}),rejected("COMPLETION_INVALID"));
     await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,checklist_snapshot:{...completion.checklist_snapshot,all_required_items_complete:false}},...keys()}),rejected("COMPLETION_INVALID"));
     await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,official_submission_reference:null,no_reference_declared:true},evidenceReference:randomUUID(),...keys()}),rejected("COMPLETION_INVALID"));
-    const completed=await service.transitionTargetTask(complete);
+    const taskDocuments=await assertTrialTaskDocuments({client,runner,caseId,taskId,business,restricted,taskOnly});
+    const withEvidence={...complete,completionRecord:{...completion,official_submission_reference:null,no_reference_declared:true},evidenceReference:taskDocuments.documentId};
+    const completed=await service.transitionTargetTask(withEvidence);
     assert.equal(completed.state,"completed"); assert.equal(completed.recordVersion,4);
-    assert.deepEqual(await service.transitionTargetTask(complete),completed);
+    assert.deepEqual(await service.transitionTargetTask(withEvidence),completed);
+    assert.deepEqual((await taskDocuments.links.list(taskOnly,taskId)).links[0]!.allowedActions,["document.read","document.download"]);
     assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,[]);
     const revoke={actor:restricted,taskId,command:{assignmentId:(await workspace.detail(taskOnly,taskId))!.task.currentAssignment!.id,
       expectedRecordVersion:4,reason:"Synthetic completed assignment revoke",...keys()}};
@@ -127,6 +131,7 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await client.query("RELEASE SAVEPOINT revoked_automatic_scope");
     const revokedFinal=await workspace.revokeCompletedAssignment(revoke);
     assert.equal(revokedFinal.recordVersion,5);
+    await assert.rejects(taskDocuments.links.list(taskOnly,taskId));
     assert.deepEqual(await workspace.revokeCompletedAssignment(revoke),revokedFinal);
     assert.equal((await workspace.detail(business,taskId))!.task.state,"completed");
     assert.equal((await client.query("SELECT last_transition_receipt_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.last_transition_receipt_id,completed.completionReceiptId);
