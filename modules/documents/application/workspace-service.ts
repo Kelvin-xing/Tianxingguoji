@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, hasRequestCapability, type OrganizationRole } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability, type TrialPrincipal, type OrganizationRole } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -51,6 +51,7 @@ export interface DocumentAcknowledgement {
 }
 
 export interface DocumentActorContext {
+  readonly trialPrincipal?:TrialPrincipal|null;
   readonly organizationId: string;
   readonly actorUserId: string;
   readonly actorRole: OrganizationRole;

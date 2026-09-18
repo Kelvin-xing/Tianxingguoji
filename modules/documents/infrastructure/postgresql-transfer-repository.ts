@@ -1,4 +1,5 @@
 import "server-only";
+import { loadDocumentTrialPrincipal,selectTrialDocumentCase } from "./trial-document-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -26,6 +27,7 @@ interface CaseRow extends Record<string, unknown> {
   id: string;
   stage: string;
   student_status: string;
+  workflow_status:string;
 }
 
 interface DocumentRow extends Record<string, unknown> {
@@ -74,16 +76,39 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
     this.hooks = hooks;
   }
 
+  consumeCapability<Result>(input:DocumentTransferActorContext & import('../application/transfer-service.ts').DocumentTransportAuthorization & {
+    operation:'upload'|'download';bucket:string;key:string;providerVersionId?:string;
+    effects:Parameters<typeof appendAtomicMutationEffects>[1];execute:()=>Promise<Result>;
+  }):Promise<Result> {
+    return this.run(input,async(tx,input)=>{
+      await assertActor(tx,input);
+      const serviceCase=await selectVisibleCase(tx,input,input.caseId,true,input.documentId,input.operation);
+      if(!serviceCase) notFound();
+      const document=await selectDocument(tx,input,input.caseId,input.documentId,true);
+      if(!document || document.lifecycle_state!=='active') notFound();
+      const row=await selectVersion(tx,input,input.documentId,input.versionId,true);
+      if(!row || row.object_bucket!==input.bucket || row.object_key!==input.key) notFound();
+      if(input.operation==='upload') {
+        if(serviceCase.stage==='closed'||serviceCase.workflow_status!=='active'||serviceCase.student_status!=='active'
+          ||row.state!=='pending_upload'||row.object_version_id!==null) conflict();
+      } else if(document.active_document_version_id!==row.id || row.state!=='available'||row.revoked_at!==null
+        ||row.object_version_id!==input.providerVersionId) conflict();
+      const result=await input.execute();
+      await appendEffects(tx,input.effects);
+      return result;
+    });
+  }
+
   createVersion(input: Parameters<DocumentTransferRepository["createVersion"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       const replay = await claimReceipt(transaction, input, CREATE_OPERATION);
       await assertActor(transaction, input);
-      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true);
+      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true, input.documentId, "upload");
       if (!serviceCase) notFound();
       const document = await selectDocument(transaction, input, input.caseId, input.documentId, true);
       if (!document) notFound();
       if (replay) return replay;
-      if (serviceCase.stage === "closed" || serviceCase.student_status !== "active" ||
+      if (serviceCase.stage === "closed" || serviceCase.workflow_status === "paused" || serviceCase.student_status !== "active" ||
           document.lifecycle_state !== "active") {
         conflict();
       }
@@ -145,10 +170,10 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
   abandonPendingUpload(
     input: Parameters<DocumentTransferRepository["abandonPendingUpload"]>[0],
   ) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       const replay = await claimReceipt(transaction, input, ABANDON_OPERATION);
       await assertActor(transaction, input);
-      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true);
+      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true, input.documentId, "upload");
       if (!serviceCase) notFound();
       const document = await selectDocument(transaction, input, input.caseId, input.documentId, true);
       if (!document) notFound();
@@ -161,7 +186,7 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
       );
       if (!row) notFound();
       if (replay) return replay;
-      if (serviceCase.stage === "closed" || serviceCase.student_status !== "active" ||
+      if (serviceCase.stage === "closed" || serviceCase.workflow_status === "paused" || serviceCase.student_status !== "active" ||
           document.lifecycle_state !== "active") {
         conflict();
       }
@@ -219,13 +244,13 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
   }
 
   issueUploadIntent(input: Parameters<DocumentTransferRepository["issueUploadIntent"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       await assertActor(transaction, input);
-      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true);
+      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true, input.documentId, "upload");
       if (!serviceCase) notFound();
       const document = await selectDocument(transaction, input, input.caseId, input.documentId, true);
       if (!document) notFound();
-      if (serviceCase.stage === "closed" || serviceCase.student_status !== "active" ||
+      if (serviceCase.stage === "closed" || serviceCase.workflow_status === "paused" || serviceCase.student_status !== "active" ||
           document.lifecycle_state !== "active") {
         conflict();
       }
@@ -242,7 +267,7 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
           !isDocumentUploadContentType(versionRow.detected_content_type)) {
         conflict();
       }
-      const result = await input.issue(pendingAuthority(versionRow));
+      const result = await input.issue({...pendingAuthority(versionRow),...(input.trialPrincipal?{requiresIdentityRecheck:true}:{})});
       await appendEffects(transaction, input.effects);
       this.hooks.failBeforeCommit?.("upload_intent");
       return result;
@@ -250,9 +275,9 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
   }
 
   issueDownloadIntent(input: Parameters<DocumentTransferRepository["issueDownloadIntent"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       await assertActor(transaction, input);
-      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true);
+      const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true, input.documentId, "download");
       if (!serviceCase) notFound();
       const document = await selectDocument(transaction, input, input.caseId, input.documentId, true);
       if (!document) notFound();
@@ -273,6 +298,7 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
         conflict();
       }
       const authority: DocumentDownloadAuthority = Object.freeze({
+        ...(input.trialPrincipal?{requiresIdentityRecheck:true}:{}),
         documentId: input.documentId,
         documentRecordVersion: version(document.record_version),
         versionId: row.id,
@@ -289,16 +315,18 @@ export class PostgresqlDocumentTransferRepository implements DocumentTransferRep
     });
   }
 
-  private async run<Result>(
-    input: DocumentTransferActorContext,
-    operation: (transaction: TenantTransaction) => Promise<Result>,
+  private async run<Input extends DocumentTransferActorContext,Result>(
+    input: Input,
+    operation: (transaction: TenantTransaction,input:Input) => Promise<Result>,
   ): Promise<Result> {
     try {
       return await this.runner.run(
         { organizationId: input.organizationId, actorUserId: input.actorUserId },
         async (transaction) => {
           try {
-            return await operation(transaction);
+            const trialPrincipal=await loadDocumentTrialPrincipal(transaction,input);
+            if(trialPrincipal && (!trialPrincipal.active || trialPrincipal.level!==input.actorRole)) forbidden();
+            return await operation(transaction,{...input,trialPrincipal});
           } catch (error) {
             if (isDocumentTransferError(error)) throw error;
             throw new DocumentTransferError("DOCUMENT_TRANSFER_UNAVAILABLE");
@@ -387,9 +415,12 @@ async function selectVisibleCase(
   input: DocumentTransferActorContext,
   caseId: string,
   lock: boolean,
+  documentId:string,operation:'upload'|'download',
 ): Promise<CaseRow | null> {
+  if(input.trialPrincipal) return selectTrialDocumentCase(transaction,input,caseId,{documentId,taskId:input.taskId,operation,write:lock});
+  if(input.taskId) return null;
   const result = await transaction.query<CaseRow>({
-    text: `SELECT service_case.id,service_case.stage,student.status AS student_status
+    text: `SELECT service_case.id,service_case.stage,service_case.workflow_status,student.status AS student_status
       FROM cases_service_cases AS service_case
       JOIN crm_students AS student
         ON student.id=service_case.student_id

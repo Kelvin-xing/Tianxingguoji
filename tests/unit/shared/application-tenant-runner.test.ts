@@ -44,6 +44,7 @@ test("preflights the canonical URL login inside every transaction", async () => 
     "SELECT set_config('app.correlation_id', $1, true)",
     "SELECT set_config('app.causation_id', $1, true)",
     "SELECT 1",
+    "SET CONSTRAINTS ALL IMMEDIATE",
     "SELECT set_config('app.organization_id', $1, true)",
     "SELECT set_config('app.actor_kind', $1, true)",
     "SELECT set_config('app.actor_opaque_id', $1, true)",
@@ -118,3 +119,25 @@ class FakeClient implements DatabaseClient {
     this.releaseError = error;
   }
 }
+
+test("deferred constraints run with tenant context and failures roll back before clearing it", async () => {
+  const failure=new Error("Synthetic deferred invariant failure");
+  class DeferredFailureClient extends FakeClient {
+    async query<Row>(query:DatabaseQuery) {
+      if(query.text==="SET CONSTRAINTS ALL IMMEDIATE") {
+        this.queries.push(query);
+        assert.equal(this.queries.findLast(item=>item.text.includes("set_config('app.organization_id'"))?.values?.[0],ORGANIZATION_ID);
+        assert.equal(this.queries.findLast(item=>item.text.includes("set_config('app.actor_user_id'"))?.values?.[0],USER_ID);
+        throw failure;
+      }
+      return super.query<Row>(query);
+    }
+  }
+  const client=new DeferredFailureClient("tianxing_app");
+  const runner=createTenantTransactionRunner({connect:async()=>client},{expectedLoginUser:"tianxing_app"});
+  await assert.rejects(runner.run({organizationId:ORGANIZATION_ID,actorUserId:USER_ID},async()=>"not committed"),error=>error===failure);
+  assert.equal(client.queries.some(query=>query.text==="COMMIT"),false);
+  assert.equal(client.queries.some(query=>query.text==="ROLLBACK"),true);
+  assert.equal(client.queries.some(query=>query.text==="RESET app.organization_id"),true);
+  assert.equal(client.released,true);
+});

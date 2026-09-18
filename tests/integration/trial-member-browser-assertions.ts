@@ -1,4 +1,3 @@
-import { seedSyntheticCleanTaskVersion } from './trial-task-document-assertions.ts'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes,randomUUID } from 'node:crypto'
@@ -189,12 +188,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const reassigned=restricted.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
     await restricted.getByRole('button',{name:'確認更新',exact:true}).click()
     assert.equal((await reassigned).status(),200)
-    const taskFileId=randomUUID()
-    await client.query(`INSERT INTO documents_documents(id,organization_id,owner_kind,service_case_id,display_name,classification)
-      VALUES($1,$2,'case',$3,'Synthetic assigned task file','operational_attachment')`,[taskFileId,NEON_TEST_ORGANIZATION.id,createdData.case_id])
-    await client.query('BEGIN')
-    await seedSyntheticCleanTaskVersion(client,NEON_TEST_ORGANIZATION.id,taskFileId,l1.user_id)
-    await client.query('COMMIT')
+    const taskFileCreated=await restrictedContext.request.post(`${baseUrl}/api/v1/cases/${createdData.case_id}/documents`,{
+      headers:{'idempotency-key':randomUUID()},data:{display_name:'Synthetic assigned task file',classification:'operational_attachment'}})
+    assert.equal(taskFileCreated.status(),201)
+    const taskFileId=(await taskFileCreated.json()).data.id as string
     await restricted.reload()
     const taskFileView=await restrictedContext.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`)
     assert.equal(taskFileView.status(),200)
@@ -265,7 +262,24 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByRole('button',{name:'確認更新',exact:true}).click()
     assert.equal((await autoAccepted).status(),200)
     await l3Page.reload()
-    await l3Page.getByRole('combobox').selectOption('complete')
+    l3Page.on('response',response=>{const path=new URL(response.url()).pathname;
+      if(response.request().method()==='PUT'||path.endsWith('/upload-intents')||path.endsWith('/versions'))process.stdout.write(JSON.stringify({trial_upload_http:{method:response.request().method(),status:response.status(),operation:response.request().method()==='PUT'?'bytes':path.endsWith('/upload-intents')?'intent':'version'}})+'\n');})
+    const uploadBytes=Buffer.alloc(1_048_576,0x20);uploadBytes.write('%PDF-1.7\nSynthetic task file\n')
+    await l3Page.locator('input[type="file"]').setInputFiles({name:'synthetic-task.pdf',mimeType:'application/pdf',buffer:uploadBytes})
+    await l3Page.getByRole('button',{name:'上傳文件',exact:true}).click()
+    await l3Page.getByText('文件已上傳並通過檢查。',{exact:true}).waitFor({timeout:30_000}).catch(async error=>{
+      process.stdout.write(JSON.stringify({trial_upload_states:(await client.query(`SELECT v.state,s.state AS scan_state,s.engine FROM documents_document_versions v
+        LEFT JOIN documents_scan_results s ON s.document_version_id=v.id WHERE v.document_id=$1`,[taskFileId])).rows})+'\n')
+      await l3Page.screenshot({path:'/tmp/access-trial-task-upload-error.png',fullPage:true});throw error;
+    })
+    const downloaded=l3Page.waitForEvent('download')
+    await l3Page.getByRole('button',{name:'下載文件',exact:true}).click()
+    const download=await downloaded
+    const stream=await download.createReadStream();assert.ok(stream)
+    const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk))
+    assert.deepEqual(Buffer.concat(chunks),uploadBytes)
+    const retainedDownload=(await (await l3Context.request.post(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents/${taskFileId}/download-intents`,{data:{}})).json()).data
+    await l3Page.locator(`#automatic-task-action-${automaticTaskId}`).selectOption('complete')
     await l3Page.locator('input[name="submitted_at"]').fill('2026-09-18T10:00')
     await l3Page.locator('input[name="confirmed_at"]').fill('2026-09-18T10:00')
     await l3Page.locator('input[name="no_reference_declared"]').check()
@@ -311,7 +325,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.getByRole('button',{name:'撤銷文件授權',exact:true}).click()
     assert.equal((await fileRevoked).status(),200)
     assert.deepEqual((await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents`)).json()).data.links,[])
-    process.stdout.write(JSON.stringify({trial_task_file_browser:'pass',l1:'grant_and_revoke_ui',l3:'metadata_only_current_link',clean_evidence:'selected_and_completed',completed_upload:'denied'})+'\n')
+    assert.equal((await l3Context.request.get(retainedDownload.url)).status(),404)
+    process.stdout.write(JSON.stringify({trial_task_file_browser:'pass',l1:'grant_and_revoke_ui',l3:'metadata_only_current_link',clean_evidence:'uploaded_selected_and_completed',byte_roundtrip:'verified',old_download_after_revoke:'404',completed_upload:'denied'})+'\n')
     await revokePage.getByLabel('撤銷原因').fill('Synthetic completed task access revocation')
     await revokePage.getByRole('checkbox',{name:'我確認收回原負責人的任務存取權。'}).check()
     const revocationResponse=revokePage.waitForResponse(r=>r.url()===revokeUrl && r.request().method()==='POST')
@@ -369,6 +384,9 @@ function startNextDev(directory: string, port: number, connectionString: string,
       NEXT_TELEMETRY_DISABLED: '1',
       APP_ENV: 'development', NODE_ENV: 'development', APP_RUNTIME_MODE: 'local-synthetic', AUTH_MODE: 'internal-email',
       LOCAL_SYNTHETIC_DATABASE_URL: connectionString, LOCAL_SYNTHETIC_DEPENDENCY_TIMEOUT_MS: '5000',
+      DOCUMENT_TRANSPORT_MODE:'deterministic-fake',DOCUMENT_FAKE_REGION:'ap-east-1',DOCUMENT_FAKE_BUCKET:'synthetic-private',
+      DOCUMENT_FAKE_ORIGIN:baseUrl,DOCUMENT_FAKE_SIGNING_SECRET:Buffer.alloc(32,0x42).toString('hex'),
+      DOCUMENT_FAKE_ORGANIZATION_ID:NEON_TEST_ORGANIZATION.id,DOCUMENT_FAKE_WORKER_CONTEXT_ID:'99999999-9999-4999-8999-999999999999',
       APP_BASE_URL: baseUrl, EMAIL_FROM: 'no-reply@tianxing.test.invalid', EMAIL_TRANSPORT: 'deterministic-fake',
       EMAIL_SETTINGS_MASTER_KEY: Buffer.alloc(32, 0x31).toString('base64url'), EMAIL_SETTINGS_MASTER_KEY_VERSION: 'integration-v1',
     },
@@ -379,7 +397,7 @@ function startNextDev(directory: string, port: number, connectionString: string,
 async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
   child.stdout?.on('data',(chunk: Buffer) => { for (const line of chunk.toString().split('\n')) if (/ (GET|POST) \/api\/v1\/cases(?: |\?)/.test(line)) process.stdout.write(JSON.stringify({ trial_next_case_route:line.trim() })+'\n') })
   child.stdout?.resume()
-  child.stderr?.on('data',(chunk: Buffer) => { const lines=chunk.toString().split('\n').filter((line) => /Error:|Module not found|Cannot find|Failed to/.test(line)); for (const line of lines) process.stdout.write(JSON.stringify({ trial_next_error:line.replace(/postgres(?:ql)?:\/\/\S+/g,'[redacted]').slice(0,300) })+'\n') })
+  child.stderr?.on('data',(chunk: Buffer) => { const lines=chunk.toString().split('\n').filter((line) => /Error:|Module not found|Cannot find|Failed to|event=document_scan_/.test(line)); for (const line of lines) process.stdout.write(JSON.stringify({ trial_next_error:line.replace(/postgres(?:ql)?:\/\/\S+/g,'[redacted]').slice(0,300) })+'\n') })
   child.stderr?.resume()
   for (let attempt = 0; attempt < 180; attempt += 1) {
     if (child.exitCode !== null) throw new Error('next_dev_early_exit')

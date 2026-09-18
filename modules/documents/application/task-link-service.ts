@@ -9,6 +9,7 @@ export type TaskDocumentAction=typeof TASK_DOCUMENT_ACTIONS[number];
 export interface TaskDocumentLinkView {
   readonly id:string; readonly documentId:string; readonly displayName:string;
   readonly recordVersion:number; readonly allowedActions:readonly TaskDocumentAction[];
+  readonly documentRecordVersion:number;readonly latestVersionState:string|null;readonly pendingUpload:{id:string;recordVersion:number}|null;
   readonly availableVersion:boolean; readonly configuredActions?:readonly TaskDocumentAction[];
 }
 export interface TaskDocumentLinksView {readonly canManage:boolean;readonly canGrant:boolean;readonly options:readonly {id:string;displayName:string}[];readonly links:readonly TaskDocumentLinkView[];}

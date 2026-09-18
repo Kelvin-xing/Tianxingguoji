@@ -13,7 +13,7 @@ import {
   loadDocumentTransportConfig,
   type DocumentTransportConfig,
 } from "../../../lib/runtime/document-transport-config.ts";
-import type { DocumentCapabilitySigner } from "../application/transfer-service.ts";
+import type { DocumentTransportAuthorization, DocumentCapabilitySigner } from "../application/transfer-service.ts";
 import {
   DOCUMENT_UPLOAD_CONTENT_TYPES,
   DOCUMENT_UPLOAD_MAX_BYTES,
@@ -21,13 +21,14 @@ import {
 } from "../domain/contract.ts";
 import type { DocumentObjectCleaner, DocumentObjectReader } from "./object-transport-port.ts";
 
-const MIN_UPLOAD_BYTES = 1_048_576;
+const MIN_UPLOAD_BYTES = 1;
 const BASE64_SHA256 = /^[A-Za-z0-9+/]{43}=$/;
 const TOKEN = /^[A-Za-z0-9_-]{80,4096}$/;
 const PROVIDER_VERSION = /^fake-v1-[0-9a-f]{64}$/;
 const TRANSPORT_PATH = "/api/v1/documents/deterministic-transport/";
 
 interface Capability {
+  readonly authorization?:DocumentTransportAuthorization;
   readonly version: 1;
   readonly operation: "upload" | "download";
   readonly bucket: string;
@@ -74,6 +75,7 @@ implements DocumentCapabilitySigner, DocumentObjectReader, DocumentObjectCleaner
     return Object.freeze({
       url: this.capabilityUrl({
         version: 1,
+        ...(input.authorization?{authorization:input.authorization}:{}),
         operation: "upload",
         bucket: input.bucket,
         key: input.key,
@@ -92,6 +94,7 @@ implements DocumentCapabilitySigner, DocumentObjectReader, DocumentObjectCleaner
     return Object.freeze({
       url: this.capabilityUrl({
         version: 1,
+        ...(input.authorization?{authorization:input.authorization}:{}),
         operation: "download",
         bucket: input.bucket,
         key: input.key,
@@ -99,6 +102,14 @@ implements DocumentCapabilitySigner, DocumentObjectReader, DocumentObjectCleaner
         expiresAtMs: this.expiry(input.expiresInSeconds),
       }),
     });
+  }
+
+  async authorizedRequest<Result>(token:string,operation:'upload'|'download',execute:()=>Promise<Result>):Promise<Result> {
+    const capability=this.openCapability(token,operation);
+    if(!capability.authorization)return execute();
+    const [{requireDocumentActor},{getDocumentTransferRuntime}]=await Promise.all([import('../server.ts'),import('./transfer-runtime.ts')]);
+    return getDocumentTransferRuntime().service.consumeCapability({actor:await requireDocumentActor(),authorization:capability.authorization,
+      operation,bucket:capability.bucket,key:capability.key,providerVersionId:capability.providerVersionId,execute});
   }
 
   async put(token: string, request: Request): Promise<{
@@ -253,7 +264,7 @@ export async function handleDeterministicDocumentTransportRequest(
   try {
     const transport = getDeterministicFakeDocumentTransport();
     if (request.method === "PUT") {
-      const uploaded = await transport.put(token, request);
+      const uploaded = await transport.authorizedRequest(token,"upload",()=>transport.put(token, request));
       // The fake transport emulates the production object-created event boundary.
       // A failure remains observable through the document state and does not undo PUT.
       try {
@@ -265,7 +276,9 @@ export async function handleDeterministicDocumentTransportRequest(
           eventId: `fake-object-${uploaded.providerVersionId}`,
           requestId: `fake-scan-${uploaded.providerVersionId}`,
         }));
-      } catch {
+      } catch(error) {
+        const code=error instanceof Error && /^Document[A-Za-z]+$/.test(error.name)?error.name:'OTHER';
+        process.stderr.write(`event=document_scan_delivery_failure code=${code}\n`);
         // Upload success is independent from asynchronous scan delivery.
       }
       return new Response(null, {
@@ -274,7 +287,7 @@ export async function handleDeterministicDocumentTransportRequest(
       });
     }
     if (request.method === "GET") {
-      const object = await transport.get(token);
+      const object = await transport.authorizedRequest(token,"download",()=>transport.get(token));
       return new Response(Uint8Array.from(object.bytes), {
         status: 200,
         headers: {
@@ -315,6 +328,13 @@ function validateCapability(
       (typeof capability.providerVersionId !== "string" ||
         !PROVIDER_VERSION.test(capability.providerVersionId) || capability.contentType !== undefined ||
         capability.checksumSha256Base64 !== undefined)) unavailable();
+  if(capability.authorization!==undefined){
+    const scope=capability.authorization;
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if(!scope || typeof scope!=='object' || ![scope.organizationId,scope.actorUserId,scope.caseId,scope.documentId,scope.versionId].every(v=>typeof v==='string'&&uuid.test(v))
+      ||(scope.taskId!==undefined&&!uuid.test(scope.taskId))) unavailable();
+    if(capability.key!==`documents/${scope.documentId}/versions/${scope.versionId}`) unavailable();
+  }
   return capability as Capability;
 }
 

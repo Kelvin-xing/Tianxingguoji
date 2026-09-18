@@ -1,6 +1,7 @@
 "use client";
 import { useEffect,useRef,useState } from "react";
 import { getTaskFileLinks,setTaskFileLink,classifyDocumentFailure,type TaskFileLinks,type TaskFileAction } from "@/modules/documents/client";
+import { TaskDocumentTransferControls } from "./TaskDocumentTransferControls";
 import { TaskIdempotencyAttempt } from "@/modules/tasks/client";
 
 export function TaskDocumentLinks({taskId,taskVersion,kind}:{taskId:string;taskVersion:number;kind:string}) {
@@ -31,6 +32,7 @@ export function TaskDocumentLinks({taskId,taskVersion,kind}:{taskId:string;taskV
     {data?.links.filter(link=>link.allowed_actions.includes('document.read')).map(link=><div key={link.id} className="space-y-1">
       <p className="font-medium break-words">{link.display_name}</p>
       <p className="section-detail">{link.available_version?'已有可用版本':'尚無掃描通過的版本'}</p>
+      <TaskDocumentTransferControls taskId={taskId} link={link} onRefresh={async()=>{setData(await getTaskFileLinks(taskId));}}/>
     </div>)}
     {data && !data.links.some(link=>link.allowed_actions.includes('document.read'))?<p className="section-detail">此任務尚未獲授權使用文件。</p>:null}
     {data?.can_manage?<form className="space-y-4" onSubmit={event=>void submit(event)} aria-busy={pending}>

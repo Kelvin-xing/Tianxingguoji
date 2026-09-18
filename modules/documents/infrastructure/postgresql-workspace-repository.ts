@@ -1,4 +1,5 @@
 import "server-only";
+import { loadDocumentTrialPrincipal,selectTrialDocumentCase } from "./trial-document-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -26,6 +27,7 @@ interface ActorRow extends Record<string, unknown> {
 interface CaseRow extends Record<string, unknown> {
   id: string;
   stage: string;
+  workflow_status:string;
   student_status: string;
 }
 
@@ -65,7 +67,7 @@ export class PostgresqlDocumentWorkspaceRepository implements DocumentWorkspaceR
   }
 
   list(input: Parameters<DocumentWorkspaceRepository["list"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       await assertActor(transaction, input);
       if (input.caseId !== null) {
         const serviceCase = await selectVisibleCase(transaction, input, input.caseId, false);
@@ -77,7 +79,7 @@ export class PostgresqlDocumentWorkspaceRepository implements DocumentWorkspaceR
   }
 
   detail(input: Parameters<DocumentWorkspaceRepository["detail"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       await assertActor(transaction, input);
       const serviceCase = await selectVisibleCase(transaction, input, input.caseId, false);
       if (!serviceCase) return null;
@@ -92,12 +94,12 @@ export class PostgresqlDocumentWorkspaceRepository implements DocumentWorkspaceR
   }
 
   register(input: Parameters<DocumentWorkspaceRepository["register"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,input) => {
       const replay = await claimReceipt(transaction, input);
       await assertActor(transaction, input);
       const serviceCase = await selectVisibleCase(transaction, input, input.caseId, true);
       if (!serviceCase || serviceCase.student_status !== "active") notFound();
-      if (serviceCase.stage === "closed") conflict();
+      if (serviceCase.stage === "closed" || serviceCase.workflow_status === "paused") conflict();
       if (replay) return replay;
 
       const inserted = await transaction.query({
@@ -126,15 +128,17 @@ export class PostgresqlDocumentWorkspaceRepository implements DocumentWorkspaceR
     });
   }
 
-  private run<Result>(
-    input: DocumentActorContext,
-    operation: (transaction: TenantTransaction) => Promise<Result>,
+  private run<Input extends DocumentActorContext,Result>(
+    input: Input,
+    operation: (transaction: TenantTransaction,input:Input) => Promise<Result>,
   ): Promise<Result> {
     return this.runner.run(
       { organizationId: input.organizationId, actorUserId: input.actorUserId },
       async (transaction) => {
         try {
-          return await operation(transaction);
+          const trialPrincipal=await loadDocumentTrialPrincipal(transaction,input);
+          if(trialPrincipal && (!trialPrincipal.active || trialPrincipal.level!==input.actorRole)) forbidden();
+          return await operation(transaction,{...input,trialPrincipal});
         } catch (error) {
           if (isDocumentWorkspaceError(error)) throw error;
           throw new DocumentWorkspaceError("DOCUMENT_WORKSPACE_UNAVAILABLE");
@@ -193,8 +197,9 @@ async function selectVisibleCase(
   caseId: string,
   lock: boolean,
 ): Promise<CaseRow | null> {
+  if(input.trialPrincipal)return selectTrialDocumentCase(transaction,input,caseId,{operation:'read',write:lock});
   const result = await transaction.query<CaseRow>({
-    text: `SELECT service_case.id,service_case.stage,student.status AS student_status
+    text: `SELECT service_case.id,service_case.stage,service_case.workflow_status,student.status AS student_status
       FROM cases_service_cases AS service_case
       JOIN crm_students AS student
         ON student.id=service_case.student_id
@@ -251,18 +256,18 @@ async function selectVisibleDocuments(
       JOIN cases_service_cases AS service_case
         ON service_case.id=document.service_case_id
        AND service_case.organization_id=document.organization_id
-      JOIN access_role_bindings AS primary_binding
+      ${input.trialPrincipal?"LEFT JOIN":"JOIN"} access_role_bindings AS primary_binding
         ON primary_binding.id=service_case.primary_role_binding_id
        AND primary_binding.organization_id=service_case.organization_id
        AND primary_binding.user_id=service_case.primary_user_id
        AND primary_binding.role=service_case.primary_role
        AND primary_binding.status='active'
-      JOIN access_organization_memberships AS primary_membership
+      ${input.trialPrincipal?"LEFT JOIN":"JOIN"} access_organization_memberships AS primary_membership
         ON primary_membership.id=service_case.primary_membership_id
        AND primary_membership.organization_id=service_case.organization_id
        AND primary_membership.user_id=service_case.primary_user_id
        AND primary_membership.status='active'
-      JOIN identity_users AS primary_actor
+      ${input.trialPrincipal?"LEFT JOIN":"JOIN"} identity_users AS primary_actor
         ON primary_actor.id=service_case.primary_user_id
        AND primary_actor.status='active'
       LEFT JOIN LATERAL (
@@ -278,16 +283,18 @@ async function selectVisibleDocuments(
        AND document.lifecycle_state IN ('active','pending_delete')
        AND ($2::uuid IS NULL OR document.service_case_id=$2)
        AND ($3::uuid IS NULL OR document.id=$3)
-       AND ($4::text='founder' OR ($4='advisor' AND (
+       AND (($6::boolean AND service_case.business_category IN ('international_school','local_school')
+         AND ($4::text IN ('founder','l1') OR ($4='l2' AND service_case.business_category=ANY($7::text[]))))
+         OR (NOT $6 AND ($4::text='founder' OR ($4='advisor' AND (
          (service_case.primary_role='advisor' AND service_case.primary_user_id=$5)
          OR EXISTS (SELECT 1 FROM tasks_tasks AS assigned_task
              WHERE assigned_task.organization_id=service_case.organization_id
                AND assigned_task.service_case_id=service_case.id
                AND (assigned_task.assignee_user_id=$5 OR assigned_task.owner_user_id=$5))
-       )))
+       )))))
      ORDER BY document.updated_at DESC,document.id ASC
      LIMIT 100`,
-    values: [input.organizationId, caseId, documentId, input.actorRole, input.actorUserId],
+    values: [input.organizationId, caseId, documentId, input.actorRole, input.actorUserId,Boolean(input.trialPrincipal),input.trialPrincipal?.categories??[]],
   });
   return result.rows;
 }

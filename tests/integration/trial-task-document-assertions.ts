@@ -1,3 +1,4 @@
+import {assertTrialDocumentTransfers} from './trial-document-transfer-assertions.ts';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Client } from 'pg';
@@ -60,6 +61,7 @@ export async function assertTrialTaskDocuments(input:{client:Client;runner:Tenan
   await client.query('ROLLBACK TO SAVEPOINT task_document_scope');await client.query('RELEASE SAVEPOINT task_document_scope');
   assert.equal((await client.query("SELECT count(*)::int n FROM audit_events WHERE resource_id=$1 AND event_type='documents.task_link_changed'",[taskId])).rows[0]!.n,3);
   process.stdout.write(JSON.stringify({trial_task_documents:'pass',links:'explicit_actions',cross_case:'denied',l3_grant:'denied',replay:'single_audit',rollback:'atomic',clean_evidence:'granted_only'})+'\n');
+  await assertTrialDocumentTransfers({client,runner,caseId,taskId,documentId,business,restricted,taskOnly,links});
   return {documentId,links};
 }
 

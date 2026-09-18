@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, hasRequestCapability, type OrganizationRole } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability, type TrialPrincipal, type OrganizationRole } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -24,6 +24,8 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 const PROVIDER_VERSION = /^\S{1,1024}$/;
 
 export interface DocumentTransferActorContext {
+  readonly taskId?:string;
+  readonly trialPrincipal?:TrialPrincipal|null;
   readonly organizationId: string;
   readonly actorUserId: string;
   readonly actorRole: OrganizationRole;
@@ -35,6 +37,7 @@ export interface DocumentVersionAcknowledgement {
 }
 
 export interface DocumentPendingUploadAuthority {
+  readonly requiresIdentityRecheck?:boolean;
   readonly id: string;
   readonly documentId: string;
   readonly recordVersion: number;
@@ -45,6 +48,7 @@ export interface DocumentPendingUploadAuthority {
 }
 
 export interface DocumentDownloadAuthority {
+  readonly requiresIdentityRecheck?:boolean;
   readonly documentId: string;
   readonly documentRecordVersion: number;
   readonly versionId: string;
@@ -72,6 +76,10 @@ export interface DocumentDownloadIntentResult {
   readonly downloadName: "document.pdf" | "document.jpg" | "document.png";
 }
 
+export interface DocumentTransportAuthorization {
+  readonly organizationId:string;readonly actorUserId:string;readonly caseId:string;
+  readonly documentId:string;readonly versionId:string;readonly taskId?:string;
+}
 export interface DocumentCapabilitySigner {
   issueUploadIntent(input: {
     readonly bucket: string;
@@ -79,16 +87,22 @@ export interface DocumentCapabilitySigner {
     readonly contentType: DocumentUploadContentType;
     readonly checksumSha256Base64: string;
     readonly expiresInSeconds: 600;
+    readonly authorization?:DocumentTransportAuthorization;
   }): Promise<Readonly<{ readonly url: string }>>;
   issueDownloadIntent(input: {
     readonly bucket: string;
     readonly key: string;
     readonly providerVersionId: string;
     readonly expiresInSeconds: 300;
+    readonly authorization?:DocumentTransportAuthorization;
   }): Promise<Readonly<{ readonly url: string }>>;
 }
 
 export interface DocumentTransferRepository {
+  consumeCapability?<Result>(input:DocumentTransferActorContext & DocumentTransportAuthorization & {
+    readonly operation:'upload'|'download';readonly bucket:string;readonly key:string;readonly providerVersionId?:string;
+    readonly effects:MutationEffectBundle;readonly execute:()=>Promise<Result>;
+  }):Promise<Result>;
   createVersion(input: DocumentTransferActorContext & {
     readonly caseId: string;
     readonly documentId: string;
@@ -204,8 +218,26 @@ export class DocumentTransferService {
     this.now = input.now ?? Date.now;
   }
 
+  consumeCapability<Result>(input:{actor:IdentitySessionActor;authorization:DocumentTransportAuthorization;
+    operation:'upload'|'download';bucket:string;key:string;providerVersionId?:string;execute:()=>Promise<Result>}) {
+    const {authorization,operation}=input;
+    const context=authorize(input.actor,operation==='upload'?'documents.upload':'documents.download');
+    if(authorization.organizationId!==context.organizationId || authorization.actorUserId!==context.actorUserId) forbidden();
+    if(!UUID.test(authorization.caseId)||!UUID.test(authorization.documentId)||!UUID.test(authorization.versionId)
+      ||(authorization.taskId!==undefined&&!UUID.test(authorization.taskId))||input.bucket!==this.bucket
+      ||input.key!==createOpaqueDocumentObjectKey(authorization.documentId,authorization.versionId)) mismatch();
+    if(!this.repository.consumeCapability) throw new DocumentTransferError("DOCUMENT_TRANSFER_UNAVAILABLE");
+    const effects=userEffects({actor:input.actor,resourceId:authorization.documentId,requestId:randomUUID(),occurredAt:checkedNow(this.now),
+      eventType:operation==='upload'?'documents.content_uploaded':'documents.content_downloaded',action:operation==='upload'?'update':'read',
+      resourceType:'Document',effectType:`documents.content_${operation}`,status:operation==='upload'?'pending_upload':'available',
+      recordVersion:null,createId:this.createId});
+    return this.repository.consumeCapability({...context,...authorization,operation,bucket:input.bucket,key:input.key,
+      providerVersionId:input.providerVersionId,effects,execute:input.execute});
+  }
+
   createVersion(input: {
     readonly actor: IdentitySessionActor;
+    readonly taskId?:string;
     readonly caseId: string;
     readonly documentId: string;
     readonly command: {
@@ -217,6 +249,7 @@ export class DocumentTransferService {
       readonly idempotencyKey: string;
     };
   }): Promise<DocumentVersionAcknowledgement> {
+    if(input.taskId!==undefined && !UUID.test(input.taskId)) invalid();
     const context = authorize(input.actor, "documents.upload");
     assertCommonIds(input.caseId, input.documentId, input.command.requestId);
     const command = input.command;
@@ -249,6 +282,7 @@ export class DocumentTransferService {
     });
     return this.repository.createVersion({
       ...context,
+      ...(input.taskId?{taskId:input.taskId}:{}),
       caseId: input.caseId,
       documentId: input.documentId,
       versionId,
@@ -261,6 +295,7 @@ export class DocumentTransferService {
       requestId: command.requestId,
       idempotencyKey: command.idempotencyKey,
       requestHash: hashRequestPayload({
+        ...(input.taskId?{task_id:input.taskId}:{}),
         case_id: input.caseId,
         checksum_sha256: command.checksumSha256,
         content_type: command.contentType,
@@ -274,6 +309,7 @@ export class DocumentTransferService {
 
   abandonPendingUpload(input: {
     readonly actor: IdentitySessionActor;
+    readonly taskId?:string;
     readonly caseId: string;
     readonly documentId: string;
     readonly versionId: string;
@@ -284,6 +320,7 @@ export class DocumentTransferService {
       readonly idempotencyKey: string;
     };
   }): Promise<DocumentVersionAcknowledgement> {
+    if(input.taskId!==undefined && !UUID.test(input.taskId)) invalid();
     const context = authorize(input.actor, "documents.upload");
     assertCommonIds(input.caseId, input.documentId, input.command.requestId);
     if (!UUID.test(input.versionId) ||
@@ -316,6 +353,7 @@ export class DocumentTransferService {
     });
     return this.repository.abandonPendingUpload({
       ...context,
+      ...(input.taskId?{taskId:input.taskId}:{}),
       caseId: input.caseId,
       documentId: input.documentId,
       versionId: input.versionId,
@@ -324,6 +362,7 @@ export class DocumentTransferService {
       requestId: input.command.requestId,
       idempotencyKey: input.command.idempotencyKey,
       requestHash: hashRequestPayload({
+        ...(input.taskId?{task_id:input.taskId}:{}),
         case_id: input.caseId,
         document_id: input.documentId,
         expected_document_record_version: input.command.expectedDocumentRecordVersion,
@@ -336,12 +375,14 @@ export class DocumentTransferService {
 
   issueUploadIntent(input: {
     readonly actor: IdentitySessionActor;
+    readonly taskId?:string;
     readonly caseId: string;
     readonly documentId: string;
     readonly versionId: string;
     readonly expectedRecordVersion: number;
     readonly requestId: string;
   }): Promise<DocumentUploadIntentResult> {
+    if(input.taskId!==undefined && !UUID.test(input.taskId)) invalid();
     const context = authorize(input.actor, "documents.upload");
     assertCommonIds(input.caseId, input.documentId, input.requestId);
     if (!UUID.test(input.versionId) || !isPositiveVersion(input.expectedRecordVersion)) invalid();
@@ -362,6 +403,7 @@ export class DocumentTransferService {
     });
     return this.repository.issueUploadIntent({
       ...context,
+      ...(input.taskId?{taskId:input.taskId}:{}),
       caseId: input.caseId,
       documentId: input.documentId,
       versionId: input.versionId,
@@ -382,6 +424,8 @@ export class DocumentTransferService {
           contentType: authority.contentType,
           checksumSha256Base64: checksumBase64,
           expiresInSeconds: 600,
+          ...(authority.requiresIdentityRecheck?{authorization:{organizationId:context.organizationId,actorUserId:context.actorUserId,
+            caseId:input.caseId,documentId:input.documentId,versionId:input.versionId,...(input.taskId?{taskId:input.taskId}:{})}}:{}),
         });
         assertSignedUrl(signed.url, this.allowedHttpOrigin);
         return Object.freeze({
@@ -399,10 +443,12 @@ export class DocumentTransferService {
 
   issueDownloadIntent(input: {
     readonly actor: IdentitySessionActor;
+    readonly taskId?:string;
     readonly caseId: string;
     readonly documentId: string;
     readonly requestId: string;
   }): Promise<DocumentDownloadIntentResult> {
+    if(input.taskId!==undefined && !UUID.test(input.taskId)) invalid();
     const context = authorize(input.actor, "documents.download");
     assertCommonIds(input.caseId, input.documentId, input.requestId);
     const issuedAtMs = checkedNowMs(this.now);
@@ -422,6 +468,7 @@ export class DocumentTransferService {
     });
     return this.repository.issueDownloadIntent({
       ...context,
+      ...(input.taskId?{taskId:input.taskId}:{}),
       caseId: input.caseId,
       documentId: input.documentId,
       requestId: input.requestId,
@@ -437,6 +484,8 @@ export class DocumentTransferService {
           key: authority.key,
           providerVersionId: authority.providerVersionId,
           expiresInSeconds: 300,
+          ...(authority.requiresIdentityRecheck?{authorization:{organizationId:context.organizationId,actorUserId:context.actorUserId,
+            caseId:input.caseId,documentId:input.documentId,versionId:authority.versionId,...(input.taskId?{taskId:input.taskId}:{})}}:{}),
         });
         assertSignedUrl(signed.url, this.allowedHttpOrigin);
         return Object.freeze({

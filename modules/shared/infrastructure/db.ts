@@ -143,6 +143,9 @@ export function createTenantTransactionRunner(
         if (options) await assertDatabaseRole(client, options);
         await setTenantContext(client, resolveTenantContext(context));
         const result = await operation(createTransaction(client));
+        // Deferred RLS-aware constraints must run before the transaction-local
+        // organization and actor are cleared. Commit still happens only afterward.
+        await client.query({ text: "SET CONSTRAINTS ALL IMMEDIATE" });
         await clearTenantContext(client);
         await client.query({ text: "COMMIT" });
         began = false;

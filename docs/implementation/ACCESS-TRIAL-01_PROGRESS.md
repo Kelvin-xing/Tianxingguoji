@@ -167,3 +167,20 @@
 - 类型及聚焦ESLint通过：`/tmp/access-trial-files-types-final.log`、`/tmp/access-trial-files-lint-final.log`。未改历史迁移。新增迁移为基线角色暂时打开建外键的 REFERENCES 权限窗口后收回，保留最终权限检查。
 
 下一步必须继续：把本节关联动作接到真实任务文件版本创建、上传意图/上传完成、扫描结果和下载意图/传输接口；接入Founder/L1/L2的完整文档范围；完成相关真实本地传输及撤权测试。之后继续面试任务界面、P3历史回执重放、锁顺序/并发审查，以及CRM/目标结案/学校/邀请等原计划剩余项、演示数据、整体测试、合并main并推送。当前未合并、未推送、未部署，未迁移真实员工。
+
+## 任务文件传输与提交前约束校验（2026-09-19，接续 a4bb71b）
+
+总体仍 `in_progress`。本节接通既有 deterministic-fake 本地传输，**不构成 OSS、ClamAV或生产环境验收**。
+
+- Documents metadata目录、单案读取及登记接入当前试用等级/分类。每次事务锁定当前principal与实际角色；Founder/L1全分类、L2当前分类，L3不能经案件文件入口枚举。暂停案件拒绝登记及上传写入。
+- 新增任务文件版本创建、上传意图、放弃未完成上传、下载意图路由；案件ID在服务端解析，不返回给L3。实际写入/意图事务重新验证案件、当前任务指派和明确文件动作。同一文件ID或旧Session不能绕过任务边界；任务完成后上传拒绝，面试任务下载拒绝。
+- 试用账号的本地传输能力内加密绑定组织、操作人、案件、文件、版本和可选任务ID；消费能力时重新获取登录身份并在事务中重验权限、当前版本与安全状态。旧下载/上传能力在文件授权撤销后不能消费；下载活动版本变化也拒绝旧能力。传输审计同事务写入。文件客户端只带同源Cookie，跨源仍不发送Cookie。
+- 任务详情提供文件选择上传、等待扫描结果、下载和放弃pending upload；既有pending版本必须匹配所选文件的摘要/类型才能续传，不覆盖旧版本。扩展授权列表返回当前文档版本和pending引用，依旧无案件信息。
+- 修复共用Tenant runner在提交前先清空组织/操作人GUC导致deferred RLS约束读不到父文档的问题：在清空上下文前执行 `SET CONSTRAINTS ALL IMMEDIATE`；失败走ROLLBACK并reset上下文。新增校验失败不COMMIT、校验时保留组织/操作人、释放连接的测试。真实浏览器上传接收/扫描事务已覆盖成功提交路径。
+- 追加067让既有本地模拟扫描如实保存 `deterministic-fake-release1` 引擎值，修复触发器与CHECK仅允许ClamAV导致本地链路无法完成的问题；状态、次数、对象版本、父文件及活动指针约束保留。模拟传输仍被生产运行配置拒绝。当前66源迁移/67生成基线。同步修复本地传输隐含1MB最小值与公开1字节至10MB合同的漂移，1KB文件单元测试通过。
+- 实际PG检查：业务等级metadata范围、L3案件入口拒绝、任务版本创建/重放/放弃、绑定操作人、撤文件授权后旧请求重放及旧上传/下载能力拒绝、拒绝时传输回调不执行、活动版本改变后旧下载拒绝、接收/扫描各事务实际SQL约束。
+- `/tmp/access-trial-transfer-regression-final.log` **132/132**：一次性PG17、shared事务、Documents传输/客户端/仓储、Tasks单元、架构和基线。类型及聚焦ESLint通过：`/tmp/access-trial-transfer-types-final.log`、`/tmp/access-trial-transfer-lint-final.log`。
+- `/tmp/access-trial-transfer-browser.log` **2/2**：真实Next/Chrome+PG，L1正式API登记文件/页面授权，L3页面上传1MB合成PDF→本地模拟扫描→下载逐字节一致→选择凭证完成申请→目标submitted。主管撤文件授权后旧下载URL404，撤任务指派后任务404。390px截图 `/tmp/access-trial-task-file-completion-mobile.png` 已查看。前期失败定位为deferred上下文及扫描引擎约束，不再用手工SQL扫描夹具冒充浏览器上传。
+- 额外旧静态文件UI契约检查仍有 **1项失败**：`tests/unit/documents/transfer-ui-contract.test.ts` 的“permanent browser gate”还要求固定36文件、已移除的 `test:doc-02-dev-browser` package脚本，而现行历史浏览器源码已采用 ONE_ROLE_SOURCE_COUNT+1。临时核对计数后进一步确认脚本缺失；未恢复过时入口，计数断言保持原样。该旧gate尚需最终验收整理，不计入132通过。其余11项通过；日志 `/tmp/access-trial-transfer-ui-contract.log`。本节没有运行旧LocalStack/ClamAV整套环境。
+
+剩余事项仍包括：真实OSS/生产部署不在当前授权内；文档删除/恢复/回滚等既有入口的新等级接入与补足安全/并发场景，面试任务前端、P3历史回执重放、锁顺序审查、CRM/学校/目标结案/邀请等原计划剩余接入、演示数据、整体本地验收及旧gate梳理。只有全部已授权开发验收完成后再合并main、推送。当前未合并、未推送、未部署。

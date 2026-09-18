@@ -12,7 +12,8 @@ export async function GET(request:Request,context:Context) {
     if(new URL(request.url).searchParams.size) invalid();
     const result=await getDocumentWorkspaceRuntime().taskLinks.list(await requireIdentityActor(),(await context.params).taskId);
     return successResponse(requestContext,{can_manage:result.canManage,can_grant:result.canGrant,document_options:result.options.map(option=>({id:option.id,display_name:option.displayName})),links:result.links.map(link=>({id:link.id,document_id:link.documentId,
-      display_name:link.displayName,record_version:link.recordVersion,allowed_actions:[...link.allowedActions],available_version:link.availableVersion,...(link.configuredActions?{configured_actions:[...link.configuredActions]}:{})}))});
+      display_name:link.displayName,record_version:link.recordVersion,document_record_version:link.documentRecordVersion,latest_version_state:link.latestVersionState,
+      pending_upload:link.pendingUpload?{id:link.pendingUpload.id,record_version:link.pendingUpload.recordVersion}:null,allowed_actions:[...link.allowedActions],available_version:link.availableVersion,...(link.configuredActions?{configured_actions:[...link.configuredActions]}:{})}))});
   } catch(e){return errorResponse(requestContext,mapDocumentWorkspaceError(e));}
 }
 export async function POST(request:Request,context:Context) {

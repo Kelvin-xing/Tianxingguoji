@@ -16,11 +16,13 @@ export class PostgresqlTaskDocumentLinkRepository implements TaskDocumentLinkRep
   async list(actor:IdentitySessionActor,taskId:string) {
     try {return await this.runner.run({organizationId:actor.organizationId,actorUserId:actor.userId},async tx=>{
       const {task,principal,manager}=await scope(tx,actor,taskId,false);
-      const rows=await tx.query<{id:string;document_id:string;display_name:string;record_version:string;allowed_actions:TaskDocumentAction[];clean:boolean}>({
-        text:`SELECT l.id,l.document_id,l.record_version,l.allowed_actions,d.display_name,
+      const rows=await tx.query<{id:string;document_id:string;display_name:string;record_version:string;allowed_actions:TaskDocumentAction[];clean:boolean;document_record_version:string;latest_state:string|null;latest_id:string|null;latest_version:string|null}>({
+        text:`SELECT l.id,l.document_id,l.record_version,l.allowed_actions,d.display_name,d.record_version AS document_record_version,latest.state AS latest_state,latest.id AS latest_id,latest.record_version AS latest_version,
           EXISTS(SELECT 1 FROM documents_document_versions v WHERE v.id=d.active_document_version_id
             AND v.document_id=d.id AND v.organization_id=d.organization_id AND v.state='available' AND v.revoked_at IS NULL) AS clean
           FROM documents_task_links l JOIN documents_documents d ON d.id=l.document_id AND d.organization_id=l.organization_id
+          LEFT JOIN LATERAL(SELECT id,state,record_version FROM documents_document_versions WHERE document_id=d.id AND organization_id=d.organization_id
+            ORDER BY upload_generation DESC LIMIT 1) latest ON true
           WHERE l.organization_id=$1 AND l.task_id=$2 AND d.lifecycle_state='active' AND d.soft_deleted_at IS NULL
             AND ($3::boolean OR 'document.read'=ANY(l.allowed_actions)) ORDER BY l.created_at,l.id`,
         values:[actor.organizationId,taskId,manager]});
@@ -29,7 +31,8 @@ export class PostgresqlTaskDocumentLinkRepository implements TaskDocumentLinkRep
         WHERE organization_id=$1 AND service_case_id=$2 AND owner_kind='case' AND lifecycle_state='active' AND soft_deleted_at IS NULL
         ORDER BY display_name,id`,values:[actor.organizationId,task.service_case_id]})).rows.map(row=>({id:row.id,displayName:row.display_name})) : [];
       return {canManage:manager,canGrant,options,links:rows.rows.map(row=>({id:row.id,documentId:row.document_id,displayName:row.display_name,
-        recordVersion:Number(row.record_version),availableVersion:row.clean,...(manager?{configuredActions:row.allowed_actions}:{}),
+        recordVersion:Number(row.record_version),availableVersion:row.clean,documentRecordVersion:Number(row.document_record_version),latestVersionState:row.latest_state,
+        pendingUpload:row.latest_state==='pending_upload'&&row.latest_id?{id:row.latest_id,recordVersion:Number(row.latest_version)}:null,...(manager?{configuredActions:row.allowed_actions}:{}),
         allowedActions:row.allowed_actions.filter(action=>{
           if(action==='document.download' && (!row.clean || task.task_kind==='interview_support')) return false;
           if(action==='document.upload' && (task.state==='completed' || task.stage==='closed' || task.workflow_status!=='active')) return false;
