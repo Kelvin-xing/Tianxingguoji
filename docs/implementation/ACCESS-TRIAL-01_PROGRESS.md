@@ -219,3 +219,15 @@
 - `/tmp/access-trial-interview-provision-final.log`：一次性PG17及任务单元 **56/56**通过。类型检查 `/tmp/access-trial-interview-provision-types-final.log`、聚焦ESLint `/tmp/access-trial-interview-provision-lint.log`、diff检查通过。本节未运行浏览器、未验证学校邀请正式HTTP入口，未新增迁移。
 
 仍须接通学校邀请的正式写入、证据校验、审计/消息投递、自动创建和页面。当前只验证其任务创建基础，不标记完整链路完成；总体剩余项和合并推送目标不变。
+
+## 学校面试邀请事务（2026-09-19，接续 e99ad72）
+
+总体仍 `in_progress`。新增邀请服务及PostgreSQL仓储，尚未连接HTTP、自动任务consumer或页面。
+
+- 显式试用成员按当前principal、真实角色绑定、案件分类和可写状态校验；锁定案件后锁学校目标，只允许submitted→interview，检查expected version。L3不能登记邀请，旧账号不自动获得该新服务权限。
+- Documents公开适配器增加仅检查本案件干净活动文件的方法；邀请凭证必须为未软删、未撤销且活动版本available的文件，事务持有文件/版本锁。Cases不直接读取Documents私有表。
+- 同一事务保存不可变学校transition fact（时间、凭证和实际操作人）、学校新状态、审计及 `cases.interview_invitation_recorded` outbox。未来任务消费可依据该已提交事件查事实；本节没有把事件标为已投递或声称任务已自动创建。
+- 邀请重放从历史fact还原原响应并核对摘要，仍重新验证当前权限。真实PG夹具已用实际邀请服务替换手工学校transition SQL，然后调用实际任务创建服务验证后续基础。
+- `/tmp/access-trial-invitation-final.log` **72/72**：一次性PG17、模块边界、任务单元；覆盖分类内L2邀请、无有效凭证拒绝、L3拒绝、提交前失败回滚、重试单次审计、同成功请求在撤销分类后拒绝，以及面试任务创建/重派/完成。类型、聚焦ESLint、diff检查通过：`/tmp/access-trial-invitation-types-final.log`、`/tmp/access-trial-invitation-lint-final.log`。
+
+未新增迁移、未执行本节浏览器/HTTP验证、未部署。下一步连接邀请事件到面试任务consumer和正式API/页面；其余原计划剩余工作、最终合并main与推送目标不变。

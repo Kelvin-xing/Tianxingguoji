@@ -1,3 +1,5 @@
+import { InterviewInvitationService, InterviewInvitationError } from "../../modules/cases/application/interview-invitation-service.ts";
+import { PostgresqlInterviewInvitationRepository } from "../../modules/cases/infrastructure/postgresql-interview-invitation-repository.ts";
 import { assertTrialTaskDocuments } from "./trial-task-document-assertions.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -139,14 +141,22 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
       sourceEventId:randomUUID(),kind:"interview_support" as const,taskKey:`interview-${randomUUID()}`,
       dueAt:"2026-09-25T02:00:00.000Z",title:"Synthetic interview support",brief:"Synthetic necessary background",...keys()};
     await assert.rejects(service.ensureTargetTask(provision),rejected("CONFLICT"));
-    // Invitation transition fixture: the production invitation endpoint is a separate gate.
-    await client.query(`INSERT INTO cases_school_target_transition_facts
-      (id,organization_id,service_case_id,school_target_id,transition_kind,from_state,to_state,actor_user_id,
-       assignment_id,from_record_version,to_record_version,interview_at,occurred_at)
-      VALUES ($1,$2,$3,$4,'workflow','submitted','interview',$5,$6,$7::bigint,$7::bigint+1,'2026-09-25T02:00:00Z',clock_timestamp())`,
-      [randomUUID(),org,caseId,deliveryResult.targetId,business.userId,targetForInterview.current_assignment_id,Number(targetForInterview.record_version)]);
-    await client.query("SELECT set_config('app.target_workflow_transition','authorized',true)");
-    await client.query("UPDATE cases_school_targets SET state='interview',record_version=record_version+1,updated_at=clock_timestamp() WHERE id=$1",[deliveryResult.targetId]);
+    const invitations=new InterviewInvitationService(new PostgresqlInterviewInvitationRepository(runner,new PostgresqlCleanTaskEvidencePort()));
+    const invitation={actor:restricted,caseId,targetId:deliveryResult.targetId,expectedRecordVersion:Number(targetForInterview.record_version),
+      interviewAt:"2026-09-25T02:00:00Z",invitationDocumentId:taskDocuments.documentId,...keys()};
+    await assert.rejects(invitations.record({...invitation,invitationDocumentId:randomUUID(),...keys()}),error=>error instanceof InterviewInvitationError&&error.code==="EVIDENCE_REQUIRED");
+    await assert.rejects(invitations.record({...invitation,actor:taskOnly,...keys()}));
+    const failingInvitations=new InterviewInvitationService(new PostgresqlInterviewInvitationRepository(runner,new PostgresqlCleanTaskEvidencePort(),{failBeforeCommit(){throw new Error("Synthetic rollback");}}));
+    await assert.rejects(failingInvitations.record(invitation),error=>error instanceof InterviewInvitationError&&error.code==="UNAVAILABLE");
+    assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");
+    const recordedInvitation=await invitations.record(invitation);
+    assert.deepEqual(await invitations.record(invitation),recordedInvitation);
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1 AND event_type='cases.interview_invitation_recorded'",[deliveryResult.targetId])).rows[0]!.n,1);
+    await client.query("SAVEPOINT invitation_revocation");
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)",[root.userId]);
+    await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
+    await assert.rejects(invitations.record({...invitation,actor:restricted}),error=>error instanceof InterviewInvitationError&&error.code==="NOT_FOUND");
+    await client.query("ROLLBACK TO SAVEPOINT invitation_revocation");await client.query("RELEASE SAVEPOINT invitation_revocation");
     await assert.rejects(failing.ensureTargetTask(provision),rejected("UNAVAILABLE"));
     assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE task_key=$1",[provision.taskKey])).rows[0]!.n,0);
     const interview=await service.ensureTargetTask(provision);
