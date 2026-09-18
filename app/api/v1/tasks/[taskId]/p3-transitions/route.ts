@@ -1,5 +1,5 @@
 import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
-import { getTaskWorkflowRuntime, P3TaskError, type P3TaskAction } from "@/modules/tasks/server";
+import { getTaskWorkflowRuntime, isP3TaskError, type P3TaskAction } from "@/modules/tasks/server";
 import { createApiError, handleApiRequest } from "@/modules/shared/public";
 
 export const runtime = "nodejs";
@@ -38,7 +38,7 @@ export async function POST(request: Request, context: { readonly params: Promise
   });
 }
 function mapP3Error(error: unknown) {
-  if (!(error instanceof P3TaskError)) return error;
+  if (!isP3TaskError(error)) return error;
   switch (error.code) {
     case "INVALID": case "COMPLETION_INVALID": return createApiError("VALIDATION_FAILED"); case "FORBIDDEN": return createApiError("FORBIDDEN");
     case "NOT_FOUND": return createApiError("NOT_FOUND"); case "STALE_VERSION": return createApiError("STALE_VERSION");

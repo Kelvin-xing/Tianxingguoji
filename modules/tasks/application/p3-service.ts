@@ -44,6 +44,13 @@ export class P3TaskError extends Error {
   }
 }
 
+export function isP3TaskError(value: unknown): value is P3TaskError {
+  if (!(value instanceof Error) || value.name !== "P3TaskError") return false;
+  const code = (value as Error & { code?: unknown }).code;
+  return typeof code === "string" && ["INVALID", "FORBIDDEN", "NOT_FOUND", "CONFLICT",
+    "STALE_VERSION", "COMPLETION_INVALID", "UNAVAILABLE"].includes(code);
+}
+
 export class P3TaskService {
   private readonly repository: P3TaskRepository;
   private readonly now: () => number;

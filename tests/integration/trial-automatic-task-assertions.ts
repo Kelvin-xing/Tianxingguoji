@@ -97,6 +97,18 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     const completed=await service.transitionTargetTask(withEvidence);
     assert.equal(completed.state,"completed"); assert.equal(completed.recordVersion,4);
     assert.deepEqual(await service.transitionTargetTask(withEvidence),completed);
+    assert.deepEqual(await service.transitionTargetTask(reassign),assigned);
+    assert.deepEqual(await service.transitionTargetTask(accept),{...assigned,state:"accepted",recordVersion:3});
+    await client.query("SAVEPOINT legacy_task_receipt");
+    const legacyKey=randomUUID();
+    await client.query(`INSERT INTO shared_idempotency_records(id,organization_id,actor_user_id,actor_kind,actor_opaque_id,operation,idempotency_key,request_hash,state)
+      SELECT gen_random_uuid(),organization_id,actor_user_id,actor_kind,actor_opaque_id,operation,$1,request_hash,'in_progress'
+      FROM shared_idempotency_records WHERE operation='tasks.school_target.transition' AND idempotency_key=$2`,[legacyKey,accept.idempotencyKey]);
+    await client.query(`UPDATE shared_idempotency_records SET state='completed',result_reference=$1,
+      response_hash=(SELECT response_hash FROM shared_idempotency_records WHERE operation='tasks.school_target.transition' AND idempotency_key=$2),
+      record_version=record_version+1 WHERE idempotency_key=$3`,[taskId,accept.idempotencyKey,legacyKey]);
+    assert.deepEqual(await service.transitionTargetTask({...accept,idempotencyKey:legacyKey}),{...assigned,state:"accepted",recordVersion:3});
+    await client.query("ROLLBACK TO SAVEPOINT legacy_task_receipt");await client.query("RELEASE SAVEPOINT legacy_task_receipt");
     assert.deepEqual((await taskDocuments.links.list(taskOnly,taskId)).links[0]!.allowedActions,["document.read","document.download"]);
     assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,[]);
     const revoke={actor:restricted,taskId,command:{assignmentId:(await workspace.detail(taskOnly,taskId))!.task.currentAssignment!.id,
@@ -111,6 +123,7 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.equal((await workspace.detail(business,taskId))!.task.state,"completed");
     assert.equal((await client.query("SELECT last_transition_receipt_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.last_transition_receipt_id,completed.completionReceiptId);
     await assert.rejects(service.transitionTargetTask(complete),rejected("NOT_FOUND"));
+    await assert.rejects(service.transitionTargetTask(accept),rejected("NOT_FOUND"));
     assert.equal(await workspace.detail(taskOnly,taskId),null);
     assert.equal(await reads.readTask(taskOnly,taskId),null);
     await client.query("ROLLBACK TO SAVEPOINT paused_revocation");
@@ -136,6 +149,7 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.equal((await workspace.detail(business,taskId))!.task.state,"completed");
     assert.equal((await client.query("SELECT last_transition_receipt_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.last_transition_receipt_id,completed.completionReceiptId);
     await assert.rejects(service.transitionTargetTask(complete),rejected("NOT_FOUND"));
+    await assert.rejects(service.transitionTargetTask(accept),rejected("NOT_FOUND"));
     assert.equal(await workspace.detail(taskOnly,taskId),null);
     assert.equal(await reads.readTask(taskOnly,taskId),null);
     assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");

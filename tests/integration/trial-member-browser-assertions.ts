@@ -260,7 +260,11 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.locator('input[name="command_confirmed"]').check()
     const autoAccepted=l3Page.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
     await l3Page.getByRole('button',{name:'確認更新',exact:true}).click()
-    assert.equal((await autoAccepted).status(),200)
+    const acceptanceResponse=await autoAccepted
+    assert.equal(acceptanceResponse.status(),200)
+    const originalAcceptance=(await acceptanceResponse.json()).data
+    const acceptanceCommand=acceptanceResponse.request().postDataJSON()
+    const acceptanceKey=acceptanceResponse.request().headers()['idempotency-key']!
     await l3Page.reload()
     l3Page.on('response',response=>{const path=new URL(response.url()).pathname;
       if(response.request().method()==='PUT'||path.endsWith('/upload-intents')||path.endsWith('/versions'))process.stdout.write(JSON.stringify({trial_upload_http:{method:response.request().method(),status:response.status(),operation:response.request().method()==='PUT'?'bytes':path.endsWith('/upload-intents')?'intent':'version'}})+'\n');})
@@ -292,6 +296,11 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const autoCompletionResponse=await autoCompleted
     assert.equal(autoCompletionResponse.status(),200)
     assert.equal((await autoCompletionResponse.json()).data.automation.target_transition,'completed')
+    const acceptanceReplay=await l3Context.request.post(`${baseUrl}/api/v1/tasks/${automaticTaskId}/p3-transitions`,{
+      headers:{'idempotency-key':acceptanceKey},data:acceptanceCommand})
+    assert.equal(acceptanceReplay.status(),200)
+    assert.deepEqual((await acceptanceReplay.json()).data,originalAcceptance)
+    assert.equal((await client.query('SELECT state,record_version FROM tasks_tasks WHERE id=$1',[automaticTaskId])).rows[0]!.state,'completed')
     await l3Page.reload()
     await l3Page.getByRole('heading',{name:'Prepare and submit school application',exact:true}).waitFor()
     assert.equal(await l3Page.getByRole('button',{name:'確認更新',exact:true}).count(),0)
@@ -336,6 +345,9 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.getByRole('heading',{name:'Prepare and submit school application',exact:true}).waitFor()
     assert.equal(await revokePage.getByRole('button',{name:'撤銷存取權',exact:true}).count(),0)
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/tasks/${automaticTaskId}`)).status(),404)
+    assert.equal((await l3Context.request.post(`${baseUrl}/api/v1/tasks/${automaticTaskId}/p3-transitions`,{
+      headers:{'idempotency-key':acceptanceKey},data:acceptanceCommand})).status(),404)
+    process.stdout.write(JSON.stringify({trial_historical_task_replay:'pass',after_completion:'original_acceptance',after_revocation:'404'})+'\n')
     assert.equal((await client.query('SELECT state,record_version FROM tasks_tasks WHERE id=$1',[automaticTaskId])).rows[0]!.state,'completed')
     assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'submitted')
     assert.equal(await revokePage.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)

@@ -184,3 +184,15 @@
 - 额外旧静态文件UI契约检查仍有 **1项失败**：`tests/unit/documents/transfer-ui-contract.test.ts` 的“permanent browser gate”还要求固定36文件、已移除的 `test:doc-02-dev-browser` package脚本，而现行历史浏览器源码已采用 ONE_ROLE_SOURCE_COUNT+1。临时核对计数后进一步确认脚本缺失；未恢复过时入口，计数断言保持原样。该旧gate尚需最终验收整理，不计入132通过。其余11项通过；日志 `/tmp/access-trial-transfer-ui-contract.log`。本节没有运行旧LocalStack/ClamAV整套环境。
 
 剩余事项仍包括：真实OSS/生产部署不在当前授权内；文档删除/恢复/回滚等既有入口的新等级接入与补足安全/并发场景，面试任务前端、P3历史回执重放、锁顺序审查、CRM/学校/目标结案/邀请等原计划剩余接入、演示数据、整体本地验收及旧gate梳理。只有全部已授权开发验收完成后再合并main、推送。当前未合并、未推送、未部署。
+
+## P3 历史成功回执重放（2026-09-19，接续 7045c82）
+
+总体仍 `in_progress`，本节仅完成历史任务请求重试修复。
+
+- 成功幂等记录引用任务 ID 与结果版本；重放从不可变 transition receipt 还原原始响应，并核对已保存的响应摘要。后续任务完成不再让先前的接受/重派请求错误冲突。兼容旧的仅任务 ID 引用，不改历史数据或迁移。
+- 重放仍先验证当前等级、分类与指派；撤销指派后的旧接受/完成请求拒绝，不因历史成功而恢复权限。真实 PG 验证新旧引用、完成后重试、暂停撤销及最终撤销；历史任务状态与完成凭证保留。
+- 正式浏览器发现全局保留 runtime 的错误实例不能通过重载后的 constructor instanceof 检查，导致应为404的拒绝成为500。沿用现有 TaskWorkspaceError 模式，增加仅接受 Error 实例、精确错误名称与已知code的 P3 guard；不把任意对象视为业务错误。
+- `/tmp/access-trial-replay-unit-final.log`：任务单元测试 **52/52**。`/tmp/access-trial-replay-browser-final.log`：真实 Next/Chrome + 一次性 PG17 **2/2**，包括完成后接受重放返回原响应、撤权后相同正式HTTP请求404，以及此前成员/建案/名单/任务/文件流程回归。文件仍为本地模拟扫描传输，不是OSS或ClamAV验证。
+- 类型检查、聚焦ESLint及diff空白检查通过：`/tmp/access-trial-replay-types-final.log`、`/tmp/access-trial-replay-lint-final.log`。无新增迁移。
+
+仍需继续上一节除P3历史回执以外的剩余开发、安全/并发审查、整体验收、合并main和推送；未部署，未改真实员工。

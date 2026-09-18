@@ -315,17 +315,33 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
     if (assignment.rows.length!==1) throw new P3TaskError("NOT_FOUND");
   }
 
-  private async readAcknowledgement(actor: RequestAccessActor, taskId: string, requestId: string, expectedHash: string) {
-    const organizationId=actor.organizationId;
-    const replayAck = await this.runner.run(actorContext(organizationId,actor.userId,requestId), async (transaction) => {
+  private async readAcknowledgement(actor: RequestAccessActor, reference: string, requestId: string, expectedHash: string) {
+    const match=/^([0-9a-f-]{36})(?::([1-9][0-9]{0,15}))?$/.exec(reference);
+    if(!match) throw new P3TaskError("CONFLICT");
+    const taskId=match[1]!, version=match[2]===undefined?null:Number(match[2]);
+    if(version!==null&&!Number.isSafeInteger(version))throw new P3TaskError("CONFLICT");
+    return this.runner.run(actorContext(actor.organizationId,actor.userId,requestId), async (transaction) => {
       await this.revalidateTaskScope(transaction,actor,taskId);
-      const result = await transaction.query<TaskRow>({ text: `SELECT id,task_kind,school_target_id,state,record_version,last_transition_receipt_id FROM tasks_tasks WHERE id=$1 AND organization_id=$2`, values: [taskId, organizationId] });
-      const row = result.rows[0]; if (!row) throw new P3TaskError("NOT_FOUND");
-      return acknowledgement(row, row.task_kind as P3TaskKind);
+      const result=await transaction.query<TaskRow>({text:`SELECT id,task_kind,school_target_id,state,record_version,last_transition_receipt_id
+        FROM tasks_tasks WHERE id=$1 AND organization_id=$2`,values:[taskId,actor.organizationId]});
+      const row=result.rows[0];if(!row)throw new P3TaskError("NOT_FOUND");
+      // Append-only transition receipts preserve the original response after later
+      // actions. Legacy task-only references are resolved by their stored hash.
+      const receipts=await transaction.query<{id:string;to_state:string;result_record_version:number|string}>({
+        text:`SELECT id,to_state,result_record_version FROM tasks_task_transition_receipts
+          WHERE task_id=$1 AND organization_id=$2 AND ($3::bigint IS NULL OR result_record_version=$3)
+          ORDER BY result_record_version`,values:[taskId,actor.organizationId,version]});
+      const candidates:P3TaskAcknowledgement[]=receipts.rows.map(receipt=>acknowledgement({...row,
+        state:receipt.to_state,record_version:receipt.result_record_version,last_transition_receipt_id:receipt.id},row.task_kind as P3TaskKind));
+      // Automatic tasks always start assigned at version one, before any receipt.
+      if(version===null||version===1)candidates.push(acknowledgement({...row,state:"assigned",record_version:1,last_transition_receipt_id:null},row.task_kind as P3TaskKind));
+      if(version===null||version===Number(row.record_version))candidates.push(acknowledgement(row,row.task_kind as P3TaskKind));
+      const original=candidates.find(candidate=>hashAcknowledgement(candidate)===expectedHash);
+      if(!original)throw new P3TaskError("CONFLICT");
+      return original;
     });
-    if (expectedHash !== hashAcknowledgement(replayAck)) throw new P3TaskError("CONFLICT");
-    return replayAck;
   }
+
 }
 
 interface TaskRow { readonly id: string; readonly organization_id: string; readonly service_case_id: string; readonly school_target_id: string; readonly task_kind: string; readonly state: string; readonly assignee_user_id: string; readonly assignee_role: string; readonly owner_user_id: string; readonly record_version: number | string; readonly last_transition_receipt_id: string | null; }
@@ -334,7 +350,7 @@ interface AssignmentRow { readonly id: string; readonly assignee_user_id: string
 function actorContext(organizationId: string, userId: string, requestId: string) { return { organizationId, actorKind: "user" as const, actorOpaqueId: userId, actorUserId: userId, requestId }; }
 function acknowledgement(row: TaskRow, kind: P3TaskKind): P3TaskAcknowledgement { return Object.freeze({ id: row.id, recordVersion: Number(row.record_version), state: row.state as P3TaskAcknowledgement["state"], kind, schoolTargetId: row.school_target_id, ...(row.last_transition_receipt_id && row.state === "completed" ? { completionReceiptId: row.last_transition_receipt_id } : {}) }); }
 function hashAcknowledgement(value: P3TaskAcknowledgement) { return hashRequestPayload({ id: value.id, record_version: value.recordVersion, state: value.state, kind: value.kind ?? null, school_target_id: value.schoolTargetId ?? null, completion_receipt_id: value.completionReceiptId ?? null }); }
-function outcome(input: P3EnsureTargetTaskRepositoryInput | P3TransitionTargetTaskRepositoryInput, value: P3TaskAcknowledgement) { return { state: "completed" as const, resultReference: value.id, responseHash: hashAcknowledgement(value), updatedAt: input.effects.audit.occurredAt, value }; }
+function outcome(input: P3EnsureTargetTaskRepositoryInput | P3TransitionTargetTaskRepositoryInput, value: P3TaskAcknowledgement) { return { state: "completed" as const, resultReference: `${value.id}:${value.recordVersion}`, responseHash: hashAcknowledgement(value), updatedAt: input.effects.audit.occurredAt, value }; }
 function adapt(transaction: TenantTransaction) { return { query: async <Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]) => { const result = await transaction.query<Row>({ text, values }); return { rows: result.rows, rowCount: result.rowCount ?? result.rows.length }; } }; }
 function assertApplicationCompletion(value: Readonly<Record<string, unknown>> | null): asserts value is Readonly<Record<string, unknown>> {
   if (!isValidApplicationCompletion(value)) throw new P3TaskError("COMPLETION_INVALID");
