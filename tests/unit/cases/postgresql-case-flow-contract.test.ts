@@ -181,6 +181,8 @@ test("Assessment reads project editable fields and answers in canonical catalogu
               admission_route_module_id: manifestModuleForLayer("admission_route").moduleId,
               admission_route_module_version: manifestModuleForLayer("admission_route").version,
             }];
+          } else if (normalized.includes("from access_trial_members t")) {
+            rows = []; // This fixture is an unenrolled legacy advisor.
           } else if (normalized.includes("from access_role_bindings as role_binding")) {
             rows = [{ role: "advisor", is_primary: true }];
           } else if (normalized.includes("from cases_read_bound_assessment_manifest_fields")) {

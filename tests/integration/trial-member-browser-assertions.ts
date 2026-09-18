@@ -38,7 +38,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     server = startNextDev(directory,port,target.connectionString,baseUrl)
     await waitForNextDev(baseUrl,server)
     // Compile the intake surfaces before browser interactions; dev HMR is not a business event.
-    for (const path of ['/api/v1/cases','/api/v1/cases/intake-options']) await fetch(`${baseUrl}${path}`,{ signal:AbortSignal.timeout(20_000) })
+    for (const path of ['/api/v1/cases','/api/v1/cases/intake-options','/api/v1/cases/00000000-0000-4000-8000-000000000000/assessment']) await fetch(`${baseUrl}${path}`,{ signal:AbortSignal.timeout(20_000) })
     browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
     const rootContext = await browser.newContext({ viewport: { width: 1280, height: 900 } })
     const page = await rootContext.newPage()
@@ -111,6 +111,19 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       data: created.request().postDataJSON(),
     })
     assert.equal(replay.status(),200)
+    await restricted.goto(`${baseUrl}/cases/${createdData.case_id}/assessment`)
+    const birthDate = restricted.getByLabel('student_profile.date_of_birth value', { exact:true })
+    await restricted.getByLabel('student_profile.date_of_birth semantic state', { exact:true }).selectOption('provided')
+    await birthDate.fill('2014-03-12')
+    const answerSaved = restricted.waitForResponse((r) => r.url().endsWith(`/${createdData.case_id}/assessment`) && r.request().method() === 'PATCH')
+    await restricted.getByRole('button',{ name:'儲存全部修改',exact:true }).click()
+    assert.equal((await answerSaved).status(),200)
+    await restricted.reload()
+    assert.equal(await birthDate.inputValue(),'2014-03-12')
+    assert.equal(await restricted.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
+    await restricted.screenshot({ path:'/tmp/access-trial-assessment-mobile.png',fullPage:true })
+    await restricted.setViewportSize({ width:1280,height:900 })
+    await restricted.screenshot({ path:'/tmp/access-trial-assessment-desktop.png',fullPage:true })
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -121,10 +134,21 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await Promise.all([l2Page.waitForURL('**/today'),l2Page.getByRole('button', { name: '登入工作台', exact: true }).click()])
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
+    assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),200)
     assert.equal((await l2Context.request.post(`${baseUrl}/api/v1/cases`, {
       headers: { 'idempotency-key': `denied-case-${randomBytes(8).toString('hex')}` },
       data: { ...submittedBody, business_category: 'local_school' },
     })).status(),403)
+    await l2Context.close()
+    const l3 = people.find((p) => p.level === 'l3')!
+    const l3Context = await browser.newContext()
+    const l3Page = await l3Context.newPage()
+    await l3Page.goto(`${baseUrl}/login`)
+    await l3Page.getByLabel('帳戶電郵').fill(l3.email)
+    await l3Page.getByLabel('密碼', { exact:true }).fill(password)
+    await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
+    assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
+    process.stdout.write(JSON.stringify({ trial_assessment_browser:'pass', l1_edit:'persisted_after_reload', l2_scope:'200', l3_full_assessment:'403', viewport:'desktop_and_390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_case_intake_browser:'pass', l1_create:'persisted_actual_role', replay:'200', l2_cross_category:'403', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_member_browser:'pass', login:'internal_email', persistence:'reload_verified', l1_direct_api:'403', viewport:'desktop_and_390px' })+'\n')
   } finally {

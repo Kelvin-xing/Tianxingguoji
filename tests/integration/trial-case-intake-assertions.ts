@@ -7,6 +7,7 @@ import { PostgresqlCrmCaseIntakeOwner } from "../../modules/crm/infrastructure/p
 import { CaseIntakeService, CaseIntakeOptionsCoordinator, CaseIntakeError } from "../../modules/cases/application/intake-service.ts";
 import { PostgresqlCaseIntakeRepository } from "../../modules/cases/infrastructure/postgresql-case-intake-repository.ts";
 import type { TenantTransactionRunner } from "../../modules/shared/server.ts";
+import { assertTrialAssessments } from "./trial-assessment-assertions.ts";
 import { NEON_TEST_ORGANIZATION, NEON_TEST_PRINCIPALS, NEON_TEST_STUDENTS } from "../../scripts/db/neon-test-synthetic-fixture.ts";
 
 export async function assertTrialCaseIntake(client: Client): Promise<void> {
@@ -72,6 +73,7 @@ export async function assertTrialCaseIntake(client: Client): Promise<void> {
     const thirdInput = { actor:restricted, command:await command(l2,"international_school",2092) };
     const third = await service.createCase(thirdInput);
     assert.equal(third.recordVersion,2);
+    await assertTrialAssessments(client,runner,first.caseId,second.caseId);
     await assert.rejects(service.createCase({ actor:restricted, command:await command(l2,"international_school",2093,NEON_TEST_STUDENTS[0]!.id) }),rejected("CASE_INTAKE_STUDENT_NOT_FOUND"));
     await assert.rejects(service.createCase({ actor:actor(l2,"l2",["local_school"]), command:await command(l2,"local_school",2093) }),rejected("CASE_INTAKE_FORBIDDEN"));
     await assert.rejects(service.createCase({ actor:actor(l3,"l3"), command:await command(l3,"international_school",2093) }),rejected("CASE_INTAKE_FORBIDDEN"));

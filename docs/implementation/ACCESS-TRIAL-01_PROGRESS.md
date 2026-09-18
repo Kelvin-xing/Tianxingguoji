@@ -76,3 +76,12 @@
 - 聚焦回归139/139通过：Cases unit、CRM f2、case-intake/case-workspace route contract、case-intake boundary、one-role baseline、module boundaries；日志 `/tmp/access-trial-intake-regression.log`。类型检查与聚焦 ESLint 通过，日志 `/tmp/access-trial-intake-types.log`、`/tmp/access-trial-intake-lint.log`。生成基线 --check 通过，现为59源迁移/60生成文件，605 public objects，FORCE RLS及身份约束继续通过。
 
 下一步优先：接 `modules/cases/infrastructure/postgresql-assessment-repository.ts` 与 application AssessmentService，使新 Founder/L1 可编辑、L2 范围内可编辑、L3 禁止；目前新建案成功页“开启评估”后的完整流程仍未验收。再接 workflow repository（060只完成 SQL）、candidate list/审批/结案、CRM 首次学生建档、任务/文件及邀请等原计划剩余项。当前不能合并发布，未合并 main、未推送、未部署。
+
+## Assessment 与暂停/恢复（2026-09-19，接续 5aa17ab）
+
+- Assessment 仓储在读写事务内锁定当前试用身份和实际角色，按案件明确分类授权；Founder/L1 完整评估、L2 当前分类、L3 拒绝，旧账号继续既有规则。保留字段校验、固定 manifest、答案版本、幂等、审计/outbox 和案件状态限制。
+- Workflow service 接受试用能力，仓储重放调用060的当前范围函数；新请求和旧请求重放均不能借旧授权绕过撤分类。暂停案件评估只读、恢复后可编辑，未改业务状态机或历史迁移。
+- 新增真实 PG helper `trial-assessment-assertions.ts`，复用建案合成夹具并独立回滚。验证四等级、跨分类拒绝、答案版本冲突、幂等一次审计、故意审计失败回滚、暂停/恢复、撤分类后读取/写入/旧 workflow 请求重放拒绝。旧单元夹具显式返回未启用试用身份，无产品校验放宽。
+- 最终 `TIANXING_TRIAL_BROWSER=1 node --conditions=react-server --test tests/integration/one-role-baseline-postgresql.test.ts` 2/2通过，日志 `/tmp/access-trial-assessment-browser.log`。真实内部邮箱登录后 L1 页面保存出生日期，刷新核对；L2 授权分类 Assessment GET200、L3 GET403。390px无横向溢出，桌面/手机截图 `/tmp/access-trial-assessment-desktop.png`、`/tmp/access-trial-assessment-mobile.png` 已目视检查。第一次脚本先填被“暂时未知”禁用的日期导致超时，调整为先选择“已提供”再填日期，未更改产品行为。
+- 聚焦 Cases/Assessment/workspace/module-boundary 回归107/107通过，日志 `/tmp/access-trial-assessment-regression.log`；类型和聚焦ESLint通过，日志 `/tmp/access-trial-assessment-types.log`、`/tmp/access-trial-assessment-lint.log`。
+- 尚未证明完成背景收集/选校/结案完整流程，未合并、推送或部署。下一步接 candidate list/审批/结案：`cases_actor_has_active_case_role` 被040/052 SQL命令复用，须追加迁移按新等级区分维护与审批，不能简单把L2等同Founder；应用和读取仓储亦需更新，再做真实流程验证。原计划CRM/任务/文件/邀请及最终整体验收仍须全部完成。
