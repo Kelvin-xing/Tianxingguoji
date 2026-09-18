@@ -41,7 +41,7 @@ test("CandidateList workspace exposes bounded states, fields and accessible cont
     "候選學校名單暫時不可用",
     "尚未建立候選名單",
     "建立新版本",
-    "Founder 審核",
+    "名單審核",
     "家長確認",
   ]) {
     assert.ok(workspace.includes(copy), `missing ${copy}`);

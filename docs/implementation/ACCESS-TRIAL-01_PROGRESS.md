@@ -85,3 +85,15 @@
 - 最终 `TIANXING_TRIAL_BROWSER=1 node --conditions=react-server --test tests/integration/one-role-baseline-postgresql.test.ts` 2/2通过，日志 `/tmp/access-trial-assessment-browser.log`。真实内部邮箱登录后 L1 页面保存出生日期，刷新核对；L2 授权分类 Assessment GET200、L3 GET403。390px无横向溢出，桌面/手机截图 `/tmp/access-trial-assessment-desktop.png`、`/tmp/access-trial-assessment-mobile.png` 已目视检查。第一次脚本先填被“暂时未知”禁用的日期导致超时，调整为先选择“已提供”再填日期，未更改产品行为。
 - 聚焦 Cases/Assessment/workspace/module-boundary 回归107/107通过，日志 `/tmp/access-trial-assessment-regression.log`；类型和聚焦ESLint通过，日志 `/tmp/access-trial-assessment-types.log`、`/tmp/access-trial-assessment-lint.log`。
 - 尚未证明完成背景收集/选校/结案完整流程，未合并、推送或部署。下一步接 candidate list/审批/结案：`cases_actor_has_active_case_role` 被040/052 SQL命令复用，须追加迁移按新等级区分维护与审批，不能简单把L2等同Founder；应用和读取仓储亦需更新，再做真实流程验证。原计划CRM/任务/文件/邀请及最终整体验收仍须全部完成。
+
+## 候选名单与业务审批（2026-09-19，接续 12c875d）
+
+- 追加061：现有候选名单 SQL 权限入口按显式试用等级及当前分类授权；旧函数的 advisor 参数表示维护操作，founder 参数表示审批/结案操作，不是把员工身份伪装旧角色。L1 有审批权，L2 无审批/结案权，L3 不得整案读取；未启用试用的旧账号仍执行原角色规则。试用分类、身份及实际角色锁定延续060。
+- 应用层创建/审批/家长确认/结案、名单查询及家长确认上下文接通；案件页按新等级显示维护和审批入口，界面将“Founder 审核”改为“名单审核”。学校选项读取允许有 schools.read 的新等级并在事务内重查，家长确认选项对L2再次按当前关联分类筛选，不返回联系方式。
+- 真实运行暴露基线问题并追加062修复：单账号安装中 application 同时作为owner，旧撤销INSERT导致 definer 命令无法写名单/目标。仅当当前安装账号为 tianxing_app 且拥有目标表时恢复命令需要的INSERT及列UPDATE，保留RLS/触发器/无DELETE；独立migration owner场景不扩大应用表授权。当前 create-v2/review 哈希使用PG17内建 sha256，避免运行时依赖测试临时安装pgcrypto。历史迁移及历史生成文件未改。
+- 追加063：家长确认后的自动目标分派保存案件负责人的实际角色，重查试用负责人当前分类，避免旧默认advisor与真实身份FK冲突；目标分派角色集合包含已授权试用等级。自动推进事实及outbox使用统一不早于确认记录的事件时间并显式写updated_at，修复长事务下时间倒退约束失败。未消费申请任务，不代表任务模块已接通。
+- `trial-candidate-assertions.ts` 使用真实建案/Assessment service填写全部字段及完成背景收集，再L2提交、L1审批、L2确认家长并触发目标进入preparing/案件application_in_progress。验证跨分类、L3、L2审批及结案拒绝；版本及家长确认哈希保持；旧键重放和撤分类后拒绝；学校选项和家长选项范围。成功结案尚未验证，目前验证的是未完成目标不可结案。
+- 聚焦真实PG+Cases/Schools options/迁移/module-boundary检查133/133通过：`/tmp/access-trial-candidate-regression.log`。额外确认重放只发一次application任务事件的最终PG日志 `/tmp/access-trial-candidate-pg-final.log`。生成基线--check通过：62源迁移/63生成文件；FORCE RLS、605 public objects、独立连接及回滚检查通过。类型 `/tmp/access-trial-candidate-types.log` 通过；聚焦ESLint原有两条unused警告已清除，最终 `/tmp/access-trial-candidate-lint-final.log` 无输出。
+- 浏览器最终2/2通过：`/tmp/access-trial-candidate-browser.log`。真实L1登录建案、Assessment编辑刷新、填写其余字段和完成背景、HTTP创建名单、实际页面提交审批、刷新及独立DB核对真实l1审批者；L2直接审批403；L3完整评估403。390px无横向溢出，截图 `/tmp/access-trial-candidate-approval-mobile.png` 已目视检查。仅证明名单审批区域，不把整案中尚未适配的来源/任务面板当通过；未验证浏览器家长确认后的任务自动消费和成功结案。
+
+下一步仍需完整推进：目标读取/申请流程及任务模块新等级（包括自动任务实际角色、L3任务必要上下文、撤销、完成只读），然后文件/CRM/邀请和原计划其余权限与最终浏览器场景。成功结案需在目标/任务流程完成后补足真实允许、拒绝及审计回滚证据。当前未合并main、未推送、未部署，目标保持in_progress。

@@ -124,6 +124,41 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await restricted.screenshot({ path:'/tmp/access-trial-assessment-mobile.png',fullPage:true })
     await restricted.setViewportSize({ width:1280,height:900 })
     await restricted.screenshot({ path:'/tmp/access-trial-assessment-desktop.png',fullPage:true })
+    const assessmentUrl = `${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`
+    const assessmentView = (await (await restrictedContext.request.get(assessmentUrl)).json()).data
+    for (const [index,field] of assessmentView.schema.fields.entries()) {
+      if (field.field_id === 'student_profile.date_of_birth') continue
+      const value = field.value_type === 'date' ? '2014-03-12' : field.value_type === 'integer' ? index+1
+        : field.value_type === 'enum' ? field.enum_values[0] : field.value_type === 'enum_set' ? [field.enum_values[0]] : `Synthetic-${index}`
+      assert.equal((await restrictedContext.request.patch(assessmentUrl,{ headers:{ 'idempotency-key':`browser-assess-${randomBytes(8).toString('hex')}` },
+        data:{ field_id:field.field_id,semantic_state:'provided',value:{ type:field.value_type,value },value_type:field.value_type,expected_record_version:0 } })).status(),200)
+    }
+    assert.equal((await restrictedContext.request.post(`${assessmentUrl}/background-completion`,{ headers:{ 'idempotency-key':`browser-complete-${randomBytes(8).toString('hex')}` },data:{ expected_record_version:1 } })).status(),200)
+    const schoolPin = (await client.query(`INSERT INTO schools_resolved_revisions
+      (id,organization_id,school_id,base_snapshot_id,overlay_revision_id,resolution_sha256,fields_json,provenance_json,conflicts_json)
+      SELECT gen_random_uuid(),organization_id,school_id,snapshot_id,NULL,record_sha256,fields_json,provenance_json,'[]'::jsonb
+      FROM schools_snapshot_records ORDER BY id LIMIT 1 RETURNING id,school_id,resolution_sha256`)).rows[0]!
+    const listCreated = await restrictedContext.request.post(`${baseUrl}/api/v1/cases/${createdData.case_id}/candidate-lists`,{
+      headers:{ 'idempotency-key':`browser-list-${randomBytes(8).toString('hex')}` },data:{ previous_version_id:null,expected_case_record_version:2,
+        change_summary:'Synthetic browser list',items:[{ school_id:schoolPin.school_id,pinned_resolved_revision_id:schoolPin.id,
+          pinned_resolution_sha256:schoolPin.resolution_sha256,ordinal:1,application_deadline:'2099-04-15T12:00:00.000Z' }] },
+    })
+    assert.equal(listCreated.status(),200)
+    const versionId = (await listCreated.json()).data.id as string
+    // Warm mutation compilation before opening the interactive review page.
+    const reviewUrl = `${baseUrl}/api/v1/cases/${createdData.case_id}/candidate-lists/${versionId}/review`
+    await restrictedContext.request.post(reviewUrl,{ data:{} })
+    await restricted.goto(`${baseUrl}/cases/${createdData.case_id}`)
+    await restricted.getByLabel('原因',{ exact:true }).fill('Synthetic L1 approval')
+    const reviewed = restricted.waitForResponse((r) => r.url() === reviewUrl && r.request().method() === 'POST')
+    await restricted.getByRole('button',{ name:'提交審核',exact:true }).click()
+    assert.equal((await reviewed).status(),200)
+    await restricted.reload()
+    await restricted.getByText('批准 · Synthetic L1 approval',{ exact:true }).waitFor()
+    assert.equal((await client.query('SELECT founder_decided_by_user_id FROM cases_candidate_school_list_versions WHERE id=$1',[versionId])).rows[0]!.founder_decided_by_user_id,l1.user_id)
+    await restricted.setViewportSize({ width:390,height:844 })
+    assert.equal(await restricted.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
+    await restricted.screenshot({ path:'/tmp/access-trial-candidate-approval-mobile.png',fullPage:true })
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -135,6 +170,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),200)
+    assert.equal((await l2Context.request.post(reviewUrl,{ headers:{ 'idempotency-key':`denied-review-${randomBytes(8).toString('hex')}` },
+      data:{ decision:'approved',expected_record_version:3,reason:'Denied L2 approval' } })).status(),403)
     assert.equal((await l2Context.request.post(`${baseUrl}/api/v1/cases`, {
       headers: { 'idempotency-key': `denied-case-${randomBytes(8).toString('hex')}` },
       data: { ...submittedBody, business_category: 'local_school' },
@@ -149,6 +186,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
     process.stdout.write(JSON.stringify({ trial_assessment_browser:'pass', l1_edit:'persisted_after_reload', l2_scope:'200', l3_full_assessment:'403', viewport:'desktop_and_390px' })+'\n')
+    process.stdout.write(JSON.stringify({ trial_candidate_browser:'pass', l1_approval:'persisted_actual_actor', l2_approval:'403', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_case_intake_browser:'pass', l1_create:'persisted_actual_role', replay:'200', l2_cross_category:'403', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_member_browser:'pass', login:'internal_email', persistence:'reload_verified', l1_direct_api:'403', viewport:'desktop_and_390px' })+'\n')
   } finally {

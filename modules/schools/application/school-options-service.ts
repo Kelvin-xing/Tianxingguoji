@@ -96,7 +96,7 @@ export class SchoolOptionsService {
 function authorize(actor: RequestAccessActor): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
       !hasRequestCapability(actor, "schools.read") ||
-      (actor.roles?.includes("founder") !== true && actor.roles?.includes("advisor") !== true)) {
+      (!actor.trialPrincipal && actor.roles?.includes("founder") !== true && actor.roles?.includes("advisor") !== true)) {
     throw new SchoolOptionsError("SCHOOL_OPTIONS_FORBIDDEN");
   }
 }

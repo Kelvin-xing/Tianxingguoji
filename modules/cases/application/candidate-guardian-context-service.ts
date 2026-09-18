@@ -45,7 +45,7 @@ export class CandidateGuardianContextService {
     }
     if (!UUID.test(input.actor.organizationId) || !UUID.test(input.actor.userId) ||
         !hasRequestCapability(input.actor, "cases.workflow.manage") ||
-        input.actor.roles?.includes("advisor") !== true) {
+        (!input.actor.trialPrincipal && input.actor.roles?.includes("advisor") !== true)) {
       throw new CandidateGuardianContextError("CANDIDATE_GUARDIAN_CONTEXT_NOT_FOUND");
     }
     const result = await this.repository.find({

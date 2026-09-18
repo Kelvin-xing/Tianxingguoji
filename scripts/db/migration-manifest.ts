@@ -9,11 +9,11 @@ export const MIGRATION_DIRECTORY = "db/migrations";
 export const MIGRATION_MANIFEST_PATH = "db/migrations/manifest.json";
 export const NEON_TEST_DATABASE = "txgj_env01_test";
 export const NEON_TEST_MIGRATION_LOGIN = "env01_migration_login";
-export const EXPECTED_MIGRATION_COUNT = 59;
+export const EXPECTED_MIGRATION_COUNT = 62;
 export const EXPECTED_LAST_MIGRATION =
-  "202609190030_060_enable_trial_case_creation.sql";
+  "202609190060_063_use_actual_target_assignment_grade.sql";
 export const EXPECTED_LAST_MIGRATION_SHA256 =
-  "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e";
+  "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_MIGRATION_NAME = /^\d{12}_\d{3}_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;

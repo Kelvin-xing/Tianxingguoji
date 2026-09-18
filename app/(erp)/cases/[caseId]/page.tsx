@@ -38,6 +38,9 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   }
   if (!record || !assessment) notFound()
   const { roles: actorRoles } = actor
+  const trialLevel = actor.trialPrincipal?.level
+  const canManageCandidateLists = trialLevel ? ['founder','l1','l2'].includes(trialLevel) : actorRoles.includes('advisor')
+  const canReviewCandidateLists = trialLevel ? ['founder','l1'].includes(trialLevel) : actorRoles.includes('founder')
   const canOpenPortalAccess = actorRoles.includes('founder') || actor.userId === record.primaryUserId
 
   return (
@@ -77,8 +80,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         initialCaseStage={record.stage}
         initialWorkflowStatus={record.workflowStatus}
         selectionReady={assessment.status === 'background_complete' || assessment.status === 'selection_ready'}
-        canManageCandidateLists={actorRoles.includes('advisor')}
-        canReviewCandidateLists={actorRoles.includes('founder')}
+        canManageCandidateLists={canManageCandidateLists}
+        canReviewCandidateLists={canReviewCandidateLists}
       />
 
     </div>

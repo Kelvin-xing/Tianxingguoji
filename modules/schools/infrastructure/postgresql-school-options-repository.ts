@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadTrialPrincipal } from "../../access/server.ts";
+import { trialWorkspaceCapabilities } from "../../access/public.ts";
 import type { TenantTransactionRunner } from "../../shared/server.ts";
 import {
   SchoolOptionsError,
@@ -34,6 +36,17 @@ export class PostgresqlSchoolOptionsRepository implements SchoolOptionsRepositor
       requestId: "school-options-query",
     }, async (transaction) => {
       try {
+        const principal = await loadTrialPrincipal({
+          query: <Row extends Record<string,unknown>>(text: string,values?: readonly unknown[]) => transaction.query<Row>({ text,values }),
+        },{ organizationId:input.organizationId,userId:input.actorUserId,lock:true });
+        if (principal) {
+          if (!trialWorkspaceCapabilities(principal).includes("schools.read")) throw new SchoolOptionsError("SCHOOL_OPTIONS_FORBIDDEN");
+          const binding = await transaction.query({
+            text:"SELECT id FROM access_role_bindings WHERE organization_id=$1 AND user_id=$2 AND role=$3 AND status='active' FOR SHARE",
+            values:[input.organizationId,input.actorUserId,principal.level],
+          });
+          if (binding.rows.length !== 1) throw new SchoolOptionsError("SCHOOL_OPTIONS_FORBIDDEN");
+        }
         const result = await transaction.query<SchoolOptionRow>({
           text: `WITH active_snapshot AS (
                    SELECT id

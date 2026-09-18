@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "c8e4b5d7a33deb80313e8de7fc06c621b3dc649d68d7ab3885bfc4975bece4a9",
+  "source_history_manifest_sha256": "4574a3d9add962afcbced0ea55bfd32f8db39c7a491864368d599ad9f0b3c3c6",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -429,6 +429,27 @@
       "generated_file": "059_202609190030_060_enable_trial_case_creation.sql",
       "generated_sha256": "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202609190040_061_enable_trial_candidate_authorization.sql",
+      "source_sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "generated_file": "060_202609190040_061_enable_trial_candidate_authorization.sql",
+      "generated_sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190050_062_fix_candidate_command_runtime.sql",
+      "source_sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "generated_file": "061_202609190050_062_fix_candidate_command_runtime.sql",
+      "generated_sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190060_063_use_actual_target_assignment_grade.sql",
+      "source_sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
+      "generated_file": "062_202609190060_063_use_actual_target_assignment_grade.sql",
+      "generated_sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -725,6 +746,21 @@
     {
       "name": "059_202609190030_060_enable_trial_case_creation.sql",
       "sha256": "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "060_202609190040_061_enable_trial_candidate_authorization.sql",
+      "sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "061_202609190050_062_fix_candidate_command_runtime.sql",
+      "sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "062_202609190060_063_use_actual_target_assignment_grade.sql",
+      "sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
       "transform": "copy-v1"
     },
     {
