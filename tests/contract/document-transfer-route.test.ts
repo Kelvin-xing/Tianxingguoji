@@ -10,10 +10,19 @@ import {
   parseDocumentVersionAbandonment,
   parseDocumentVersionCreate,
   parseEmptyDocumentCommand,
+  parseDocumentLifecycleBody,
 } from "../../app/api/v1/documents/handler.ts";
 import { DocumentTransferError } from "../../modules/documents/application/transfer-service.ts";
 
 const ID = "81000000-0000-4000-8000-000000000001";
+
+test("document lifecycle rejects ambiguous bodies and query parameters",async()=>{
+  assert.deepEqual(await parseDocumentLifecycleBody(jsonRequest({expected_record_version:2}),['expected_record_version']),{expected_record_version:2});
+  for(const body of ['{"expected_record_version":1,"expected_record_version":2}','{"expected_record_version":2,"role":"founder"}']){
+    await assert.rejects(parseDocumentLifecycleBody(new Request('http://localhost/api/v1/documents',{method:'POST',headers:{'content-type':'application/json'},body}),['expected_record_version']));
+  }
+  await assert.rejects(parseDocumentLifecycleBody(new Request('http://localhost/api/v1/documents?organization_id=foreign',{method:'POST',headers:{'content-type':'application/json'},body:'{"expected_record_version":2}'}),['expected_record_version']));
+});
 
 test("DOC-02 route parsers enforce exact bodies and idempotency placement", async () => {
   const version = await parseDocumentVersionCreate(jsonRequest({

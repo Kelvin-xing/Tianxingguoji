@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { DocumentVersionService } from "../application/version-service.ts";
+import { DocumentVersionService } from "../application/version-service.ts";
+import { PostgresqlDocumentVersionRepository } from "./postgresql-version-repository.ts";
+import { getApplicationTenantRunner } from "../../shared/server.ts";
+import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment.ts";
 
 export interface DocumentVersionRuntime {
   readonly service: DocumentVersionService;
@@ -13,10 +16,10 @@ export class DocumentVersionRuntimeUnavailable extends Error {
   }
 }
 
-/**
- * Production composition must provide the HK RDS transaction repository. No
- * local, JSON, mock, legacy, or object-store fallback may mutate documents.
- */
+/** Uses the configured PostgreSQL runner; no object-store or in-memory fallback. */
 export function getDocumentVersionRuntime(): DocumentVersionRuntime {
-  throw new DocumentVersionRuntimeUnavailable();
+  try {
+    if(loadRuntimeEnvironment().appRuntimeMode==='production-aws')throw new DocumentVersionRuntimeUnavailable();
+    return {service:new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(getApplicationTenantRunner())})};
+  }catch {throw new DocumentVersionRuntimeUnavailable();}
 }

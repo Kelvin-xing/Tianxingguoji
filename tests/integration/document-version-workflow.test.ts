@@ -389,7 +389,7 @@ test("a failed transaction preserves the old document pointer and has no partial
   });
 });
 
-test("the document version runtime fails closed without an HK RDS composition", () => {
+test("the document version runtime fails closed without a configured PostgreSQL environment", () => {
   assert.throws(() => getDocumentVersionRuntime(), DocumentVersionRuntimeUnavailable);
 });
 

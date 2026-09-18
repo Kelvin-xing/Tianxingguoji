@@ -292,3 +292,14 @@
 - 首次整组运行的成员管理检查出现一次access_role_bindings_timestamps_check错误，独立重跑及最终运行通过；本节未改该成员逻辑，偶发时间戳风险仍待后续并发验收排查，不能据此称全系统稳定。
 
 未新增迁移、未运行本节浏览器验证、未部署、未合并或推送。下一步接通文件生命周期正式接口及页面，继续剩余模块、并发和整体本地验收。
+
+## 文件生命周期正式接口（2026-09-19，接续 47b60b8）
+
+总体仍 `in_progress`。已将version-runtime接到配置中的PostgreSQL runner，启用既有deletions/restorations/version-rollbacks三个正式POST入口；页面操作尚未接通。
+
+- 保留敏感操作Session校验，仓储重新验证当前试用等级及分类。缺失运行配置或旧production-aws模式仍拒绝，无内存或对象存储写入后备。修复运行环境解析错误统一映射为runtime unavailable；错误码覆盖仓储UNAVAILABLE，并使用稳定错误名称避免开发热更新构造器不一致。
+- 三个入口复用文件请求解析，要求application/json、精确字段及无query参数；重复JSON键（含转义键）由既有解析器拒绝。不接受客户端附加角色或组织字段。
+- `/tmp/access-trial-document-lifecycle-http-final.log` **2/2**：真实Next/Chrome+一次性PG17。L1正式HTTP删除→恢复→回退200，L3删除404，无效版本409，多余/重复字段400；删除后旧L3下载链接404，恢复后原删除请求仍返回原回执且不重复删除。继续完成原面试/任务/撤权浏览器回归。
+- `/tmp/access-trial-document-http-regression.log` **28/28**：文件请求契约、版本服务工作流及模块边界。类型 `/tmp/access-trial-document-http-types-final.log`、聚焦ESLint `/tmp/access-trial-document-http-lint.log`、diff检查通过。未修改页面，本节不新增截图或声称UI生命周期流程通过。
+
+后续需增加安全的版本历史读取及页面选择/确认/错误反馈，并完成剩余模块、并发与整体本地验收。未部署、未合并main或推送；未变更真实员工及云配置。

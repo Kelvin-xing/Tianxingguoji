@@ -31,6 +31,15 @@ export function assertNoDocumentQuery(request: Request): void {
   if ([...new URL(request.url).searchParams.keys()].length !== 0) invalid();
 }
 
+export async function parseDocumentLifecycleBody(request:Request,keys:readonly string[]):Promise<Record<string,unknown>> {
+  assertNoDocumentQuery(request);
+  try {
+    const value=await exactJson(request);
+    if(!hasExactKeys(value,keys))throw createApiError("INVALID_REQUEST");
+    return value;
+  }catch {throw createApiError("INVALID_REQUEST");}
+}
+
 export async function parseDocumentRegistration(request: Request, requestId: string) {
   if (request.headers.get("content-type")?.split(";", 1)[0]?.trim() !== "application/json") {
     invalid();

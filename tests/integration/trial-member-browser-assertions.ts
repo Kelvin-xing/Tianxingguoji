@@ -326,6 +326,31 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.getByLabel('帳戶電郵').fill(l1.email)
     await revokePage.getByLabel('密碼',{exact:true}).fill(password)
     await Promise.all([revokePage.waitForURL('**/today'),revokePage.getByRole('button',{name:'登入工作台',exact:true}).click()])
+    const lifecycleUrl=`${baseUrl}/api/v1/cases/${createdData.case_id}/documents/${taskFileId}`
+    const fileBefore=(await client.query('SELECT record_version,active_document_version_id FROM documents_documents WHERE id=$1',[taskFileId])).rows[0]!
+    const deletionOptions={headers:{'idempotency-key':randomUUID()},data:{expected_record_version:Number(fileBefore.record_version)}}
+    assert.equal((await revokeContext.request.post(`${lifecycleUrl}/deletions`,{...deletionOptions,data:{...deletionOptions.data,role:'founder'}})).status(),400)
+    assert.equal((await revokeContext.request.post(`${lifecycleUrl}/deletions`,{headers:{...deletionOptions.headers,'content-type':'application/json'},
+      data:'{"expected_record_version":1,"expected_record_version":2}'})).status(),400)
+    assert.equal((await l3Context.request.post(`${lifecycleUrl}/deletions`,deletionOptions)).status(),404)
+    const deletedFile=await revokeContext.request.post(`${lifecycleUrl}/deletions`,deletionOptions)
+    assert.equal(deletedFile.status(),200)
+    const deletionReceipt=(await deletedFile.json()).data
+    assert.equal(deletionReceipt.lifecycle_state,'pending_delete')
+    assert.equal(deletionReceipt.active_version_id,null)
+    assert.equal((await l3Context.request.get(retainedDownload.url)).status(),404)
+    const restoredFile=await revokeContext.request.post(`${lifecycleUrl}/restorations`,{headers:{'idempotency-key':randomUUID()},
+      data:{version_id:fileBefore.active_document_version_id,expected_record_version:deletionReceipt.record_version}})
+    assert.equal(restoredFile.status(),200)
+    const restoreReceipt=(await restoredFile.json()).data
+    assert.equal(restoreReceipt.lifecycle_state,'active')
+    assert.equal(restoreReceipt.active_version_id,fileBefore.active_document_version_id)
+    assert.deepEqual((await (await revokeContext.request.post(`${lifecycleUrl}/deletions`,deletionOptions)).json()).data,deletionReceipt)
+    assert.equal((await revokeContext.request.post(`${lifecycleUrl}/version-rollbacks`,{headers:{'idempotency-key':randomUUID()},
+      data:{target_version_id:randomUUID(),expected_record_version:restoreReceipt.record_version}})).status(),409)
+    assert.equal((await revokeContext.request.post(`${lifecycleUrl}/version-rollbacks`,{headers:{'idempotency-key':randomUUID()},
+      data:{target_version_id:fileBefore.active_document_version_id,expected_record_version:restoreReceipt.record_version}})).status(),200)
+    process.stdout.write(JSON.stringify({trial_document_lifecycle_http:'pass',l1:'delete_restore_rollback',l3:'denied',deleted_download:'denied',replay:'original_ack'})+'\n')
     await revokePage.goto(`${baseUrl}/tasks/${automaticTaskId}`)
     await revokePage.locator(`#task-file-choice-${automaticTaskId}`).selectOption(taskFileId)
     await revokePage.getByLabel('文件授權原因',{exact:true}).fill('Synthetic remove completed task file grant')
