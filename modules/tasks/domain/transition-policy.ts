@@ -1,7 +1,6 @@
 import {
   TASK_STATES,
   TaskContractError,
-  type TaskActorRole,
   type TaskDecision,
   type TaskPolicyApprovalReceipt,
   type TaskState,
@@ -40,7 +39,7 @@ function validateRule(rule: TaskTransitionRule): TaskTransitionRule {
     throw new TaskContractError("TASK_TRANSITION_RULE_INVALID");
   }
   if (
-    ["rejected", "reassigned", "completed", "cancelled", "approved"].includes(rule.to) &&
+    ["awaiting_reassignment", "cancelled"].includes(rule.to) &&
     !rule.requiresReason
   ) {
     throw new TaskContractError("TASK_REASON_REQUIRED");
@@ -91,7 +90,7 @@ export function proposeTaskTransitionPolicy(input: {
 function assertNoDuplicateRules(rules: readonly TaskTransitionRule[]): void {
   const keys = new Set<string>();
   for (const rule of rules) {
-    const key = `${rule.from}:${rule.to}`;
+    const key = `${rule.from}:${rule.to}:${rule.actorKind}`;
     if (keys.has(key)) throw new TaskContractError("TASK_TRANSITION_DUPLICATE");
     keys.add(key);
   }
@@ -172,9 +171,11 @@ export function evaluateTaskTransition(input: TaskTransitionInput): TaskDecision
     return { allowed: false, code: "TASK_STALE_VERSION" };
   }
 
-  const rule = input.policy.rules.find(
+  const candidates = input.policy.rules.filter(
     (candidate) => candidate.from === input.from && candidate.to === input.to,
   );
+  const rule = candidates.find((candidate) => candidate.allowedActorRoles.includes(input.actorRole)
+    && actorMatchesRule(input, candidate)) ?? candidates[0];
   if (!rule) return { allowed: false, code: "TASK_TRANSITION_NOT_ALLOWED" };
   if (rule.requiresDifferentActor && input.actorId === input.assigneeId) {
     return { allowed: false, code: "TASK_APPROVAL_SEPARATION_REQUIRED" };

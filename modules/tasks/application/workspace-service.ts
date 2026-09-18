@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, type OrganizationRole } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability, type OrganizationRole, type TrialPrincipal } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -15,7 +15,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export type TaskAudience = "case_workspace" | "assigned_task";
-export type TaskAssigneeRole = "advisor" | "contractor";
+export type TaskAssigneeRole = "advisor" | "contractor" | "founder" | "l1" | "l2" | "l3";
 export interface TaskAssigneeView { readonly id: string; readonly role: TaskAssigneeRole; readonly label: string }
 export interface AvailableTaskTransitionView {
   readonly to: TaskState; readonly requiresReason: boolean; readonly requiresAssignee: boolean;
@@ -44,6 +44,7 @@ export interface TaskAcknowledgement { readonly id: string; readonly recordVersi
 
 export interface TaskActorContext {
   readonly organizationId: string; readonly actorUserId: string; readonly actorRole: OrganizationRole;
+  readonly trialPrincipal?: TrialPrincipal;
 }
 export interface TaskWorkspaceRepository {
   list(input: TaskActorContext & { readonly caseId: string | null }): Promise<TaskCollectionView>;
@@ -144,7 +145,8 @@ export class TaskWorkspaceService {
 
 function authorize(actor: IdentitySessionActor, capability: "tasks.read" | "tasks.create" | "tasks.transition"): TaskActorContext {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability }).allowed) forbidden();
+      !(actor.trialPrincipal ? hasRequestCapability(actor,capability) && actor.trialPrincipal.level === actor.role
+        : evaluateBootstrapAuthorization(actor.role, { capability }).allowed)) forbidden();
   return { organizationId: actor.organizationId, actorUserId: actor.userId, actorRole: actor.role };
 }
 function mutationEffects(input: { actor: IdentitySessionActor; resourceId: string; requestId: string;

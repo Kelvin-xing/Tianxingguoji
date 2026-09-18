@@ -97,3 +97,19 @@
 - 浏览器最终2/2通过：`/tmp/access-trial-candidate-browser.log`。真实L1登录建案、Assessment编辑刷新、填写其余字段和完成背景、HTTP创建名单、实际页面提交审批、刷新及独立DB核对真实l1审批者；L2直接审批403；L3完整评估403。390px无横向溢出，截图 `/tmp/access-trial-candidate-approval-mobile.png` 已目视检查。仅证明名单审批区域，不把整案中尚未适配的来源/任务面板当通过；未验证浏览器家长确认后的任务自动消费和成功结案。
 
 下一步仍需完整推进：目标读取/申请流程及任务模块新等级（包括自动任务实际角色、L3任务必要上下文、撤销、完成只读），然后文件/CRM/邀请和原计划其余权限与最终浏览器场景。成功结案需在目标/任务流程完成后补足真实允许、拒绝及审计回滚证据。当前未合并main、未推送、未部署，目标保持in_progress。
+
+## 手工任务试用等级与 L3 工作区（2026-09-19，接续 4099f1a）
+
+本节为最新状态，总体继续 `in_progress`；任务模块只完成手工任务这一段，尚未合并/推送。
+
+- 手工任务服务接受实际 Founder/L1/L2/L3 身份。仓储每次事务重读并锁定当前试用等级、分类和账号状态，再校验实际 active role binding；停用、变级、撤分类与旧上下文均不能回退历史角色权限。
+- 列表在 SQL 中按明确分类筛选。Founder/L1 管理两分类；L2 只管理当前分类；L3 仅显示当前有效指派，允许跨分类任务，不返回案件 ID/编号或负责人资料，也不能通过 case_id 查询整案任务。历史未启用试用等级的账号保留原规则。
+- 指派选项及写入只接受当前有效 L3；实际 assignee_role=l3，强制 task_only。接受、拒绝、重派、取消及主管撤销同步当前 Assignment；拒绝/取消/撤销即时移除 L3 访问，完成保留当前 Assignment 供只读。管理者仍能查看负责人已停用或变级的任务，避免任务消失而无法处理。
+- 新增064迁移（63份源迁移、64份生成基线），扩大实际任务/指派/收据角色约束；严格限定 L3 的 task_only。删除005遗留、已被041/052新合同取代的重复收据状态约束，否则 awaiting_reassignment 会被误拒绝；未修改历史迁移。
+- 修复领域规则解析器与现行 Release 1 策略的漂移：完成不强制另填原因、不新增任务审批；拒绝与主管撤销可以有相同状态边，但必须按 actor_kind 分开校验。新增主管撤销规则选择测试，保留幂等、版本、审计回滚和拒绝断言。
+- 界面和客户端接受实际等级，L3 不再显示为外部 Contractor。新增真实浏览器路径：L1 经正式 API 创建手工任务，L3 通过页面接受、完成、刷新后只读；390px 无横向溢出。截图 `/tmp/access-trial-l3-task-mobile.png` 已人工查看。此浏览器证据不包含自动申请/面试任务或主管撤销入口。
+- 聚焦真实 PG17、任务单元、模块边界、基线和任务迁移检查 **104/104** 通过，日志 `/tmp/access-trial-task-regression-final.log`。命令：`node --conditions=react-server --test tests/integration/one-role-baseline-postgresql.test.ts tests/unit/tasks/*.test.ts tests/architecture/module-boundaries.test.ts tests/migration/one-role-baseline.test.ts tests/migration/task-workflow-boundary.test.ts tests/migration/task-transition-rule-awaiting-reassignment.test.ts`。
+- 一次性 PG17 + 真实 Next/Chrome 浏览器 **2/2** 通过，日志 `/tmp/access-trial-task-browser.log`；命令前加 `TIANXING_TRIAL_BROWSER=1`。同时回归此前员工管理、建案、Assessment、名单审核浏览器路径。类型与聚焦 ESLint 通过：`/tmp/access-trial-task-types-final.log`、`/tmp/access-trial-task-lint-final.log`。
+- 特别限制：完成任务的撤销读取边界已通过直接测试夹具持久化撤销验证，**尚无可用的完成后撤销命令/API/UI**，不得称为此功能已完成。当前手工任务 API 不可修改自动任务。任务暂停时后端拒绝写入，但任务详情按钮的只读呈现仍需补齐。
+
+下一步：接通 P3 自动任务与 application-task consumer 的实际等级/分类、当前 Assignment 校验、重放撤权、完成后只读及证据条件；补完成后撤销访问命令和界面、暂停只读展示。之后继续显式任务文件授权、CRM/学校/目标与结案、邀请等剩余接入及完整演示数据/浏览器验收。只在整个已授权计划完成并验证后整合 main、推送；不得将本节当作整体验收或生产证据。

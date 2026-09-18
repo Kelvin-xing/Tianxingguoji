@@ -30,7 +30,8 @@ test("generated baseline contains migration 033 without changing its safety cont
 
 test("task transitions lock current Case authority and synchronize the trigger owner projection", async () => {
   const source = await readFile(REPOSITORY, "utf8");
-  assert.match(source, /FOR UPDATE OF task,service_case/);
+  assert.match(source, /FOR UPDATE OF service_case FOR SHARE OF student/);
+  assert.match(source, /FOR UPDATE OF task/);
   assert.match(source, /owner_user_id=\$9/);
   assert.match(source, /task\.primary_user_id\]\);/);
   assert.match(source, /if \(updated\.rowCount !== 1\) stale\(\);/);

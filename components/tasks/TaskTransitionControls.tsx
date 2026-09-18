@@ -16,7 +16,7 @@ import {
   type TaskDetailResult,
 } from "@/modules/tasks/client";
 import type { TaskState } from "@/modules/tasks/public";
-import { transitionLabel } from "./task-ui";
+import { taskAssigneeRoleLabel, transitionLabel } from "./task-ui";
 
 type TaskItem = CaseWorkspaceTask | AssignedTask;
 type Notice = "validation" | "stale" | "conflict" | "denied" | "unavailable" | null;
@@ -189,7 +189,7 @@ export function TaskTransitionControls({
               onChange={(event) => { commandChanged(); setNextAssigneeId(event.target.value); }}
             >
               <option value="">{optionsLoading ? "正在載入負責人" : "選擇負責人"}</option>
-              {assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>)}
+              {assignees.map((assignee) => <option value={assignee.id} key={assignee.id}>{assignee.label} · {taskAssigneeRoleLabel(assignee.role)}</option>)}
             </select>
           </label>
         ) : null}

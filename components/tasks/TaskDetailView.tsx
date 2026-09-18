@@ -12,7 +12,7 @@ import {
 } from "@/modules/tasks/client";
 import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./AutomaticTaskTransitionControls";
 import { TaskTransitionControls } from "./TaskTransitionControls";
-import { TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
+import { taskAssigneeRoleLabel, TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
 type LoadState = "loading" | "ready" | "assignment_ended" | "unauthenticated" | "denied" | "not_found" | "unavailable";
 
@@ -112,7 +112,7 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
           <Info label="到期時間" value={formatTaskDate(task.due_at)} />
           <Info label="最後更新" value={formatTaskDate(task.updated_at)} />
           <Info label="任務類型" value={task.task_kind === "application_prepare_submit" ? "準備並提交申請" : task.task_kind === "interview_support" ? "面試支援" : "手工任務"} />
-          {task.current_assignment ? <Info label="目前指派" value={`${task.current_assignment.assignee_role === "advisor" ? "顧問" : "外部協作人員"} · ${taskStateLabel(task.current_assignment.status)}`} /> : null}
+          {task.current_assignment ? <Info label="目前指派" value={`${taskAssigneeRoleLabel(task.current_assignment.assignee_role)} · ${taskStateLabel(task.current_assignment.status)}`} /> : null}
           {internal ? <Info label="負責人" value={result.task.assignee.label} /> : null}
           {internal ? <div><dt className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>案件</dt><dd className="mt-1"><Link href={`/cases/${result.task.case_id}`} className="quiet-link">{result.task.case_number}</Link></dd></div> : null}
         </dl>

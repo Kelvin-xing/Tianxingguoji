@@ -9,6 +9,7 @@ import { PostgresqlCaseIntakeRepository } from "../../modules/cases/infrastructu
 import type { TenantTransactionRunner } from "../../modules/shared/server.ts";
 import { assertTrialAssessments } from "./trial-assessment-assertions.ts";
 import { assertTrialCandidates } from "./trial-candidate-assertions.ts";
+import { assertTrialTasks } from "./trial-task-assertions.ts";
 import { NEON_TEST_ORGANIZATION, NEON_TEST_PRINCIPALS, NEON_TEST_STUDENTS } from "../../scripts/db/neon-test-synthetic-fixture.ts";
 
 export async function assertTrialCaseIntake(client: Client): Promise<void> {
@@ -76,6 +77,7 @@ export async function assertTrialCaseIntake(client: Client): Promise<void> {
     assert.equal(third.recordVersion,2);
     await assertTrialAssessments(client,runner,first.caseId,second.caseId);
     await assertTrialCandidates(client,runner,first.caseId,second.caseId);
+    await assertTrialTasks(client,runner,first.caseId,second.caseId);
     await assert.rejects(service.createCase({ actor:restricted, command:await command(l2,"international_school",2093,NEON_TEST_STUDENTS[0]!.id) }),rejected("CASE_INTAKE_STUDENT_NOT_FOUND"));
     await assert.rejects(service.createCase({ actor:actor(l2,"l2",["local_school"]), command:await command(l2,"local_school",2093) }),rejected("CASE_INTAKE_FORBIDDEN"));
     await assert.rejects(service.createCase({ actor:actor(l3,"l3"), command:await command(l3,"international_school",2093) }),rejected("CASE_INTAKE_FORBIDDEN"));

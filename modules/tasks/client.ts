@@ -10,7 +10,7 @@ import { TASK_STATES, type TaskState } from "./public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor"] as const);
+const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor", "founder", "l1", "l2", "l3"] as const);
 const AUDIENCES = Object.freeze(["case_workspace", "assigned_task"] as const);
 const TASK_KINDS = Object.freeze(["application_prepare_submit", "interview_support", "manual"] as const);
 const AUTOMATIC_TASK_ACTIONS = Object.freeze(["accept", "reject", "reassign", "complete", "cancel"] as const);

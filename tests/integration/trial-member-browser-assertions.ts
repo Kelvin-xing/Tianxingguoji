@@ -159,6 +159,13 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await restricted.setViewportSize({ width:390,height:844 })
     assert.equal(await restricted.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
     await restricted.screenshot({ path:'/tmp/access-trial-candidate-approval-mobile.png',fullPage:true })
+    const trialTaskResponse = await restrictedContext.request.post(`${baseUrl}/api/v1/tasks`,{
+      headers:{ 'idempotency-key':`browser-task-${randomBytes(8).toString('hex')}` },
+      data:{ case_id:createdData.case_id,title:'Synthetic L3 task',task_brief:'Only assigned task instructions',
+        due_at:'2099-04-15T12:00:00.000Z',assignee_user_id:people.find((p)=>p.level==='l3')!.user_id },
+    })
+    assert.equal(trialTaskResponse.status(),201)
+    const trialTaskId = (await trialTaskResponse.json()).data.id as string
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -185,6 +192,30 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByLabel('密碼', { exact:true }).fill(password)
     await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
+    await l3Page.goto(`${baseUrl}/tasks/${trialTaskId}`)
+    await l3Page.getByRole('heading',{ name:'Synthetic L3 task',exact:true }).waitFor()
+    assert.equal(await l3Page.getByRole('link',{ name:'返回案件',exact:true }).count(),0)
+    for (const state of ['accepted','completed']) {
+      const observed=(await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${trialTaskId}`)).json()).data
+      process.stdout.write(JSON.stringify({ trial_task_browser_step:state, state:observed.task.state,kind:observed.task.task_kind,transitions:observed.task.available_transitions })+'\n')
+      await l3Page.screenshot({ path:`/tmp/access-trial-l3-task-before-${state}.png`,fullPage:true })
+      await l3Page.getByRole('combobox').selectOption(state)
+      await l3Page.getByRole('checkbox').check()
+      const updated = l3Page.waitForResponse((r)=>r.url().includes(`/tasks/${trialTaskId}/transition`) && r.request().method()==='POST')
+      await l3Page.getByRole('button',{ name:'確認更新',exact:true }).click()
+      assert.equal((await updated).status(),200)
+      await l3Page.reload()
+      await l3Page.getByRole('heading',{ name:'Synthetic L3 task',exact:true }).waitFor()
+    }
+    assert.equal(await l3Page.getByRole('button',{ name:'確認更新',exact:true }).count(),0)
+    const taskPayload=(await (await l3Context.request.get(`${baseUrl}/api/v1/tasks/${trialTaskId}`)).json()).data
+    assert.equal(taskPayload.audience,'assigned_task')
+    assert.equal('case_id' in taskPayload.task,false)
+    assert.equal(taskPayload.task.state,'completed')
+    await l3Page.setViewportSize({ width:390,height:844 })
+    assert.equal(await l3Page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)
+    await l3Page.screenshot({ path:'/tmp/access-trial-l3-task-mobile.png',fullPage:true })
+    process.stdout.write(JSON.stringify({ trial_manual_task_browser:'pass', l3:'accept_complete_reload_readonly', case_data:'omitted', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_assessment_browser:'pass', l1_edit:'persisted_after_reload', l2_scope:'200', l3_full_assessment:'403', viewport:'desktop_and_390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_candidate_browser:'pass', l1_approval:'persisted_actual_actor', l2_approval:'403', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_case_intake_browser:'pass', l1_create:'persisted_actual_role', replay:'200', l2_cross_category:'403', viewport:'390px' })+'\n')

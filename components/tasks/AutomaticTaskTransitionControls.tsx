@@ -20,6 +20,8 @@ import {
   type TaskDetailResult,
 } from "@/modules/tasks/client";
 
+import { taskAssigneeRoleLabel } from "./task-ui";
+
 type TaskItem = CaseWorkspaceTask | AssignedTask;
 type Notice = "validation" | "stale" | "conflict" | "denied" | "unavailable" | null;
 export type AutomaticTaskOutcome = "updated" | "target_completed" | "target_pending" | "stale";
@@ -332,7 +334,7 @@ export function AutomaticTaskTransitionControls({
                 {assignees
                   .filter((assignee) => task.task_kind === "application_prepare_submit" || assignee.role === "advisor")
                   .map((assignee) => (
-                  <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>
+                  <option value={assignee.id} key={assignee.id}>{assignee.label} · {taskAssigneeRoleLabel(assignee.role)}</option>
                 ))}
               </select>
             </label>
