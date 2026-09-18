@@ -8,6 +8,7 @@ import {
   createTask,
   createTaskFingerprint,
   completeApplicationTask,
+  completeInterviewTask,
   getTask,
   getTaskAssigneeOptions,
   listTasks,
@@ -257,6 +258,29 @@ test("Task failure classification remains distinct and fails closed", () => {
   assert.equal(classifyTaskFailure(apiError("STALE_VERSION", 409)), "stale");
   assert.equal(classifyTaskFailure(apiError("CONFLICT", 409)), "conflict");
   assert.equal(classifyTaskFailure(new Error("private detail")), "unavailable");
+});
+
+test("interview completion sends entered facts and requires a completed receipt without automation", async context => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = { action: "complete", expected_record_version: 2, completion_record: {
+    completed_at: "2026-08-27T02:00:00.000Z", interview_method: " Video ", coaching_summary: " Practised introduction "
+  }, evidence_reference: null } as const;
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    calls++;
+    assert.equal(url, `/api/v1/tasks/${TASK_ID}/p3-transitions`);
+    const body = JSON.parse(String(options?.body));
+    assert.deepEqual(body, { ...input, completion_record: { ...input.completion_record,
+      interview_method: "Video", coaching_summary: "Practised introduction" } });
+    return apiResponse({ id: TASK_ID, record_version: 3, state: "completed", completion_receipt_id: COMPLETION_RECEIPT_ID });
+  };
+  assert.equal((await completeInterviewTask(TASK_ID, input, "interview-completion-test")).state, "completed");
+  assert.match(automaticTaskTransitionFingerprint(TASK_ID, input), /Practised introduction/);
+  assert.throws(() => completeInterviewTask(TASK_ID, { ...input, completion_record: { ...input.completion_record, coaching_summary: " " } }, "interview-completion-test"));
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => apiResponse({ id: TASK_ID, record_version: 3, state: "accepted", completion_receipt_id: null });
+  await assert.rejects(completeInterviewTask(TASK_ID, input, "interview-completion-test"), malformedResponse);
 });
 
 function caseTask() {

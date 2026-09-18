@@ -123,6 +123,44 @@ export interface CompleteApplicationTaskInput {
   readonly evidence_reference: string | null;
 }
 
+export interface CompleteInterviewTaskInput {
+  readonly action: "complete";
+  readonly expected_record_version: number;
+  readonly completion_record: Readonly<{
+    completed_at: string;
+    interview_method: string;
+    coaching_summary: string;
+  }>;
+  readonly evidence_reference: null;
+}
+
+export function completeInterviewTask(taskId: string, input: CompleteInterviewTaskInput,
+  idempotencyKey: string): Promise<AutomaticTaskWriteReceipt> {
+  assertUuid(taskId, "taskId");
+  assertIdempotencyKey(idempotencyKey);
+  const normalized = normalizeCompleteInterviewTaskInput(input);
+  return requestApi({ path: `/api/v1/tasks/${taskId}/p3-transitions`, method: "POST",
+    headers: { "idempotency-key": idempotencyKey }, body: { ...normalized } }, value => {
+    const record = exactRecord(value, ["id", "record_version", "state", "completion_receipt_id"]);
+    const receipt = decodeTaskWriteReceipt({ id: record.id, record_version: record.record_version },
+      taskId, normalized.expected_record_version + 1);
+    if (record.state !== "completed") throw new TypeError("Mismatched interview Task receipt.");
+    return Object.freeze({ ...receipt, state: "completed" as const,
+      completion_receipt_id: uuid(record.completion_receipt_id, "completion_receipt_id") });
+  });
+}
+
+function normalizeCompleteInterviewTaskInput(input: CompleteInterviewTaskInput): CompleteInterviewTaskInput {
+  if (input.action !== "complete" || input.evidence_reference !== null) throw new TypeError("Invalid interview completion.");
+  const record = input.completion_record;
+  const method = record.interview_method.trim();
+  const summary = record.coaching_summary.trim();
+  if (!method || !summary) throw new TypeError("Interview completion fields are required.");
+  return Object.freeze({ action: "complete", expected_record_version: positiveInteger(input.expected_record_version, "expected_record_version"),
+    completion_record: Object.freeze({ completed_at: pastOrPresentIsoTimestamp(record.completed_at, "completed_at"),
+      interview_method: method, coaching_summary: summary }), evidence_reference: null });
+}
+
 export interface AutomaticTaskWriteReceipt extends TaskWriteReceipt {
   readonly state: TaskState;
   readonly completion_receipt_id: string | null;
@@ -325,11 +363,13 @@ export function transitionTaskFingerprint(taskId: string, input: TransitionTaskI
 
 export function automaticTaskTransitionFingerprint(
   taskId: string,
-  input: AutomaticTaskTransitionInput | CompleteApplicationTaskInput,
+  input: AutomaticTaskTransitionInput | CompleteApplicationTaskInput | CompleteInterviewTaskInput,
 ): string {
   assertUuid(taskId, "taskId");
   const normalized = input.action === "complete"
-    ? normalizeCompleteApplicationTaskInput(input)
+    ? "completed_at" in input.completion_record
+      ? normalizeCompleteInterviewTaskInput(input as CompleteInterviewTaskInput)
+      : normalizeCompleteApplicationTaskInput(input as CompleteApplicationTaskInput)
     : normalizeAutomaticTaskTransitionInput(input);
   return JSON.stringify({ task_id: taskId, ...normalized });
 }

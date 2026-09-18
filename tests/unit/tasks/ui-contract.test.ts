@@ -124,7 +124,9 @@ test("Task detail owns transition success after authoritative refresh without du
   assert.match(automatic, /transitionAutomaticTask\(/);
   assert.doesNotMatch(automatic, /\/api\/v1\/tasks\/\$\{task\.id\}\/transitions["']/);
   assert.match(automatic, /task\.task_kind === "interview_support"/);
-  assert.match(automatic, /面試完成記錄尚未開放/);
+  assert.doesNotMatch(automatic, /面試完成記錄尚未開放/);
+  assert.match(automatic, /completeInterviewTask\(/);
+  assert.match(automatic, /name="coaching_summary"/);
   assert.match(automatic, /submitter_user_id: actorUserId/);
   assert.match(automatic, /target_pending/);
 });

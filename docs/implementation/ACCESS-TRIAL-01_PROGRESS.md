@@ -196,3 +196,15 @@
 - 类型检查、聚焦ESLint及diff空白检查通过：`/tmp/access-trial-replay-types-final.log`、`/tmp/access-trial-replay-lint-final.log`。无新增迁移。
 
 仍需继续上一节除P3历史回执以外的剩余开发、安全/并发审查、整体验收、合并main和推送；未部署，未改真实员工。
+
+## 面试任务完成页面（2026-09-19，接续 011a18b）
+
+总体仍 `in_progress`。本节接通已存在面试任务的完成操作，尚不证明学校邀请至任务创建的完整链路。
+
+- 去除“面试完成记录尚未开放”占位，提供完成时间、面试方式和辅导摘要；香港时间转换、必填、操作确认、失败保留输入、幂等重试及服务端权威刷新沿用既有任务交互。主管在服务端允许时可使用重派入口；L3不展示重派。
+- 新客户端命令调用正式p3-transitions接口，严格校验任务ID、版本、completed状态及完成回执；面试完成不要求申请提交资料，也不接收或显示申请自动推进结果。完成记录使用实际输入，未沿用旧F3组件的硬编码摘要。
+- `/tmp/access-trial-interview-unit-final.log`：**53/53**任务单元检查通过。覆盖面试请求内容、空摘要拒绝、错误回执拒绝与幂等指纹；更新旧静态占位断言。
+- `/tmp/access-trial-interview-browser-final.log`：真实Next/Chrome+一次性PG17 **2/2**通过。在真实SQL约束下建立合成面试任务夹具，L3页面接受、填写并完成；数据库中的时间/方式/摘要与输入一致，学校目标状态不变；完成只读、不返回case_id，完成请求重放200，主管撤权后旧请求404。此前申请/文件/成员/案件流程一并回归。**夹具直接建立任务，不代表面试邀请、状态推进或自动创建已经验收。**
+- 类型、聚焦ESLint、diff检查通过：`/tmp/access-trial-interview-types-final.log`、`/tmp/access-trial-interview-lint-final.log`。390px截图 `/tmp/access-trial-interview-mobile.png` 已查看，无横向溢出。无新增迁移。
+
+下一步接通学校目标的面试邀请/状态操作及任务创建。其余文档生命周期、并发、CRM/学校/邀请、演示数据、整体本地验收及旧gate仍须完成，然后合并main并推送；未部署、未变更真实员工。
