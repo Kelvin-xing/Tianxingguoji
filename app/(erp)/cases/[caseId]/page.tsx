@@ -67,6 +67,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         <section className="workspace-section"><div className="mb-4"><h3 className="section-title">評估設定</h3><p className="section-detail">評估會沿用案件建立時核准的版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="評估編號" value={record.assessmentId} /><Info label="版本編號" value={record.manifestId} /><Info label="狀態" value={assessmentStatusLabel(assessment.status)} /></div></section>
       </div>
 
+      {canManageCandidateLists && <Link className="secondary-button" href={`/cases/${caseId}/interviews`}>登記及查看面試邀請</Link>}
+
       <CaseReferralSourcePanel caseId={caseId} />
 
       <AssessmentEditor

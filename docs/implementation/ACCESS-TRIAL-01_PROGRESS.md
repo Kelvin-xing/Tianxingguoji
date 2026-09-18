@@ -243,3 +243,15 @@
 - `/tmp/access-trial-interview-invitation-browser.log` **2/2**：真实Next/Chrome+PG，已用正式邀请HTTP替换之前的SQL面试任务夹具；L3登记403，L1登记及重放200、自动任务默认L1且只有一条，页面重派L3→接受→完成→只读→撤权后旧请求404。学校保持interview，面试完成不推进录取结果。390px截图 `/tmp/access-trial-interview-mobile.png` 已查看。
 
 仍需邀请录入页面、任务必要背景/面试资料展示、pending恢复交互，以及原计划其余文档生命周期、并发、CRM/学校/邀请账号、演示与整体验收。未部署、未合并main或推送；全部授权工作完成后再执行最终合并推送。
+
+## 面试邀请录入与学校目标读取（2026-09-19，接续 3a80d94）
+
+总体仍 `in_progress`。已替换面试页旧F3占位展示，并从案件详情提供入口。
+
+- 学校目标读取服务接入当前试用等级、真实角色绑定和案件分类；L1/分类内L2可读，L3拒绝，当前授权撤销后拒绝。服务端返回can_record_interview，暂停/关闭不显示登记表单；旧用户保留原读取边界，不隐式升级。
+- 面试页面选择已submitted的学校、香港时间及本案有干净活动版本的邀请文件，确认后调用正式邀请API。完成后刷新学校列表；返回pending时保留原请求及幂等键并提供重试。日期/文件改变会生成新请求；不自动填写邀请事实。
+- Typed客户端校验任务创建completed/pending回执及目标/版本/邀请ID。新增pending回执和错误目标拒绝检查。合成旧仓储夹具明确返回未加入试用模型，保留原有历史断言；新等级授权使用真实PG覆盖。
+- `/tmp/access-trial-invitation-ui-regression.log` **38/38**：学校目标服务/仓储/客户端、路由契约及模块边界。`/tmp/access-trial-invitation-ui-browser-final.log` **2/2**：真实Next/Chrome+PG，从邀请表单提交→自动任务→页面重派L3→接受/完成/撤权，同时验证邀请重放无重复任务。PG附加验证L1/L2目标读取、L3拒绝、撤销分类后读取拒绝。前两次浏览器失败是select标签无法精确识别，补明确可访问名称后通过。
+- 类型及聚焦ESLint通过：`/tmp/access-trial-invitation-ui-types-final.log`、`/tmp/access-trial-invitation-ui-lint-final.log`；diff检查通过。390px截图 `/tmp/access-trial-interview-invitation-mobile.png` 已查看，无横向溢出。未新增迁移。
+
+尚未模拟浏览器pending恢复，也尚未补面试方式/语言/必要背景输入及其任务展示。原计划其他剩余开发、安全与整体验收、合并main和推送继续；未部署或改真实员工。

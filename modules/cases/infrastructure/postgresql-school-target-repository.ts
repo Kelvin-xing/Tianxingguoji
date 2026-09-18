@@ -1,4 +1,6 @@
 import "server-only";
+import { loadTrialPrincipal } from "../../access/server.ts";
+import { evaluateTrialAccess, type K12BusinessCategory } from "../../access/public.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import {
@@ -23,6 +25,7 @@ interface AuthorizedCaseRow extends Record<string, unknown> {
   stage: SchoolTargetWorkspaceSnapshot["caseStage"];
   intake_year: number;
   admission_type: string;
+  can_record_interview?: boolean;
 }
 
 interface TargetRow extends Record<string, unknown> {
@@ -105,6 +108,7 @@ export class PostgresqlSchoolTargetRepository implements SchoolTargetRepository 
         .sort(compareOptions)
         .slice(0, 3);
       return Object.freeze({
+        canRecordInterview: serviceCase.can_record_interview === true,
         caseId: serviceCase.id,
         caseStage: serviceCase.stage,
         intakeYear: serviceCase.intake_year,
@@ -200,9 +204,21 @@ async function readAuthorizedCase(
   input: {
     readonly caseId: string;
     readonly actorUserId: string;
-    readonly actorRole: "founder" | "advisor";
+    readonly organizationId: string;
+    readonly actorRole: "founder" | "advisor" | "l1" | "l2";
   },
 ): Promise<AuthorizedCaseRow> {
+  const principal=await loadTrialPrincipal(transaction,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
+  if(principal){
+    const result=await transaction.query<AuthorizedCaseRow & {business_category:K12BusinessCategory|null;workflow_status:string}>(
+      `SELECT c.id,c.stage,c.intake_year,c.admission_type,c.business_category,c.workflow_status
+       FROM cases_service_cases c JOIN access_role_bindings b ON b.organization_id=c.organization_id AND b.user_id=$2 AND b.role=$3 AND b.status='active'
+       WHERE c.id=$1 AND c.organization_id=$4 FOR SHARE OF c,b`,[input.caseId,input.actorUserId,input.actorRole,input.organizationId]);
+    const row=result.rows[0];
+    if(result.rows.length!==1||!row||principal.level!==input.actorRole||!evaluateTrialAccess(principal,"case.read",{organizationId:input.organizationId,category:row.business_category}).allowed)throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
+    return {...row,can_record_interview:row.workflow_status==="active"&&row.stage!=="closed"&&evaluateTrialAccess(principal,"case.manage",{organizationId:input.organizationId,category:row.business_category}).allowed};
+  }
+  if(input.actorRole==="l1"||input.actorRole==="l2")throw new SchoolTargetError("SCHOOL_TARGET_CASE_NOT_FOUND");
   const result = await transaction.query<AuthorizedCaseRow>(
     `SELECT service_case.id, service_case.stage, service_case.intake_year,
             service_case.admission_type

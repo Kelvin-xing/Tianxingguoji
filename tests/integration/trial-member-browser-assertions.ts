@@ -356,8 +356,21 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const targetBeforeInterview=(await client.query('SELECT record_version FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!
     const invitationBody={expected_record_version:Number(targetBeforeInterview.record_version),interview_at:'2026-09-25T02:00:00Z',invitation_document_id:taskFileId}
     assert.equal((await l3Context.request.post(invitationUrl,{headers:{'idempotency-key':randomUUID()},data:invitationBody})).status(),403)
-    const invitationKey=randomUUID()
-    const invitationResponse=await revokeContext.request.post(invitationUrl,{headers:{'idempotency-key':invitationKey},data:invitationBody})
+    const targetsForInvitation=await revokeContext.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/school-targets`)
+    const documentsForInvitation=await revokeContext.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/documents`)
+    process.stdout.write(JSON.stringify({invitation_inputs:{targets:targetsForInvitation.status(),documents:documentsForInvitation.status(),can_record:(await targetsForInvitation.json()).data?.can_record_interview}})+'\n')
+    assert.equal(targetsForInvitation.status(),200);assert.equal(documentsForInvitation.status(),200)
+    await revokePage.goto(`${baseUrl}/cases/${createdData.case_id}/interviews`)
+    await revokePage.getByLabel('學校',{exact:true}).selectOption(automaticRow.school_target_id).catch(async error=>{await revokePage.screenshot({path:'/tmp/access-trial-invitation-load-failure.png',fullPage:true});throw error;})
+    await revokePage.getByLabel('面試時間（香港時間）',{exact:true}).fill('2026-09-25T10:00')
+    await revokePage.getByLabel('邀請憑證',{exact:true}).selectOption(taskFileId)
+    await revokePage.getByRole('checkbox',{name:'我確認學校要求面試，並建立支援任務。',exact:true}).check()
+    assert.equal(await revokePage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
+    await revokePage.screenshot({path:'/tmp/access-trial-interview-invitation-mobile.png',fullPage:true})
+    const invitationSaved=revokePage.waitForResponse(r=>r.url()===invitationUrl&&r.request().method()==='POST')
+    await revokePage.getByRole('button',{name:'儲存面試邀請',exact:true}).click()
+    const invitationResponse=await invitationSaved
+    const invitationKey=invitationResponse.request().headers()['idempotency-key']!
     assert.equal(invitationResponse.status(),200)
     assert.equal((await invitationResponse.json()).data.automation.interview_task,'completed')
     const invitationReplay=await revokeContext.request.post(invitationUrl,{headers:{'idempotency-key':invitationKey},data:invitationBody})
@@ -412,7 +425,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l3Context.request.post(`${baseUrl}/api/v1/tasks/${interviewId}/p3-transitions`,{
       headers:{'idempotency-key':interviewKey},data:interviewCommand})).status(),404)
     await interviewPage.close()
-    process.stdout.write(JSON.stringify({trial_interview_completion:'pass',invitation:'formal_http_automatic_task',l3:'accept_form_complete_readonly',target:'unchanged'})+'\n')
+    process.stdout.write(JSON.stringify({trial_interview_completion:'pass',invitation:'form_and_formal_http_automatic_task',l3:'accept_form_complete_readonly',target:'unchanged'})+'\n')
     await revokeContext.close()
     process.stdout.write(JSON.stringify({trial_revocation_browser:'pass',l1:'ui_revoke',l3:'403_then_read_404',history:'completed_preserved'})+'\n')
     process.stdout.write(JSON.stringify({trial_application_browser:'pass',l1:'ui_reassign_l3',l3:'ui_accept_complete',target:'submitted',viewport:'390px'})+'\n')

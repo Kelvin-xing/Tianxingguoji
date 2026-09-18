@@ -1,3 +1,6 @@
+import { SchoolTargetService } from "../../modules/cases/application/school-target-service.ts";
+import { PostgresqlSchoolTargetRepository } from "../../modules/cases/infrastructure/postgresql-school-target-repository.ts";
+import { PostgresqlResolvedSchoolTransaction } from "../../modules/schools/server.ts";
 import { InterviewTaskRequestConsumer } from "../../modules/tasks/application/interview-task-request-consumer.ts";
 import { PostgresqlInterviewTaskRequestFacts } from "../../modules/cases/infrastructure/postgresql-interview-task-request-facts.ts";
 import { InterviewInvitationService, InterviewInvitationError } from "../../modules/cases/application/interview-invitation-service.ts";
@@ -52,6 +55,10 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.deepEqual(await consumer.drainForCandidateVersion(delivery),{applicationTasks:"completed",requestedCount:1,provisionedCount:1});
     const tasks=await client.query("SELECT id,assignee_role FROM tasks_tasks WHERE service_case_id=$1 AND task_kind='application_prepare_submit'",[caseId]);
     assert.equal(tasks.rowCount,1); assert.equal(tasks.rows[0]!.assignee_role,"founder");
+    const targets=new SchoolTargetService({repository:new PostgresqlSchoolTargetRepository(createPostgreSqlAdapter(runner),new PostgresqlResolvedSchoolTransaction())});
+    assert.equal((await targets.getSchoolTargets({actor:business,caseId})).canRecordInterview,true);
+    assert.equal((await targets.getSchoolTargets({actor:restricted,caseId})).items.length,1);
+    await assert.rejects(targets.getSchoolTargets({actor:taskOnly,caseId}));
     const taskId=tasks.rows[0]!.id as string;
     assert.ok((await reads.readTask(business,taskId))!.allowed_actions.includes("reassign"));
     assert.equal(await reads.readTask(taskOnly,taskId),null);
@@ -157,6 +164,7 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await client.query("SAVEPOINT invitation_revocation");
     await client.query("SELECT set_config('app.actor_user_id',$1,true)",[root.userId]);
     await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
+    await assert.rejects(targets.getSchoolTargets({actor:restricted,caseId}));
     await assert.rejects(invitations.record({...invitation,actor:restricted}),error=>error instanceof InterviewInvitationError&&error.code==="NOT_FOUND");
     await client.query("ROLLBACK TO SAVEPOINT invitation_revocation");await client.query("RELEASE SAVEPOINT invitation_revocation");
     await client.query("SAVEPOINT automatic_interview_delivery");
