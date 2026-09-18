@@ -136,3 +136,17 @@
 3. 面试辅助任务的前端完成/重派目前仍沿用旧“尚未开放”分支，未做真实面试创建至完成验收。新等级接入不能等同于面试全链路完成。
 4. P3 replay 目前仍按任务当前状态重建回执，后续状态改变后重复旧请求可能返回 CONFLICT；应按持久化收据重建原结果，并保留当前权限重验。整合前还需审查 Case/target/task/identity 锁顺序与并发撤权证据。
 5. CRM 全入口、目标结果/结案、Schools/来源/通知/审计/邀请等剩余权限接入、演示数据、整体验收、正式文档 own hunks、保留原工作区修改地合并 main 并推送，仍按原计划继续。未部署、未迁移真实员工、未操作共享数据库。
+
+## 完成任务撤销访问（2026-09-19，接续 856c847）
+
+总体仍 `in_progress`。本节补齐此前缺失的完成后撤权命令、API 和页面，不代表整个试用计划已完成。
+
+- Founder/L1、当前分类内 L2 可撤销已完成任务的当前 L3 Assignment。事务重查当前账号、等级、分类、任务版本和指派 ID；L3、失去分类的主管及过期指派不能操作。手工和自动任务共用 `POST /api/v1/tasks/:taskId/assignment-revocations`，要求原因、版本及幂等键。
+- 撤销只结束 Assignment 并递增任务版本，保留 completed 状态、完成收据、学校目标状态和历史；审计与 outbox 同事务写入。重复提交无重复副作用，写入失败整体回滚。已完成任务在案件暂停时也可收回访问，不开放业务编辑。
+- 详情返回明确 revoke_access 操作，页面填写原因并确认后提交，再读取服务端结果。L3 不显示该入口；撤销后详情立即不可读，旧完成请求重放亦拒绝。正常任务流操作与撤权分开解析。
+- 真实 PostgreSQL17 + Tasks 单元测试 **53/53**：`/tmp/access-trial-revoke-regression.log`。模块边界与任务路由契约 **19/19**：`/tmp/access-trial-revoke-contract.log`。已覆盖越权、错误版本/指派、撤分类、重复提交、审计失败回滚、暂停时撤权及完成事实保留。
+- 本地真实 Next/Chrome + 一次性 PG 浏览器 **2/2**：`/tmp/access-trial-revoke-browser.log`。L3 直接撤权 API 为403；L1 页面撤销后，L3 GET为404，独立数据库仍为 completed/submitted。回归此前员工、建案、Assessment、候选名单、手工/自动任务路径。390px 截图 `/tmp/access-trial-revocation-mobile.png` 已查看，无横向溢出。
+- 类型和聚焦 ESLint 通过：`/tmp/access-trial-revoke-types-final.log`、`/tmp/access-trial-revoke-lint.log`。无新增迁移，沿用64源迁移/65生成基线。
+- 初次自动任务暂停撤权夹具放在申请已提交之后，被既有 CASE_WORKFLOW_SUBMITTED_TARGET_EXISTS 正确拒绝；将暂停场景移至任务完成、提交事件消费之前并回滚，再验证正常提交及最终撤权。未放宽业务规则。
+
+仍未完成：显式任务文件授权、面试任务界面、P3历史回执重放及并发锁顺序审查，以及上一节列出的 CRM/目标结案/学校/邀请等剩余接入和整体验收。未合并 main、未推送、未部署、未迁移真实员工。

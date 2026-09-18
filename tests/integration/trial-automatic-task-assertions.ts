@@ -95,6 +95,22 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.equal(completed.state,"completed"); assert.equal(completed.recordVersion,4);
     assert.deepEqual(await service.transitionTargetTask(complete),completed);
     assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,[]);
+    const revoke={actor:restricted,taskId,command:{assignmentId:(await workspace.detail(taskOnly,taskId))!.task.currentAssignment!.id,
+      expectedRecordVersion:4,reason:"Synthetic completed assignment revoke",...keys()}};
+    await client.query("SAVEPOINT paused_revocation");
+    const latestCaseVersion=Number((await client.query("SELECT record_version FROM cases_service_cases WHERE id=$1",[caseId])).rows[0]!.record_version);
+    await workflow.applyWorkflowAction({actor:business,caseId,command:{action:"pause",expectedRecordVersion:latestCaseVersion,reason:"Synthetic completed task pause",...keys()}});
+    assert.deepEqual((await reads.readTask(restricted,taskId))!.allowed_actions,["revoke_access"]);
+    const revoked=await workspace.revokeCompletedAssignment(revoke);
+    assert.equal(revoked.recordVersion,5);
+    assert.deepEqual(await workspace.revokeCompletedAssignment(revoke),revoked);
+    assert.equal((await workspace.detail(business,taskId))!.task.state,"completed");
+    assert.equal((await client.query("SELECT last_transition_receipt_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.last_transition_receipt_id,completed.completionReceiptId);
+    await assert.rejects(service.transitionTargetTask(complete),rejected("NOT_FOUND"));
+    assert.equal(await workspace.detail(taskOnly,taskId),null);
+    assert.equal(await reads.readTask(taskOnly,taskId),null);
+    await client.query("ROLLBACK TO SAVEPOINT paused_revocation");
+    await client.query("RELEASE SAVEPOINT paused_revocation");
     const submissions=new ApplicationSubmissionConsumer(runner,new PostgresqlTasksApplicationCompletionEventFactsPort(),new PostgresqlCleanTaskEvidencePort());
     const deliveryResult=await submissions.drainForTask({organizationId:org,taskId,requestId:randomUUID()});
     assert.equal(deliveryResult.targetTransition,"completed");
@@ -109,10 +125,15 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await assert.rejects(service.transitionTargetTask({...reassign,actor:restricted,...keys()}),rejected("NOT_FOUND"));
     await client.query("ROLLBACK TO SAVEPOINT revoked_automatic_scope");
     await client.query("RELEASE SAVEPOINT revoked_automatic_scope");
-    await client.query("UPDATE tasks_task_assignments SET ended_at=clock_timestamp(),status='removed',record_version=record_version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND ended_at IS NULL",[taskId]);
+    const revokedFinal=await workspace.revokeCompletedAssignment(revoke);
+    assert.equal(revokedFinal.recordVersion,5);
+    assert.deepEqual(await workspace.revokeCompletedAssignment(revoke),revokedFinal);
+    assert.equal((await workspace.detail(business,taskId))!.task.state,"completed");
+    assert.equal((await client.query("SELECT last_transition_receipt_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.last_transition_receipt_id,completed.completionReceiptId);
     await assert.rejects(service.transitionTargetTask(complete),rejected("NOT_FOUND"));
     assert.equal(await workspace.detail(taskOnly,taskId),null);
     assert.equal(await reads.readTask(taskOnly,taskId),null);
+    assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");
     process.stdout.write(JSON.stringify({trial_automatic_tasks:"pass",consumer:"single_delivery_actual_role",l1:"reassign_l3",completion:"receipt_conditions_enforced",l3_completed:"readonly",revoked_replay:"denied"})+"\n");
   } finally {
     await client.query("ROLLBACK TO SAVEPOINT trial_automatic_tasks");

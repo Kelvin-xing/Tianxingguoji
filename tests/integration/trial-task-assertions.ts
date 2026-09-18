@@ -82,9 +82,25 @@ export async function assertTrialTasks(client: Client, runner: TenantTransaction
     await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
     assert.equal((await service.list(restricted,null)).tasks.length,0);
     await assert.rejects(async()=>service.create(firstInput),rejected("TASK_NOT_FOUND"));
-    // Simulate a persisted completed-assignment revocation; a dedicated command is still required.
-    await client.query("UPDATE tasks_task_assignments SET status='removed',ended_at=clock_timestamp(),end_reason='Synthetic revoke',record_version=record_version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND ended_at IS NULL",[first.id]);
-    assert.equal(await service.detail(taskOnly,first.id),null,"completed read access ends when its assignment is revoked");
+    const revoke={actor:business,taskId:first.id,command:{assignmentId:completed!.task.currentAssignment!.id,
+      expectedRecordVersion:3,reason:"Synthetic completed access revoke",...keys()}};
+    assert.deepEqual((await service.detail(business,first.id))!.task.allowedActions,["revoke_access"]);
+    await assert.rejects(async()=>service.revokeCompletedAssignment({...revoke,actor:taskOnly}),rejected("TASK_FORBIDDEN"));
+    await assert.rejects(async()=>service.revokeCompletedAssignment({...revoke,actor:restricted}),rejected("TASK_FORBIDDEN"));
+    await assert.rejects(service.revokeCompletedAssignment({...revoke,command:{...revoke.command,expectedRecordVersion:2,...keys()}}),rejected("TASK_STALE_VERSION"));
+    await assert.rejects(service.revokeCompletedAssignment({...revoke,command:{...revoke.command,assignmentId:randomUUID(),...keys()}}),rejected("TASK_CONFLICT"));
+    await assert.rejects(failing.revokeCompletedAssignment({...revoke,actor:root,command:{...revoke.command,...keys()}}),rejected("TASK_UNAVAILABLE"));
+    assert.equal((await service.detail(taskOnly,first.id))!.task.recordVersion,3,"failed revocation rolls back access and version");
+    const beforeReceipts=(await client.query("SELECT count(*)::int AS n FROM tasks_task_transition_receipts WHERE task_id=$1",[first.id])).rows[0]!.n;
+    const revoked=await service.revokeCompletedAssignment(revoke);
+    assert.equal(revoked.recordVersion,4);
+    assert.deepEqual(await service.revokeCompletedAssignment(revoke),revoked);
+    assert.equal(await service.detail(taskOnly,first.id),null,"completed read access ends immediately");
+    const history=await service.detail(business,first.id);
+    assert.equal(history!.task.state,"completed"); assert.equal(history!.task.currentAssignment,null);
+    assert.deepEqual(history!.task.allowedActions,[]);
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_task_transition_receipts WHERE task_id=$1",[first.id])).rows[0]!.n,beforeReceipts,"completion receipts are preserved");
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE event_type='tasks.assignment_access_revoked' AND resource_id=$1",[first.id])).rows[0]!.n,1);
     process.stdout.write(JSON.stringify({ trial_manual_tasks:"pass", l3:"cross_category_task_only", completed:"readonly_until_revoked", reject_cancel_revoke:"denied", stale_scope:"denied", rollback:"atomic" })+"\n");
   } finally {
     await client.query("ROLLBACK TO SAVEPOINT trial_task_fixture");

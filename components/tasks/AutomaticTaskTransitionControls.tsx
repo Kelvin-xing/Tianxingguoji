@@ -59,9 +59,10 @@ export function AutomaticTaskTransitionControls({
   if (attempt.current === null) attempt.current = new TaskIdempotencyAttempt();
 
   const caseId = "case_id" in task ? task.case_id : null;
+  const workflowActions=task.allowed_actions.filter((action):action is AutomaticTaskAction=>action!=="revoke_access");
   const selectableActions = task.task_kind === "interview_support"
-    ? task.allowed_actions.filter((action) => action !== "complete" && action !== "reassign")
-    : task.allowed_actions.filter((action) => action !== "reassign" || caseId !== null);
+    ? workflowActions.filter((action) => action !== "complete" && action !== "reassign")
+    : workflowActions.filter((action) => action !== "reassign" || caseId !== null);
   const interviewCompletionPending = task.task_kind === "interview_support" && task.allowed_actions.includes("complete");
   const [selectedAction, setSelectedAction] = useState<AutomaticTaskAction | "">("");
   const [reason, setReason] = useState("");

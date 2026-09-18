@@ -14,12 +14,14 @@ const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor", "founder", "l1", 
 const AUDIENCES = Object.freeze(["case_workspace", "assigned_task"] as const);
 const TASK_KINDS = Object.freeze(["application_prepare_submit", "interview_support", "manual"] as const);
 const AUTOMATIC_TASK_ACTIONS = Object.freeze(["accept", "reject", "reassign", "complete", "cancel"] as const);
+const TASK_ALLOWED_ACTIONS = Object.freeze([...AUTOMATIC_TASK_ACTIONS,"revoke_access"] as const);
 const SUBMISSION_CHANNELS = Object.freeze(["school_portal", "email", "courier", "in_person", "other"] as const);
 
 export type TaskAudience = (typeof AUDIENCES)[number];
 export type TaskAssigneeRole = (typeof ASSIGNEE_ROLES)[number];
 export type TaskKind = (typeof TASK_KINDS)[number];
 export type AutomaticTaskAction = (typeof AUTOMATIC_TASK_ACTIONS)[number];
+export type TaskAllowedAction = (typeof TASK_ALLOWED_ACTIONS)[number];
 export type SubmissionChannel = (typeof SUBMISSION_CHANNELS)[number];
 
 export interface TaskAssignee {
@@ -54,7 +56,7 @@ interface TaskBase {
   readonly school_target_id: string | null;
   readonly is_overdue: boolean;
   readonly current_assignment: CurrentTaskAssignment | null;
-  readonly allowed_actions: readonly AutomaticTaskAction[];
+  readonly allowed_actions: readonly TaskAllowedAction[];
 }
 
 export interface CaseWorkspaceTask extends TaskBase {
@@ -216,6 +218,17 @@ export function transitionTask(
       normalized.expected_record_version + 1,
     ),
   );
+}
+
+export interface RevokeCompletedAssignmentInput {
+  readonly assignment_id:string;readonly expected_record_version:number;readonly reason:string;
+}
+export function revokeCompletedAssignment(taskId:string,input:RevokeCompletedAssignmentInput,idempotencyKey:string):Promise<TaskWriteReceipt> {
+  assertUuid(taskId,"taskId"); assertUuid(input.assignment_id,"assignment_id"); assertIdempotencyKey(idempotencyKey);
+  const version=positiveInteger(input.expected_record_version,"expected_record_version");
+  const reason=normalizeBoundedText(input.reason,"reason",4000);
+  return requestApi({path:`/api/v1/tasks/${taskId}/assignment-revocations`,method:"POST",headers:{"idempotency-key":idempotencyKey},
+    body:{assignment_id:input.assignment_id,expected_record_version:version,reason}},(value)=>decodeTaskWriteReceipt(value,taskId,version+1));
 }
 
 export function transitionAutomaticTask(
@@ -470,8 +483,8 @@ function decodeCurrentTaskAssignment(value: unknown): CurrentTaskAssignment | nu
   });
 }
 
-function decodeAutomaticTaskActions(value: unknown): readonly AutomaticTaskAction[] {
-  const actions = expectArray(value, (action) => oneOf(action, AUTOMATIC_TASK_ACTIONS, "task.allowed_actions"));
+function decodeAutomaticTaskActions(value: unknown): readonly TaskAllowedAction[] {
+  const actions = expectArray(value, (action) => oneOf(action, TASK_ALLOWED_ACTIONS, "task.allowed_actions"));
   assertUnique(actions, "task.allowed_actions");
   return Object.freeze(actions);
 }

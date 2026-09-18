@@ -7,7 +7,7 @@ export type { P3TaskReadRepository, P3TaskReadRow } from "./p3-read-port.ts";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type P3ReadTaskKind = "application_prepare_submit" | "interview_support" | "manual";
-export type P3ReadAction = "accept" | "reject" | "reassign" | "complete" | "cancel";
+export type P3ReadAction = "accept" | "reject" | "reassign" | "complete" | "cancel" | "revoke_access";
 
 /** Authoritative task projection consumed by the Release 1 task UI. */
 export interface P3TaskReadDto {
@@ -121,6 +121,7 @@ function project(row: P3TaskReadRow, actor: RequestAccessActor): P3TaskReadDto {
 
 function allowedActions(row: P3TaskReadRow, actorUserId: string, actorRoles: readonly string[]): readonly P3ReadAction[] {
   const actions: P3ReadAction[] = [];
+  if (row.trial_manager && row.state==="completed" && row.current_assignment?.assignee_role==="l3") return Object.freeze(["revoke_access"]);
   if (row.writable === false) return Object.freeze(actions);
   const assigned = row.current_assignment?.assignee_user_id === actorUserId;
   const owner = row.owner_user_id === actorUserId;

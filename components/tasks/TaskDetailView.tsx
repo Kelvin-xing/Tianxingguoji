@@ -11,6 +11,7 @@ import {
   type TaskDetailResult,
 } from "@/modules/tasks/client";
 import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./AutomaticTaskTransitionControls";
+import { TaskAssignmentRevocationControl } from "./TaskAssignmentRevocationControl";
 import { TaskTransitionControls } from "./TaskTransitionControls";
 import { taskAssigneeRoleLabel, TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
@@ -129,8 +130,11 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
                 : "任務已更新，內容已重新載入。"}</span>
         </div>
       ) : null}
-      {task.available_transitions.length === 0 && task.allowed_actions.length === 0 ? (
+      {task.state === "completed" || (task.available_transitions.length === 0 && task.allowed_actions.length === 0) ? (
         <div className="inline-callout" role="status"><Icon name="shield" size={15} /><span>此任務目前為唯讀。</span></div>
+      ) : null}
+      {canTransition && result.audience==="case_workspace" && "case_id" in result.task && task.allowed_actions.includes("revoke_access") ? (
+        <TaskAssignmentRevocationControl task={result.task} onUpdate={(next)=>{setResult(next);setTransitionOutcome(null);}}/>
       ) : null}
       {canTransition && task.task_kind === "manual" && task.available_transitions.length > 0 ? (
         <TaskTransitionControls

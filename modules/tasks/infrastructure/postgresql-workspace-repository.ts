@@ -51,7 +51,7 @@ interface CaseRow extends Record<string, unknown> {
 interface TaskLocationRow extends Record<string, unknown> { service_case_id: string }
 interface AssigneeRow extends Record<string, unknown> { id: string; user_id: string; role: TaskAssigneeRole }
 
-export interface TaskRepositoryTestHooks { readonly failBeforeCommit?: (operation: "create" | "transition") => void }
+export interface TaskRepositoryTestHooks { readonly failBeforeCommit?: (operation: "create" | "transition" | "revoke_assignment") => void }
 
 export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepository {
   private readonly runner: TenantTransactionRunner;
@@ -128,6 +128,35 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       const result = Object.freeze({ id: input.taskId, recordVersion: 1 });
       await appendAtomicMutationEffects(tx, input.effects); this.hooks.failBeforeCommit?.("create");
       await completeReceipt(tx, input, CREATE_OPERATION, result); return result;
+    });
+  }
+
+  revokeCompletedAssignment(input:Parameters<TaskWorkspaceRepository["revokeCompletedAssignment"]>[0]):Promise<TaskAcknowledgement> {
+    return this.run(input,async(tx,input)=>{
+      const operation="tasks.revoke_assignment";
+      const replay=await claimReceipt(tx,input,operation);
+      const caseId=await locateTaskCase(tx,input.taskId);
+      if (!caseId) notFound();
+      const serviceCase=await lockCase(tx,input,caseId,true);
+      await assertActor(tx,input);
+      if (!input.trialPrincipal || !serviceCase || !canCreateForCase(serviceCase,input)) forbidden();
+      const task=(await selectVisibleTasks(tx,input,null,input.taskId,true))[0];
+      if (!task) notFound();
+      if (replay) return replay;
+      if (version(task.record_version)!==input.expectedRecordVersion) stale();
+      if (task.state!=="completed" || task.current_assignment_id!==input.assignmentId || task.current_assignment_role!=="l3") conflict();
+      const assignment=await tx.query(`UPDATE tasks_task_assignments SET status='removed',ended_at=GREATEST(clock_timestamp(),updated_at),
+        ended_by_user_id=$3,end_reason=$4,record_version=record_version+1,updated_at=GREATEST(clock_timestamp(),updated_at)
+        WHERE id=$1 AND task_id=$2 AND ended_at IS NULL AND assignee_role='l3'`,[input.assignmentId,input.taskId,input.actorUserId,input.reason]);
+      if (assignment.rowCount!==1) conflict();
+      const updated=await tx.query(`UPDATE tasks_tasks SET record_version=record_version+1,updated_at=GREATEST(clock_timestamp(),updated_at)
+        WHERE id=$1 AND record_version=$2 AND state='completed'`,[input.taskId,input.expectedRecordVersion]);
+      if (updated.rowCount!==1) stale();
+      await appendAtomicMutationEffects(tx,input.effects);
+      this.hooks.failBeforeCommit?.("revoke_assignment");
+      const result=Object.freeze({id:input.taskId,recordVersion:input.expectedRecordVersion+1});
+      await completeReceipt(tx,input,operation,result);
+      return result;
     });
   }
 
@@ -384,11 +413,13 @@ function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransit
         row.task_kind === "application_prepare_submit" && row.primary_user_id === actor.actorUserId ? ["reassign"] as const : []),
     ...((trialManager ? currentAssignment!==null : row.primary_user_id === actor.actorUserId) && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
   ]);
+  const permittedActions=trialManager && row.state==="completed" && currentAssignment?.assigneeRole==="l3"
+    ? Object.freeze(["revoke_access"] as const) : allowedActions;
   const base = { id: row.id,title: row.title,taskBrief: row.task_brief,dueAt: new Date(row.due_at).toISOString(),
     state: row.state,recordVersion: version(row.record_version),updatedAt: new Date(row.updated_at).toISOString(),
     availableTransitions: Object.freeze(transitions), taskKind: row.task_kind,
     schoolTargetId: row.school_target_id ?? null, isOverdue: row.is_overdue === true,
-    currentAssignment, allowedActions };
+    currentAssignment, allowedActions:permittedActions };
   if (isTaskOnly(actor)) return Object.freeze(base);
   return Object.freeze({ ...base,caseId: row.service_case_id,caseNumber: row.case_number,
     assignee: assigneeView({ id: row.assignee_binding_id,user_id: row.assignee_user_id,role: row.assignee_role }) });
