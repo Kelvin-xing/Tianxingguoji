@@ -83,6 +83,7 @@ export interface DocumentVersionRepository {
 }
 
 export type DocumentVersionErrorCode =
+  | "DOCUMENT_VERSION_UNAVAILABLE"
   | "DOCUMENT_VERSION_COMMAND_INVALID"
   | "DOCUMENT_VERSION_CASE_FORBIDDEN"
   | "DOCUMENT_VERSION_NOT_FOUND"

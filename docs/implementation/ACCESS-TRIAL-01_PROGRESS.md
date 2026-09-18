@@ -279,3 +279,16 @@
 - 类型检查 `/tmp/access-trial-interview-recovery-types-final.log`、聚焦ESLint `/tmp/access-trial-interview-recovery-lint.log`、diff检查通过。390px截图 `/tmp/access-trial-interview-pending-mobile.png` 已查看，输入、失败提示及重试按钮可见。修复已填写textarea的明确可访问名称。
 
 本节未新增迁移、未连接真实OSS或扫描服务、未部署、未变更真实员工、未合并main或推送。原计划文档生命周期、并发、其余模块与整体本地验收仍未完成，继续后再合并推送。
+
+## 文件生命周期数据库执行层（2026-09-19，接续 6b927a9）
+
+总体仍 `in_progress`。发现现有DocumentVersionService只有仓储契约、version-runtime仍固定不可用；本节补PostgreSQL仓储，尚未接通runtime/正式HTTP或页面。
+
+- 新仓储对显式试用成员重新加载当前等级、成员及账号状态、真实角色绑定，按案件分类锁定案件，再锁文件和目标版本。L3及未加入试用模型的旧账号不能使用新生命周期写入；暂停/关闭或学生非active时拒绝写入。
+- 回退只修改活动版本指针，目标必须属于本文件且available、未撤销；保留新旧版本。软删除写pending_delete并清空活动指针，不删除对象；法律保留阻止软删除。恢复仅允许软删除后30天内且指定版本干净可用，恢复后清除删除时间。
+- 写入、审计、outbox及幂等回执同事务提交。旧请求返回其原始回执而非后续文档状态，重放仍验证当前权限；事务失败可用原键重试。未增加物理清除或批量下载。
+- `/tmp/access-trial-document-lifecycle-final.log` **26/26**：真实一次性PG17、既有版本服务工作流、模块边界。通过真实上传接收/扫描服务生成第二个available版本，再回退旧版本；覆盖L3拒绝、无效/撤销版本拒绝、旧版本冲突、失败全回滚、软删除/恢复、过期拒绝、同键不同内容拒绝、审计单次、法律保留及撤销分类后的历史恢复请求拒绝。扫描仍为本地deterministic-fake，并非真实病毒扫描。
+- 类型 `/tmp/access-trial-document-lifecycle-types-final.log`、聚焦ESLint `/tmp/access-trial-document-lifecycle-lint-final.log`、diff检查通过。测试过程中修正两处夹具：撤销版本必须同时离开available；分类撤销必须以当前Founder执行。
+- 首次整组运行的成员管理检查出现一次access_role_bindings_timestamps_check错误，独立重跑及最终运行通过；本节未改该成员逻辑，偶发时间戳风险仍待后续并发验收排查，不能据此称全系统稳定。
+
+未新增迁移、未运行本节浏览器验证、未部署、未合并或推送。下一步接通文件生命周期正式接口及页面，继续剩余模块、并发和整体本地验收。

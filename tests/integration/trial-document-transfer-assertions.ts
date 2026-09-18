@@ -1,4 +1,5 @@
 import {DocumentObjectReceiptService} from '../../modules/documents/application/object-receipt-service.ts';
+import {assertTrialDocumentLifecycle} from './trial-document-lifecycle-assertions.ts';
 import {PostgresqlDocumentScanRepository} from '../../modules/documents/infrastructure/postgresql-scan-repository.ts';
 import {DocumentScanService} from '../../modules/documents/application/scan-service.ts';
 import assert from 'node:assert/strict';
@@ -69,6 +70,7 @@ export async function assertTrialDocumentTransfers(input:{client:Client;runner:T
   assert.equal((await scans.completeScanWork({event,work:claim.work,verdict:'clean',scannerEngine:'deterministic-fake-release1'})).status,'available');
   await assert.rejects(service.consumeCapability(capability),denied('CONFLICT'));
   assert.equal(delivered,1);
+  await assertTrialDocumentLifecycle({client,runner,caseId,documentId,business,restricted,taskOnly,rollbackVersionId:downloadScope!.versionId});
   await client.query('ROLLBACK TO SAVEPOINT trial_file_scan');await client.query('RELEASE SAVEPOINT trial_file_scan');
   const currentVersion=Number((await client.query('SELECT record_version FROM documents_documents WHERE id=$1',[documentId])).rows[0]!.record_version);
   await service.abandonPendingUpload({actor:taskOnly,taskId,caseId,documentId,versionId:pending.id,

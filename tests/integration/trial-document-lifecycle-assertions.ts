@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import type {Client} from 'pg';
+import type {TenantTransactionRunner} from '../../modules/shared/server.ts';
+import type {IdentitySessionActor} from '../../modules/identity/public.ts';
+import {DocumentVersionService,DocumentVersionError} from '../../modules/documents/application/version-service.ts';
+import {PostgresqlDocumentVersionRepository} from '../../modules/documents/infrastructure/postgresql-version-repository.ts';
+
+export async function assertTrialDocumentLifecycle(input:{client:Client;runner:TenantTransactionRunner;caseId:string;documentId:string;rollbackVersionId:string;
+  business:IdentitySessionActor;restricted:IdentitySessionActor;taskOnly:IdentitySessionActor}) {
+  const {client,runner,caseId,documentId,business,restricted,taskOnly}=input;
+  await client.query('SAVEPOINT trial_document_lifecycle');
+  const service=new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(runner)});
+  const keys=()=>({requestId:randomUUID(),idempotencyKey:randomUUID()});
+  const denied=(suffix:string)=>(error:unknown)=>error instanceof DocumentVersionError&&error.code===`DOCUMENT_VERSION_${suffix}`;
+  const read=async()=> (await client.query('SELECT record_version,active_document_version_id,lifecycle_state FROM documents_documents WHERE id=$1',[documentId])).rows[0]!;
+  const initial=await read(),versionId=input.rollbackVersionId;
+  assert.ok(versionId);
+  assert.notEqual(initial.active_document_version_id,versionId);
+  const command={expectedRecordVersion:Number(initial.record_version),...keys()};
+  await assert.rejects(service.softDeleteDocument({actor:taskOnly,caseId,documentId,command}),denied('CASE_FORBIDDEN'));
+  await assert.rejects(service.rollbackToCleanVersion({actor:restricted,caseId,documentId,command:{...command,targetVersionId:randomUUID()}}),denied('CLEAN_VERSION_REQUIRED'));
+  await client.query('SAVEPOINT lifecycle_revoked_version');
+  await client.query("UPDATE documents_document_versions SET state='superseded',revoked_at=clock_timestamp(),revoke_reason='Synthetic revoked version',record_version=record_version+1 WHERE id=$1",[versionId]);
+  await assert.rejects(service.rollbackToCleanVersion({actor:restricted,caseId,documentId,command:{...command,targetVersionId:versionId}}),denied('CLEAN_VERSION_REQUIRED'));
+  await client.query('ROLLBACK TO SAVEPOINT lifecycle_revoked_version');await client.query('RELEASE SAVEPOINT lifecycle_revoked_version');
+  const rollback=await service.rollbackToCleanVersion({actor:restricted,caseId,documentId,command:{...command,targetVersionId:versionId}});
+  assert.equal(rollback.activeVersionId,versionId);
+  assert.equal((await read()).active_document_version_id,versionId);
+  assert.equal((await client.query('SELECT state FROM documents_document_versions WHERE id=$1',[initial.active_document_version_id])).rows[0]!.state,'available');
+  await assert.rejects(service.softDeleteDocument({actor:business,caseId,documentId,command:{...command,...keys()}}),denied('STALE'));
+  const deletion={actor:business,caseId,documentId,command:{expectedRecordVersion:rollback.recordVersion,...keys()}};
+  const failing=new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(runner,{failBeforeCommit:()=>{throw new Error('Synthetic transaction failure');}})});
+  await assert.rejects(failing.softDeleteDocument(deletion),denied('UNAVAILABLE'));
+  assert.equal((await read()).lifecycle_state,'active');
+  const deleted=await service.softDeleteDocument(deletion);
+  assert.equal(deleted.lifecycleState,'pending_delete');assert.equal(deleted.activeVersionId,null);
+  assert.deepEqual(await service.softDeleteDocument(deletion),deleted);
+  const restore={actor:restricted,caseId,documentId,command:{versionId,expectedRecordVersion:deleted.recordVersion,...keys()}};
+  const expired=new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(runner),clock:{nowMs:()=>Date.now()+31*24*60*60*1000}});
+  await assert.rejects(expired.restoreDocument(restore),denied('RESTORE_WINDOW_EXPIRED'));
+  const restored=await service.restoreDocument(restore);
+  assert.equal(restored.lifecycleState,'active');assert.equal(restored.activeVersionId,versionId);
+  // A historical retry must acknowledge its own write, not today's document state.
+  assert.deepEqual(await service.softDeleteDocument(deletion),deleted);
+  assert.deepEqual(await service.restoreDocument(restore),restored);
+  await assert.rejects(service.restoreDocument({...restore,command:{...restore.command,versionId:randomUUID()}}),denied('IDEMPOTENCY_KEY_REUSED'));
+  const effects=await client.query("SELECT event_type,count(*)::int AS total FROM audit_events WHERE resource_id=$1 AND event_type IN ('documents.delete_requested','documents.restored') GROUP BY event_type",[documentId]);
+  assert.equal(effects.rows.length,2);assert.ok(effects.rows.every(row=>row.total===1));
+  await client.query("UPDATE documents_documents SET legal_hold=true,legal_hold_reason='Synthetic legal hold',record_version=record_version+1 WHERE id=$1",[documentId]);
+  await assert.rejects(service.softDeleteDocument({actor:restricted,caseId,documentId,command:{expectedRecordVersion:restored.recordVersion+1,...keys()}}),denied('DELETE_LEGAL_HOLD'));
+  await client.query("SELECT set_config('app.actor_user_id',(SELECT user_id::text FROM access_trial_members WHERE level='founder' AND status='active' LIMIT 1),true)");
+  await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
+  await assert.rejects(service.restoreDocument(restore),denied('NOT_FOUND'));
+  await client.query('ROLLBACK TO SAVEPOINT trial_document_lifecycle');await client.query('RELEASE SAVEPOINT trial_document_lifecycle');
+  process.stdout.write(JSON.stringify({trial_document_lifecycle:'pass',rollback:'clean_only',deletion:'soft_only',restore:'30_days',replay:'original_receipt',failure:'atomic'})+'\n');
+}
