@@ -15,7 +15,7 @@ export function canCreateTargetTask(input: Readonly<{
       (input.assigneeRole === "contractor" || input.isPrimaryAdvisor || input.isCaseAdvisorCollaborator) &&
       input.targetState === "preparing";
   }
-  return input.assigneeRole === "advisor" || input.assigneeRole === "contractor";
+  return input.targetState === "interview" && (input.assigneeRole === "advisor" || input.assigneeRole === "contractor");
 }
 
 export function canCompleteTargetTask(input: Readonly<{

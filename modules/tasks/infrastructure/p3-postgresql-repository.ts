@@ -114,7 +114,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
                assignee_membership_id,assignee_role_binding_id,case_collaborator_id,
                assigned_by_user_id,status,reason,assignment_reason,assigned_at,record_version,updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'assigned',$11,$11,$12,1,$12)`,
-            values: [input.assignmentId, input.actor.organizationId, input.taskId, facts.assigneeUserId,
+            values: [input.taskAssignmentId, input.actor.organizationId, input.taskId, facts.assigneeUserId,
               facts.assigneeRole, ["contractor","l3"].includes(facts.assigneeRole) ? "task_only" : null,
               facts.assigneeMembershipId, facts.assigneeRoleBindingId, facts.collaboratorId,
               input.actor.userId, "case_event", input.effects.audit.occurredAt],

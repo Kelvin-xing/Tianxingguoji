@@ -133,6 +133,39 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.equal(deliveryResult.targetTransition,"completed");
     assert.deepEqual(await submissions.drainForTask({organizationId:org,taskId,requestId:randomUUID()}),deliveryResult);
     assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");
+    await client.query("SAVEPOINT interview_provisioning");
+    const targetForInterview=(await client.query("SELECT current_assignment_id,record_version FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!;
+    const provision={actor:business,caseId,targetId:deliveryResult.targetId,assignmentId:targetForInterview.current_assignment_id as string,
+      sourceEventId:randomUUID(),kind:"interview_support" as const,taskKey:`interview-${randomUUID()}`,
+      dueAt:"2026-09-25T02:00:00.000Z",title:"Synthetic interview support",brief:"Synthetic necessary background",...keys()};
+    await assert.rejects(service.ensureTargetTask(provision),rejected("CONFLICT"));
+    // Invitation transition fixture: the production invitation endpoint is a separate gate.
+    await client.query(`INSERT INTO cases_school_target_transition_facts
+      (id,organization_id,service_case_id,school_target_id,transition_kind,from_state,to_state,actor_user_id,
+       assignment_id,from_record_version,to_record_version,interview_at,occurred_at)
+      VALUES ($1,$2,$3,$4,'workflow','submitted','interview',$5,$6,$7::bigint,$7::bigint+1,'2026-09-25T02:00:00Z',clock_timestamp())`,
+      [randomUUID(),org,caseId,deliveryResult.targetId,business.userId,targetForInterview.current_assignment_id,Number(targetForInterview.record_version)]);
+    await client.query("SELECT set_config('app.target_workflow_transition','authorized',true)");
+    await client.query("UPDATE cases_school_targets SET state='interview',record_version=record_version+1,updated_at=clock_timestamp() WHERE id=$1",[deliveryResult.targetId]);
+    await assert.rejects(failing.ensureTargetTask(provision),rejected("UNAVAILABLE"));
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE task_key=$1",[provision.taskKey])).rows[0]!.n,0);
+    const interview=await service.ensureTargetTask(provision);
+    assert.equal(interview.state,"assigned");
+    assert.deepEqual(await service.ensureTargetTask(provision),interview);
+    const interviewAssignment=(await client.query("SELECT id FROM tasks_task_assignments WHERE task_id=$1",[interview.id])).rows[0]!.id;
+    assert.notEqual(interviewAssignment,targetForInterview.current_assignment_id);
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE task_key=$1",[provision.taskKey])).rows[0]!.n,1);
+    assert.equal((await service.transitionTargetTask({actor:business,taskId:interview.id,action:"reassign",expectedRecordVersion:1,
+      nextAssigneeUserId:taskOnly.userId,reason:"Synthetic interview assignment",...keys()})).recordVersion,2);
+    assert.equal((await service.transitionTargetTask({actor:taskOnly,taskId:interview.id,action:"accept",expectedRecordVersion:2,...keys()})).recordVersion,3);
+    const interviewCompleted=await service.transitionTargetTask({actor:taskOnly,taskId:interview.id,action:"complete",expectedRecordVersion:3,
+      completionRecord:{completed_at:"2026-09-18T02:00:00Z",interview_method:"Video",coaching_summary:"Synthetic preparation"},...keys()});
+    assert.equal(interviewCompleted.state,"completed");
+    assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"interview");
+    // Another explicit school event may provision another task without reusing its assignment key.
+    const subsequent=await service.ensureTargetTask({...provision,sourceEventId:randomUUID(),taskKey:`interview-${randomUUID()}`,...keys()});
+    assert.notEqual(subsequent.id,interview.id);
+    await client.query("ROLLBACK TO SAVEPOINT interview_provisioning");await client.query("RELEASE SAVEPOINT interview_provisioning");
     const detail=await workspace.detail(taskOnly,taskId);
     assert.equal(detail!.audience,"assigned_task"); assert.equal(detail!.task.state,"completed");
     assert.deepEqual(detail!.task.allowedActions,[]); assert.equal("caseId" in detail!.task,false);

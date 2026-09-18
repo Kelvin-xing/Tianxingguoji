@@ -208,3 +208,14 @@
 - 类型、聚焦ESLint、diff检查通过：`/tmp/access-trial-interview-types-final.log`、`/tmp/access-trial-interview-lint-final.log`。390px截图 `/tmp/access-trial-interview-mobile.png` 已查看，无横向溢出。无新增迁移。
 
 下一步接通学校目标的面试邀请/状态操作及任务创建。其余文档生命周期、并发、CRM/学校/邀请、演示数据、整体本地验收及旧gate仍须完成，然后合并main并推送；未部署、未变更真实员工。
+
+## 面试任务创建基础验证（2026-09-19，接续 5258ce0）
+
+总体仍 `in_progress`。核对发现学校目标 transitions/outcomes 路由仍为拒绝写入的占位，CaseOutcome runtime未配置；不能把前一节任务页面通过视为邀请创建链路已完成。
+
+- P3 ensureTargetTask 原来将学校目标Assignment ID复用为TaskAssignment主键。改为服务端生成独立taskAssignmentId，学校关系ID只用于事实查验。后续面试任务不再与同一学校关系下的旧任务指派发生主键冲突；不改既有关系或历史迁移。
+- 补齐领域策略：仅学校目标已经处于interview时允许创建面试任务，与仓储既有状态校验一致。
+- 真实PG测试通过合成学校面试transition fact建立前置状态，再调用真实P3服务/仓储：submitted时创建拒绝；interview时创建；写入失败全部回滚后可重试；同请求重放只有一条任务；TaskAssignment与学校关系编号不同；L1重派L3、L3接受/完成；学校保持interview；旧任务完成后另一明确事件可创建新任务，不冲突。
+- `/tmp/access-trial-interview-provision-final.log`：一次性PG17及任务单元 **56/56**通过。类型检查 `/tmp/access-trial-interview-provision-types-final.log`、聚焦ESLint `/tmp/access-trial-interview-provision-lint.log`、diff检查通过。本节未运行浏览器、未验证学校邀请正式HTTP入口，未新增迁移。
+
+仍须接通学校邀请的正式写入、证据校验、审计/消息投递、自动创建和页面。当前只验证其任务创建基础，不标记完整链路完成；总体剩余项和合并推送目标不变。

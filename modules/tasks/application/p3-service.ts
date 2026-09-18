@@ -23,7 +23,7 @@ export interface P3TaskRepository {
 export interface P3EnsureTargetTaskRepositoryInput {
   readonly actor: RequestAccessActor; readonly taskId: string; readonly taskKey: string;
   readonly kind: P3TaskKind; readonly caseId: string; readonly targetId: string;
-  readonly assignmentId: string; readonly sourceEventId: string;
+  readonly assignmentId: string; readonly taskAssignmentId: string; readonly sourceEventId: string;
   readonly dueAt: string; readonly title: string; readonly brief: string; readonly requestId: string;
   readonly idempotencyKey: string; readonly requestHash: string; readonly idempotencyRecordId: string; readonly effects: MutationEffectBundle;
 }
@@ -73,9 +73,10 @@ export class P3TaskService {
     key(input.idempotencyKey);
     const occurredAt = checkedTime(this.now()); const taskId = this.createId(); const auditId = this.createId();
     const outboxId = this.createId(); const idempotencyRecordId = this.createId(); uuid(taskId); uuid(auditId); uuid(outboxId); uuid(idempotencyRecordId);
+    const taskAssignmentId = this.createId(); uuid(taskAssignmentId);
     const effects = effectsFor(input.actor, taskId, input.requestId, occurredAt, auditId, outboxId,
       "tasks.task_created", "assigned", 1);
-    return this.repository.ensureTargetTask({ ...input, actor: input.actor, taskId, idempotencyRecordId, requestHash: hashRequestPayload({
+    return this.repository.ensureTargetTask({ ...input, actor: input.actor, taskId, taskAssignmentId, idempotencyRecordId, requestHash: hashRequestPayload({
       case_id: input.caseId, target_id: input.targetId, task_key: input.taskKey, kind: input.kind,
       source_event_id: input.sourceEventId,
     }), effects });
