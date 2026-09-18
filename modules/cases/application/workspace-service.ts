@@ -179,14 +179,24 @@ export class CaseWorkspaceService {
     this.nowMs = nowMs;
   }
 
-  listCases(actor: RequestAccessActor) {
-    return this.repository.listCases(repositoryActor(actor, "cases.read"));
+  async listCases(actor: RequestAccessActor) {
+    try {
+      return await this.repository.listCases(repositoryActor(actor, "cases.read"));
+    } catch (error) {
+      if (isCaseWorkspaceRepositoryError(error)) throw new CaseWorkspaceError(error.code);
+      throw error;
+    }
   }
 
-  findCase(actor: RequestAccessActor, caseId: string) {
+  async findCase(actor: RequestAccessActor, caseId: string) {
     const context = repositoryActor(actor, "cases.read");
     if (!UUID.test(caseId)) throw new CaseWorkspaceError("CASE_WORKSPACE_INVALID");
-    return this.repository.findCase({ ...context, caseId });
+    try {
+      return await this.repository.findCase({ ...context, caseId });
+    } catch (error) {
+      if (isCaseWorkspaceRepositoryError(error)) throw new CaseWorkspaceError(error.code);
+      throw error;
+    }
   }
 
   listOptions(actor: RequestAccessActor) {

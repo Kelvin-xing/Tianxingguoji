@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { Client } from "pg";
 import { assertTrialMemberCommands } from "./trial-member-command-assertions.ts";
+import { assertTrialCaseReads } from "./trial-case-read-assertions.ts";
 import { assertTrialAccessSchema } from "./trial-access-schema-assertions.ts";
 
 import {
@@ -270,6 +271,7 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
     });
     assert.equal((await seedNeonTestRelease1(target, "apply")).status, "pass");
     await assertTrialAccessSchema(clientConfig);
+    await assertTrialCaseReads(clientConfig);
     await assertPrimaryContactLifecycleInvariant(clientConfig);
     await assertCaseFlowFoundationInvariant(clientConfig);
     await assertTrialMemberCommands(clientConfig);

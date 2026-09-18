@@ -5,6 +5,7 @@ import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/
 import { CandidateListWorkspace } from '@/components/cases/CandidateListWorkspace'
 import { CaseWorkflowControls } from '@/components/cases/CaseStageControls'
 import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
+import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
 import { Icon } from '@/components/workspace/Icon'
@@ -13,7 +14,6 @@ import {
   CaseWorkspaceError,
   getCaseWorkspaceRuntime,
   type AssessmentView,
-  type CaseWorkspaceStage,
 } from '@/modules/cases/server'
 import { requireApiRequestAccessContext } from '@/app/api/v1/request-access'
 import { ApiContractError } from '@/modules/shared/public'
@@ -63,6 +63,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         <section className="workspace-section"><div className="mb-4"><h3 className="section-title">案件資料</h3><p className="section-detail">顯示本案的基本資料。</p></div><div className="grid grid-cols-2 gap-4"><Info label="案件編號" value={record.caseNumber} /><Info label="學生" value={record.studentName} /><Info label="入學年度" value={String(record.intakeYear)} /><Info label="申請類型" value={admissionLabel(record.admissionType)} /><Info label="主要顧問" value={record.primaryBindingLabel} /><Info label="資料版本" value={String(record.recordVersion)} /></div></section>
         <section className="workspace-section"><div className="mb-4"><h3 className="section-title">評估設定</h3><p className="section-detail">評估會沿用案件建立時核准的版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="評估編號" value={record.assessmentId} /><Info label="版本編號" value={record.manifestId} /><Info label="狀態" value={assessmentStatusLabel(assessment.status)} /></div></section>
       </div>
+
+      <CaseReferralSourcePanel caseId={caseId} />
 
       <AssessmentEditor
         endpoint={`/api/v1/cases/${caseId}/assessment`}

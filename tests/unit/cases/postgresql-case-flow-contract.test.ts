@@ -46,7 +46,7 @@ test("Case create and workflow replay lock the owning aggregate and current auth
   assert.match(create, /cases_advance_new_service_case/);
   assert.match(
     create,
-    /primary_role, stage, created_at, updated_at\)[\s\S]*to_timestamp\(\$11 \/ 1000\.0\),to_timestamp\(\$11 \/ 1000\.0\)/,
+    /primary_role, current_primary_advisor_assignment_id, stage, created_at, updated_at\)[\s\S]*to_timestamp\(\$12 \/ 1000\.0\),to_timestamp\(\$12 \/ 1000\.0\)/,
   );
   assert.match(
     create,
@@ -55,7 +55,7 @@ test("Case create and workflow replay lock the owning aggregate and current auth
   for (const operation of ["listCases", "findCase", "listOptions"]) {
     const start = create.indexOf(`  ${operation}(`);
     const end = create.indexOf("\n  }", start);
-    assert.match(create.slice(start, end), /assertCurrentWorkspaceActor\(transaction, input\)/);
+    assert.match(create.slice(start, end), /assertCurrentWorkspaceActor\(transaction, input(?:, true)?\)/);
   }
   assert.match(create, /FOR SHARE OF identity_user, membership, role_binding, organization/);
 

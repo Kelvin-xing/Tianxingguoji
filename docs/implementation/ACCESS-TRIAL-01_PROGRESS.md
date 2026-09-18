@@ -46,3 +46,18 @@
 从 `modules/cases/application/workspace-service.ts` 和 `modules/cases/infrastructure/postgresql-workspace-repository.ts` 开始接案件列表/详情/创建及业务分类。`compatibilityRoleForRepository` 对新等级返回实际等级（l1/l2/l3），不伪装 Founder/Advisor；当前旧角色过滤必须逐项更新。新等级使用 `AccessContext.trialPrincipal`，数据库事务用 `loadTrialPrincipal(...,{lock:true})` 获取当前事实；不可回退旧权限并集。
 
 受控员工管理服务已在 `modules/access/application/trial-member-management.ts` 和对应 PostgreSQL repository；真实测试 helpers 位于 `tests/integration/trial-*-assertions.ts`。浏览器 helper 暂由基线测试在 TIANXING_TRIAL_BROWSER=1 时调用。
+
+## 案件读取阶段（2026-09-19，接续 bdccc4a）
+
+- `PostgresqlCaseWorkspaceRepository.listCases/findCase` 在事务内重新读取并锁定当前试用身份及实际角色；在 SQL 层按明确分类筛选，未把全部案件读到应用后再过滤。Founder/L1 两分类，L2 当前分类，L3 拒绝；未知分类拒绝。旧账号仍按原 Founder/Primary Advisor 规则查询。
+- `CaseWorkspaceService` 将读取时的仓储拒绝映射为稳定业务错误，供 API 返回拒绝而不是 500。测试覆盖缓存的 L2 请求上下文在撤分类/停用后的失权。
+- 旧 workspace 的创建/选项方法暂时拒绝已启用试用等级的员工，防止尚未分类的老写入路径成为后门；正式 intake 路径仍需完整接通，不能把此次读取工作称为建案已完成。
+- 新增 `tests/integration/trial-case-read-assertions.ts`：一次性 PG17、应用账号/RLS、真实仓储与服务，三组国际/本地/无分类案件；四等级、旧顾问、伪造旧等级、撤分类、停用均验证。夹具回滚，不修改持久化样例。
+- 案件聚焦回归暴露并修正旧测试漂移：当前主负责人关联列与第 12 个 SQL 时间参数；来源类型改用既有合法 partner_referral；身份夹具提供实际角色/capabilities；HTTP 幂等收据比较改用已有脱敏断言。没有放宽生产权限或删除拒绝断言。
+- 恢复案件详情页漏挂的既有推荐来源面板，能力控制仍由原组件/API 执行；仅静态/类型验证，本轮没有浏览器验证该面板。
+- 真实基线：`node --conditions=react-server --test tests/integration/one-role-baseline-postgresql.test.ts`，2/2 通过并明确输出 `trial_case_reads:pass`；日志 `/tmp/access-trial-case-read.log`。
+- 聚焦回归：`node --conditions=react-server --test tests/unit/cases/*.test.ts tests/unit/p2-be-03-crm-case-assessment.test.ts tests/contract/case-workspace-route.test.ts tests/architecture/module-boundaries.test.ts`，107/107 通过；日志 `/tmp/access-trial-case-regression.log`。
+- 类型检查通过；聚焦 ESLint 的既有未使用 CaseWorkspaceStage 导入已清除，最终结果见 `/tmp/access-trial-case-typecheck.log`、`/tmp/access-trial-case-lint.log`。
+- 不代表整案页面可供 L1/L2 使用：页面仍会读取旧 Assessment 服务；创建、Assessment、后续工作流、任务、文件、邀请及完整浏览器验收仍未接通。目标继续保持 in_progress，未合并/推送。
+
+下一步实际入口：`modules/cases/application/intake-service.ts` / `domain/intake-contract.ts` / `infrastructure/postgresql-case-intake-repository.ts`，正式 POST 调用 intakeService，而不是 workspace 旧 createCase。当前 intake actor 固定 advisor，主负责人 owner port 在 `modules/access/infrastructure/postgresql-case-intake-owner.ts`。必须添加案件分类及 Founder/L1/L2 创建、分类内学生选项和实际等级负责人。036 中 `cases_validate_service_case_write`、`cases_advance_new_service_case`、`cases_apply_service_case_workflow_action` 以及039的 primary assignment role CHECK 仍按 advisor；新迁移从060追加，不能改已提交058/059。新类别不能从 Assessment/学生自动推断。正式需求 BR-015 已确认，无需再请求方案批准。

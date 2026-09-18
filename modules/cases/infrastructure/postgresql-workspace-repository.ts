@@ -1,5 +1,7 @@
 import "server-only";
 
+import { K12_BUSINESS_CATEGORIES, type TrialPrincipal } from "../../access/public.ts";
+import { loadTrialPrincipal } from "../../access/server.ts";
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
 import type {
@@ -44,11 +46,12 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
 
   listCases(input: Parameters<CaseWorkspaceRepository["listCases"]>[0]) {
     return this.database.transaction(input, async (transaction) => {
-      await assertCurrentWorkspaceActor(transaction, input);
+      const principal = await assertCurrentWorkspaceActor(transaction, input, true);
+      const scope = caseReadScope(input, principal);
       const result = await transaction.query<CaseRow>(
-        caseSelect(input.actorRole === "advisor" ? "service_case.primary_user_id = $1" : "true") +
+        caseSelect(scope.condition) +
           " ORDER BY service_case.updated_at DESC, service_case.id",
-        input.actorRole === "advisor" ? [input.actorUserId] : [],
+        scope.values,
       );
       return Object.freeze(result.rows.map(toListItem));
     });
@@ -56,13 +59,10 @@ export class PostgresqlCaseWorkspaceRepository implements CaseWorkspaceRepositor
 
   findCase(input: Parameters<CaseWorkspaceRepository["findCase"]>[0]) {
     return this.database.transaction(input, async (transaction) => {
-      await assertCurrentWorkspaceActor(transaction, input);
-      const values = input.actorRole === "advisor"
-        ? [input.caseId, input.actorUserId]
-        : [input.caseId];
-      const actorFilter = input.actorRole === "advisor"
-        ? "service_case.id = $1 AND service_case.primary_user_id = $2"
-        : "service_case.id = $1";
+      const principal = await assertCurrentWorkspaceActor(transaction, input, true);
+      const scope = caseReadScope(input, principal);
+      const values = [...scope.values, input.caseId];
+      const actorFilter = `(${scope.condition}) AND service_case.id = $${values.length}`;
       const result = await transaction.query<CaseRow>(
         `SELECT service_case.id, service_case.case_number, service_case.student_id,
                 student.display_name AS student_name, student.status AS student_status,
@@ -397,8 +397,17 @@ async function assertCurrentWorkspaceActor(
     actorUserId: string;
     actorRole: string;
   }>,
-): Promise<void> {
-  if (input.actorRole !== "founder" && input.actorRole !== "advisor") {
+  allowTrialRead = false,
+): Promise<TrialPrincipal | null> {
+  const principal = await loadTrialPrincipal(transaction, {
+    userId: input.actorUserId, organizationId: input.organizationId, lock: true,
+  });
+  if (principal) {
+    if (!allowTrialRead || !principal.active || principal.level !== input.actorRole
+      || principal.level === "l3") {
+      throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
+    }
+  } else if (input.actorRole !== "founder" && input.actorRole !== "advisor") {
     throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
   }
   const actor = await transaction.query(
@@ -424,6 +433,21 @@ async function assertCurrentWorkspaceActor(
   if (actor.rowCount !== 1) {
     throw new CaseWorkspaceRepositoryError("CASE_WORKSPACE_FORBIDDEN");
   }
+  return principal;
+}
+
+/** Apply the scope in SQL, before materializing any student or case data. */
+function caseReadScope(
+  input: Readonly<{ actorRole: string; actorUserId: string }>,
+  principal: TrialPrincipal | null,
+): Readonly<{ condition: string; values: readonly unknown[] }> {
+  if (principal) return {
+    condition: "service_case.business_category = ANY($1::text[])",
+    values: [principal.level === "l2" ? principal.categories : K12_BUSINESS_CATEGORIES],
+  };
+  return input.actorRole === "advisor"
+    ? { condition: "service_case.primary_user_id = $1", values: [input.actorUserId] }
+    : { condition: "true", values: [] };
 }
 
 function caseSelect(condition: string): string {
