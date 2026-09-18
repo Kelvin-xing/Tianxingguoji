@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useState,useRef,type FormEvent } from "react";
 import Link from "next/link";
-import { getSchoolTargets,recordInterviewInvitation,type SchoolTargetsView,type InterviewInvitationInput } from "@/modules/cases/client";
+import { getSchoolTargets,recordInterviewInvitation,resumeInterviewTask,type SchoolTargetsView,type InterviewInvitationInput } from "@/modules/cases/client";
 import { listCaseDocuments,type DocumentListItem } from "@/modules/documents/client";
 import { ApiClientError } from "@/lib/api/client";
 
@@ -48,11 +48,19 @@ export function InterviewInvitationsPanel({caseId}:{readonly caseId:string}) {
       }else setNotice("暫時無法確認結果，請重試；相同內容不會重複建立。");
     }finally{busy.current=false;setPending(false);}
   }
+  async function recover(target:string){
+    if(busy.current)return;busy.current=true;setPending(true);setNotice("");
+    try{
+      const result=await resumeInterviewTask(caseId,target);
+      setNotice(result==='completed'?"面試支援任務已就緒，可前往任務頁面。":"任務暫時未能建立，請稍後再試。");
+    }catch{setNotice("目前無法恢復任務，請確認權限及案件狀態後重試。");}
+    finally{busy.current=false;setPending(false);}
+  }
   if(loading)return <p role="status">正在載入面試資料。</p>;
   return <section className="workspace-section space-y-5">
     <p className="section-detail">只在學校明確要求面試時登記。面試任務完成不代表學校錄取結果。</p>
     {notice?<p role="status" className="inline-callout">{notice}</p>:null}
-    {view?.items.filter(item=>item.state==='interview').map(item=><div className="selection-card" key={item.target_id}><strong>{item.school_name}</strong><span>已登記面試</span></div>)}
+    {view?.items.filter(item=>item.state==='interview').map(item=><div className="selection-card" key={item.target_id}><strong>{item.school_name}</strong><span>已登記面試</span>{view.can_record_interview?<button type="button" disabled={pending} className="secondary-button" onClick={()=>void recover(item.target_id)}>檢查或恢復支援任務</button>:null}</div>)}
     {view?.can_record_interview&&view.items.some(item=>item.state==='submitted')?<form onSubmit={submit} className="space-y-4" aria-busy={pending}>
       <label className="field-label">學校<select aria-label="學校" required disabled={pending} value={targetId} onChange={e=>{changed();setTargetId(e.target.value);}}>
         <option value="">選擇已提交申請的學校</option>{view.items.filter(item=>item.state==='submitted').map(item=><option key={item.target_id} value={item.target_id}>{item.school_name}</option>)}
@@ -61,8 +69,8 @@ export function InterviewInvitationsPanel({caseId}:{readonly caseId:string}) {
       <p className="section-detail">以下內容會顯示給任務負責人。只填執行所需背景，勿加入聯絡方式或整份評估。</p>
       <label className="field-label">面試方式<input required maxLength={200} disabled={pending} value={method} onChange={e=>{changed();setMethod(e.target.value);}}/></label>
       <label className="field-label">面試語言<input required maxLength={200} disabled={pending} value={language} onChange={e=>{changed();setLanguage(e.target.value);}}/></label>
-      <label className="field-label">輔導要求<textarea required maxLength={1500} rows={3} disabled={pending} value={requirements} onChange={e=>{changed();setRequirements(e.target.value);}}/></label>
-      <label className="field-label">必要背景摘要<textarea required maxLength={1500} rows={3} disabled={pending} value={background} onChange={e=>{changed();setBackground(e.target.value);}}/></label>
+      <label className="field-label">輔導要求<textarea aria-label="輔導要求" required maxLength={1500} rows={3} disabled={pending} value={requirements} onChange={e=>{changed();setRequirements(e.target.value);}}/></label>
+      <label className="field-label">必要背景摘要<textarea aria-label="必要背景摘要" required maxLength={1500} rows={3} disabled={pending} value={background} onChange={e=>{changed();setBackground(e.target.value);}}/></label>
       <label className="field-label">邀請憑證<select aria-label="邀請憑證" required disabled={pending} value={documentId} onChange={e=>{changed();setDocumentId(e.target.value);}}>
         <option value="">選擇已掃描通過的文件</option>{files.map(file=><option value={file.id} key={file.id}>{file.display_name}</option>)}
       </select></label>

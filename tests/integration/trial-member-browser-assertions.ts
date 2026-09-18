@@ -371,12 +371,46 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.getByRole('checkbox',{name:'我確認學校要求面試，並建立支援任務。',exact:true}).check()
     assert.equal(await revokePage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
     await revokePage.screenshot({path:'/tmp/access-trial-interview-invitation-mobile.png',fullPage:true})
-    const invitationSaved=revokePage.waitForResponse(r=>r.url()===invitationUrl&&r.request().method()==='POST')
+    // Fail task delivery in the disposable database after the invitation commits.
+    await client.query("ALTER TABLE tasks_tasks ADD CONSTRAINT trial_interview_delivery_unavailable CHECK (task_kind<>'interview_support') NOT VALID")
+    let originalInvitationKey=''
+    await revokePage.route(invitationUrl,async route=>{
+      originalInvitationKey=route.request().headers()['idempotency-key']!
+      const response=await route.fetch()
+      assert.equal(response.status(),200)
+      assert.equal((await response.json()).data.automation.interview_task,'pending')
+      // Lose the response only after the real server has committed the invitation.
+      await route.abort('failed')
+    },{times:1})
     await revokePage.getByRole('button',{name:'儲存面試邀請',exact:true}).click()
+    await revokePage.getByText('暫時無法確認結果，請重試；相同內容不會重複建立。',{exact:true}).waitFor()
+    assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[automaticRow.school_target_id])).rows[0]!.state,'interview')
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[automaticRow.school_target_id])).rows[0]!.n,0)
+    await revokePage.screenshot({path:'/tmp/access-trial-interview-response-lost.png',fullPage:true})
+    assert.equal(await revokePage.getByLabel('必要背景摘要',{exact:true}).inputValue(),'Synthetic task context')
+    const stillPending=revokePage.waitForResponse(r=>r.url()===invitationUrl&&r.request().method()==='POST')
+    await revokePage.getByRole('button',{name:'儲存面試邀請',exact:true}).click()
+    const pendingResponse=await stillPending
+    assert.equal(pendingResponse.request().headers()['idempotency-key'],originalInvitationKey)
+    assert.equal((await pendingResponse.json()).data.automation.interview_task,'pending')
+    await revokePage.getByText('邀請已儲存，面試任務尚未建立。請按重試完成任務建立。',{exact:true}).waitFor()
+    await revokePage.screenshot({path:'/tmp/access-trial-interview-pending-mobile.png',fullPage:true})
+    await revokePage.reload()
+    await revokePage.getByRole('button',{name:'檢查或恢復支援任務',exact:true}).waitFor()
+    assert.equal((await l3Context.request.patch(invitationUrl)).status(),403)
+    const recoveryPending=revokePage.waitForResponse(r=>r.url()===invitationUrl&&r.request().method()==='PATCH')
+    await revokePage.getByRole('button',{name:'檢查或恢復支援任務',exact:true}).click()
+    assert.equal((await (await recoveryPending).json()).data.interview_task,'pending')
+    await revokePage.getByText('任務暫時未能建立，請稍後再試。',{exact:true}).waitFor()
+    await client.query("ALTER TABLE tasks_tasks DROP CONSTRAINT trial_interview_delivery_unavailable")
+    const invitationSaved=revokePage.waitForResponse(r=>r.url()===invitationUrl&&r.request().method()==='PATCH')
+    await revokePage.getByRole('button',{name:'檢查或恢復支援任務',exact:true}).click()
     const invitationResponse=await invitationSaved
-    const invitationKey=invitationResponse.request().headers()['idempotency-key']!
+    const invitationKey=originalInvitationKey
     assert.equal(invitationResponse.status(),200)
-    assert.equal((await invitationResponse.json()).data.automation.interview_task,'completed')
+    assert.equal((await invitationResponse.json()).data.interview_task,'completed')
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1 AND event_type='cases.interview_invitation_recorded'",[automaticRow.school_target_id])).rows[0]!.n,1)
+    process.stdout.write(JSON.stringify({trial_interview_recovery:'pass',lost_response:'preserved_request',pending:'real_postgresql_failure',retry:'same_key_single_invitation'})+'\n')
     const invitationReplay=await revokeContext.request.post(invitationUrl,{headers:{'idempotency-key':invitationKey},data:invitationBody})
     assert.equal(invitationReplay.status(),200)
     const interviewRows=(await client.query("SELECT id,assignee_user_id FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[automaticRow.school_target_id])).rows

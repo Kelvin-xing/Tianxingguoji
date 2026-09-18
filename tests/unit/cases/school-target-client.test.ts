@@ -7,6 +7,7 @@ import {
   classifySchoolTargetFailure,
   getSchoolTargets,
   recordInterviewInvitation,
+  resumeInterviewTask,
 } from "../../../modules/cases/client.ts";
 
 const CASE_ID = "10000000-0000-4000-8000-000000000001";
@@ -157,6 +158,16 @@ test("interview invitation preserves pending receipts and rejects mismatched tar
   assert.equal((await recordInterviewInvitation(CASE_ID,TARGET_ID,command,"invitation-client-test")).interview_task,"pending");
   globalThis.fetch=async()=>apiResponse({target_id:SCHOOL_ID,record_version:3,state:"interview",invitation_id:REVISION_ID,automation:{interview_task:"completed"}});
   await assert.rejects(recordInterviewInvitation(CASE_ID,TARGET_ID,command,"invitation-client-test"));
+});
+
+test("interview recovery resumes stored facts without resending private form content",async context=>{
+  const originalFetch=globalThis.fetch;context.after(()=>{globalThis.fetch=originalFetch;});
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(url,`/api/v1/cases/${CASE_ID}/school-targets/${TARGET_ID}/interview-invitations`);
+    assert.equal(options?.method,"PATCH");assert.equal(options?.body,undefined);
+    return apiResponse({target_id:TARGET_ID,invitation_id:REVISION_ID,interview_task:"completed"});
+  };
+  assert.equal(await resumeInterviewTask(CASE_ID,TARGET_ID),"completed");
 });
 
 function apiResponse(data: unknown): Response {

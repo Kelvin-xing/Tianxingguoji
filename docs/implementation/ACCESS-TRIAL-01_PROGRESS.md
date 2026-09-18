@@ -268,3 +268,14 @@
 - 390px邀请及任务截图 `/tmp/access-trial-interview-invitation-mobile.png`、`/tmp/access-trial-interview-mobile.png` 已查看；名称/方式/语言/要求/背景清楚显示，无横向溢出。
 
 下一步补浏览器提交不确定/pending恢复，继续原计划文档生命周期、并发及其余模块与整体验收。未部署、未迁移真实员工、未合并main或推送。
+
+## 面试提交不确定与任务恢复（2026-09-19，接续 efc6f64）
+
+总体仍 `in_progress`。本节补齐上节遗留的真实浏览器恢复检查。
+
+- 已登记面试的学校提供“檢查或恢復支援任務”。PATCH接口按当前成员等级、分类、案件可写状态重新授权，从数据库读取当前邀请事实，再消费原事件；刷新页面后也可恢复，不依赖浏览器保存私密表单，不另建邀请。
+- 真实浏览器测试在一次性PG增加临时任务约束，使邀请实际保存、任务实际创建失败；截断已提交POST响应模拟网络中断。页面保留输入及原幂等键，重试返回pending。刷新后恢复入口仍可用，解除临时约束后任务创建成功；邀请审计及任务均只有一条，L3恢复请求403。测试约束不进入生产迁移。
+- `/tmp/access-trial-interview-recovery-browser-final.log` **2/2**：真实Next/Chrome与一次性PG；继续覆盖任务重派、L3接受/完成/只读、重放及撤权。`/tmp/access-trial-interview-recovery-regression.log` **24/24**：PG、客户端及模块边界，包含撤销分类后恢复拒绝。
+- 类型检查 `/tmp/access-trial-interview-recovery-types-final.log`、聚焦ESLint `/tmp/access-trial-interview-recovery-lint.log`、diff检查通过。390px截图 `/tmp/access-trial-interview-pending-mobile.png` 已查看，输入、失败提示及重试按钮可见。修复已填写textarea的明确可访问名称。
+
+本节未新增迁移、未连接真实OSS或扫描服务、未部署、未变更真实员工、未合并main或推送。原计划文档生命周期、并发、其余模块与整体本地验收仍未完成，继续后再合并推送。

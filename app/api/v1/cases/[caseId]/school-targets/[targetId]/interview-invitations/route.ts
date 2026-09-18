@@ -37,3 +37,24 @@ export async function POST(request:Request,context:{readonly params:Promise<{cas
     }
   });
 }
+
+// Rechecks current authority, then resumes the previously committed invitation.
+// The source event is the idempotency boundary; this does not create another invitation.
+export async function PATCH(request:Request,context:{readonly params:Promise<{caseId:string;targetId:string}>}):Promise<Response> {
+  return handleApiRequest(request,async requestContext=>{
+    try {
+      const actor=await requireApiRequestAccessContext();
+      const {caseId,targetId}=await context.params;
+      const invitationId=await getInterviewInvitationService().recover({actor,caseId,targetId,requestId:requestContext.requestId});
+      const completed=await getTaskWorkflowRuntime().interviewTaskConsumer.drainForInvitation({organizationId:actor.organizationId,caseId,targetId,invitationId,requestId:requestContext.requestId});
+      return {target_id:targetId,invitation_id:invitationId,interview_task:completed?"completed":"pending"};
+    }catch(error){
+      if(error instanceof Error&&error.name==="InterviewInvitationError"){
+        const code=(error as InterviewInvitationError).code;
+        if(code==="FORBIDDEN"||code==="NOT_FOUND"||code==="CONFLICT")throw createApiError(code);
+        if(code==="INVALID")throw createApiError("VALIDATION_FAILED");
+      }
+      throw error;
+    }
+  });
+}

@@ -4,7 +4,7 @@ import { loadTrialPrincipal } from "../../access/server.ts";
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload, type TaskFactsTransaction } from "../../shared/public.ts";
 import { runIdempotentTransaction, IdempotencyExecutionError, type TenantTransaction, type TenantTransactionRunner } from "../../shared/server.ts";
-import { InterviewInvitationError, type InterviewInvitationRepository, type InterviewInvitationWrite, type InterviewInvitationResult } from "../application/interview-invitation-service.ts";
+import { InterviewInvitationError, type InterviewRecoveryCommand, type InterviewInvitationRepository, type InterviewInvitationWrite, type InterviewInvitationResult } from "../application/interview-invitation-service.ts";
 
 export interface InvitationEvidencePort {
   readCleanCaseDocument(transaction:TaskFactsTransaction,input:Readonly<{organizationId:string;caseId:string;documentId:string}>):Promise<boolean>;
@@ -15,6 +15,18 @@ export class PostgresqlInterviewInvitationRepository implements InterviewInvitat
   private readonly hooks:Readonly<{failBeforeCommit?:()=>void}>;
   constructor(runner:TenantTransactionRunner,evidence:InvitationEvidencePort,hooks:Readonly<{failBeforeCommit?:()=>void}>={}) {
     this.runner=runner;this.evidence=evidence;this.hooks=hooks;
+  }
+  async recover(input:InterviewRecoveryCommand):Promise<string> {
+    return this.runner.run({organizationId:input.actor.organizationId,actorKind:"user",actorOpaqueId:input.actor.userId,actorUserId:input.actor.userId,requestId:input.requestId},async tx=>{
+      await this.authorize(tx,input);
+      const rows=await tx.query<{id:string}>({text:`SELECT f.id FROM cases_school_targets t
+        JOIN cases_school_target_transition_facts f ON f.organization_id=t.organization_id AND f.school_target_id=t.id
+          AND f.service_case_id=t.service_case_id AND f.to_record_version=t.record_version AND f.to_state='interview'
+        WHERE t.organization_id=$1 AND t.service_case_id=$2 AND t.id=$3 AND t.state='interview' FOR SHARE OF t,f`,
+        values:[input.actor.organizationId,input.caseId,input.targetId]});
+      if(rows.rows.length!==1)throw new InterviewInvitationError("NOT_FOUND");
+      return rows.rows[0]!.id;
+    });
   }
   async record(input:InterviewInvitationWrite):Promise<InterviewInvitationResult> {
     const context={organizationId:input.actor.organizationId,actorKind:"user" as const,actorOpaqueId:input.actor.userId,
@@ -64,7 +76,7 @@ export class PostgresqlInterviewInvitationRepository implements InterviewInvitat
       throw new InterviewInvitationError("UNAVAILABLE");
     }
   }
-  private async authorize(tx:TenantTransaction,input:InterviewInvitationWrite) {
+  private async authorize(tx:TenantTransaction,input:Pick<InterviewInvitationWrite,"actor"|"caseId">) {
     const principal=await loadTrialPrincipal(adapt(tx),{organizationId:input.actor.organizationId,userId:input.actor.userId,lock:true});
     const row=(await tx.query<{business_category:K12BusinessCategory|null;stage:string;workflow_status:string}>({
       text:"SELECT business_category,stage,workflow_status FROM cases_service_cases WHERE id=$1 AND organization_id=$2 FOR UPDATE",

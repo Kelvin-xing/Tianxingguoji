@@ -30,7 +30,11 @@ export interface InterviewInvitationWrite extends InterviewInvitationCommand {
   readonly occurredAt: string;
   readonly effects: MutationEffectBundle;
 }
+export interface InterviewRecoveryCommand {
+  readonly actor:RequestAccessActor;readonly caseId:string;readonly targetId:string;readonly requestId:string;
+}
 export interface InterviewInvitationRepository {
+  recover(input:InterviewRecoveryCommand):Promise<string>;
   record(input: InterviewInvitationWrite): Promise<InterviewInvitationResult>;
 }
 export class InterviewInvitationError extends Error {
@@ -42,6 +46,11 @@ export class InterviewInvitationError extends Error {
 export class InterviewInvitationService {
   private readonly repository: InterviewInvitationRepository;
   constructor(repository: InterviewInvitationRepository) { this.repository=repository; }
+  async recover(input:InterviewRecoveryCommand):Promise<string> {
+    if(!hasRequestCapability(input.actor,"cases.workflow.manage"))throw new InterviewInvitationError("FORBIDDEN");
+    if(![input.caseId,input.targetId].every(value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)))throw new InterviewInvitationError("INVALID");
+    return this.repository.recover(input);
+  }
   async record(input: InterviewInvitationCommand): Promise<InterviewInvitationResult> {
     if (!hasRequestCapability(input.actor,"cases.workflow.manage")) throw new InterviewInvitationError("FORBIDDEN");
     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

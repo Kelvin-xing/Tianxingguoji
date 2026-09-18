@@ -1352,3 +1352,13 @@ export async function recordInterviewInvitation(caseId:string,targetId:string,in
       return {invitation_id:uuid(row.invitation_id,"invitation_id"),interview_task:oneOf(automation.interview_task,["completed","pending"] as const,"interview_task")};
     });
 }
+
+export async function resumeInterviewTask(caseId:string,targetId:string) {
+  assertUuid(caseId,"caseId");assertUuid(targetId,"targetId");
+  return requestApi({path:`/api/v1/cases/${caseId}/school-targets/${targetId}/interview-invitations`,method:"PATCH"},value=>{
+    const row=exactRecord(value,["target_id","invitation_id","interview_task"]);
+    if(row.target_id!==targetId)throw new TypeError("Mismatched invitation recovery");
+    uuid(row.invitation_id,"invitation_id");
+    return oneOf(row.interview_task,["completed","pending"] as const,"interview_task");
+  });
+}

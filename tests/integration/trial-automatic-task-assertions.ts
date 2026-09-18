@@ -162,10 +162,12 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await assert.rejects(invitations.record({...invitation,coachingRequirements:"x".repeat(1501),...keys()}),error=>error instanceof InterviewInvitationError&&error.code==="INVALID");
     const recordedInvitation=await invitations.record(invitation);
     assert.deepEqual(await invitations.record(invitation),recordedInvitation);
+    assert.equal(await invitations.recover(invitation),recordedInvitation.invitationId);
     assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1 AND event_type='cases.interview_invitation_recorded'",[deliveryResult.targetId])).rows[0]!.n,1);
     await client.query("SAVEPOINT invitation_revocation");
     await client.query("SELECT set_config('app.actor_user_id',$1,true)",[root.userId]);
     await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
+    await assert.rejects(invitations.recover(invitation),error=>error instanceof InterviewInvitationError&&error.code==="NOT_FOUND");
     await assert.rejects(targets.getSchoolTargets({actor:restricted,caseId}));
     await assert.rejects(invitations.record({...invitation,actor:restricted}),error=>error instanceof InterviewInvitationError&&error.code==="NOT_FOUND");
     await client.query("ROLLBACK TO SAVEPOINT invitation_revocation");await client.query("RELEASE SAVEPOINT invitation_revocation");
