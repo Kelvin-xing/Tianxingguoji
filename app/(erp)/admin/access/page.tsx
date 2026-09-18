@@ -1,12 +1,14 @@
 'use client'
 
+import Link from 'next/link'
+
 import { useCallback, useEffect, useState } from 'react'
 
 import { Icon } from '@/components/workspace/Icon'
 import { ErrorState, LoadingState, UnavailableState } from '@/components/states/WorkspaceState'
 import { ApiClientError, requestApi } from '@/lib/api/client'
 
-type Role = 'founder' | 'admin' | 'advisor' | 'contractor'
+type Role = 'founder' | 'admin' | 'advisor' | 'contractor' | 'l1' | 'l2' | 'l3'
 type UserStatus = 'invited' | 'active' | 'disabled'
 type MembershipStatus = 'invited' | 'active' | 'disabled'
 type EmploymentType = 'FULL_TIME' | 'PART_TIME'
@@ -89,6 +91,8 @@ export default function AccessPage() {
         <h2 className="page-title">身份與權限</h2>
         <p className="page-subtitle">查看使用者，維護員工資料與目前基礎角色。</p>
       </section>
+
+      {canInviteUsers && <section className="workspace-section"><h3 className="section-title">員工等級與業務分類</h3><p className="section-detail mt-2">設定創始人、L1、L2、L3，以及 L2 可負責的國際學校或本地學校業務。</p><Link className="primary-button mt-3 inline-flex" href="/admin/access/levels">管理員工等級</Link></section>}
 
       <section className="workspace-section">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -173,7 +177,7 @@ function UserTable({ users, total, onEdit, canInviteUsers, resendingInviteId, on
                 <td className="table-muted">{employmentLabel(user.employment_type)}</td>
                 <td><div className="flex flex-wrap gap-1">{user.roles.length > 0 ? user.roles.map((role) => <RolePill key={role.role} role={role.role} />) : <span className="table-muted">未分配角色</span>}</div></td>
                 <td className="table-muted">{formatDate(user.updated_at)}</td>
-        <td><div className="flex items-center justify-end gap-2">{canInviteUsers && user.pending_invite_id ? <button type="button" className="secondary-button" onClick={() => onResend(user.pending_invite_id!)} disabled={resendingInviteId === user.pending_invite_id}><Icon name="mail" size={15} />{resendingInviteId === user.pending_invite_id ? '發送中' : '重發邀請'}</button> : null}<button type="button" className="icon-button" title="編輯員工資料與角色" aria-label={`編輯 ${user.display_name ?? user.email}`} onClick={() => onEdit(user)}><Icon name="settings" size={16} /></button></div></td>
+        <td><div className="flex items-center justify-end gap-2">{canInviteUsers && user.pending_invite_id ? <button type="button" className="secondary-button" onClick={() => onResend(user.pending_invite_id!)} disabled={resendingInviteId === user.pending_invite_id}><Icon name="mail" size={15} />{resendingInviteId === user.pending_invite_id ? '發送中' : '重發邀請'}</button> : null}<button type="button" className="icon-button" title="編輯員工資料與角色" aria-label={`編輯 ${user.display_name ?? user.email}`} disabled={user.roles.some(({ role }) => ["l1", "l2", "l3"].includes(role))} onClick={() => onEdit(user)}><Icon name="settings" size={16} /></button></div></td>
               </tr>
             ))}
           </tbody>
@@ -249,7 +253,7 @@ function MemberEditor({ user, onClose, onSaved }: { readonly user: UserDirectory
 
 function StatusPill({ value }: { readonly value: UserStatus | MembershipStatus }) { const label = value === 'active' ? '啟用' : value === 'invited' ? '已邀請' : '已停用'; return <span className={`status-pill ${value === 'active' ? 'status-success' : 'status-warning'}`}>{label}</span> }
 function RolePill({ role }: { readonly role: Role }) { return <span className="status-pill status-success">{roleLabel(role)}</span> }
-function roleLabel(role: Role): string { return role === 'founder' ? 'Founder' : role === 'admin' ? 'Admin' : role === 'advisor' ? 'Advisor' : 'Contractor' }
+function roleLabel(role: Role): string { if (role === 'l1' || role === 'l2' || role === 'l3') return role.toUpperCase(); return role === 'founder' ? 'Founder' : role === 'admin' ? 'Admin' : role === 'advisor' ? 'Advisor' : 'Contractor' }
 function employmentLabel(value: EmploymentType | null): string { return value === 'FULL_TIME' ? '正式員工' : value === 'PART_TIME' ? '兼職' : '未設定' }
 function inferredEmploymentType(roles: readonly Role[]): EmploymentType { return roles.includes('contractor') ? 'PART_TIME' : 'FULL_TIME' }
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-HK') }
@@ -267,7 +271,7 @@ function decodeUser(value: unknown): UserDirectoryEntry { if (typeof value !== '
 function decodeRole(value: unknown): UserDirectoryRole { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError('Invalid user directory role.'); const row = value as Record<string, unknown>; if (!isRole(row.role) || row.status !== 'active') throw new TypeError('Invalid user directory role.'); return { role: row.role, status: 'active' } }
 function decodeMutationReceipt(value: unknown): { readonly user_id: string; readonly receipt_id: string; readonly replayed: boolean } { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError('Invalid mutation receipt.'); const row = value as Record<string, unknown>; if (typeof row.user_id !== 'string' || typeof row.receipt_id !== 'string' || typeof row.replayed !== 'boolean') throw new TypeError('Invalid mutation receipt.'); return { user_id: row.user_id, receipt_id: row.receipt_id, replayed: row.replayed } }
 function decodeInviteReceipt(value: unknown): { readonly invite_id: string; readonly target_user_id: string } { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError('Invalid invite receipt.'); const row = value as Record<string, unknown>; if (typeof row.invite_id !== 'string' || typeof row.target_user_id !== 'string') throw new TypeError('Invalid invite receipt.'); return { invite_id: row.invite_id, target_user_id: row.target_user_id } }
-function isRole(value: unknown): value is Role { return value === 'founder' || value === 'admin' || value === 'advisor' || value === 'contractor' }
+function isRole(value: unknown): value is Role { return value === 'founder' || value === 'admin' || value === 'advisor' || value === 'contractor' || value === 'l1' || value === 'l2' || value === 'l3' }
 function isUserStatus(value: unknown): value is UserStatus { return value === 'invited' || value === 'active' || value === 'disabled' }
 function isMembershipStatus(value: unknown): value is MembershipStatus { return value === 'invited' || value === 'active' || value === 'disabled' }
 function isEmploymentType(value: unknown): value is EmploymentType { return value === 'FULL_TIME' || value === 'PART_TIME' }

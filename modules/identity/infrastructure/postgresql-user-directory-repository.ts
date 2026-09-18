@@ -70,7 +70,7 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
                   AND role_binding.organization_id = membership.organization_id
                   AND role_binding.user_id = identity_user.id
                   AND role_binding.status = 'active'
-                  AND role_binding.role IN ('founder','admin','advisor','contractor')
+                  AND role_binding.role IN ('founder','admin','advisor','contractor','l1','l2','l3')
                  LEFT JOIN LATERAL (
                    SELECT invite.id, invite.expires_at
                      FROM identity_invites AS invite

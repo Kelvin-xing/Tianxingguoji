@@ -71,10 +71,27 @@ const EXPECTED_MATRIX = Object.freeze({
     "documents.download",
   ]),
   contractor: Object.freeze(["tasks.read", "tasks.transition"]),
+  l1: Object.freeze([
+    "today.read", "cases.read", "cases.create", "cases.workflow.manage",
+    "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
+    "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
+    "students.deletion.request", "students.deletion.review", "referral_sources.read", "referral_sources.manage",
+    "schools.read", "schools.manage", "crawler.manage", "tasks.read", "tasks.create", "tasks.transition",
+    "documents.read", "documents.create", "documents.upload", "documents.download",
+  ] as const),
+  l2: Object.freeze([
+    "today.read", "cases.read", "cases.create", "cases.workflow.manage",
+    "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
+    "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
+    "students.deletion.request", "referral_sources.read", "schools.read",
+    "tasks.read", "tasks.create", "tasks.transition",
+    "documents.read", "documents.create", "documents.upload", "documents.download",
+  ] as const),
+  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download"] as const),
 } as const satisfies Readonly<Record<Release1OrganizationRole, readonly WorkspaceCapability[]>>);
 
-test("freezes the Release 1 four-role workspace capability matrix", () => {
-  assert.deepEqual(ORGANIZATION_ROLES, ["founder", "admin", "advisor", "contractor"]);
+test("keeps legacy capabilities and adds explicit trial-level entry capabilities", () => {
+  assert.deepEqual(ORGANIZATION_ROLES, ["founder", "admin", "advisor", "contractor", "l1", "l2", "l3"]);
   assert.deepEqual(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE, EXPECTED_MATRIX);
   for (const role of ORGANIZATION_ROLES) {
     assert.deepEqual(workspaceCapabilitiesForRole(role), EXPECTED_MATRIX[role]);
@@ -132,7 +149,7 @@ test("runtime validators and bootstrap evaluation fail closed for unknown vocabu
 
 test("publishes one deterministic serializable bootstrap policy manifest", () => {
   assert.equal(ACCESS_POLICY_MANIFEST_VERSION, "access-policy-manifest/v1");
-  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v15");
+  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v16");
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.manifestVersion, ACCESS_POLICY_MANIFEST_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.policyVersion, BOOTSTRAP_ACCESS_POLICY_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.defaultDecision, "deny");

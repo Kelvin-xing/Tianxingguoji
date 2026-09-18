@@ -1,4 +1,4 @@
-import type { OrganizationRole, WorkspaceCapability } from "../../access/public.ts";
+import type { OrganizationRole, WorkspaceCapability, TrialPrincipal } from "../../access/public.ts";
 
 /** Canonical identity result. Access resolves organization and roles separately. */
 export interface IdentityPrincipal {
@@ -24,6 +24,7 @@ export interface IdentitySessionActor {
   /** Request-time Access union attached by module web boundaries. */
   readonly roles?: readonly OrganizationRole[];
   readonly workspaceCapabilities?: readonly WorkspaceCapability[];
+  readonly trialPrincipal?: TrialPrincipal;
 }
 
 export type CanonicalIdentitySessionActor = IdentitySessionActor & IdentityPrincipal;

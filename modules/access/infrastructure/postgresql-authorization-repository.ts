@@ -1,4 +1,5 @@
 import "server-only";
+import { loadTrialPrincipal } from "./postgresql-trial-principal.ts";
 
 import type { AccessAuthorizationRepository } from "../application/authorization-service.ts";
 import type { AccessResolutionFacts } from "../domain/authorization.ts";
@@ -34,6 +35,7 @@ export class PostgresqlAccessAuthorizationRepository implements AccessAuthorizat
     readonly organizationId: string;
     readonly membershipId: string;
   }>): Promise<AccessResolutionFacts | null> {
+    const trialPrincipal = await loadTrialPrincipal(this.client, input);
     const result = await this.client.query<AccessRoleRow>(
       "SELECT * FROM access_resolve_workspace_context($1, $2, $3)",
       [input.userId, input.organizationId, input.membershipId],
@@ -41,6 +43,7 @@ export class PostgresqlAccessAuthorizationRepository implements AccessAuthorizat
     if (result.rows.length === 0) return null;
     const first = result.rows[0]!;
     return Object.freeze({
+      ...(trialPrincipal ? { trialPrincipal } : {}),
       userId: first.user_id,
       organizationId: first.organization_id,
       membershipId: first.membership_id,

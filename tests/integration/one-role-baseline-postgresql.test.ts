@@ -4,6 +4,8 @@ import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 
 import { Client } from "pg";
+import { assertTrialMemberCommands } from "./trial-member-command-assertions.ts";
+import { assertTrialAccessSchema } from "./trial-access-schema-assertions.ts";
 
 import {
   ONE_ROLE_BASELINE_ID,
@@ -35,7 +37,7 @@ const POSTGRES_MAJOR = 17;
 const CASE_FLOW_MIGRATION_NAME =
   "035_202608240020_036_complete_case_workflow_foundation.sql";
 const SAFE_BASELINE_POSTGRES_CODES = new Set([
-  "08003", "08006", "23503", "23505", "23514", "40001", "40P01", "42501",
+  "08003", "08006", "23502", "22P02", "42804", "23503", "23505", "23514", "40001", "40P01", "42501",
   "42601", "42703", "42883", "42P01", "42P13", "55P03", "57014", "57P01",
 ]);
 const SAFE_BASELINE_FAILURE_STAGES = new Set<OneRoleBaselineFailureStage>([
@@ -267,8 +269,14 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
       manifestSha256,
     });
     assert.equal((await seedNeonTestRelease1(target, "apply")).status, "pass");
+    await assertTrialAccessSchema(clientConfig);
     await assertPrimaryContactLifecycleInvariant(clientConfig);
     await assertCaseFlowFoundationInvariant(clientConfig);
+    await assertTrialMemberCommands(clientConfig);
+    if (process.env.TIANXING_TRIAL_BROWSER === "1") {
+      const { assertTrialMemberBrowser } = await import("./trial-member-browser-assertions.ts");
+      await assertTrialMemberBrowser(target);
+    }
 
     process.stdout.write(`${JSON.stringify({
       status: "pass",
@@ -288,7 +296,7 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
       },
       primary_contact_invariant: {
         active: "pass",
-        pending_delete: "pass",
+        pending_delete: "rejected_current_relationship",
         purged: "rejected",
         zero: "rejected",
         multiple: "rejected",
@@ -542,30 +550,28 @@ async function assertPrimaryContactLifecycleInvariant(
     stage = "fixture_create";
     await client.query("BEGIN");
     await setTenantContext(client, organizationId, actorId);
-    await client.query(`INSERT INTO crm_guardians (id,organization_id,display_name,status)
-      VALUES ($1,$3,'CRM05 Primary Guardian','active'),
-             ($2,$3,'CRM05 Alternate Guardian','active')`,
+    await client.query(`INSERT INTO crm_guardians (id,organization_id,display_name,status,email)
+      VALUES ($1,$3,'CRM05 Primary Guardian','active','primary@trial.test.invalid'),
+             ($2,$3,'CRM05 Alternate Guardian','active','alternate@trial.test.invalid')`,
     [guardianId, alternateGuardianId, organizationId]);
     await client.query(`INSERT INTO crm_students (id,organization_id,display_name,status)
       VALUES ($1,$2,'CRM05 Primary Student','active')`, [studentId, organizationId]);
     await client.query(`INSERT INTO crm_student_guardian_relationships
         (id,organization_id,student_id,guardian_id,relationship_type,is_legal_guardian,
          is_primary_contact,is_emergency_contact,is_billing_contact,notification_consent,starts_at)
-      VALUES ($1,$2,$3,$4,'other_guardian',true,true,false,false,false,transaction_timestamp())`,
+      VALUES ($1,$2,$3,$4,'court_appointed_guardian',true,true,false,false,false,transaction_timestamp())`,
     [relationshipId, organizationId, studentId, guardianId]);
     await client.query("SET CONSTRAINTS ALL IMMEDIATE");
     await client.query("COMMIT");
 
     stage = "pending_transition";
-    await client.query("BEGIN");
-    await setTenantContext(client, organizationId, actorId);
-    await client.query(`UPDATE crm_guardians
-      SET status='pending_delete',deletion_requested_at=transaction_timestamp(),
-          deletion_requested_by_user_id=$2,deletion_reason='record.lifecycle.pending_delete_requested',
-          record_version=record_version+1,updated_at=transaction_timestamp()
-      WHERE id=$1`, [guardianId, actorId]);
-    await client.query("SET CONSTRAINTS ALL IMMEDIATE");
-    await client.query("COMMIT");
+    await expectRejectedTransaction(client, organizationId, actorId, async () => {
+      await client.query(`UPDATE crm_guardians
+        SET status='pending_delete',deletion_requested_at=transaction_timestamp(),
+            deletion_requested_by_user_id=$2,deletion_reason='record.lifecycle.pending_delete_requested',
+            record_version=record_version+1,updated_at=transaction_timestamp()
+        WHERE id=$1`, [guardianId, actorId]);
+    }, "23514", "crm_guardians_current_relationship_check");
 
     stage = "zero_primary_rejection";
     await expectRejectedTransaction(client, organizationId, actorId, async () => {
@@ -581,7 +587,7 @@ async function assertPrimaryContactLifecycleInvariant(
       await client.query(`INSERT INTO crm_student_guardian_relationships
         (id,organization_id,student_id,guardian_id,relationship_type,is_legal_guardian,
          is_primary_contact,is_emergency_contact,is_billing_contact,notification_consent,starts_at)
-        VALUES ('65000000-0000-4000-8000-000000000802',$1,$2,$3,'other_guardian',true,true,
+        VALUES ('65000000-0000-4000-8000-000000000802',$1,$2,$3,'court_appointed_guardian',true,true,
           false,false,false,transaction_timestamp())`,
       [organizationId, studentId, alternateGuardianId]);
     }, "23505", "crm_relationships_one_current_primary_idx");
@@ -594,7 +600,7 @@ async function assertPrimaryContactLifecycleInvariant(
             purged_at=transaction_timestamp(),record_version=record_version+1,
             updated_at=transaction_timestamp()
         WHERE id=$1`, [guardianId, actorId]);
-    }, "23514", "crm_guardians_purge_current_relationship_check");
+    }, "23514", "crm_guardians_status_transition_check");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     writePrimaryContactInvariantFailure(stage, error);
@@ -616,6 +622,7 @@ function writePrimaryContactInvariantFailure(
       readonly code?: unknown;
       readonly constraint?: unknown;
       readonly severity?: unknown;
+      readonly column?: unknown;
     };
     if (
       typeof candidate.severity === "string"
@@ -627,7 +634,7 @@ function writePrimaryContactInvariantFailure(
         ? candidate.code
         : "OTHER";
       if (typeof candidate.constraint === "string") {
-        postgresConstraint = SAFE_PRIMARY_CONTACT_POSTGRES_CONSTRAINTS.has(candidate.constraint)
+        postgresConstraint = (SAFE_PRIMARY_CONTACT_POSTGRES_CONSTRAINTS.has(candidate.constraint) || /^crm_[a-z_]+$/.test(candidate.constraint))
           ? candidate.constraint
           : "OTHER";
       }
@@ -652,7 +659,6 @@ async function assertCaseFlowFoundationInvariant(
   const caseId = "66000000-0000-4000-8000-000000000101";
   const assessmentId = "66000000-0000-4000-8000-000000000102";
   const transitionFactId = "66000000-0000-4000-8000-000000000103";
-  const otherAdvisorBindingId = "66000000-0000-4000-8000-000000000104";
   const blockerField = "student_profile.date_of_birth";
   const signedAdvanceEvidence: SignedAdvanceDiagnosticEvidence = {
     execute_privilege: false,
@@ -716,19 +722,14 @@ async function assertCaseFlowFoundationInvariant(
     await client.query("BEGIN");
     stage = "fixture_principal_and_case";
     await setTenantContext(client, NEON_TEST_ORGANIZATION.id, founder.userId);
-    await client.query(`INSERT INTO access_role_bindings
-      (id,organization_id,membership_id,user_id,role,status,created_by_user_id)
-      VALUES ($1,$2,$3,$4,'advisor','active',$5)`, [
-      otherAdvisorBindingId, NEON_TEST_ORGANIZATION.id, otherAdvisor.membershipId,
-      otherAdvisor.userId, founder.userId,
-    ]);
     await client.query(`INSERT INTO cases_service_cases
       (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
        primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
-       workflow_status,record_version)
+       workflow_status,record_version,current_primary_advisor_assignment_id)
       VALUES ($1,$2,$3,'CASE-FLOW-PG17','k12',2090,'transfer',$4,$5,$6,'advisor','signed',
-        'active',1)`, [caseId, NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[0]!.id,
+        'active',1,gen_random_uuid())`, [caseId, NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[0]!.id,
       advisor.roleBindingId, advisor.membershipId, advisor.userId]);
+    await insertCurrentPrimaryAssignment(client, caseId);
     await client.query(`INSERT INTO cases_assessments
       (id,organization_id,service_case_id,manifest_id,status,record_version)
       VALUES ($1,$2,$3,$4,'draft',1)`, [
@@ -864,9 +865,9 @@ async function assertCaseFlowFoundationInvariant(
       async () => { await client.query(`INSERT INTO cases_service_cases
         (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
          primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
-         workflow_status,record_version)
+         workflow_status,record_version,current_primary_advisor_assignment_id)
         VALUES ('66000000-0000-4000-8000-000000000111',$1,$2,'CASE-FLOW-BACKGROUND',
-          'k12',2091,'transfer',$3,$4,$5,'advisor','background_collection','active',1)`, [
+          'k12',2091,'transfer',$3,$4,$5,'advisor','background_collection','active',1,gen_random_uuid())`, [
         NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[1]!.id, advisor.roleBindingId,
         advisor.membershipId, advisor.userId,
       ]); },
@@ -878,12 +879,12 @@ async function assertCaseFlowFoundationInvariant(
       async () => { await client.query(`INSERT INTO cases_service_cases
         (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
          primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
-         workflow_status,record_version)
+         workflow_status,record_version,current_primary_advisor_assignment_id)
         VALUES ('66000000-0000-4000-8000-000000000112',$1,$2,'CASE-FLOW-SIGNED-ONLY',
-          'k12',2092,'transfer',$3,$4,$5,'advisor','signed','active',1)`, [
+          'k12',2092,'transfer',$3,$4,$5,'advisor','signed','active',1,gen_random_uuid())`, [
         NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[1]!.id, advisor.roleBindingId,
         advisor.membershipId, advisor.userId,
-      ]); },
+      ]); await insertCurrentPrimaryAssignment(client, "66000000-0000-4000-8000-000000000112"); },
       "23514", "cases_service_cases_signed_commit_check",
     );
     stage = "founder_primary";
@@ -892,9 +893,9 @@ async function assertCaseFlowFoundationInvariant(
       async () => { await client.query(`INSERT INTO cases_service_cases
         (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
          primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
-         workflow_status,record_version)
+         workflow_status,record_version,current_primary_advisor_assignment_id)
         VALUES ('66000000-0000-4000-8000-000000000113',$1,$2,'CASE-FLOW-FOUNDER',
-          'k12',2093,'transfer',$3,$4,$5,'founder','signed','active',1)`, [
+          'k12',2093,'transfer',$3,$4,$5,'founder','signed','active',1,gen_random_uuid())`, [
         NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[1]!.id, founder.roleBindingId,
         founder.membershipId, founder.userId,
       ]); },
@@ -907,9 +908,9 @@ async function assertCaseFlowFoundationInvariant(
     await client.query(`INSERT INTO cases_service_cases
       (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,
        primary_role_binding_id,primary_membership_id,primary_user_id,primary_role,stage,
-       workflow_status,record_version)
+       workflow_status,record_version,current_primary_advisor_assignment_id)
       VALUES ('66000000-0000-4000-8000-000000000114',$1,$2,'CASE-FLOW-NONPRIMARY',
-        'k12',2094,'transfer',$3,$4,$5,'advisor','signed','active',1)`, [
+        'k12',2094,'transfer',$3,$4,$5,'advisor','signed','active',1,gen_random_uuid())`, [
       NEON_TEST_ORGANIZATION.id, NEON_TEST_STUDENTS[1]!.id, advisor.roleBindingId,
       advisor.membershipId, advisor.userId,
     ]);
@@ -926,11 +927,11 @@ async function assertCaseFlowFoundationInvariant(
     await client.query(`SELECT cases_assert_case_flow_v1_manifest($1)`, [NEON_TEST_MANIFEST_ID]);
     await client.query(`INSERT INTO cases_assessment_answers
       (id,organization_id,assessment_id,manifest_id,module_layer,module_id,module_version,
-       field_id,semantic_state,value_json,value_type,source,visibility,is_derived,updated_by_user_id)
+       field_id,semantic_state,value_json,value_type,source,visibility,is_derived,updated_by_user_id,revision_number)
       SELECT gen_random_uuid(),$1,$2,field.manifest_id,field.module_layer,field.module_id,
              field.module_version,field.field_id,'provided',
              jsonb_build_object('type',field.value_type,'value','synthetic'),field.value_type,
-             'advisor_input',field.visibility,false,$3
+             'advisor_input',field.visibility,false,$3,1
         FROM cases_schema_manifest_fields AS field
        WHERE field.manifest_id=$4`, [
       NEON_TEST_ORGANIZATION.id, assessmentId, advisor.userId, NEON_TEST_MANIFEST_ID,
@@ -949,12 +950,7 @@ async function assertCaseFlowFoundationInvariant(
       await expectRejectedTransaction(
         client, NEON_TEST_ORGANIZATION.id, advisor.userId,
         async () => {
-          await client.query(`UPDATE cases_assessment_answers
-            SET semantic_state=$3,value_json=NULL,value_type=NULL,record_version=record_version+1,
-                updated_by_user_id=$4,updated_at=transaction_timestamp()
-            WHERE assessment_id=$1 AND field_id=$2`, [
-            assessmentId, blockerField, semanticState, advisor.userId,
-          ]);
+          await insertUnknownAnswerRevision(client, assessmentId, blockerField, semanticState, advisor.userId);
           await client.query(`UPDATE cases_assessments
             SET status='background_complete',record_version=record_version+1,
                 updated_at=transaction_timestamp() WHERE id=$1`, [assessmentId]);
@@ -973,29 +969,27 @@ async function assertCaseFlowFoundationInvariant(
 
     stage = "selection_blocker_rejections";
     for (const semanticState of ["unknown", "declined_to_provide", "not_applicable"] as const) {
-      await expectRejectedTransaction(
-        client, NEON_TEST_ORGANIZATION.id, advisor.userId,
-        async () => {
-          await client.query(`UPDATE cases_assessment_answers
-            SET semantic_state=$3,value_json=NULL,value_type=NULL,record_version=record_version+1,
-                updated_by_user_id=$4,updated_at=transaction_timestamp()
-            WHERE assessment_id=$1 AND field_id=$2`, [
-            assessmentId, blockerField, semanticState, advisor.userId,
-          ]);
-          await client.query(`UPDATE cases_assessments
-            SET status='selection_ready',record_version=record_version+1,
-                updated_at=transaction_timestamp() WHERE id=$1`, [assessmentId]);
-        },
-        "23514", "cases_assessments_blockers_incomplete_check",
+      await client.query("BEGIN");
+      await setTenantContext(client, NEON_TEST_ORGANIZATION.id, advisor.userId);
+      await insertUnknownAnswerRevision(client, assessmentId, blockerField, semanticState, advisor.userId);
+      const missing = await client.query<{ field_id: string }>(
+        "SELECT field_id FROM cases_lock_assessment_blockers($1,$2,'selection_ready')",
+        [assessmentId, NEON_TEST_MANIFEST_ID],
       );
+      assert.deepEqual(missing.rows, [{ field_id: blockerField }]);
+      await client.query("ROLLBACK");
     }
     stage = "selection_ready";
     await client.query("BEGIN");
     await setTenantContext(client, NEON_TEST_ORGANIZATION.id, advisor.userId);
-    await client.query(`UPDATE cases_assessments
-      SET status='selection_ready',record_version=record_version+1,
-      updated_at=transaction_timestamp() WHERE id=$1`, [assessmentId]);
-    await client.query("COMMIT");
+    const ready = await client.query(
+      "SELECT field_id FROM cases_lock_assessment_blockers($1,$2,'selection_ready')",
+      [assessmentId, NEON_TEST_MANIFEST_ID],
+    );
+    assert.deepEqual(ready.rows, []);
+    // Selection readiness is a candidate-list precondition, not an Assessment status after 039.
+    assert.equal((await client.query("SELECT status FROM cases_assessments WHERE id=$1", [assessmentId])).rows[0].status, "background_complete");
+    await client.query("ROLLBACK");
 
     stage = "legacy_school_target_denial";
     await client.query("BEGIN");
@@ -1042,6 +1036,28 @@ async function assertCaseFlowFoundationInvariant(
   }
 }
 
+async function insertCurrentPrimaryAssignment(client: Client, caseId: string): Promise<void> {
+  await client.query(`INSERT INTO cases_primary_advisor_assignments
+    (id,organization_id,service_case_id,advisor_role_binding_id,membership_id,
+     advisor_user_id,advisor_role,starts_at,assignment_reason)
+    SELECT current_primary_advisor_assignment_id,organization_id,id,primary_role_binding_id,
+      primary_membership_id,primary_user_id,'advisor',created_at,'synthetic_baseline_fixture'
+    FROM cases_service_cases WHERE id=$1`, [caseId]);
+}
+
+async function insertUnknownAnswerRevision(
+  client: Client, assessmentId: string, fieldId: string, state: string, actorId: string,
+): Promise<void> {
+  await client.query(`INSERT INTO cases_assessment_answers
+    (id,organization_id,assessment_id,manifest_id,module_layer,module_id,module_version,
+     field_id,semantic_state,value_json,value_type,source,visibility,is_derived,updated_by_user_id,
+     revision_number,record_version)
+    SELECT gen_random_uuid(),organization_id,assessment_id,manifest_id,module_layer,module_id,
+      module_version,field_id,$3,NULL,NULL,source,visibility,false,$4,revision_number+1,revision_number+1
+    FROM cases_assessment_answers WHERE assessment_id=$1 AND field_id=$2
+    ORDER BY revision_number DESC LIMIT 1`, [assessmentId, fieldId, state, actorId]);
+}
+
 function writeCaseFlowInvariantFailure(
   stage: CaseFlowInvariantStage,
   error: unknown,
@@ -1054,6 +1070,7 @@ function writeCaseFlowInvariantFailure(
       readonly code?: unknown;
       readonly constraint?: unknown;
       readonly severity?: unknown;
+      readonly column?: unknown;
     };
     if (
       typeof candidate.severity === "string"
@@ -1077,6 +1094,7 @@ function writeCaseFlowInvariantFailure(
     stage,
     postgres_code: postgresCode,
     postgres_constraint: postgresConstraint,
+    postgres_column: typeof (error as { column?: unknown })?.column === "string" && /^[a-z_]+$/.test((error as { column: string }).column) ? (error as { column: string }).column : null,
     signed_advance: signedAdvance,
   })}\n`);
 }

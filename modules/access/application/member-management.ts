@@ -183,6 +183,9 @@ export class MemberManagementService {
       admin: this.createId(),
       advisor: this.createId(),
       contractor: this.createId(),
+      l1: this.createId(),
+      l2: this.createId(),
+      l3: this.createId(),
     });
     return this.repository.updateMemberAccess({
       organizationId: input.actor.organizationId,
@@ -295,7 +298,7 @@ function validateRoles(
   if (employmentType !== "FULL_TIME" && employmentType !== "PART_TIME") {
     throw new MemberManagementError("INVALID");
   }
-  if (!Array.isArray(values) || values.some((role) => !isOrganizationRole(role))) {
+  if (!Array.isArray(values) || values.some((role) => !isOrganizationRole(role) || ["l1", "l2", "l3"].includes(role))) {
     throw new MemberManagementError("INVALID");
   }
   const roles = [...new Set(values as readonly Release1OrganizationRole[])].sort();

@@ -16,7 +16,10 @@ export type TaskActorRole =
   | "admin"
   | "advisor"
   | "data_reviewer"
-  | "contractor";
+  | "contractor"
+  | "l1"
+  | "l2"
+  | "l3";
 
 export type TaskDenialCode =
   | "TASK_POLICY_NOT_APPROVED"
