@@ -213,7 +213,7 @@ export function createStudent(body: ApiRequestBody, idempotencyKey: string) {
   return requestApi({ path: "/api/v1/students", method: "POST", body, idempotencyKey }, decodeStudentCreateReceipt);
 }
 
-export function listIntakeOptions(query: { readonly student_q?: string; readonly advisor_q?: string; readonly source_q?: string } = {}) {
+export function listIntakeOptions(query: { readonly student_q?: string; readonly advisor_q?: string; readonly source_q?: string; readonly business_category?: "international_school" | "local_school" } = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) if (value?.trim()) params.set(key, value.trim());
   return requestApi({ path: `/api/v1/cases/intake-options?${params.toString()}` as `/${string}` }, decodeIntakeOptions);

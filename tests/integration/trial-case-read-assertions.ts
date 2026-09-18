@@ -1,3 +1,5 @@
+import { assertTrialCaseIntake } from "./trial-case-intake-assertions.ts";
+import { assertTrialCaseWriteSql } from "./trial-case-write-sql-assertions.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Client, type ClientConfig } from "pg";
@@ -57,9 +59,12 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
     }
     await client.query("SET CONSTRAINTS ALL IMMEDIATE");
     await client.query("SET CONSTRAINTS ALL DEFERRED");
+    await assertTrialCaseWriteSql(client);
+    await assertTrialCaseIntake(client);
     for (const category of ["international_school", "local_school", null]) {
       await context(founder!.userId);
       await client.query("SAVEPOINT category_fixture");
+      await context(advisor!.userId);
       const caseId = randomUUID();
       await client.query(`INSERT INTO cases_service_cases
         (id,organization_id,student_id,case_number,application_type,intake_year,admission_type,

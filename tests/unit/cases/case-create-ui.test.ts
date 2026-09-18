@@ -9,7 +9,7 @@ test("case directory keeps intake entry separate from case management", async ()
     source("components/crm/CaseIntakeWorkspace.tsx"),
     source("app/(erp)/cases/page.tsx"),
   ]);
-  assert.match(form, /listIntakeOptions\(\)/);
+  assert.match(form, /listIntakeOptions\(\{ business_category: businessCategory \}\)/);
   assert.match(form, /createK12Case\(/);
   assert.match(directory, /<Link href="\/cases\/new"/);
   assert.doesNotMatch(directory, /<Metric /);
@@ -22,7 +22,7 @@ test("case pages use the module client without direct fetch or response assertio
     source("app/(erp)/cases/page.tsx"),
   ]);
   assert.equal(files.every((content) => !/\bfetch\(|response\.json\(/.test(content)), true);
-  assert.match(files[0]!, /listIntakeOptions\(\)/);
+  assert.match(files[0]!, /listIntakeOptions\(\{ business_category: businessCategory \}\)/);
   assert.match(files[0]!, /createK12Case\(/);
   assert.match(files[1]!, /<CaseIntakeWorkspace/);
   assert.match(files[2]!, /listCases\(\)/);

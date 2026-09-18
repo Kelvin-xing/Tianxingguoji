@@ -39,7 +39,7 @@ export interface CaseWorkspaceListItem {
   readonly recordVersion: number;
   readonly availableWorkflowActions: readonly CaseWorkspaceWorkflowAction[];
   readonly updatedAt: string;
-  readonly primaryRole: "advisor";
+  readonly primaryRole: "advisor" | "founder" | "l1" | "l2";
 }
 
 export interface CaseWorkspaceDetail extends CaseWorkspaceListItem {

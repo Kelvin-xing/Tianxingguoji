@@ -25,7 +25,7 @@ interface CaseRow extends Record<string, unknown> {
   workflow_status: CaseWorkspaceListItem["workflowStatus"];
   has_submitted_target: boolean;
   updated_at: Date | string;
-  primary_role: "advisor";
+  primary_role: CaseWorkspaceListItem["primaryRole"];
   student_status: string;
   primary_user_id?: string;
   assessment_id?: string;

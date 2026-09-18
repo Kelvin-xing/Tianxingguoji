@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
+import { hasRequestCapability, evaluateTrialAccess, isK12BusinessCategory, type K12BusinessCategory, type RequestAccessActor } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -13,15 +13,12 @@ import {
   type AccessCaseIntakeOwnerPort,
   type CrmCaseIntakeOwnerPort,
 } from "../../shared/public.ts";
-import type { TenantTransaction } from "../../shared/server.ts";
 import {
   CASE_INTAKE_ADMISSION_TYPES,
   CaseIntakeError,
   isCaseIntakeError,
   type CaseIntakeAdmissionType,
-  type CaseIntakeAdvisorOption,
   type CaseIntakeCommand,
-  type CaseIntakeOption,
   type CaseIntakeOptions,
   type CaseIntakeReceipt,
 } from "../domain/intake-contract.ts";
@@ -45,11 +42,12 @@ const ADMISSION_TYPES = CASE_INTAKE_ADMISSION_TYPES;
 interface IntakeActor {
   readonly organizationId: string;
   readonly actorUserId: string;
-  readonly actorRole: "advisor";
+  readonly actorRole: "advisor" | "founder" | "l1" | "l2";
 }
 
 export interface CaseIntakeRepository {
   createCase(input: IntakeActor & {
+    readonly businessCategory?: K12BusinessCategory | null;
     readonly studentId: string;
     readonly primaryAdvisorRoleBindingId: string;
     readonly referralSourceId: string | null;
@@ -85,17 +83,19 @@ export class CaseIntakeOptionsCoordinator {
   async list(input: Readonly<{
     readonly organizationId: string;
     readonly actorUserId: string;
+    readonly businessCategory?: K12BusinessCategory | null;
     readonly studentQuery: string | null;
     readonly advisorQuery: string | null;
     readonly referralSourceQuery: string | null;
   }>): Promise<CaseIntakeOptions> {
     const [students, advisors, referralSources] = await Promise.all([
-      this.crm.listStudents({ organizationId: input.organizationId, actorUserId: input.actorUserId, query: input.studentQuery }),
-      this.access.listAdvisors({ organizationId: input.organizationId, actorUserId: input.actorUserId, query: input.advisorQuery }),
+      this.crm.listStudents({ organizationId: input.organizationId, actorUserId: input.actorUserId, query: input.studentQuery, businessCategory: input.businessCategory }),
+      this.access.listAdvisors({ organizationId: input.organizationId, actorUserId: input.actorUserId, query: input.advisorQuery, businessCategory: input.businessCategory }),
       this.crm.listReferralSources({
         organizationId: input.organizationId,
         actorUserId: input.actorUserId,
         query: input.referralSourceQuery,
+        businessCategory: input.businessCategory,
       }),
     ]);
     return Object.freeze({
@@ -127,15 +127,17 @@ export class CaseIntakeService {
   listIntakeOptions(
     actor: RequestAccessActor,
     filters: Readonly<{
+      readonly businessCategory?: K12BusinessCategory | null;
       readonly studentQuery?: string | null;
       readonly advisorQuery?: string | null;
       readonly referralSourceQuery?: string | null;
     }> = {},
   ): Promise<CaseIntakeOptions> {
-    const context = authorizeAdvisor(actor);
+    const context = authorizeAdvisor(actor, filters.businessCategory);
     const normalized = {
       organizationId: context.organizationId,
       actorUserId: context.actorUserId,
+      businessCategory: filters.businessCategory,
       studentQuery: normalizeQuery(filters.studentQuery),
       advisorQuery: normalizeQuery(filters.advisorQuery),
       referralSourceQuery: normalizeQuery(filters.referralSourceQuery),
@@ -147,7 +149,7 @@ export class CaseIntakeService {
     readonly actor: RequestAccessActor;
     readonly command: CaseIntakeCommand;
   }>): Promise<CaseIntakeReceipt> {
-    const context = authorizeAdvisor(input.actor);
+    const context = authorizeAdvisor(input.actor, input.command.businessCategory);
     const command = normalizeCommand(input.command);
 
     const caseId = checkedId(this.createId());
@@ -208,6 +210,7 @@ export class CaseIntakeService {
     try {
       return await this.repository.createCase({
         ...context,
+        businessCategory: command.businessCategory ?? null,
         studentId: command.studentId,
         primaryAdvisorRoleBindingId: command.primaryAdvisorRoleBindingId,
         referralSourceId: command.referralSourceId,
@@ -223,6 +226,7 @@ export class CaseIntakeService {
         requestId: command.requestId,
         idempotencyKey: command.idempotencyKey,
         requestHash: hashRequestPayload({
+          ...(command.businessCategory ? { business_category: command.businessCategory } : {}),
           admission_type: command.admissionType,
           intake_year: command.intakeYear,
           primary_advisor_role_binding_id: command.primaryAdvisorRoleBindingId,
@@ -240,7 +244,17 @@ export class CaseIntakeService {
   }
 }
 
-function authorizeAdvisor(actor: RequestAccessActor): IntakeActor {
+function authorizeAdvisor(actor: RequestAccessActor, category?: K12BusinessCategory | null): IntakeActor {
+  if (actor.trialPrincipal) {
+    const principal = actor.trialPrincipal;
+    if (!UUID.test(actor.userId) || !UUID.test(actor.organizationId)
+      || principal.userId !== actor.userId || principal.organizationId !== actor.organizationId
+      || principal.level === "l3"
+      || !evaluateTrialAccess(principal, "case.create", { organizationId: actor.organizationId, category }).allowed) {
+      throw new CaseIntakeError("CASE_INTAKE_FORBIDDEN");
+    }
+    return { organizationId: actor.organizationId, actorUserId: actor.userId, actorRole: principal.level };
+  }
   if (
     !UUID.test(actor.organizationId) ||
     !UUID.test(actor.userId) ||
@@ -258,6 +272,7 @@ function authorizeAdvisor(actor: RequestAccessActor): IntakeActor {
 
 function assertCommand(command: CaseIntakeCommand): void {
   const fields: Record<string, string> = {};
+  if (command.businessCategory != null && !isK12BusinessCategory(command.businessCategory)) fields.business_category = "invalid_category";
   if (!UUID.test(command.studentId)) fields.student_id = "invalid_uuid";
   if (!UUID.test(command.primaryAdvisorRoleBindingId)) {
     fields.primary_advisor_role_binding_id = "invalid_uuid";

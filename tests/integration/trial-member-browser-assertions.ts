@@ -37,6 +37,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const baseUrl = `http://127.0.0.1:${port}`
     server = startNextDev(directory,port,target.connectionString,baseUrl)
     await waitForNextDev(baseUrl,server)
+    // Compile the intake surfaces before browser interactions; dev HMR is not a business event.
+    for (const path of ['/api/v1/cases','/api/v1/cases/intake-options']) await fetch(`${baseUrl}${path}`,{ signal:AbortSignal.timeout(20_000) })
     browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
     const rootContext = await browser.newContext({ viewport: { width: 1280, height: 900 } })
     const page = await rootContext.newPage()
@@ -61,6 +63,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
     await page.screenshot({ path: '/tmp/access-trial-founder-levels-mobile.png', fullPage: true })
 
+    await rootContext.close()
     const restrictedContext = await browser.newContext()
     const restricted = await restrictedContext.newPage()
     await restricted.goto(`${baseUrl}/login`)
@@ -77,6 +80,52 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(version.level,'l2')
     assert.deepEqual(version.categories,['international_school'])
     assert.equal(Number(version.record_version),3)
+    assert.equal((await restrictedContext.request.get(`${baseUrl}/api/v1/cases`)).status(),200)
+    await restricted.goto(`${baseUrl}/cases/new`)
+    const loadedOptions = restricted.waitForResponse((r) => r.url().includes('/api/v1/cases/intake-options?'))
+    await restricted.getByLabel('業務分類', { exact: true }).selectOption('international_school')
+    assert.equal((await loadedOptions).status(),200)
+    await restricted.screenshot({ path: '/tmp/access-trial-case-intake-form.png', fullPage: true })
+    await restricted.getByLabel('學生', { exact: true }).selectOption({ index: 1 })
+    await restricted.getByLabel('主要顧問', { exact: true }).selectOption({ label: `${l1.name} · ${l1.email}` })
+    await restricted.getByLabel(/入學年度/).fill('2099')
+    await restricted.getByLabel(/簽署時間/).fill('2026-09-18T10:00')
+    const createdResponse = restricted.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/cases' && r.request().method() === 'POST')
+    await restricted.getByRole('button', { name: '建立案件', exact: true }).click()
+    await restricted.screenshot({ path: '/tmp/access-trial-case-intake-after-submit.png', fullPage: true })
+    const created = await createdResponse
+    assert.equal(created.status(),200)
+    await created.finished()
+    await restricted.screenshot({ path: '/tmp/access-trial-case-intake-result.png', fullPage: true })
+    await restricted.getByText('案件已建立', { exact: true }).waitFor()
+    await restricted.setViewportSize({ width: 390, height: 844 })
+    assert.equal(await restricted.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
+    await restricted.screenshot({ path: '/tmp/access-trial-case-intake-mobile.png', fullPage: true })
+    const createdData = (await created.json()).data as { case_id: string }
+    const storedCase = (await client.query('SELECT business_category,primary_role,primary_user_id FROM cases_service_cases WHERE id=$1',[createdData.case_id])).rows[0]
+    assert.equal(storedCase.business_category,'international_school')
+    assert.equal(storedCase.primary_role,'l1')
+    assert.equal(storedCase.primary_user_id,l1.user_id)
+    const replay = await restrictedContext.request.post(`${baseUrl}/api/v1/cases`, {
+      headers: { 'idempotency-key': created.request().headers()['idempotency-key']! },
+      data: created.request().postDataJSON(),
+    })
+    assert.equal(replay.status(),200)
+    const submittedBody = created.request().postDataJSON()
+    await restrictedContext.close()
+    const l2Context = await browser.newContext()
+    const l2Page = await l2Context.newPage()
+    await l2Page.goto(`${baseUrl}/login`)
+    await l2Page.getByLabel('帳戶電郵').fill(l2.email)
+    await l2Page.getByLabel('密碼', { exact: true }).fill(password)
+    await Promise.all([l2Page.waitForURL('**/today'),l2Page.getByRole('button', { name: '登入工作台', exact: true }).click()])
+    assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
+    assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
+    assert.equal((await l2Context.request.post(`${baseUrl}/api/v1/cases`, {
+      headers: { 'idempotency-key': `denied-case-${randomBytes(8).toString('hex')}` },
+      data: { ...submittedBody, business_category: 'local_school' },
+    })).status(),403)
+    process.stdout.write(JSON.stringify({ trial_case_intake_browser:'pass', l1_create:'persisted_actual_role', replay:'200', l2_cross_category:'403', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_member_browser:'pass', login:'internal_email', persistence:'reload_verified', l1_direct_api:'403', viewport:'desktop_and_390px' })+'\n')
   } finally {
     await browser?.close()
@@ -122,7 +171,9 @@ function startNextDev(directory: string, port: number, connectionString: string,
 }
 
 async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
+  child.stdout?.on('data',(chunk: Buffer) => { for (const line of chunk.toString().split('\n')) if (/ (GET|POST) \/api\/v1\/cases(?: |\?)/.test(line)) process.stdout.write(JSON.stringify({ trial_next_case_route:line.trim() })+'\n') })
   child.stdout?.resume()
+  child.stderr?.on('data',(chunk: Buffer) => { const lines=chunk.toString().split('\n').filter((line) => /Error:|Module not found|Cannot find|Failed to/.test(line)); for (const line of lines) process.stdout.write(JSON.stringify({ trial_next_error:line.replace(/postgres(?:ql)?:\/\/\S+/g,'[redacted]').slice(0,300) })+'\n') })
   child.stderr?.resume()
   for (let attempt = 0; attempt < 180; attempt += 1) {
     if (child.exitCode !== null) throw new Error('next_dev_early_exit')

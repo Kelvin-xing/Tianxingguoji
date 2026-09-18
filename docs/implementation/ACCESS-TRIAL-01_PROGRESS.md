@@ -61,3 +61,18 @@
 - 不代表整案页面可供 L1/L2 使用：页面仍会读取旧 Assessment 服务；创建、Assessment、后续工作流、任务、文件、邀请及完整浏览器验收仍未接通。目标继续保持 in_progress，未合并/推送。
 
 下一步实际入口：`modules/cases/application/intake-service.ts` / `domain/intake-contract.ts` / `infrastructure/postgresql-case-intake-repository.ts`，正式 POST 调用 intakeService，而不是 workspace 旧 createCase。当前 intake actor 固定 advisor，主负责人 owner port 在 `modules/access/infrastructure/postgresql-case-intake-owner.ts`。必须添加案件分类及 Founder/L1/L2 创建、分类内学生选项和实际等级负责人。036 中 `cases_validate_service_case_write`、`cases_advance_new_service_case`、`cases_apply_service_case_workflow_action` 以及039的 primary assignment role CHECK 仍按 advisor；新迁移从060追加，不能改已提交058/059。新类别不能从 Assessment/学生自动推断。正式需求 BR-015 已确认，无需再请求方案批准。
+
+## 案件分类与建案链路（2026-09-19，接续 105f788）
+
+本节为最新状态，取代上一节的“下一步实际入口”；总体仍为 in_progress。
+
+- 追加060迁移，未修改历史迁移。案件/主负责人关系接受实际 Founder/L1/L2 角色，仍保留旧 Advisor；新数据库函数 `cases_trial_member_can_manage` 区分未启用试用等级（NULL）与明确无权（false），锁定当前等级/分类/角色事实。试用成员创建必须提供授权分类，试用负责人也须具备对应分类；案件分类作为身份事实不被普通 UPDATE 改写。建案推进、暂停/恢复的 SQL 命令接入当前范围，保留业务状态、版本和事实记录校验。
+- 正式 intake service、repository、Access/CRM owner ports、POST 和选项 GET 接通 business_category。旧 Advisor API 可继续省略分类；试用账号不可省略或猜测分类。新负责人记录实际等级，不伪装 advisor；幂等哈希包含明确分类，重放前再次查询当前权限。
+- L2 建案选项及事务锁定只允许已关联授权分类的学生/来源；负责人选项按所选分类筛选，直接提交越权负责人也拒绝。此阶段**没有**自行给未关联任何分类的学生开放 L2 可见性；L2 新学生首次建档/首案联动仍需在 CRM 接通时完成，不能把当前选择既有学生流程称为全部 CRM 完成。
+- 真实建案页面先明确选择业务分类，再加载学生/负责人；切换分类清空此前选择并忽略旧请求结果。同步提交锁和相同请求重试使用同一幂等键；签署时间按香港时区提交。选择框提供明确可访问名称。案件列表客户端接受新的实际负责人等级。
+- 新增真实 PG helpers：`trial-case-write-sql-assertions.ts` 和 `trial-case-intake-assertions.ts`。覆盖 Founder/L1 两分类建案、L2 授权建案与跨分类拒绝、L3 拒绝、未知分类拒绝、实际角色 FK、SQL 推进/暂停、撤分类后恢复拒绝、选项范围、目标负责人范围、幂等只产生一次审计、冲突、审计失败整案回滚、撤权后原请求重放拒绝。仅合成数据，夹具回滚。
+- `TIANXING_TRIAL_BROWSER=1 node --conditions=react-server --test tests/integration/one-role-baseline-postgresql.test.ts` 最终通过，日志 `/tmp/access-trial-intake-browser.log`，明确输出 trial_case_write_sql/trial_case_intake/trial_case_reads/trial_case_intake_browser/trial_member_browser 全部 pass。新浏览器证据：内部邮箱登录，L1 在实际页面选择分类/学生/本人负责人并建案成功，独立数据库连接验证分类与真实 l1；HTTP 原键重放200；L2 跨分类选项和 POST 均403；390px 成功页无横向溢出。桌面表单和移动成功截图 `/tmp/access-trial-case-intake-form.png`、`/tmp/access-trial-case-intake-mobile.png` 已目视检查。
+- 测试调试期间观察到 Next Dev 热更新 handleMessage 触发页面重载，丢失 UI 成功提示；最终 harness 预热 API 编译并按顺序关闭前一账号 browser context 后运行成功。未修改 Next、未拦截业务请求、未关闭数据库/权限校验；测试无生产部署证据。第一次单次 readiness 超时已清理，本次最终运行18秒内主场景完成。
+- 聚焦回归139/139通过：Cases unit、CRM f2、case-intake/case-workspace route contract、case-intake boundary、one-role baseline、module boundaries；日志 `/tmp/access-trial-intake-regression.log`。类型检查与聚焦 ESLint 通过，日志 `/tmp/access-trial-intake-types.log`、`/tmp/access-trial-intake-lint.log`。生成基线 --check 通过，现为59源迁移/60生成文件，605 public objects，FORCE RLS及身份约束继续通过。
+
+下一步优先：接 `modules/cases/infrastructure/postgresql-assessment-repository.ts` 与 application AssessmentService，使新 Founder/L1 可编辑、L2 范围内可编辑、L3 禁止；目前新建案成功页“开启评估”后的完整流程仍未验收。再接 workflow repository（060只完成 SQL）、candidate list/审批/结案、CRM 首次学生建档、任务/文件及邀请等原计划剩余项。当前不能合并发布，未合并 main、未推送、未部署。

@@ -8,6 +8,9 @@ import { DeniedState, ErrorState, LoadingState, StaleState, SuccessState, Unavai
 import { ApiClientError } from '@/lib/api/client'
 
 export function CaseIntakeWorkspace() {
+  const [businessCategory, setBusinessCategory] = useState<'' | 'international_school' | 'local_school'>('')
+  const inFlight = useRef(false)
+  const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const [options, setOptions] = useState<IntakeOptionsDto | null>(null)
   const [studentId, setStudentId] = useState('')
   const [advisorId, setAdvisorId] = useState('')
@@ -16,48 +19,73 @@ export function CaseIntakeWorkspace() {
   const [admissionType, setAdmissionType] = useState<'entry' | 'transfer'>('entry')
   const [signedAt, setSignedAt] = useState('')
   const signedAtInput = useRef<HTMLInputElement>(null)
-  const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'unavailable' | 'error' | 'stale' | 'success'>('loading')
+  const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'unavailable' | 'error' | 'stale' | 'success'>('ready')
   const [errorCode, setErrorCode] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<{ readonly case_id: string; readonly assessment_url: string } | null>(null)
 
   useEffect(() => {
-    const preselected = new URLSearchParams(window.location.search).get('studentId')
-    if (preselected) setStudentId(preselected)
-    void listIntakeOptions().then((value) => { setOptions(value); setStudentId((current) => current || value.students[0]?.id || ''); setAdvisorId(value.advisors[0]?.id || ''); setState('ready') }).catch((error: unknown) => {
+    if (!businessCategory) return
+    let current = true
+    void listIntakeOptions({ business_category: businessCategory }).then((value) => {
+      if (!current) return
+      const preselected = new URLSearchParams(window.location.search).get('studentId')
+      setOptions(value)
+      setStudentId(value.students.some((item) => item.id === preselected) ? preselected! : '')
+      setAdvisorId('')
+      setState('ready')
+    }).catch((error: unknown) => {
+      if (!current) return
       const code = error instanceof ApiClientError ? error.code : 'UNAVAILABLE'
       setErrorCode(code)
       setState(code === 'FORBIDDEN' ? 'denied' : 'unavailable')
     })
-  }, [])
+    return () => { current = false }
+  }, [businessCategory])
+
+  function changeCategory(value: typeof businessCategory) {
+    setBusinessCategory(value)
+    setOptions(null)
+    setStudentId('')
+    setAdvisorId('')
+    setSourceId('')
+    setErrorCode(null)
+    setState(value ? 'loading' : 'ready')
+    attempt.current = null
+  }
 
   const selectedStudent = useMemo(() => options?.students.find((item) => item.id === studentId), [options, studentId])
   const selectedAdvisor = useMemo(() => options?.advisors.find((item) => item.id === advisorId), [options, advisorId])
   const selectedSource = useMemo(() => options?.referral_sources.find((item) => item.id === sourceId), [options, sourceId])
 
   async function submit() {
+    if (inFlight.current) return
     setErrorCode(null)
     const submittedSignedAt = signedAtInput.current?.value || signedAt
-    if (!studentId || !advisorId || !intakeYear || !submittedSignedAt) { setState('error'); setErrorCode('VALIDATION_FAILED'); return }
+    if (!businessCategory || !selectedStudent || !selectedAdvisor || !intakeYear || !submittedSignedAt) { setState('error'); setErrorCode('VALIDATION_FAILED'); return }
+    inFlight.current = true
     setState('loading')
     try {
-      const result = await createK12Case({ student_id: studentId, primary_advisor_role_binding_id: advisorId, referral_source_id: sourceId || null, intake_year: Number(intakeYear), admission_type: admissionType, signed_at: new Date(submittedSignedAt).toISOString() }, crypto.randomUUID())
+      const body = { business_category: businessCategory, student_id: studentId, primary_advisor_role_binding_id: advisorId, referral_source_id: sourceId || null, intake_year: Number(intakeYear), admission_type: admissionType, signed_at: new Date(`${submittedSignedAt}+08:00`).toISOString() }
+      const fingerprint = JSON.stringify(body)
+      if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: crypto.randomUUID() }
+      const result = await createK12Case(body, attempt.current.key)
       setReceipt({ case_id: result.case_id, assessment_url: result.assessment_url }); setState('success')
     } catch (error: unknown) {
       setErrorCode(error instanceof ApiClientError ? error.code : 'CREATE_FAILED')
       if (error instanceof ApiClientError && error.code === 'FORBIDDEN') setState('denied')
       else if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setState('stale')
       else setState(error instanceof ApiClientError && error.code === 'SERVICE_UNAVAILABLE' ? 'unavailable' : 'error')
-    }
+    } finally { inFlight.current = false }
   }
 
   if (state === 'loading' && !options) return <LoadingState title="正在載入案件選項" detail="請稍候。" />
-  if (state === 'denied') return <DeniedState title="目前帳號無法建立案件" detail="只有負責顧問可以建立案件。" onRetry={() => window.location.reload()} />
+  if (state === 'denied') return <DeniedState title="目前帳號無法建立案件" detail="目前帳號沒有此業務分類的建案權限，請重新選擇分類或聯絡創始人。" onRetry={() => window.location.reload()} />
   if (state === 'unavailable') return <UnavailableState title="案件選項暫時不可用" detail="請稍後重試。" onRetry={() => window.location.reload()} />
   if (state === 'stale') return <StaleState title="案件資料已更新" detail="請重新載入選項後再試。" onRetry={() => window.location.reload()} />
   if (state === 'success' && receipt) return <SuccessState title="案件已建立" detail="案件已建立，可以開始填寫評估。" action={<div className="flex flex-wrap gap-2"><Link className="primary-button" href={receipt.assessment_url}>開啟評估</Link><Link className="secondary-button" href="/cases">返回案件</Link></div>} />
   if (state === 'error') return <ErrorState title="案件建立未完成" detail={errorCode === 'VALIDATION_FAILED' ? '請完成學生、主要顧問、入學年度和簽署時間。' : errorCode === 'CONFLICT' ? '該學生已有相同入學年度和申請類型的進行中案件。' : '請檢查資料後重試。'} onRetry={() => setState('ready')} />
 
-  return <div className="workspace-section space-y-5"><div><h3 className="section-title">建立案件</h3><p className="section-detail">選擇學生、主要顧問和入學設定。</p></div><label className="field-label"><span>學生 *</span><select value={studentId} onChange={(event) => setStudentId(event.target.value)}><option value="">選擇學生</option>{options?.students.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><label className="field-label"><span>主要顧問 *</span><select value={advisorId} onChange={(event) => setAdvisorId(event.target.value)}><option value="">選擇顧問</option>{options?.advisors.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><label className="field-label"><span>推薦來源（可選）</span><select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">不指定</option>{options?.referral_sources.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="field-label"><span>入學年度 *</span><input type="number" min="2000" max="2200" value={intakeYear} onChange={(event) => setIntakeYear(event.target.value)} /></label><label className="field-label"><span>申請類型 *</span><select value={admissionType} onChange={(event) => setAdmissionType(event.target.value as typeof admissionType)}><option value="entry">首次入學</option><option value="transfer">插班</option></select></label></div><label className="field-label"><span>簽署時間（香港時間）*</span><input ref={signedAtInput} type="datetime-local" value={signedAt} onChange={(event) => setSignedAt(event.target.value)} onInput={(event) => setSignedAt(event.currentTarget.value)} onBlur={(event) => setSignedAt(event.currentTarget.value)} /></label><section className="inline-callout"><span>資料預覽：{selectedStudent?.display_name ?? '未選擇學生'} · {selectedAdvisor?.display_name ?? '未選擇顧問'} · {selectedSource?.display_name ?? '未指定推薦來源'} · {intakeYear} · {admissionType === 'entry' ? '首次入學' : '插班'} · {formatHongKong(signedAt)}</span></section><div className="flex justify-between gap-2"><Link href={studentId ? `/students/${studentId}` : '/cases'} className="secondary-button">取消</Link><button type="button" className="primary-button" onClick={() => void submit()} disabled={state === 'loading'}>建立案件</button></div></div>
+  return <div className="workspace-section space-y-5"><div><h3 className="section-title">建立案件</h3><p className="section-detail">先選擇業務分類，再選擇學生、案件負責人和入學設定。</p></div><label className="field-label"><span>業務分類 *</span><select aria-label="業務分類" value={businessCategory} onChange={(event) => changeCategory(event.target.value as typeof businessCategory)} disabled={state === 'loading'}><option value="">選擇業務分類</option><option value="international_school">國際學校</option><option value="local_school">本地學校</option></select></label>{businessCategory && options?.students.length === 0 ? <p role="status" className="section-detail">此分類暫無可選學生，請先完成學生建檔或聯絡有權同事。</p> : null}<label className="field-label"><span>學生 *</span><select aria-label="學生" value={studentId} onChange={(event) => setStudentId(event.target.value)}><option value="">選擇學生</option>{options?.students.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><label className="field-label"><span>主要顧問 *</span><select aria-label="主要顧問" value={advisorId} onChange={(event) => setAdvisorId(event.target.value)}><option value="">選擇顧問</option>{options?.advisors.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><label className="field-label"><span>推薦來源（可選）</span><select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">不指定</option>{options?.referral_sources.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="field-label"><span>入學年度 *</span><input type="number" min="2000" max="2200" value={intakeYear} onChange={(event) => setIntakeYear(event.target.value)} /></label><label className="field-label"><span>申請類型 *</span><select value={admissionType} onChange={(event) => setAdmissionType(event.target.value as typeof admissionType)}><option value="entry">首次入學</option><option value="transfer">插班</option></select></label></div><label className="field-label"><span>簽署時間（香港時間）*</span><input ref={signedAtInput} type="datetime-local" value={signedAt} onChange={(event) => setSignedAt(event.target.value)} onInput={(event) => setSignedAt(event.currentTarget.value)} onBlur={(event) => setSignedAt(event.currentTarget.value)} /></label><section className="inline-callout"><span>資料預覽：{selectedStudent?.display_name ?? '未選擇學生'} · {selectedAdvisor?.display_name ?? '未選擇顧問'} · {selectedSource?.display_name ?? '未指定推薦來源'} · {intakeYear} · {admissionType === 'entry' ? '首次入學' : '插班'} · {formatHongKong(signedAt)}</span></section><div className="flex justify-between gap-2"><Link href={studentId ? `/students/${studentId}` : '/cases'} className="secondary-button">取消</Link><button type="button" className="primary-button" onClick={() => void submit()} disabled={state === 'loading' || !businessCategory || !selectedStudent || !selectedAdvisor}>建立案件</button></div></div>
 }
 
 function formatHongKong(value: string) {
