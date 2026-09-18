@@ -9,6 +9,8 @@ import { PostgresqlP3TaskRepository } from "./p3-postgresql-repository.ts";
 import { PostgresqlCasesTaskFactsPort } from "../../cases/server.ts";
 import { PostgresqlAccessTaskFactsPort } from "../../access/server.ts";
 import { PostgresqlCleanTaskEvidencePort } from "../../documents/server.ts";
+import { InterviewTaskRequestConsumer } from "../application/interview-task-request-consumer.ts";
+import { PostgresqlInterviewTaskRequestFacts } from "../../cases/server.ts";
 import { ApplicationTaskRequestConsumer } from "../application/application-task-request-consumer.ts";
 import { PostgresqlCasesApplicationTaskRequestFactsPort } from "../../cases/server.ts";
 import { ApplicationSubmissionConsumer } from "../../cases/server.ts";
@@ -18,6 +20,7 @@ export interface TaskWorkflowRuntime {
   readonly service: TaskWorkspaceService;
   readonly p3Service: P3TaskService;
   readonly applicationTaskConsumer: ApplicationTaskRequestConsumer;
+  readonly interviewTaskConsumer: InterviewTaskRequestConsumer;
   readonly applicationSubmissionConsumer: ApplicationSubmissionConsumer;
 }
 
@@ -54,7 +57,7 @@ export function getTaskWorkflowRuntime(): TaskWorkflowRuntime {
       ), p3Service: new P3TaskService(new PostgresqlP3TaskRepository(
         runner, new PostgresqlCasesTaskFactsPort(), new PostgresqlAccessTaskFactsPort(),
         new PostgresqlCleanTaskEvidencePort(),
-      )), applicationTaskConsumer: new ApplicationTaskRequestConsumer(
+      )), interviewTaskConsumer: new InterviewTaskRequestConsumer(runner,new PostgresqlInterviewTaskRequestFacts()), applicationTaskConsumer: new ApplicationTaskRequestConsumer(
         runner,new PostgresqlCasesApplicationTaskRequestFactsPort(),
       ), applicationSubmissionConsumer: new ApplicationSubmissionConsumer(
         runner,new PostgresqlTasksApplicationCompletionEventFactsPort(),

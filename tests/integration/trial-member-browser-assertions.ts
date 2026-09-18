@@ -352,22 +352,27 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'submitted')
     assert.equal(await revokePage.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)
     await revokePage.screenshot({path:'/tmp/access-trial-revocation-mobile.png',fullPage:true})
-    // Synthetic interview fixture isolates the completion UI from the still separate
-    // school-invitation provisioning workflow. All writes retain real SQL constraints.
-    const interviewId=randomUUID()
-    await client.query(`INSERT INTO tasks_tasks
-      (id,organization_id,service_case_id,school_target_id,task_kind,task_key,creation_trigger,source_event_id,
-       title,task_brief,due_at,state,assignee_user_id,assignee_role,assignee_redaction_profile,owner_user_id)
-      SELECT $1,organization_id,service_case_id,school_target_id,'interview_support',$2,'case_event',$3,
-        'Synthetic interview support','Practise an introduction',due_at,'assigned',assignee_user_id,assignee_role,
-        assignee_redaction_profile,owner_user_id FROM tasks_tasks WHERE id=$4`,[interviewId,`interview-${interviewId}`,randomUUID(),automaticTaskId])
-    await client.query(`INSERT INTO tasks_task_assignments
-      (id,organization_id,task_id,assignee_user_id,assignee_role,redaction_profile,assignee_membership_id,
-       assignee_role_binding_id,case_collaborator_id,assigned_by_user_id,status,reason,assignment_reason)
-      SELECT $1,organization_id,$2,assignee_user_id,assignee_role,redaction_profile,assignee_membership_id,
-        assignee_role_binding_id,case_collaborator_id,assigned_by_user_id,'assigned','Synthetic interview','Synthetic interview'
-      FROM tasks_task_assignments WHERE task_id=$3 AND assignee_user_id=$4 ORDER BY assigned_at DESC LIMIT 1`,
-      [randomUUID(),interviewId,automaticTaskId,l3.user_id])
+    const invitationUrl=`${baseUrl}/api/v1/cases/${createdData.case_id}/school-targets/${automaticRow.school_target_id}/interview-invitations`
+    const targetBeforeInterview=(await client.query('SELECT record_version FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!
+    const invitationBody={expected_record_version:Number(targetBeforeInterview.record_version),interview_at:'2026-09-25T02:00:00Z',invitation_document_id:taskFileId}
+    assert.equal((await l3Context.request.post(invitationUrl,{headers:{'idempotency-key':randomUUID()},data:invitationBody})).status(),403)
+    const invitationKey=randomUUID()
+    const invitationResponse=await revokeContext.request.post(invitationUrl,{headers:{'idempotency-key':invitationKey},data:invitationBody})
+    assert.equal(invitationResponse.status(),200)
+    assert.equal((await invitationResponse.json()).data.automation.interview_task,'completed')
+    const invitationReplay=await revokeContext.request.post(invitationUrl,{headers:{'idempotency-key':invitationKey},data:invitationBody})
+    assert.equal(invitationReplay.status(),200)
+    const interviewRows=(await client.query("SELECT id,assignee_user_id FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[automaticRow.school_target_id])).rows
+    assert.equal(interviewRows.length,1);assert.equal(interviewRows[0]!.assignee_user_id,l1.user_id)
+    const interviewId=interviewRows[0]!.id as string
+    await revokePage.goto(`${baseUrl}/tasks/${interviewId}`)
+    await revokePage.locator(`#automatic-task-action-${interviewId}`).selectOption('reassign')
+    await revokePage.locator(`#automatic-task-reason-${interviewId}`).fill('Synthetic interview assignment')
+    await revokePage.locator(`#automatic-task-assignee-${interviewId}`).selectOption(l3.user_id)
+    await revokePage.locator('input[name="command_confirmed"]').check()
+    const interviewReassigned=revokePage.waitForResponse(r=>r.url().endsWith(`/tasks/${interviewId}/p3-transitions`)&&r.request().method()==='POST')
+    await revokePage.getByRole('button',{name:'確認更新',exact:true}).click()
+    assert.equal((await interviewReassigned).status(),200)
     const interviewPage=await l3Context.newPage()
     await interviewPage.setViewportSize({width:390,height:844})
     await interviewPage.goto(`${baseUrl}/tasks/${interviewId}`)
@@ -393,7 +398,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const savedInterview=(await client.query(`SELECT r.completion_record_json FROM tasks_tasks t JOIN tasks_task_transition_receipts r
       ON r.id=t.last_transition_receipt_id WHERE t.id=$1 AND t.state='completed'`,[interviewId])).rows[0]!
     assert.deepEqual(savedInterview.completion_record_json,{completed_at:'2026-09-18T02:00:00.000Z',interview_method:'Video interview',coaching_summary:'Practised a synthetic introduction'})
-    assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'submitted')
+    assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'interview')
     const interviewCommand=interviewResponse.request().postDataJSON()
     const interviewKey=interviewResponse.request().headers()['idempotency-key']!
     assert.equal((await l3Context.request.post(`${baseUrl}/api/v1/tasks/${interviewId}/p3-transitions`,{
@@ -402,12 +407,12 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal('case_id' in interviewDetail.task,false)
     const revokedInterview=await revokeContext.request.post(`${baseUrl}/api/v1/tasks/${interviewId}/assignment-revocations`,{
       headers:{'idempotency-key':randomUUID()},data:{assignment_id:interviewDetail.task.current_assignment.id,
-        expected_record_version:3,reason:'Synthetic interview access revoked'}})
+        expected_record_version:4,reason:'Synthetic interview access revoked'}})
     assert.equal(revokedInterview.status(),200)
     assert.equal((await l3Context.request.post(`${baseUrl}/api/v1/tasks/${interviewId}/p3-transitions`,{
       headers:{'idempotency-key':interviewKey},data:interviewCommand})).status(),404)
     await interviewPage.close()
-    process.stdout.write(JSON.stringify({trial_interview_completion:'pass',fixture:'synthetic_task',l3:'accept_form_complete_readonly',target:'unchanged'})+'\n')
+    process.stdout.write(JSON.stringify({trial_interview_completion:'pass',invitation:'formal_http_automatic_task',l3:'accept_form_complete_readonly',target:'unchanged'})+'\n')
     await revokeContext.close()
     process.stdout.write(JSON.stringify({trial_revocation_browser:'pass',l1:'ui_revoke',l3:'403_then_read_404',history:'completed_preserved'})+'\n')
     process.stdout.write(JSON.stringify({trial_application_browser:'pass',l1:'ui_reassign_l3',l3:'ui_accept_complete',target:'submitted',viewport:'390px'})+'\n')

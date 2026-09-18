@@ -92,3 +92,13 @@ export interface TasksApplicationCompletionEventFactsPort {
     organizationId: string; taskId: string;
   }>): Promise<ApplicationTaskCompletionEventFacts | null>;
 }
+
+export interface InterviewTaskRequestFacts {
+  readonly sourceEventId:string; readonly invitationId:string; readonly caseId:string; readonly targetId:string;
+  readonly interviewAt:string; readonly ownerUserId:string; readonly assigneeRole:TaskFactsAssigneeRole;
+  readonly assigneeMembershipId:string; readonly assigneeRoleBindingId:string; readonly sourceActorUserId:string;
+}
+export interface CasesInterviewTaskRequestFactsPort {
+  readSource(transaction:TaskFactsTransaction,input:Readonly<{organizationId:string;targetId:string;invitationId:string}>):Promise<string|null>;
+  readFacts(transaction:TaskFactsTransaction,input:Readonly<{organizationId:string;targetId:string;invitationId:string}>):Promise<InterviewTaskRequestFacts|null>;
+}

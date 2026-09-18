@@ -1,3 +1,5 @@
+import { InterviewTaskRequestConsumer } from "../../modules/tasks/application/interview-task-request-consumer.ts";
+import { PostgresqlInterviewTaskRequestFacts } from "../../modules/cases/infrastructure/postgresql-interview-task-request-facts.ts";
 import { InterviewInvitationService, InterviewInvitationError } from "../../modules/cases/application/interview-invitation-service.ts";
 import { PostgresqlInterviewInvitationRepository } from "../../modules/cases/infrastructure/postgresql-interview-invitation-repository.ts";
 import { assertTrialTaskDocuments } from "./trial-task-document-assertions.ts";
@@ -157,6 +159,19 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
     await assert.rejects(invitations.record({...invitation,actor:restricted}),error=>error instanceof InterviewInvitationError&&error.code==="NOT_FOUND");
     await client.query("ROLLBACK TO SAVEPOINT invitation_revocation");await client.query("RELEASE SAVEPOINT invitation_revocation");
+    await client.query("SAVEPOINT automatic_interview_delivery");
+    const interviewDelivery={organizationId:org,caseId,targetId:deliveryResult.targetId,invitationId:recordedInvitation.invitationId,requestId:randomUUID()};
+    const interviewConsumer=new InterviewTaskRequestConsumer(runner,new PostgresqlInterviewTaskRequestFacts());
+    const brokenInterviewConsumer=new InterviewTaskRequestConsumer(runner,new PostgresqlInterviewTaskRequestFacts(),undefined,{failBeforeCommit(){throw new Error("Synthetic rollback");}});
+    assert.equal(await brokenInterviewConsumer.drainForInvitation(interviewDelivery),false);
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[deliveryResult.targetId])).rows[0]!.n,0);
+    assert.equal(await interviewConsumer.drainForInvitation(interviewDelivery),true);
+    assert.equal(await interviewConsumer.drainForInvitation(interviewDelivery),true);
+    assert.equal(await interviewConsumer.drainForInvitation({...interviewDelivery,caseId:randomUUID()}),false);
+    const automaticallyCreated=(await client.query("SELECT assignee_user_id,assignee_role FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[deliveryResult.targetId])).rows;
+    assert.equal(automaticallyCreated.length,1);assert.equal(automaticallyCreated[0]!.assignee_user_id,root.userId);
+    assert.equal(automaticallyCreated[0]!.assignee_role,"founder");
+    await client.query("ROLLBACK TO SAVEPOINT automatic_interview_delivery");await client.query("RELEASE SAVEPOINT automatic_interview_delivery");
     await assert.rejects(failing.ensureTargetTask(provision),rejected("UNAVAILABLE"));
     assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE task_key=$1",[provision.taskKey])).rows[0]!.n,0);
     const interview=await service.ensureTargetTask(provision);

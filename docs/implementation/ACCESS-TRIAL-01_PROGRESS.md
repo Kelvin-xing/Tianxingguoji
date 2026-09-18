@@ -231,3 +231,15 @@
 - `/tmp/access-trial-invitation-final.log` **72/72**：一次性PG17、模块边界、任务单元；覆盖分类内L2邀请、无有效凭证拒绝、L3拒绝、提交前失败回滚、重试单次审计、同成功请求在撤销分类后拒绝，以及面试任务创建/重派/完成。类型、聚焦ESLint、diff检查通过：`/tmp/access-trial-invitation-types-final.log`、`/tmp/access-trial-invitation-lint-final.log`。
 
 未新增迁移、未执行本节浏览器/HTTP验证、未部署。下一步连接邀请事件到面试任务consumer和正式API/页面；其余原计划剩余工作、最终合并main与推送目标不变。
+
+## 面试邀请HTTP与自动任务（2026-09-19，接续 a07cbda）
+
+总体仍 `in_progress`。新增正式 `POST /api/v1/cases/:caseId/school-targets/:targetId/interview-invitations`，目前调用接口可完成登记，录入表单仍未接入。
+
+- Cases facts port通过已保存邀请fact和对应outbox事件查验学校、案件、当前负责人及真实角色；Tasks consumer不直接读取Cases私有表。面试任务默认交给当前案件负责人，截止时间采用已记录面试时间；独立指派ID、事件业务键防止重复。
+- 消费事务锁定邀请事件，创建任务/指派/任务审计并完成消息投递。失败全部回滚返回pending；相同邀请再请求可恢复。已投递事件核对已有任务的案件及学校，不因错误caseId返回成功。未新增后台轮询部署。
+- API先调用已验证邀请事务，再消费对应事件；返回明确completed/pending。严格解析请求字段、版本、时间和凭证；L3拒绝，错误映射为标准状态。原transitions/outcomes占位接口未宣称已接通。
+- `/tmp/access-trial-interview-consumer-final.log` **72/72**：真实PG17、模块边界、任务单元；新增消费失败无任务残留、恢复、重复只一条、默认Founder及错误案件拒绝。类型和聚焦ESLint通过：`/tmp/access-trial-interview-consumer-types-final.log`、`/tmp/access-trial-interview-consumer-lint.log`，diff检查通过。
+- `/tmp/access-trial-interview-invitation-browser.log` **2/2**：真实Next/Chrome+PG，已用正式邀请HTTP替换之前的SQL面试任务夹具；L3登记403，L1登记及重放200、自动任务默认L1且只有一条，页面重派L3→接受→完成→只读→撤权后旧请求404。学校保持interview，面试完成不推进录取结果。390px截图 `/tmp/access-trial-interview-mobile.png` 已查看。
+
+仍需邀请录入页面、任务必要背景/面试资料展示、pending恢复交互，以及原计划其余文档生命周期、并发、CRM/学校/邀请账号、演示与整体验收。未部署、未合并main或推送；全部授权工作完成后再执行最终合并推送。

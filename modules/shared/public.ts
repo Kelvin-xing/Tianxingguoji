@@ -45,3 +45,4 @@ export type {
   ApplicationTaskCompletionEventFacts,
   TasksApplicationCompletionEventFactsPort,
 } from "./domain/p3-task-facts.ts";
+export type { InterviewTaskRequestFacts, CasesInterviewTaskRequestFactsPort } from "./domain/p3-task-facts.ts";
