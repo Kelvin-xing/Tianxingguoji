@@ -354,7 +354,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.screenshot({path:'/tmp/access-trial-revocation-mobile.png',fullPage:true})
     const invitationUrl=`${baseUrl}/api/v1/cases/${createdData.case_id}/school-targets/${automaticRow.school_target_id}/interview-invitations`
     const targetBeforeInterview=(await client.query('SELECT record_version FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!
-    const invitationBody={expected_record_version:Number(targetBeforeInterview.record_version),interview_at:'2026-09-25T02:00:00Z',invitation_document_id:taskFileId}
+    const invitationBody={expected_record_version:Number(targetBeforeInterview.record_version),interview_at:'2026-09-25T02:00:00Z',interview_method:'Video',interview_language:'English',coaching_requirements:'Practice introduction',background_summary:'Synthetic task context',invitation_document_id:taskFileId}
     assert.equal((await l3Context.request.post(invitationUrl,{headers:{'idempotency-key':randomUUID()},data:invitationBody})).status(),403)
     const targetsForInvitation=await revokeContext.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/school-targets`)
     const documentsForInvitation=await revokeContext.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/documents`)
@@ -363,6 +363,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await revokePage.goto(`${baseUrl}/cases/${createdData.case_id}/interviews`)
     await revokePage.getByLabel('學校',{exact:true}).selectOption(automaticRow.school_target_id).catch(async error=>{await revokePage.screenshot({path:'/tmp/access-trial-invitation-load-failure.png',fullPage:true});throw error;})
     await revokePage.getByLabel('面試時間（香港時間）',{exact:true}).fill('2026-09-25T10:00')
+    await revokePage.getByLabel('面試方式',{exact:true}).fill('Video')
+    await revokePage.getByLabel('面試語言',{exact:true}).fill('English')
+    await revokePage.getByLabel('輔導要求',{exact:true}).fill('Practice introduction')
+    await revokePage.getByLabel('必要背景摘要',{exact:true}).fill('Synthetic task context')
     await revokePage.getByLabel('邀請憑證',{exact:true}).selectOption(taskFileId)
     await revokePage.getByRole('checkbox',{name:'我確認學校要求面試，並建立支援任務。',exact:true}).check()
     assert.equal(await revokePage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
@@ -389,6 +393,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const interviewPage=await l3Context.newPage()
     await interviewPage.setViewportSize({width:390,height:844})
     await interviewPage.goto(`${baseUrl}/tasks/${interviewId}`)
+    await interviewPage.getByText(/面試方式：Video/).waitFor()
+    assert.match(await interviewPage.locator("main").innerText(),/面試語言：English[\s\S]*Synthetic task context/)
     await interviewPage.locator(`#automatic-task-action-${interviewId}`).selectOption('accept')
     await interviewPage.locator('input[name="command_confirmed"]').check()
     const interviewAccepted=interviewPage.waitForResponse(r=>r.url().endsWith(`/tasks/${interviewId}/p3-transitions`)&&r.request().method()==='POST')

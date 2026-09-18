@@ -148,7 +148,7 @@ function optionFixture(schoolId: string) {
 
 test("interview invitation preserves pending receipts and rejects mismatched targets",async context=>{
   const originalFetch=globalThis.fetch;context.after(()=>{globalThis.fetch=originalFetch;});
-  const command={expected_record_version:2,interview_at:"2026-09-25T02:00:00Z",invitation_document_id:REVISION_ID};
+  const command={expected_record_version:2,interview_at:"2026-09-25T02:00:00Z",interview_method:"Video",interview_language:"English",coaching_requirements:"Practice introduction",background_summary:"Synthetic task context",invitation_document_id:REVISION_ID};
   globalThis.fetch=async(url,options)=>{
     assert.equal(url,`/api/v1/cases/${CASE_ID}/school-targets/${TARGET_ID}/interview-invitations`);
     assert.deepEqual(JSON.parse(String(options?.body)),command);

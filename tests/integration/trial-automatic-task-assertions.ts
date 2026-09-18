@@ -152,12 +152,14 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     await assert.rejects(service.ensureTargetTask(provision),rejected("CONFLICT"));
     const invitations=new InterviewInvitationService(new PostgresqlInterviewInvitationRepository(runner,new PostgresqlCleanTaskEvidencePort()));
     const invitation={actor:restricted,caseId,targetId:deliveryResult.targetId,expectedRecordVersion:Number(targetForInterview.record_version),
-      interviewAt:"2026-09-25T02:00:00Z",invitationDocumentId:taskDocuments.documentId,...keys()};
+      interviewAt:"2026-09-25T02:00:00Z",interviewMethod:"Video",interviewLanguage:"English",coachingRequirements:"Practice introduction",backgroundSummary:"Synthetic task context",invitationDocumentId:taskDocuments.documentId,...keys()};
     await assert.rejects(invitations.record({...invitation,invitationDocumentId:randomUUID(),...keys()}),error=>error instanceof InterviewInvitationError&&error.code==="EVIDENCE_REQUIRED");
     await assert.rejects(invitations.record({...invitation,actor:taskOnly,...keys()}));
     const failingInvitations=new InterviewInvitationService(new PostgresqlInterviewInvitationRepository(runner,new PostgresqlCleanTaskEvidencePort(),{failBeforeCommit(){throw new Error("Synthetic rollback");}}));
     await assert.rejects(failingInvitations.record(invitation),error=>error instanceof InterviewInvitationError&&error.code==="UNAVAILABLE");
     assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");
+    await assert.rejects(invitations.record({...invitation,backgroundSummary:" ",...keys()}),error=>error instanceof InterviewInvitationError&&error.code==="INVALID");
+    await assert.rejects(invitations.record({...invitation,coachingRequirements:"x".repeat(1501),...keys()}),error=>error instanceof InterviewInvitationError&&error.code==="INVALID");
     const recordedInvitation=await invitations.record(invitation);
     assert.deepEqual(await invitations.record(invitation),recordedInvitation);
     assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1 AND event_type='cases.interview_invitation_recorded'",[deliveryResult.targetId])).rows[0]!.n,1);
@@ -176,9 +178,10 @@ export async function assertTrialAutomaticTasks(client:Client,runner:TenantTrans
     assert.equal(await interviewConsumer.drainForInvitation(interviewDelivery),true);
     assert.equal(await interviewConsumer.drainForInvitation(interviewDelivery),true);
     assert.equal(await interviewConsumer.drainForInvitation({...interviewDelivery,caseId:randomUUID()}),false);
-    const automaticallyCreated=(await client.query("SELECT assignee_user_id,assignee_role FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[deliveryResult.targetId])).rows;
+    const automaticallyCreated=(await client.query("SELECT assignee_user_id,assignee_role,task_brief FROM tasks_tasks WHERE school_target_id=$1 AND task_kind='interview_support'",[deliveryResult.targetId])).rows;
     assert.equal(automaticallyCreated.length,1);assert.equal(automaticallyCreated[0]!.assignee_user_id,root.userId);
     assert.equal(automaticallyCreated[0]!.assignee_role,"founder");
+    assert.match(automaticallyCreated[0]!.task_brief,/English[\s\S]*Practice introduction[\s\S]*Synthetic task context/);
     await client.query("ROLLBACK TO SAVEPOINT automatic_interview_delivery");await client.query("RELEASE SAVEPOINT automatic_interview_delivery");
     await assert.rejects(failing.ensureTargetTask(provision),rejected("UNAVAILABLE"));
     assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE task_key=$1",[provision.taskKey])).rows[0]!.n,0);

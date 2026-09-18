@@ -95,7 +95,7 @@ export interface TasksApplicationCompletionEventFactsPort {
 
 export interface InterviewTaskRequestFacts {
   readonly sourceEventId:string; readonly invitationId:string; readonly caseId:string; readonly targetId:string;
-  readonly interviewAt:string; readonly ownerUserId:string; readonly assigneeRole:TaskFactsAssigneeRole;
+  readonly interviewAt:string; readonly taskBrief:string; readonly ownerUserId:string; readonly assigneeRole:TaskFactsAssigneeRole;
   readonly assigneeMembershipId:string; readonly assigneeRoleBindingId:string; readonly sourceActorUserId:string;
 }
 export interface CasesInterviewTaskRequestFactsPort {

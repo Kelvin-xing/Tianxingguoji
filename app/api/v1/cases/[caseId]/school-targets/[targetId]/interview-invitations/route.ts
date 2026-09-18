@@ -12,12 +12,12 @@ export async function POST(request:Request,context:{readonly params:Promise<{cas
       let body:unknown;try{body=await request.json();}catch{throw createApiError("INVALID_REQUEST");}
       if(!body||typeof body!=="object"||Array.isArray(body))throw createApiError("VALIDATION_FAILED");
       const data=body as Record<string,unknown>;
-      if(Object.keys(data).sort().join(",")!=="expected_record_version,interview_at,invitation_document_id"||
-        typeof data.expected_record_version!=="number"||typeof data.interview_at!=="string"||typeof data.invitation_document_id!=="string")throw createApiError("VALIDATION_FAILED");
+      if(Object.keys(data).sort().join(",")!=="background_summary,coaching_requirements,expected_record_version,interview_at,interview_language,interview_method,invitation_document_id"||
+        typeof data.expected_record_version!=="number"||typeof data.interview_at!=="string"||typeof data.invitation_document_id!=="string"||typeof data.interview_method!=="string"||typeof data.interview_language!=="string"||typeof data.coaching_requirements!=="string"||typeof data.background_summary!=="string")throw createApiError("VALIDATION_FAILED");
       const key=request.headers.get("idempotency-key")?.trim();if(!key)throw createApiError("INVALID_REQUEST");
       const {caseId,targetId}=await context.params;
       const result=await getInterviewInvitationService().record({actor,caseId,targetId,expectedRecordVersion:data.expected_record_version,
-        interviewAt:data.interview_at,invitationDocumentId:data.invitation_document_id,requestId:requestContext.requestId,idempotencyKey:key});
+        interviewAt:data.interview_at,interviewMethod:data.interview_method,interviewLanguage:data.interview_language,coachingRequirements:data.coaching_requirements,backgroundSummary:data.background_summary,invitationDocumentId:data.invitation_document_id,requestId:requestContext.requestId,idempotencyKey:key});
       const completed=await getTaskWorkflowRuntime().interviewTaskConsumer.drainForInvitation({organizationId:actor.organizationId,
         caseId,targetId,invitationId:result.invitationId,requestId:requestContext.requestId});
       return {target_id:result.targetId,record_version:result.recordVersion,state:result.state,invitation_id:result.invitationId,

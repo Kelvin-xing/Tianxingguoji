@@ -255,3 +255,16 @@
 - 类型及聚焦ESLint通过：`/tmp/access-trial-invitation-ui-types-final.log`、`/tmp/access-trial-invitation-ui-lint-final.log`；diff检查通过。390px截图 `/tmp/access-trial-interview-invitation-mobile.png` 已查看，无横向溢出。未新增迁移。
 
 尚未模拟浏览器pending恢复，也尚未补面试方式/语言/必要背景输入及其任务展示。原计划其他剩余开发、安全与整体验收、合并main和推送继续；未部署或改真实员工。
+
+## 面试执行背景（2026-09-19，接续 aa06dc5）
+
+总体仍 `in_progress`。已补本节执行背景；上节pending恢复浏览器检查仍未完成。
+
+- 邀请表单/API增加面试方式、语言、辅导要求、必要背景摘要；服务端验证必填与长度（方式/语言200、要求/背景1500），纳入幂等请求摘要。界面提示这些字段会提供给任务负责人，不自动抽取Assessment或联系方式。
+- 追加068迁移在不可变学校transition fact保存四个字段；历史全空字段允许保留，新服务写入完整内容。只追加迁移，不改历史SQL；当前67源迁移/68生成文件，基线生成和校验通过。
+- Cases facts port从已固定学校版本获取名称，与邀请明确填写的四个字段组成任务工作内容。自动任务保留面试时间为due_at，L3直接在既有任务必要上下文投影查看，不额外开放整案字段。字段合计受现有任务brief长度限制内的输入上限约束。
+- `/tmp/access-trial-interview-context-final.log` **53/53**：真实一次性PG17迁移dry-run/apply、模块边界、基线/客户端、Next/Chrome实际表单→邀请→自动任务→L3上下文及完成/撤权。PG检查空摘要/超长要求拒绝、任务摘要实际包含输入；浏览器验证L3任务内容。`/tmp/access-trial-interview-context-types-final.log`和聚焦ESLint日志通过，diff检查通过。
+- 修复 `tests/unit/runtime/one-role-contract.test.ts` 陈旧40/41计数：按规范源manifest逐条比较名称及SHA256，再核对生成文件多一份hardening。保留基线独立/角色/状态检查，不仅替换为另一个固定数字。
+- 390px邀请及任务截图 `/tmp/access-trial-interview-invitation-mobile.png`、`/tmp/access-trial-interview-mobile.png` 已查看；名称/方式/语言/要求/背景清楚显示，无横向溢出。
+
+下一步补浏览器提交不确定/pending恢复，继续原计划文档生命周期、并发及其余模块与整体验收。未部署、未迁移真实员工、未合并main或推送。

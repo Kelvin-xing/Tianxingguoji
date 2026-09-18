@@ -35,10 +35,10 @@ export class PostgresqlInterviewInvitationRepository implements InterviewInvitat
           const value:InterviewInvitationResult={targetId:input.targetId,recordVersion:input.expectedRecordVersion+1,state:"interview",invitationId:input.invitationId};
           await tx.query({text:`INSERT INTO cases_school_target_transition_facts
             (id,organization_id,service_case_id,school_target_id,transition_kind,from_state,to_state,actor_user_id,assignment_id,
-             from_record_version,to_record_version,interview_at,invitation_evidence_document_id,occurred_at)
-            VALUES ($1,$2,$3,$4,'workflow','submitted','interview',$5,$6,$7,$8,$9,$10,$11)`,
+             from_record_version,to_record_version,interview_at,invitation_evidence_document_id,occurred_at,interview_method,interview_language,coaching_requirements,background_summary)
+            VALUES ($1,$2,$3,$4,'workflow','submitted','interview',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
             values:[input.invitationId,context.organizationId,input.caseId,input.targetId,input.actor.userId,target.current_assignment_id,
-              input.expectedRecordVersion,value.recordVersion,input.interviewAt,input.invitationDocumentId,input.occurredAt]});
+              input.expectedRecordVersion,value.recordVersion,input.interviewAt,input.invitationDocumentId,input.occurredAt,input.interviewMethod,input.interviewLanguage,input.coachingRequirements,input.backgroundSummary]});
           await tx.query({text:"SELECT set_config('app.target_workflow_transition','authorized',true)"});
           const updated=await tx.query({text:"UPDATE cases_school_targets SET state='interview',record_version=$1,updated_at=GREATEST(updated_at,$2::timestamptz) WHERE id=$3 AND organization_id=$4 AND record_version=$5",
             values:[value.recordVersion,input.occurredAt,input.targetId,context.organizationId,input.expectedRecordVersion]});

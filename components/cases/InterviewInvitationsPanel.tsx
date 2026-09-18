@@ -9,6 +9,7 @@ export function InterviewInvitationsPanel({caseId}:{readonly caseId:string}) {
   const [view,setView]=useState<SchoolTargetsView|null>(null),[files,setFiles]=useState<readonly DocumentListItem[]>([]);
   const [notice,setNotice]=useState(""),[loading,setLoading]=useState(true),[pending,setPending]=useState(false);
   const [targetId,setTargetId]=useState(""),[time,setTime]=useState(""),[documentId,setDocumentId]=useState(""),[confirmed,setConfirmed]=useState(false);
+  const [method,setMethod]=useState(""),[language,setLanguage]=useState(""),[requirements,setRequirements]=useState(""),[background,setBackground]=useState("");
   const [retrying,setRetrying]=useState(false);
   const attempt=useRef<{targetId:string;input:InterviewInvitationInput;key:string}|null>(null);
   const busy=useRef(false);
@@ -29,7 +30,7 @@ export function InterviewInvitationsPanel({caseId}:{readonly caseId:string}) {
     if(!attempt.current){
       const date=new Date(`${time}:00+08:00`);
       if(!Number.isFinite(date.getTime())){setNotice("請填寫有效的香港面試時間。");return;}
-      attempt.current={targetId,input:{expected_record_version:target.record_version,interview_at:date.toISOString(),invitation_document_id:documentId},key:crypto.randomUUID()};
+      attempt.current={targetId,input:{expected_record_version:target.record_version,interview_at:date.toISOString(),invitation_document_id:documentId,interview_method:method.trim(),interview_language:language.trim(),coaching_requirements:requirements.trim(),background_summary:background.trim()},key:crypto.randomUUID()};
     }
     busy.current=true;setPending(true);setNotice("");
     try{
@@ -57,6 +58,11 @@ export function InterviewInvitationsPanel({caseId}:{readonly caseId:string}) {
         <option value="">選擇已提交申請的學校</option>{view.items.filter(item=>item.state==='submitted').map(item=><option key={item.target_id} value={item.target_id}>{item.school_name}</option>)}
       </select></label>
       <label className="field-label">面試時間（香港時間）<input required disabled={pending} type="datetime-local" value={time} onChange={e=>{changed();setTime(e.target.value);}}/></label>
+      <p className="section-detail">以下內容會顯示給任務負責人。只填執行所需背景，勿加入聯絡方式或整份評估。</p>
+      <label className="field-label">面試方式<input required maxLength={200} disabled={pending} value={method} onChange={e=>{changed();setMethod(e.target.value);}}/></label>
+      <label className="field-label">面試語言<input required maxLength={200} disabled={pending} value={language} onChange={e=>{changed();setLanguage(e.target.value);}}/></label>
+      <label className="field-label">輔導要求<textarea required maxLength={1500} rows={3} disabled={pending} value={requirements} onChange={e=>{changed();setRequirements(e.target.value);}}/></label>
+      <label className="field-label">必要背景摘要<textarea required maxLength={1500} rows={3} disabled={pending} value={background} onChange={e=>{changed();setBackground(e.target.value);}}/></label>
       <label className="field-label">邀請憑證<select aria-label="邀請憑證" required disabled={pending} value={documentId} onChange={e=>{changed();setDocumentId(e.target.value);}}>
         <option value="">選擇已掃描通過的文件</option>{files.map(file=><option value={file.id} key={file.id}>{file.display_name}</option>)}
       </select></label>

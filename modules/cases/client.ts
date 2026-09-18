@@ -1337,6 +1337,7 @@ function assertUnique(values: readonly string[], field: string): void {
 export interface InterviewInvitationInput {
   readonly expected_record_version:number;
   readonly interview_at:string;
+  readonly interview_method:string;readonly interview_language:string;readonly coaching_requirements:string;readonly background_summary:string;
   readonly invitation_document_id:string;
 }
 export async function recordInterviewInvitation(caseId:string,targetId:string,input:InterviewInvitationInput,key:string) {

@@ -9,6 +9,10 @@ export interface InterviewInvitationCommand {
   readonly targetId: string;
   readonly expectedRecordVersion: number;
   readonly interviewAt: string;
+  readonly interviewMethod:string;
+  readonly interviewLanguage:string;
+  readonly coachingRequirements:string;
+  readonly backgroundSummary:string;
   readonly invitationDocumentId: string;
   readonly requestId: string;
   readonly idempotencyKey: string;
@@ -45,6 +49,9 @@ export class InterviewInvitationService {
       !Number.isSafeInteger(input.expectedRecordVersion) || input.expectedRecordVersion<1 ||
       !/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(input.interviewAt) || !Number.isFinite(Date.parse(input.interviewAt)) ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.requestId)) throw new InterviewInvitationError("INVALID");
+    for(const [value,max] of [[input.interviewMethod,200],[input.interviewLanguage,200],[input.coachingRequirements,1500],[input.backgroundSummary,1500]] as const) {
+      if(typeof value!=="string"||value.trim().length<1||value.length>max)throw new InterviewInvitationError("INVALID");
+    }
     try { validateIdempotencyKey(input.idempotencyKey); } catch { throw new InterviewInvitationError("INVALID"); }
     const invitationId=randomUUID(), occurredAt=new Date().toISOString(), auditId=randomUUID();
     const eventType="cases.interview_invitation_recorded", version=input.expectedRecordVersion+1;
@@ -58,6 +65,6 @@ export class InterviewInvitationService {
       availableAt:occurredAt,createdAt:occurredAt});
     return this.repository.record({...input,interviewAt,invitationId,idempotencyRecordId:randomUUID(),occurredAt,
       requestHash:hashRequestPayload({case_id:input.caseId,target_id:input.targetId,expected_record_version:input.expectedRecordVersion,
-        interview_at:interviewAt,invitation_document_id:input.invitationDocumentId}),effects:buildAtomicMutationEffects({audit,outbox})});
+        interview_at:interviewAt,invitation_document_id:input.invitationDocumentId,interview_method:input.interviewMethod,interview_language:input.interviewLanguage,coaching_requirements:input.coachingRequirements,background_summary:input.backgroundSummary}),effects:buildAtomicMutationEffects({audit,outbox})});
   }
 }

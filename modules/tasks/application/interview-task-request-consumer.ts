@@ -112,7 +112,7 @@ export class InterviewTaskRequestConsumer {
          $10,CASE WHEN $10 IN ('contractor','l3') THEN 'task_only' ELSE NULL END,$11,1,$12,$12)`,
       values:[taskId,facts.caseId,facts.targetId,taskKey,facts.sourceEventId,
         "面試支援",
-         "準備學校要求的面試支援。請由案件負責人補充必要背景。",
+         facts.taskBrief,
          facts.interviewAt,facts.ownerUserId,facts.assigneeRole,facts.ownerUserId,occurredAt],
     });
     await transaction.query({
