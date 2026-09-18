@@ -179,8 +179,8 @@ export function claimAuditOutboxSourceTransaction(
 ) {
   return transaction.query<AuditOutboxDeliveryRow>({
     text: `UPDATE audit_outbox SET status='processing',attempt_count=attempt_count+1,
-                  leased_until=transaction_timestamp()+interval '2 minutes',
-                  lease_version=lease_version+1,updated_at=transaction_timestamp(),
+                  leased_until=GREATEST(clock_timestamp(),updated_at)+interval '2 minutes',
+                  lease_version=lease_version+1,updated_at=GREATEST(clock_timestamp(),updated_at),
                   record_version=record_version+1
             WHERE id=$1 AND organization_id=$2 AND status='pending' AND attempt_count < 3
         RETURNING id,audit_event_id,aggregate_id,event_type,event_version,request_id,status,attempt_count`,
@@ -192,8 +192,8 @@ export function completeAuditOutboxSourceTransaction(
   transaction: AuditOutboxTransaction,input: Readonly<{ id:string;organizationId:string }>,
 ) {
   return transaction.query({
-    text: `UPDATE audit_outbox SET status='delivered',delivered_at=transaction_timestamp(),
-                  leased_until=NULL,last_error_code=NULL,updated_at=transaction_timestamp(),
+    text: `UPDATE audit_outbox SET status='delivered',delivered_at=GREATEST(clock_timestamp(),updated_at),
+                  leased_until=NULL,last_error_code=NULL,updated_at=GREATEST(clock_timestamp(),updated_at),
                   record_version=record_version+1
             WHERE id=$1 AND organization_id=$2 AND status='processing'`,
     values:[input.id,input.organizationId],

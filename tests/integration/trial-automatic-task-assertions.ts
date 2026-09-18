@@ -1,0 +1,121 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import type { Client } from "pg";
+import { buildAccessContext, type TrialLevel } from "../../modules/access/public.ts";
+import { PostgresqlAccessTaskFactsPort } from "../../modules/access/infrastructure/postgresql-task-authorization-facts.ts";
+import { PostgresqlCasesTaskFactsPort } from "../../modules/cases/infrastructure/postgresql-task-provisioning-facts.ts";
+import { PostgresqlCasesApplicationTaskRequestFactsPort } from "../../modules/cases/infrastructure/postgresql-application-task-request-facts.ts";
+import { PostgresqlCleanTaskEvidencePort } from "../../modules/documents/infrastructure/postgresql-clean-task-evidence.ts";
+import { ApplicationTaskRequestConsumer } from "../../modules/tasks/application/application-task-request-consumer.ts";
+import { ApplicationSubmissionConsumer } from "../../modules/cases/application/application-submission-consumer.ts";
+import { PostgresqlTasksApplicationCompletionEventFactsPort } from "../../modules/tasks/infrastructure/postgresql-application-completion-event-facts.ts";
+import { P3TaskService,P3TaskError } from "../../modules/tasks/application/p3-service.ts";
+import { PostgresqlP3TaskRepository } from "../../modules/tasks/infrastructure/p3-postgresql-repository.ts";
+import { P3TaskReadService } from "../../modules/tasks/application/p3-read-service.ts";
+import { PostgresqlP3TaskReadRepository } from "../../modules/tasks/infrastructure/postgresql-p3-read-repository.ts";
+import { CaseWorkflowService } from "../../modules/cases/application/workflow-service.ts";
+import { PostgresqlCaseWorkflowRepository } from "../../modules/cases/infrastructure/postgresql-workflow-repository.ts";
+import { createPostgreSqlAdapter } from "../../modules/cases/infrastructure/postgresql.ts";
+import { TaskWorkspaceService } from "../../modules/tasks/application/workspace-service.ts";
+import { PostgresqlTaskWorkspaceRepository } from "../../modules/tasks/infrastructure/postgresql-workspace-repository.ts";
+import type { TenantTransactionRunner } from "../../modules/shared/server.ts";
+import { NEON_TEST_ORGANIZATION,NEON_TEST_PRINCIPALS } from "../../scripts/db/neon-test-synthetic-fixture.ts";
+
+export async function assertTrialAutomaticTasks(client:Client,runner:TenantTransactionRunner,caseId:string,versionId:string):Promise<void> {
+  const org=NEON_TEST_ORGANIZATION.id;
+  const [founder,l1,,l2,l3]=NEON_TEST_PRINCIPALS;
+  const actor=(person:typeof founder,level:TrialLevel)=>({ ...buildAccessContext({
+    organizationId:org,userId:person!.userId,membershipId:person!.membershipId,roles:[level],membershipRecordVersion:1,roleBindingRecordVersions:[1],
+    trialPrincipal:{ organizationId:org,userId:person!.userId,level,categories:level==="l2"?["international_school"]:[],active:true,recordVersion:1 },
+  }),role:level,sessionId:randomUUID(),capturedSessionVersion:1,reauthenticatedAtMs:null });
+  const root=actor(founder,"founder"),business=actor(l1,"l1"),restricted=actor(l2,"l2"),taskOnly=actor(l3,"l3");
+  const consumer=new ApplicationTaskRequestConsumer(runner,new PostgresqlCasesApplicationTaskRequestFactsPort());
+  const repository=new PostgresqlP3TaskRepository(runner,new PostgresqlCasesTaskFactsPort(),new PostgresqlAccessTaskFactsPort(),new PostgresqlCleanTaskEvidencePort());
+  const service=new P3TaskService(repository);
+  const workspace=new TaskWorkspaceService(new PostgresqlTaskWorkspaceRepository(runner));
+  const reads=new P3TaskReadService(new PostgresqlP3TaskReadRepository(runner));
+  const workflow=new CaseWorkflowService(new PostgresqlCaseWorkflowRepository(createPostgreSqlAdapter(runner)));
+  const keys=()=>({ requestId:randomUUID(),idempotencyKey:randomUUID() });
+  const rejected=(code:string)=>(error:unknown)=>error instanceof P3TaskError && error.code===code;
+  await client.query("SAVEPOINT trial_automatic_tasks");
+  try {
+    const delivery={organizationId:org,caseId,versionId,requestId:randomUUID()};
+    const failingConsumer=new ApplicationTaskRequestConsumer(runner,new PostgresqlCasesApplicationTaskRequestFactsPort(),undefined,{ failBeforeCommit(){throw new Error("Synthetic rollback");} });
+    assert.equal((await failingConsumer.drainForCandidateVersion(delivery)).applicationTasks,"pending");
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM tasks_tasks WHERE service_case_id=$1 AND task_kind='application_prepare_submit'",[caseId])).rows[0]!.n,0);
+    assert.deepEqual(await consumer.drainForCandidateVersion(delivery),{applicationTasks:"completed",requestedCount:1,provisionedCount:1});
+    assert.deepEqual(await consumer.drainForCandidateVersion(delivery),{applicationTasks:"completed",requestedCount:1,provisionedCount:1});
+    const tasks=await client.query("SELECT id,assignee_role FROM tasks_tasks WHERE service_case_id=$1 AND task_kind='application_prepare_submit'",[caseId]);
+    assert.equal(tasks.rowCount,1); assert.equal(tasks.rows[0]!.assignee_role,"founder");
+    const taskId=tasks.rows[0]!.id as string;
+    assert.ok((await reads.readTask(business,taskId))!.allowed_actions.includes("reassign"));
+    assert.equal(await reads.readTask(taskOnly,taskId),null);
+    assert.equal((await reads.listAssigned(taskOnly)).length,0);
+    const reassign={actor:business,taskId,action:"reassign" as const,expectedRecordVersion:1,nextAssigneeUserId:taskOnly.userId,reason:"Synthetic trial assignment",...keys()};
+    await client.query("UPDATE tasks_tasks SET owner_user_id=$1 WHERE id=$2",[business.userId,taskId]);
+    const assigned=await service.transitionTargetTask(reassign);
+    assert.equal((await client.query("SELECT owner_user_id FROM tasks_tasks WHERE id=$1",[taskId])).rows[0]!.owner_user_id,root.userId);
+    assert.equal(assigned.recordVersion,2); assert.equal(assigned.state,"assigned");
+    assert.deepEqual(await service.transitionTargetTask(reassign),assigned);
+    assert.equal((await reads.listAssigned(taskOnly)).length,1);
+    assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,["accept","reject"]);
+    await client.query("SAVEPOINT paused_automatic_tasks");
+    const caseVersion=Number((await client.query("SELECT record_version FROM cases_service_cases WHERE id=$1",[caseId])).rows[0]!.record_version);
+    await workflow.applyWorkflowAction({actor:business,caseId,command:{action:"pause",expectedRecordVersion:caseVersion,reason:"Synthetic pause",...keys()}});
+    assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,[]);
+    const paused=await workspace.detail(taskOnly,taskId);
+    assert.deepEqual(paused!.task.allowedActions,[]); assert.deepEqual(paused!.task.availableTransitions,[]);
+    await assert.rejects(service.transitionTargetTask({actor:taskOnly,taskId,action:"accept",expectedRecordVersion:2,...keys()}),rejected("NOT_FOUND"));
+    await client.query("ROLLBACK TO SAVEPOINT paused_automatic_tasks");
+    await client.query("RELEASE SAVEPOINT paused_automatic_tasks");
+    await client.query("SAVEPOINT rejected_automatic_task");
+    const reject={actor:taskOnly,taskId,action:"reject" as const,expectedRecordVersion:2,reason:"Synthetic rejection",...keys()};
+    assert.equal((await service.transitionTargetTask(reject)).recordVersion,3);
+    assert.equal(await reads.readTask(taskOnly,taskId),null);
+    await assert.rejects(service.transitionTargetTask(reject),rejected("NOT_FOUND"));
+    assert.equal((await service.transitionTargetTask({...reassign,actor:restricted,expectedRecordVersion:3,...keys()})).recordVersion,4);
+    assert.equal((await service.transitionTargetTask({actor:business,taskId,action:"cancel",expectedRecordVersion:4,reason:"Synthetic cancel",...keys()})).recordVersion,5);
+    assert.equal(await reads.readTask(taskOnly,taskId),null);
+    await client.query("ROLLBACK TO SAVEPOINT rejected_automatic_task");
+    await client.query("RELEASE SAVEPOINT rejected_automatic_task");
+    const failing=new P3TaskService(new PostgresqlP3TaskRepository(runner,new PostgresqlCasesTaskFactsPort(),new PostgresqlAccessTaskFactsPort(),new PostgresqlCleanTaskEvidencePort(),{
+      failBeforeCommit(){throw new Error("Synthetic task mutation rollback");}
+    }));
+    await assert.rejects(failing.transitionTargetTask({actor:taskOnly,taskId,action:"accept",expectedRecordVersion:2,...keys()}),rejected("UNAVAILABLE"));
+    assert.equal((await reads.readTask(taskOnly,taskId))!.record_version,2);
+    const accept={actor:taskOnly,taskId,action:"accept" as const,expectedRecordVersion:2,...keys()};
+    assert.equal((await service.transitionTargetTask(accept)).recordVersion,3);
+    const completion={submitted_at:"2026-09-18T00:00:00.000Z",submission_channel:"school_portal",submitter_user_id:taskOnly.userId,
+      checklist_snapshot:{all_required_items_complete:true,confirmed_at:"2026-09-18T00:00:00.000Z"},official_submission_reference:"SYNTHETIC-REFERENCE",no_reference_declared:false};
+    const complete={actor:taskOnly,taskId,action:"complete" as const,expectedRecordVersion:3,completionRecord:completion,...keys()};
+    await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,submitter_user_id:root.userId},...keys()}),rejected("COMPLETION_INVALID"));
+    await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,checklist_snapshot:{...completion.checklist_snapshot,all_required_items_complete:false}},...keys()}),rejected("COMPLETION_INVALID"));
+    await assert.rejects(service.transitionTargetTask({...complete,completionRecord:{...completion,official_submission_reference:null,no_reference_declared:true},evidenceReference:randomUUID(),...keys()}),rejected("COMPLETION_INVALID"));
+    const completed=await service.transitionTargetTask(complete);
+    assert.equal(completed.state,"completed"); assert.equal(completed.recordVersion,4);
+    assert.deepEqual(await service.transitionTargetTask(complete),completed);
+    assert.deepEqual((await reads.readTask(taskOnly,taskId))!.allowed_actions,[]);
+    const submissions=new ApplicationSubmissionConsumer(runner,new PostgresqlTasksApplicationCompletionEventFactsPort(),new PostgresqlCleanTaskEvidencePort());
+    const deliveryResult=await submissions.drainForTask({organizationId:org,taskId,requestId:randomUUID()});
+    assert.equal(deliveryResult.targetTransition,"completed");
+    assert.deepEqual(await submissions.drainForTask({organizationId:org,taskId,requestId:randomUUID()}),deliveryResult);
+    assert.equal((await client.query("SELECT state FROM cases_school_targets WHERE id=$1",[deliveryResult.targetId])).rows[0]!.state,"submitted");
+    const detail=await workspace.detail(taskOnly,taskId);
+    assert.equal(detail!.audience,"assigned_task"); assert.equal(detail!.task.state,"completed");
+    assert.deepEqual(detail!.task.allowedActions,[]); assert.equal("caseId" in detail!.task,false);
+    await client.query("SAVEPOINT revoked_automatic_scope");
+    await client.query("SELECT set_config('app.actor_user_id',$1,true)",[root.userId]);
+    await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
+    await assert.rejects(service.transitionTargetTask({...reassign,actor:restricted,...keys()}),rejected("NOT_FOUND"));
+    await client.query("ROLLBACK TO SAVEPOINT revoked_automatic_scope");
+    await client.query("RELEASE SAVEPOINT revoked_automatic_scope");
+    await client.query("UPDATE tasks_task_assignments SET ended_at=clock_timestamp(),status='removed',record_version=record_version+1,updated_at=clock_timestamp() WHERE task_id=$1 AND ended_at IS NULL",[taskId]);
+    await assert.rejects(service.transitionTargetTask(complete),rejected("NOT_FOUND"));
+    assert.equal(await workspace.detail(taskOnly,taskId),null);
+    assert.equal(await reads.readTask(taskOnly,taskId),null);
+    process.stdout.write(JSON.stringify({trial_automatic_tasks:"pass",consumer:"single_delivery_actual_role",l1:"reassign_l3",completion:"receipt_conditions_enforced",l3_completed:"readonly",revoked_replay:"denied"})+"\n");
+  } finally {
+    await client.query("ROLLBACK TO SAVEPOINT trial_automatic_tasks");
+    await client.query("RELEASE SAVEPOINT trial_automatic_tasks");
+  }
+}

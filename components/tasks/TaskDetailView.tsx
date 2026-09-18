@@ -129,6 +129,9 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
                 : "任務已更新，內容已重新載入。"}</span>
         </div>
       ) : null}
+      {task.available_transitions.length === 0 && task.allowed_actions.length === 0 ? (
+        <div className="inline-callout" role="status"><Icon name="shield" size={15} /><span>此任務目前為唯讀。</span></div>
+      ) : null}
       {canTransition && task.task_kind === "manual" && task.available_transitions.length > 0 ? (
         <TaskTransitionControls
           task={task}

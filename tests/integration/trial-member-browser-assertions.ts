@@ -166,6 +166,28 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     })
     assert.equal(trialTaskResponse.status(),201)
     const trialTaskId = (await trialTaskResponse.json()).data.id as string
+    const guardianResponse=await restrictedContext.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/guardian-confirmation-options`)
+    assert.equal(guardianResponse.status(),200)
+    const guardianOption=(await guardianResponse.json()).data.items[0]
+    const approvedHash=(await client.query('SELECT founder_decision_sha256 FROM cases_candidate_school_list_versions WHERE id=$1',[versionId])).rows[0]!.founder_decision_sha256
+    const guardianConfirmed=await restrictedContext.request.post(`${baseUrl}/api/v1/cases/${createdData.case_id}/candidate-lists/${versionId}/guardian-decision`,{
+      headers:{'idempotency-key':`browser-guardian-${randomBytes(8).toString('hex')}`},data:{decision:'confirmed',channel:'phone',
+        expected_case_record_version:2,expected_list_record_version:3,guardian_decided_at:new Date().toISOString(),
+        guardian_id:guardianOption.guardian_id,guardian_relationship_id:guardianOption.guardian_relationship_id,bound_founder_decision_sha256:approvedHash},
+    })
+    assert.equal(guardianConfirmed.status(),200)
+    const automaticRow=(await client.query("SELECT id,school_target_id,assignee_role FROM tasks_tasks WHERE service_case_id=$1 AND task_kind='application_prepare_submit'",[createdData.case_id])).rows[0]!
+    assert.ok(automaticRow)
+    assert.equal(automaticRow.assignee_role,'l1')
+    const automaticTaskId=automaticRow.id as string
+    await restricted.goto(`${baseUrl}/tasks/${automaticTaskId}`)
+    await restricted.getByRole('combobox').selectOption('reassign')
+    await restricted.locator(`#automatic-task-reason-${automaticTaskId}`).fill('Synthetic manager reassignment')
+    await restricted.locator(`#automatic-task-assignee-${automaticTaskId}`).selectOption(people.find((p)=>p.level==='l3')!.user_id)
+    await restricted.locator('input[name="command_confirmed"]').check()
+    const reassigned=restricted.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
+    await restricted.getByRole('button',{name:'確認更新',exact:true}).click()
+    assert.equal((await reassigned).status(),200)
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -215,6 +237,31 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.setViewportSize({ width:390,height:844 })
     assert.equal(await l3Page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)
     await l3Page.screenshot({ path:'/tmp/access-trial-l3-task-mobile.png',fullPage:true })
+    await l3Page.goto(`${baseUrl}/tasks/${automaticTaskId}`)
+    await l3Page.getByRole('combobox').selectOption('accept')
+    await l3Page.locator('input[name="command_confirmed"]').check()
+    const autoAccepted=l3Page.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
+    await l3Page.getByRole('button',{name:'確認更新',exact:true}).click()
+    assert.equal((await autoAccepted).status(),200)
+    await l3Page.reload()
+    await l3Page.getByRole('combobox').selectOption('complete')
+    await l3Page.locator('input[name="submitted_at"]').fill('2026-09-18T10:00')
+    await l3Page.locator('input[name="confirmed_at"]').fill('2026-09-18T10:00')
+    await l3Page.locator('input[name="official_reference"]').fill('SYNTHETIC-BROWSER-REFERENCE')
+    await l3Page.locator('input[name="checklist_complete"]').check()
+    await l3Page.locator('input[name="command_confirmed"]').check()
+    const autoCompleted=l3Page.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
+    await l3Page.getByRole('button',{name:'確認更新',exact:true}).click()
+    const autoCompletionResponse=await autoCompleted
+    assert.equal(autoCompletionResponse.status(),200)
+    assert.equal((await autoCompletionResponse.json()).data.automation.target_transition,'completed')
+    await l3Page.reload()
+    await l3Page.getByRole('heading',{name:'Prepare and submit school application',exact:true}).waitFor()
+    assert.equal(await l3Page.getByRole('button',{name:'確認更新',exact:true}).count(),0)
+    assert.equal((await client.query('SELECT state FROM cases_school_targets WHERE id=$1',[automaticRow.school_target_id])).rows[0]!.state,'submitted')
+    assert.equal(await l3Page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),true)
+    await l3Page.screenshot({path:'/tmp/access-trial-l3-application-task-mobile.png',fullPage:true})
+    process.stdout.write(JSON.stringify({trial_application_browser:'pass',l1:'ui_reassign_l3',l3:'ui_accept_complete',target:'submitted',viewport:'390px'})+'\n')
     process.stdout.write(JSON.stringify({ trial_manual_task_browser:'pass', l3:'accept_complete_reload_readonly', case_data:'omitted', viewport:'390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_assessment_browser:'pass', l1_edit:'persisted_after_reload', l2_scope:'200', l3_full_assessment:'403', viewport:'desktop_and_390px' })+'\n')
     process.stdout.write(JSON.stringify({ trial_candidate_browser:'pass', l1_approval:'persisted_actual_actor', l2_approval:'403', viewport:'390px' })+'\n')

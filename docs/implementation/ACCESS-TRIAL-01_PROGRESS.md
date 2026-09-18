@@ -113,3 +113,26 @@
 - 特别限制：完成任务的撤销读取边界已通过直接测试夹具持久化撤销验证，**尚无可用的完成后撤销命令/API/UI**，不得称为此功能已完成。当前手工任务 API 不可修改自动任务。任务暂停时后端拒绝写入，但任务详情按钮的只读呈现仍需补齐。
 
 下一步：接通 P3 自动任务与 application-task consumer 的实际等级/分类、当前 Assignment 校验、重放撤权、完成后只读及证据条件；补完成后撤销访问命令和界面、暂停只读展示。之后继续显式任务文件授权、CRM/学校/目标与结案、邀请等剩余接入及完整演示数据/浏览器验收。只在整个已授权计划完成并验证后整合 main、推送；不得将本节当作整体验收或生产证据。
+
+## 自动申请任务、当前权限重验与暂停只读（2026-09-19，接续 eeff511）
+
+最新状态：总体仍 `in_progress`；本节完成自动申请任务的官方提交编号路径，不代表整个 Tasks/Documents 已完成。
+
+- Access/Cases 的公开 task facts 契约接受实际 Founder/L1/L2/L3，返回明确业务分类；Access 事务读取当前员工状态、试用等级与实际 role binding，并按分类检查默认申请负责人。自动任务 consumer 保留实际等级，L3 强制 task_only；不再把新等级强制解释为 Advisor/Contractor。
+- P3 mutation 在执行和幂等重放前重查当前分类/指派。Founder/L1、分类内 L2 可重派；L3 只可操作当前指派。已完成 L3 指派保留只读，撤销后连旧完成请求的重放也被拒绝。P3 replay 使用真实操作人及持久化 resultReference，不再用组织 ID 冒充操作人。
+- 修复重派写入两次递增任务版本的问题；最终更新检查 rowCount，并同步当前案件负责人投影，避免旧 owner_user_id 阻止有权主管处理任务。保留完成记录、实际提交人、清单、官方编号/凭证校验；提供了凭证 ID 时仍须验证干净文件。
+- P3 read/list 及主任务 workspace 在 SQL 层按当前分类或当前 L3 Assignment 过滤。暂停、关闭或不可写资源返回空操作列表；详情页明确显示只读。L1 重派界面补回原来缺失但请求必填的原因输入框。
+- 追加065迁移，修复 Case workflow 在毫秒 JS 时间紧接微秒 SQL 时间时可能回退的 updated_at；只钳制为不早于既有 Case 时间，不改授权、状态边或审计要求。Audit 的源事件领取/完成同样采用单调当前时间，避免长事务中源事件晚于 transaction_timestamp 时被时间约束误拒绝。
+- 当前为 **64 源迁移 / 65 生成基线**，605 public 对象；未改历史迁移。通用迁移 planner 原动词白名单误拒绝已存在的056/057/059/063及本次065，已与 manifest 的规范文件名格式统一；顺序、校验和及 schema drift 检查保留。
+- 新 `trial-automatic-task-assertions.ts` 嵌入真实名单确认后的流程：consumer 失败回滚及恢复、重复投递只生成一次、实际 Founder 默认负责人、L1/L2 重派 L3、暂停只读及写入拒绝、L3 拒绝后失权及重派恢复、取消失权、非法提交人/未完成清单/无效凭证拒绝、官方编号完成、自动 SchoolTarget submitted、完成只读、撤权后重放拒绝。使用真实 PG17、服务/仓储/facts ports 与 outbox consumer。
+- 浏览器完整路径：真实 L1 登录、名单家长确认经正式 API 触发自动任务、L1 页面填写原因并重派 L3；L3 页面接受、填写申请记录、完成，独立数据库核验学校目标 submitted；刷新仍只读。390px 截图 `/tmp/access-trial-l3-application-task-mobile.png` 已查看，无横向溢出。日志 `/tmp/access-trial-auto-browser-final.log`，**2/2** 通过；也包含此前员工、建案、Assessment、审核、手工任务路径。
+- 最终聚焦检查 `/tmp/access-trial-auto-regression-final.log`：**117通过、0失败、1跳过**。包括一次性 PG17、tasks 单元、架构、基线、P3迁移、drift 与 outbox-audit。跳过的是旧 `outbox-audit.test.ts` 中依赖 TEST_DATABASE_URL 的历史独立用例；本轮 outbox 消费/原子性已在上面的真实一次性 PG 链路执行，不把该跳过项声称为通过。类型、聚焦 ESLint 均无输出通过：`/tmp/access-trial-auto-types-final.log`、`/tmp/access-trial-auto-lint-final.log`。
+- 一次聚焦运行曾在既有员工提升 Founder 测试返回 UNAVAILABLE，未取得当次底层错误。增加仅合成测试使用的 SQL 错误诊断后，后续 PG/浏览器/最终聚焦运行均未复现；保留记录，不能声称已定位该偶发问题。
+
+### 明确未完成与下一入口
+
+1. **L3 文件凭证路径暂时 fail closed**：P3 仓储明确拒绝 L3 直接提交案件 document UUID，防止尚未建立的 TaskDocument 授权被绕过。当前 L3 只能用官方提交编号完成申请；下一步必须实现显式 task-file links/actions，再用其当前有效且可用的文件凭证替换此临时拒绝。该限制不是最终产品方案，不能带着它宣称计划完成。
+2. 完成后撤销访问仍只有数据库边界测试，未提供命令/API/UI。需要保留完成事实、收据/审计和任务历史，同时结束 Assignment 的读取权限。
+3. 面试辅助任务的前端完成/重派目前仍沿用旧“尚未开放”分支，未做真实面试创建至完成验收。新等级接入不能等同于面试全链路完成。
+4. P3 replay 目前仍按任务当前状态重建回执，后续状态改变后重复旧请求可能返回 CONFLICT；应按持久化收据重建原结果，并保留当前权限重验。整合前还需审查 Case/target/task/identity 锁顺序与并发撤权证据。
+5. CRM 全入口、目标结果/结案、Schools/来源/通知/审计/邀请等剩余权限接入、演示数据、整体验收、正式文档 own hunks、保留原工作区修改地合并 main 并推送，仍按原计划继续。未部署、未迁移真实员工、未操作共享数据库。

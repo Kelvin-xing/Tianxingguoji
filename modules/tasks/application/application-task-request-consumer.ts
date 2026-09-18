@@ -25,12 +25,14 @@ export interface ApplicationTaskRequestConsumerHooks {
 }
 
 export class ApplicationTaskRequestConsumer {
-  constructor(
-    private readonly runner: TenantTransactionRunner,
-    private readonly facts: CasesApplicationTaskRequestFactsPort,
-    private readonly createId: () => string = randomUUID,
-    private readonly hooks: ApplicationTaskRequestConsumerHooks = {},
-  ) {}
+  private readonly runner: TenantTransactionRunner;
+  private readonly facts: CasesApplicationTaskRequestFactsPort;
+  private readonly createId: () => string;
+  private readonly hooks: ApplicationTaskRequestConsumerHooks;
+  constructor(runner:TenantTransactionRunner,facts:CasesApplicationTaskRequestFactsPort,
+    createId:()=>string=randomUUID,hooks:ApplicationTaskRequestConsumerHooks={}) {
+    this.runner=runner;this.facts=facts;this.createId=createId;this.hooks=hooks;
+  }
 
   async drainForCandidateVersion(input: Readonly<{
     organizationId: string; caseId: string; versionId: string; requestId: string;
@@ -131,7 +133,7 @@ export class ApplicationTaskRequestConsumer {
          assignee_role,assignee_redaction_profile,owner_user_id,record_version,created_at,updated_at)
        VALUES ($1,current_setting('app.organization_id')::uuid,$2,$3,
          'application_prepare_submit',$4,'case_event',$5,$6,$7,$8,'assigned',$9,
-         $10,CASE WHEN $10='contractor' THEN 'task_only' ELSE NULL END,$11,1,$12,$12)`,
+         $10,CASE WHEN $10 IN ('contractor','l3') THEN 'task_only' ELSE NULL END,$11,1,$12,$12)`,
       values:[taskId,facts.caseId,facts.targetId,taskKey,facts.sourceEventId,
         "Prepare and submit school application",
          "Prepare the required application materials and submit the application.",
@@ -144,7 +146,7 @@ export class ApplicationTaskRequestConsumer {
          assigned_by_user_id,assigned_by_actor_kind,assigned_by_actor_id,status,reason,
          assignment_reason,assigned_at,record_version,updated_at)
        VALUES ($1,current_setting('app.organization_id')::uuid,$2,$3,$4,
-         CASE WHEN $4='contractor' THEN 'task_only' ELSE NULL END,
+         CASE WHEN $4 IN ('contractor','l3') THEN 'task_only' ELSE NULL END,
          $5,$6,NULL,$7,'system',$8,'assigned','case_event','case_event',$9,1,$9)`,
       values:[taskAssignmentId,taskId,facts.assigneeUserId,facts.assigneeRole,
         facts.assigneeMembershipId,facts.assigneeRoleBindingId,facts.sourceActorUserId,facts.sourceEventId,occurredAt],

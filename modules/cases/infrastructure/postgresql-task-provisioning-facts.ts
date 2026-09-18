@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { CasesTaskFactsPort, TaskFactsTransaction } from "../../shared/public.ts";
+import type { CasesTaskFactsPort, TaskFactsTransaction, TaskFactsAssigneeRole } from "../../shared/public.ts";
 
 /** Public Cases transaction fact port consumed by Tasks.  The SQL is kept in
  * Cases so Tasks never reaches into Cases' private tables. */
@@ -24,7 +24,7 @@ export class PostgresqlCasesTaskFactsPort implements CasesTaskFactsPort {
                     assignment.id AS assignment_id, target.state,
                     assignment.assignee_user_id, assignment.assignee_role,
                     assignment.assignee_membership_id, assignment.advisor_role_binding_id,
-                    service_case.stage AS case_stage, service_case.workflow_status,
+                    service_case.business_category, service_case.stage AS case_stage, service_case.workflow_status,
                     service_case.primary_user_id AS owner_user_id,
                     (assignment.assignee_user_id = service_case.primary_user_id
                       AND assignment.assignee_role = 'advisor') AS is_primary_advisor,
@@ -42,14 +42,14 @@ export class PostgresqlCasesTaskFactsPort implements CasesTaskFactsPort {
       values: [input.organizationId, input.caseId, input.targetId, input.assignmentId],
     });
     const row = result.rows[0];
-    if (!row || !["advisor", "contractor"].includes(row.assignee_role)) return null;
+    if (!row || !["advisor", "contractor", "founder", "l1", "l2", "l3"].includes(row.assignee_role)) return null;
     return Object.freeze({
       caseId: row.case_id, targetId: row.target_id, assignmentId: row.assignment_id,
       state: row.state, assigneeUserId: row.assignee_user_id,
-      assigneeRole: row.assignee_role as "advisor" | "contractor",
+      assigneeRole: row.assignee_role as TaskFactsAssigneeRole,
       assigneeMembershipId: row.assignee_membership_id,
       assigneeRoleBindingId: row.advisor_role_binding_id,
-      caseStage: row.case_stage, workflowStatus: row.workflow_status,
+      businessCategory: row.business_category,caseStage: row.case_stage, workflowStatus: row.workflow_status,
       ownerUserId: row.owner_user_id, isPrimaryAdvisor: row.is_primary_advisor,
       collaboratorId: row.case_collaborator_id,
     });
@@ -61,6 +61,7 @@ interface CaseTaskFactRow {
   readonly state: string; readonly assignee_user_id: string;
   readonly assignee_role: string; readonly assignee_membership_id: string;
   readonly advisor_role_binding_id: string; readonly case_stage: string;
+  readonly business_category: string | null;
   readonly workflow_status: string; readonly owner_user_id: string;
   readonly is_primary_advisor: boolean; readonly case_collaborator_id: string | null;
 }

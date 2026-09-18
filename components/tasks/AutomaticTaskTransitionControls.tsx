@@ -305,7 +305,7 @@ export function AutomaticTaskTransitionControls({
             </select>
           </label>
 
-          {selectedAction === "reject" || selectedAction === "cancel" ? (
+          {selectedAction === "reject" || selectedAction === "cancel" || selectedAction === "reassign" ? (
             <label className="field-label" htmlFor={`automatic-task-reason-${task.id}`}>
               原因 <span aria-hidden="true">*</span>
               <textarea

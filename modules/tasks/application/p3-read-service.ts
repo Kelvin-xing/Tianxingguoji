@@ -1,4 +1,5 @@
-import { hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
+import type { TaskFactsAssigneeRole } from "../../shared/public.ts";
+import { compatibilityRoleForRepository,hasRequestCapability, type RequestAccessActor } from "../../access/public.ts";
 import type { P3TaskReadRepository, P3TaskReadRow } from "./p3-read-port.ts";
 
 export type { P3TaskReadRepository, P3TaskReadRow } from "./p3-read-port.ts";
@@ -20,7 +21,7 @@ export interface P3TaskReadDto {
   readonly current_assignment: Readonly<{
     readonly id: string;
     readonly assignee_user_id: string;
-    readonly assignee_role: "advisor" | "contractor";
+    readonly assignee_role: TaskFactsAssigneeRole;
     readonly status: string;
   }> | null;
   readonly allowed_actions: readonly P3ReadAction[];
@@ -80,16 +81,16 @@ export class P3TaskReadService {
   }
 }
 
-function authorize(actor: RequestAccessActor): Readonly<{ isFounder: boolean; actorRole: "founder" | "advisor" | "contractor" }> {
+function authorize(actor: RequestAccessActor): Readonly<{ isFounder: boolean; actorRole: TaskFactsAssigneeRole }> {
   if (!actor || !UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
       !hasRequestCapability(actor, "tasks.read")) {
     throw new P3TaskReadError("FORBIDDEN");
   }
   const roles = actor.roles ?? [];
   const isFounder = roles.includes("founder");
-  const actorRole = isFounder ? "founder" : roles.includes("advisor") ? "advisor" : roles.includes("contractor") ? "contractor" : null;
-  if (actorRole === null) throw new P3TaskReadError("FORBIDDEN");
-  return Object.freeze({ isFounder, actorRole });
+  const actorRole = compatibilityRoleForRepository(actor,"tasks.read");
+  if (actorRole === null || !["founder","advisor","contractor","l1","l2","l3"].includes(actorRole)) throw new P3TaskReadError("FORBIDDEN");
+  return Object.freeze({ isFounder, actorRole:actorRole as TaskFactsAssigneeRole });
 }
 
 function project(row: P3TaskReadRow, actor: RequestAccessActor): P3TaskReadDto {
@@ -120,12 +121,14 @@ function project(row: P3TaskReadRow, actor: RequestAccessActor): P3TaskReadDto {
 
 function allowedActions(row: P3TaskReadRow, actorUserId: string, actorRoles: readonly string[]): readonly P3ReadAction[] {
   const actions: P3ReadAction[] = [];
+  if (row.writable === false) return Object.freeze(actions);
   const assigned = row.current_assignment?.assignee_user_id === actorUserId;
   const owner = row.owner_user_id === actorUserId;
   if (row.state === "assigned" && assigned) actions.push("accept", "reject");
   if (row.state === "accepted" && assigned) actions.push("complete");
-  if (row.state === "assigned" && row.current_assignment === null && owner &&
+  if (row.trial_manager && ["assigned","accepted","awaiting_reassignment"].includes(row.state)) actions.push("reassign");
+  if (!row.trial_manager && row.state === "assigned" && row.current_assignment === null && owner &&
       row.task_kind === "application_prepare_submit" && actorRoles.includes("advisor")) actions.push("reassign");
-  if (owner && !["completed", "cancelled", "rejected"].includes(row.state)) actions.push("cancel");
+  if ((row.trial_manager ? row.current_assignment!==null : owner) && !["completed", "cancelled", "rejected"].includes(row.state)) actions.push("cancel");
   return Object.freeze(actions);
 }

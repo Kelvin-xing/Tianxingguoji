@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Pool, type ClientConfig } from "pg";
-import { createTenantTransactionRunner, type DatabasePool } from "../../modules/shared/infrastructure/db.ts";
+import { createTenantTransactionRunner, type DatabasePool,type DatabaseQuery } from "../../modules/shared/infrastructure/db.ts";
 import { TrialMemberManagementService, TrialMemberError } from "../../modules/access/application/trial-member-management.ts";
 import { PostgresqlTrialMemberRepository } from "../../modules/access/infrastructure/postgresql-trial-member-repository.ts";
 import { buildAccessContext, type AccessContext } from "../../modules/access/domain/authorization.ts";
@@ -10,7 +10,19 @@ import { NEON_TEST_ORGANIZATION, NEON_TEST_PRINCIPALS } from "../../scripts/db/n
 
 export async function assertTrialMemberCommands(config: ClientConfig): Promise<void> {
   const pool = new Pool({ ...config, max: 4 });
-  const runner = createTenantTransactionRunner(pool as unknown as DatabasePool, { expectedLoginUser: "tianxing_app" });
+  const diagnosticPool:DatabasePool={async connect(){
+    const connection=await pool.connect();
+    return {async query<Row>(query:DatabaseQuery){
+      try { const result=await connection.query(query.text,query.values ? [...query.values] : undefined);
+        return {rows:result.rows as unknown as readonly Row[],rowCount:result.rowCount};
+      } catch(error) {
+        const failure=error as {code?:string;constraint?:string;message?:string};
+        process.stdout.write(JSON.stringify({trial_member_sql_failure:{code:failure.code,constraint:failure.constraint,message:failure.message}})+"\n");
+        throw error;
+      }
+    },release(error){connection.release(error);}};
+  }};
+  const runner = createTenantTransactionRunner(diagnosticPool, { expectedLoginUser: "tianxing_app" });
   const repository = new PostgresqlTrialMemberRepository(runner);
   const service = new TrialMemberManagementService(repository);
   const founder = NEON_TEST_PRINCIPALS[0]!;

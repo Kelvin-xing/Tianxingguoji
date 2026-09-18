@@ -63,6 +63,7 @@
     { "name": "202609190040_061_enable_trial_candidate_authorization.sql", "sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1" },
     { "name": "202609190050_062_fix_candidate_command_runtime.sql", "sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a" },
     { "name": "202609190060_063_use_actual_target_assignment_grade.sql", "sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2" },
-    { "name": "202609190070_064_enable_actual_trial_task_grades.sql", "sha256": "e9bd2d5b579ae9f6f39a0b529f076df6e0d34c64d80d7e09973210f98f3bcd69" }
+    { "name": "202609190070_064_enable_actual_trial_task_grades.sql", "sha256": "e9bd2d5b579ae9f6f39a0b529f076df6e0d34c64d80d7e09973210f98f3bcd69" },
+    { "name": "202609190080_065_preserve_case_workflow_timestamp_order.sql", "sha256": "da85d20f4a6849dc3371cc4e31f76c0969f0df7e516b04944d8de4c168b05bc1" }
   ]
 }

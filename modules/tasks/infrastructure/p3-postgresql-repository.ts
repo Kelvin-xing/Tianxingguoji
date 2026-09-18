@@ -1,4 +1,7 @@
 import "server-only";
+import { loadTrialPrincipal } from "../../access/server.ts";
+import { compatibilityRoleForRepository,evaluateTrialAccess,isK12BusinessCategory,
+  type RequestAccessActor,type TrialPrincipal } from "../../access/public.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import {
@@ -57,6 +60,8 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
               facts.assignmentId !== input.assignmentId || facts.caseStage === "closed" || facts.workflowStatus !== "active") {
             throw new P3TaskError("NOT_FOUND");
           }
+          const principal=await currentPrincipal(transaction,input.actor,"tasks.create");
+          if (principal && !canManage(principal,facts.businessCategory)) throw new P3TaskError("FORBIDDEN");
           const expectedState = input.kind === "application_prepare_submit" ? "preparing" : "interview";
           if (facts.state !== expectedState) {
             throw new P3TaskError("CONFLICT");
@@ -70,7 +75,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
           if (!await this.accessFacts.canAssigneeOperate(transaction, {
             organizationId: input.actor.organizationId, caseId: input.caseId,
             userId: facts.assigneeUserId, kind: input.kind, assigneeRole: facts.assigneeRole,
-            isPrimaryAdvisor: facts.isPrimaryAdvisor, collaboratorId: facts.collaboratorId,
+            businessCategory:facts.businessCategory,isPrimaryAdvisor: facts.isPrimaryAdvisor, collaboratorId: facts.collaboratorId,
           })) throw new P3TaskError("FORBIDDEN");
         },
         execute: async (transaction) => {
@@ -101,7 +106,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
             values: [input.taskId, input.actor.organizationId, input.caseId, input.targetId, input.kind,
               input.taskKey, input.sourceEventId, input.title, input.brief, input.dueAt,
               facts.assigneeUserId, facts.assigneeRole,
-              facts.assigneeRole === "contractor" ? "task_only" : null, facts.ownerUserId],
+              ["contractor","l3"].includes(facts.assigneeRole) ? "task_only" : null, facts.ownerUserId],
           });
           await transaction.query({
             text: `INSERT INTO tasks_task_assignments
@@ -110,7 +115,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
                assigned_by_user_id,status,reason,assignment_reason,assigned_at,record_version,updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'assigned',$11,$11,$12,1,$12)`,
             values: [input.assignmentId, input.actor.organizationId, input.taskId, facts.assigneeUserId,
-              facts.assigneeRole, facts.assigneeRole === "contractor" ? "task_only" : null,
+              facts.assigneeRole, ["contractor","l3"].includes(facts.assigneeRole) ? "task_only" : null,
               facts.assigneeMembershipId, facts.assigneeRoleBindingId, facts.collaboratorId,
               input.actor.userId, "case_event", input.effects.audit.occurredAt],
           });
@@ -122,7 +127,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
         },
       });
       if (result.status === "executed") return result.value;
-      return this.readAcknowledgement(input.actor.organizationId, input.taskId, input.requestId, result.responseHash);
+      return this.readAcknowledgement(input.actor, result.resultReference, input.requestId, result.responseHash);
     } catch (error) { throw normalizeError(error); }
   }
 
@@ -140,11 +145,12 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
             organizationId: input.actor.organizationId, userId: input.actor.userId,
           });
           if (!actor || actor.bindings.length === 0) throw new P3TaskError("FORBIDDEN");
+          await this.revalidateTaskScope(transaction,input.actor,input.taskId);
         },
         execute: async (transaction) => this.executeTransition(transaction, input),
       });
       if (result.status === "executed") return result.value;
-      return this.readAcknowledgement(input.actor.organizationId, input.taskId, input.requestId, result.responseHash);
+      return this.readAcknowledgement(input.actor, result.resultReference, input.requestId, result.responseHash);
     } catch (error) { throw normalizeError(error); }
   }
 
@@ -156,13 +162,14 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
       values: [input.taskId, input.actor.organizationId],
     });
     const task = taskResult.rows[0];
-    if (!task) throw new P3TaskError("NOT_FOUND");
+    if (!task || !["application_prepare_submit","interview_support"].includes(task.task_kind)) throw new P3TaskError("NOT_FOUND");
     if (Number(task.record_version) !== input.expectedRecordVersion) throw new P3TaskError("STALE_VERSION");
+    const principal=await currentPrincipal(transaction,input.actor,"tasks.transition");
     const facts = await this.casesFacts.readCurrentTargetTaskFacts(transaction, {
       organizationId: input.actor.organizationId, caseId: task.service_case_id,
       targetId: task.school_target_id,
     });
-    if (!facts || facts.ownerUserId !== task.owner_user_id || facts.caseStage === "closed" || facts.workflowStatus !== "active") {
+    if (!facts || (!principal && facts.ownerUserId !== task.owner_user_id) || facts.caseStage === "closed" || facts.workflowStatus !== "active") {
       throw new P3TaskError("NOT_FOUND");
     }
     const actorFacts = await this.accessFacts.readActorBindingFacts(transaction, {
@@ -178,22 +185,20 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
       values: [task.id, input.actor.organizationId],
     });
     const assignment = assignmentResult.rows[0];
+    const manager=principal ? canManage(principal,facts.businessCategory) : task.owner_user_id===input.actor.userId &&
+      actorFacts.bindings.some((binding)=>["advisor","founder"].includes(binding.role));
     const applicationReassignmentAfterReject = input.action === "reassign" &&
-      task.task_kind === "application_prepare_submit" && task.state === "assigned" &&
-      assignment === undefined && task.owner_user_id === input.actor.userId &&
-      actorFacts.bindings.some((binding) => binding.role === "advisor");
+      (task.task_kind === "application_prepare_submit" || !!principal) && task.state === "assigned" &&
+      assignment === undefined && manager;
     if (!assignment && !applicationReassignmentAfterReject) throw new P3TaskError("CONFLICT");
-    const ownerActorRole = task.owner_user_id === input.actor.userId
-      ? actorFacts.bindings.find((binding) => binding.role === "advisor")?.role ??
-        actorFacts.bindings.find((binding) => binding.role === "founder")?.role
-      : undefined;
-    const actorRole = assignment?.assignee_user_id === input.actor.userId
-      ? actorFacts.bindings.find((binding) => binding.role === assignment.assignee_role)?.role ?? ownerActorRole
-      : ownerActorRole;
+    const ownerActorRole = manager ? (principal?.level ?? actorFacts.bindings.find((binding)=>binding.role==="advisor" || binding.role==="founder")?.role) : undefined;
+    const actorRole = assignment?.assignee_user_id===input.actor.userId
+      ? actorFacts.bindings.find((binding)=>binding.role===assignment.assignee_role)?.role ?? ownerActorRole : ownerActorRole;
 
-    let fromState = task.state;
+
+    const fromState = task.state;
     let toState: string;
-    let resultVersion = input.expectedRecordVersion + 1;
+    const resultVersion = input.expectedRecordVersion + 1;
     let receiptAssignmentId: string | null = assignment?.id ?? null;
     if (input.action === "accept") {
       if (!assignment || task.state !== "assigned" || assignment.assignee_user_id !== input.actor.userId || !actorRole) throw new P3TaskError("FORBIDDEN");
@@ -204,14 +209,14 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
       toState = "assigned";
       await transaction.query({ text: `UPDATE tasks_task_assignments SET status='rejected',ended_at=$1,ended_by_user_id=$2,end_reason=$3,updated_at=$1,record_version=record_version+1 WHERE id=$4 AND organization_id=$5`, values: [input.effects.audit.occurredAt, input.actor.userId, input.reason, assignment.id, input.actor.organizationId] });
     } else if (input.action === "cancel") {
-      if (!assignment || task.state === "completed" || task.state === "cancelled" || task.owner_user_id !== input.actor.userId || !actorRole) throw new P3TaskError("FORBIDDEN");
+      if (!assignment || task.state === "completed" || task.state === "cancelled" || !manager || !actorRole) throw new P3TaskError("FORBIDDEN");
       toState = "cancelled";
       await transaction.query({ text: `UPDATE tasks_task_assignments SET status='cancelled',ended_at=$1,ended_by_user_id=$2,end_reason=$3,updated_at=$1,record_version=record_version+1 WHERE id=$4 AND organization_id=$5`, values: [input.effects.audit.occurredAt, input.actor.userId, input.reason, assignment.id, input.actor.organizationId] });
     } else if (input.action === "reassign") {
       const historicalReassignment = assignment !== undefined &&
-        ["awaiting_reassignment", "accepted"].includes(task.state);
+        (principal ? ["assigned","awaiting_reassignment","accepted"] : ["awaiting_reassignment", "accepted"]).includes(task.state);
       if ((!applicationReassignmentAfterReject && !historicalReassignment) ||
-          task.owner_user_id !== input.actor.userId || !actorRole || !input.nextAssigneeUserId) throw new P3TaskError("FORBIDDEN");
+          !manager || !actorRole || !input.nextAssigneeUserId) throw new P3TaskError("FORBIDDEN");
       const replacement = await this.resolveReplacement(transaction, input, task, facts);
       toState = "assigned";
       if (assignment) {
@@ -225,13 +230,13 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
          VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,'assigned',$10,$10,$11,1,$11)
          RETURNING id`,
         values: [input.actor.organizationId, task.id, replacement.userId, replacement.role,
-          replacement.role === "contractor" ? "task_only" : null, replacement.membershipId,
+          ["contractor","l3"].includes(replacement.role) ? "task_only" : null, replacement.membershipId,
           replacement.roleBindingId, replacement.collaboratorId, input.actor.userId, input.reason,
           input.effects.audit.occurredAt],
       });
       receiptAssignmentId = insertedAssignment.rows[0]?.id ?? null;
       if (receiptAssignmentId === null) throw new P3TaskError("UNAVAILABLE");
-      await transaction.query({ text: `UPDATE tasks_tasks SET assignee_user_id=$1,assignee_role=$2,assignee_redaction_profile=$3,state='assigned',record_version=record_version+1,updated_at=$4 WHERE id=$5 AND organization_id=$6`, values: [replacement.userId, replacement.role, replacement.role === "contractor" ? "task_only" : null, input.effects.audit.occurredAt, task.id, input.actor.organizationId] });
+      await transaction.query({ text: `UPDATE tasks_tasks SET assignee_user_id=$1,assignee_role=$2,assignee_redaction_profile=$3,updated_at=$4 WHERE id=$5 AND organization_id=$6`, values: [replacement.userId, replacement.role, ["contractor","l3"].includes(replacement.role) ? "task_only" : null, input.effects.audit.occurredAt, task.id, input.actor.organizationId] });
     } else {
       if (!assignment || task.state !== "accepted" || assignment.assignee_user_id !== input.actor.userId || !actorRole) throw new P3TaskError("FORBIDDEN");
       if (task.task_kind === "application_prepare_submit") {
@@ -240,7 +245,10 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
         if (completion.submitter_user_id !== input.actor.userId || assignment.assignee_user_id !== input.actor.userId) throw new P3TaskError("COMPLETION_INVALID");
         if (completion.no_reference_declared === true &&
             !input.evidenceReference) throw new P3TaskError("COMPLETION_INVALID");
-        if (completion.no_reference_declared === true &&
+        // BR-015: task file grants must be wired before L3 can cite case documents.
+        // A guessed case-document UUID must not become an implicit task-file grant.
+        if (principal?.level === "l3" && input.evidenceReference) throw new P3TaskError("COMPLETION_INVALID");
+        if (input.evidenceReference &&
             !await this.evidence.readCleanCaseEvidence(transaction, { organizationId: input.actor.organizationId,
               caseId: task.service_case_id, targetId: task.school_target_id, taskId: task.id,
               evidenceId: input.evidenceReference! })) throw new P3TaskError("COMPLETION_INVALID");
@@ -249,7 +257,7 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
         assertInterviewCompletion(input.completionRecord);
       }
       toState = "completed";
-      await transaction.query({ text: `UPDATE tasks_task_assignments SET ended_at=$1,ended_by_user_id=$2,end_reason='completed',updated_at=$1,record_version=record_version+1 WHERE id=$3 AND organization_id=$4`, values: [input.effects.audit.occurredAt, input.actor.userId, assignment.id, input.actor.organizationId] });
+      if (!(principal && assignment.assignee_role==="l3")) await transaction.query({ text: `UPDATE tasks_task_assignments SET ended_at=$1,ended_by_user_id=$2,end_reason='completed',updated_at=$1,record_version=record_version+1 WHERE id=$3 AND organization_id=$4`, values: [input.effects.audit.occurredAt, input.actor.userId, assignment.id, input.actor.organizationId] });
     }
     const receiptId = input.receiptId;
     if (receiptAssignmentId === null) throw new P3TaskError("UNAVAILABLE");
@@ -263,7 +271,8 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
         input.reason || null, input.completionRecord ? JSON.stringify(input.completionRecord) : null,
         input.evidenceReference, input.effects.audit.occurredAt],
     });
-    await transaction.query({ text: `UPDATE tasks_tasks SET state=$1,record_version=$2,last_transition_actor_user_id=$3,last_transition_receipt_id=$4,last_transition_reason=$5,completed_at=CASE WHEN $1='completed' THEN $6 ELSE completed_at END,cancelled_at=CASE WHEN $1='cancelled' THEN $6 ELSE cancelled_at END,cancelled_by_user_id=CASE WHEN $1='cancelled' THEN $3 ELSE cancelled_by_user_id END,cancellation_reason=CASE WHEN $1='cancelled' THEN $5 ELSE cancellation_reason END,updated_at=$6 WHERE id=$7 AND organization_id=$8 AND record_version=$9`, values: [toState, resultVersion, input.actor.userId, receiptId, input.reason || null, input.effects.audit.occurredAt, task.id, input.actor.organizationId, input.expectedRecordVersion] });
+    const updated=await transaction.query({ text: `UPDATE tasks_tasks SET state=$1,record_version=$2,owner_user_id=$10,last_transition_actor_user_id=$3,last_transition_receipt_id=$4,last_transition_reason=$5,completed_at=CASE WHEN $1='completed' THEN $6 ELSE completed_at END,cancelled_at=CASE WHEN $1='cancelled' THEN $6 ELSE cancelled_at END,cancelled_by_user_id=CASE WHEN $1='cancelled' THEN $3 ELSE cancelled_by_user_id END,cancellation_reason=CASE WHEN $1='cancelled' THEN $5 ELSE cancellation_reason END,updated_at=$6 WHERE id=$7 AND organization_id=$8 AND record_version=$9`, values: [toState, resultVersion, input.actor.userId, receiptId, input.reason || null, input.effects.audit.occurredAt, task.id, input.actor.organizationId, input.expectedRecordVersion,facts.ownerUserId] });
+    if (updated.rowCount !== 1) throw new P3TaskError("STALE_VERSION");
     await appendAtomicMutationEffects(adapt(transaction), input.effects);
     this.hooks.failBeforeCommit?.("transition");
     const acknowledgement = Object.freeze({ id: task.id, recordVersion: resultVersion,
@@ -277,20 +286,42 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
     const userId = input.nextAssigneeUserId!;
     const bindings = await this.accessFacts.readActorBindingFacts(transaction, { organizationId: input.actor.organizationId, userId });
     if (!bindings) throw new P3TaskError("FORBIDDEN");
-    const role = bindings.bindings.some((binding) => binding.role === "advisor")
+    const principal=await currentPrincipal(transaction,input.actor,"tasks.transition");
+    const role = principal ? "l3" : bindings.bindings.some((binding) => binding.role === "advisor")
       ? "advisor" : "contractor";
     const binding = bindings.bindings.find((candidate) => candidate.role === role);
     if (!binding) throw new P3TaskError("FORBIDDEN");
     const can = await this.accessFacts.canAssigneeOperate(transaction, { organizationId: input.actor.organizationId,
       caseId: task.service_case_id, userId, kind: task.task_kind as P3TaskKind, assigneeRole: role,
-      isPrimaryAdvisor: facts?.ownerUserId === userId && role === "advisor", collaboratorId: null });
+      businessCategory:facts?.businessCategory,isPrimaryAdvisor: facts?.ownerUserId === userId && role === "advisor", collaboratorId: null });
     if (!can) throw new P3TaskError("FORBIDDEN");
     return Object.freeze({ userId, role, membershipId: binding.membershipId, roleBindingId: binding.roleBindingId,
       collaboratorId: null });
   }
 
-  private async readAcknowledgement(organizationId: string, taskId: string, requestId: string, expectedHash: string) {
-    const replayAck = await this.runner.run({ organizationId, actorKind: "user", actorOpaqueId: "replay", actorUserId: organizationId, requestId }, async (transaction) => {
+  private async revalidateTaskScope(transaction:TenantTransaction,actor:RequestAccessActor,taskId:string):Promise<void> {
+    const principal=await currentPrincipal(transaction,actor,"tasks.transition");
+    if (!principal) return;
+    const result=await transaction.query<TaskRow>({text:`SELECT id,service_case_id,school_target_id,task_kind,state,
+      assignee_user_id,assignee_role FROM tasks_tasks WHERE id=$1 AND organization_id=$2 FOR UPDATE`,values:[taskId,actor.organizationId]});
+    const task=result.rows[0];
+    if (!task || !["application_prepare_submit","interview_support"].includes(task.task_kind)) throw new P3TaskError("NOT_FOUND");
+    const facts=await this.casesFacts.readCurrentTargetTaskFacts(transaction,{organizationId:actor.organizationId,caseId:task.service_case_id,targetId:task.school_target_id});
+    if (!facts || !isK12BusinessCategory(facts.businessCategory)) throw new P3TaskError("NOT_FOUND");
+    if (canManage(principal,facts.businessCategory)) return;
+    if (principal.level!=="l3" || task.assignee_user_id!==actor.userId || task.assignee_role!=="l3"
+      || !["assigned","accepted","completed"].includes(task.state)) throw new P3TaskError("NOT_FOUND");
+    const assignment=await transaction.query<{id:string}>({text:`SELECT id FROM tasks_task_assignments
+      WHERE task_id=$1 AND organization_id=$2 AND assignee_user_id=$3 AND assignee_role='l3'
+      AND redaction_profile='task_only' AND ended_at IS NULL AND status IN ('assigned','accepted','reassigned') FOR SHARE`,
+      values:[taskId,actor.organizationId,actor.userId]});
+    if (assignment.rows.length!==1) throw new P3TaskError("NOT_FOUND");
+  }
+
+  private async readAcknowledgement(actor: RequestAccessActor, taskId: string, requestId: string, expectedHash: string) {
+    const organizationId=actor.organizationId;
+    const replayAck = await this.runner.run(actorContext(organizationId,actor.userId,requestId), async (transaction) => {
+      await this.revalidateTaskScope(transaction,actor,taskId);
       const result = await transaction.query<TaskRow>({ text: `SELECT id,task_kind,school_target_id,state,record_version,last_transition_receipt_id FROM tasks_tasks WHERE id=$1 AND organization_id=$2`, values: [taskId, organizationId] });
       const row = result.rows[0]; if (!row) throw new P3TaskError("NOT_FOUND");
       return acknowledgement(row, row.task_kind as P3TaskKind);
@@ -317,3 +348,13 @@ function assertInterviewCompletion(value: Readonly<Record<string, unknown>>) {
       typeof value.coaching_summary !== "string" || value.coaching_summary.trim() === "") throw new P3TaskError("COMPLETION_INVALID");
 }
 function normalizeError(error: unknown): P3TaskError { if (error instanceof P3TaskError) return error; if (error instanceof IdempotencyExecutionError) return new P3TaskError(error.code === "IDEMPOTENCY_KEY_REUSED" ? "CONFLICT" : "UNAVAILABLE"); return new P3TaskError("UNAVAILABLE"); }
+
+async function currentPrincipal(transaction:TenantTransaction,actor:RequestAccessActor,capability:"tasks.create"|"tasks.transition") {
+  const principal=await loadTrialPrincipal(adapt(transaction),{ organizationId:actor.organizationId,userId:actor.userId,lock:true });
+  if (principal && (!principal.active || principal.level!==compatibilityRoleForRepository(actor,capability))) throw new P3TaskError("FORBIDDEN");
+  if (!principal && (actor.trialPrincipal || actor.roles?.some((role)=>["l1","l2","l3"].includes(role)))) throw new P3TaskError("FORBIDDEN");
+  return principal;
+}
+function canManage(principal:TrialPrincipal,category:string|null|undefined):boolean {
+  return isK12BusinessCategory(category) && evaluateTrialAccess(principal,"task.assign",{ organizationId:principal.organizationId,category }).allowed;
+}

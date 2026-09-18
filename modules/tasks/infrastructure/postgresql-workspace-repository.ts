@@ -32,7 +32,7 @@ interface TaskRow extends Record<string, unknown> {
   task_kind: "application_prepare_submit" | "interview_support" | "manual";
   state: TaskState; assignee_user_id: string; assignee_role: TaskAssigneeRole; assignee_redaction_profile: string | null;
   assignee_binding_id: string; owner_user_id: string; primary_user_id: string; primary_role: string;
-  record_version: number | string; updated_at: Date | string; student_status: string; case_stage: string;
+  record_version: number | string; updated_at: Date | string; student_status: string; case_stage: string; case_workflow_status: string;
   current_assignment_id: string | null; current_assignment_user_id: string | null;
   current_assignment_role: TaskAssigneeRole | null; current_assignment_status: string | null;
   is_overdue: boolean;
@@ -248,7 +248,7 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
       task.school_target_id,task.task_kind,task.task_brief,task.due_at,task.state,task.assignee_user_id,task.assignee_role,
       task.assignee_redaction_profile,COALESCE(assignee_binding.id,task.assignee_user_id) AS assignee_binding_id,task.owner_user_id,
       service_case.primary_user_id,service_case.primary_role,task.record_version,task.updated_at,
-      student.status AS student_status,service_case.stage AS case_stage,
+      student.status AS student_status,service_case.stage AS case_stage,service_case.workflow_status AS case_workflow_status,
       (task.due_at < transaction_timestamp() AND task.state NOT IN ('completed','cancelled','rejected')) AS is_overdue,
       current_assignment.id AS current_assignment_id,
       current_assignment.assignee_user_id AS current_assignment_user_id,
@@ -353,8 +353,9 @@ function isReadableCreateCase(row: CaseRow): boolean {
 function isWritableTask(row: TaskRow): boolean { return row.case_stage !== "closed" && row.student_status === "active"; }
 function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransitionRule[]): TaskView {
   const transitionsByState = new Map<TaskState, AvailableTaskTransitionView>();
+  const writable=row.case_workflow_status === "active" && isWritableTask(row);
   for (const rule of rules) {
-    if (rule.from !== row.state || !canActorUseRule(rule, row, actor)) continue;
+    if (!writable || rule.from !== row.state || !canActorUseRule(rule, row, actor)) continue;
     if (!transitionsByState.has(rule.to)) {
       transitionsByState.set(rule.to, Object.freeze({
         to: rule.to,
@@ -373,13 +374,15 @@ function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransit
   const contractorCanOperate = actor.actorRole === "contractor" &&
     currentAssignment?.assigneeUserId === actor.actorUserId &&
     ["application_prepare_submit", "interview_support", "manual"].includes(row.task_kind);
-  const allowedActions = actor.actorRole === "contractor" && !contractorCanOperate
+  const trialManager=!!actor.trialPrincipal && ["founder","l1","l2"].includes(actor.actorRole);
+  const allowedActions = !writable || (actor.actorRole === "contractor" && !contractorCanOperate)
     ? Object.freeze([]) : Object.freeze([
     ...(row.state === "assigned" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["accept", "reject"] as const : []),
     ...(row.state === "accepted" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["complete"] as const : []),
-    ...(actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&
+    ...(trialManager && ["assigned","accepted","awaiting_reassignment"].includes(row.state) ? ["reassign"] as const : []),
+    ...(!trialManager && actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&
         row.task_kind === "application_prepare_submit" && row.primary_user_id === actor.actorUserId ? ["reassign"] as const : []),
-    ...(row.primary_user_id === actor.actorUserId && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
+    ...((trialManager ? currentAssignment!==null : row.primary_user_id === actor.actorUserId) && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
   ]);
   const base = { id: row.id,title: row.title,taskBrief: row.task_brief,dueAt: new Date(row.due_at).toISOString(),
     state: row.state,recordVersion: version(row.record_version),updatedAt: new Date(row.updated_at).toISOString(),

@@ -72,8 +72,8 @@ type MigrationFinding =
       actualSchemaSha256: string;
     };
 
-const MIGRATION_NAME_PATTERN =
-  /^\d{12}_\d{3}_(expand|backfill|switch|contract|harden|expose|grant|enable|fix|allow|complete|access|prevent|rename|internal|align|add|external|support)_[a-z][a-z0-9_]*\.sql$/;
+// Same ordered filename contract as migration-manifest.ts; descriptions are not a verb allowlist.
+const MIGRATION_NAME_PATTERN = /^\d{12}_\d{3}_[a-z0-9]+(?:_[a-z0-9]+)*\.sql$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 class MigrationPlanInputError extends Error {}

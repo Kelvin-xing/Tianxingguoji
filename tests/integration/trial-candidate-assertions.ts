@@ -16,6 +16,8 @@ import { PostgresqlGuardianConfirmationOptionsRepository } from "../../modules/c
 import type { TenantTransactionRunner } from "../../modules/shared/server.ts";
 import { NEON_TEST_ORGANIZATION, NEON_TEST_PRINCIPALS, NEON_TEST_STUDENTS } from "../../scripts/db/neon-test-synthetic-fixture.ts";
 
+import { assertTrialAutomaticTasks } from "./trial-automatic-task-assertions.ts";
+
 export async function assertTrialCandidates(client: Client, runner: TenantTransactionRunner, caseId: string, localCaseId: string): Promise<void> {
   const org = NEON_TEST_ORGANIZATION.id;
   const [founder,l1,,l2,l3] = NEON_TEST_PRINCIPALS;
@@ -79,6 +81,7 @@ export async function assertTrialCandidates(client: Client, runner: TenantTransa
     assert.equal((await client.query("SELECT count(*)::int AS n FROM audit_events WHERE event_type='cases.application_task_requested' AND resource_id IN (SELECT id FROM cases_school_targets WHERE service_case_id=$1)",[caseId])).rows[0]!.n,1,"confirmation replay emits one application request");
     assert.equal((await client.query("SELECT stage FROM cases_service_cases WHERE id=$1",[caseId])).rows[0]!.stage,"application_in_progress");
     assert.equal((await client.query("SELECT assignee_role FROM cases_school_target_assignments WHERE service_case_id=$1",[caseId])).rows[0]!.assignee_role,"founder");
+    await assertTrialAutomaticTasks(client,runner,caseId,submitted.id);
     const close = { actor:business,caseId,expectedCaseRecordVersion:4,closureOutcome:"no_offer" as const,reason:"Synthetic close",...keys() };
     await assert.rejects(async () => candidates.closeCase({ ...close,actor:restricted }),rejected("CANDIDATE_LIST_FORBIDDEN"));
     await assert.rejects(candidates.closeCase(close),rejected("CASE_CLOSE_TARGETS_INCOMPLETE"));

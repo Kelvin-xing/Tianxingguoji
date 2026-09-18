@@ -5,12 +5,13 @@ export interface TaskFactsTransaction {
   }>>;
 }
 export type TaskFactsKind = "application_prepare_submit" | "interview_support";
-export type TaskFactsAssigneeRole = "advisor" | "contractor";
+export type TaskFactsAssigneeRole = "advisor" | "contractor" | "founder" | "l1" | "l2" | "l3";
 
 export interface CaseTaskProvisioningFacts {
   readonly caseId: string; readonly targetId: string; readonly assignmentId: string; readonly state: string;
   readonly assigneeUserId: string; readonly assigneeRole: TaskFactsAssigneeRole;
   readonly assigneeMembershipId: string; readonly assigneeRoleBindingId: string;
+  readonly businessCategory?: string | null;
   readonly caseStage: string; readonly workflowStatus: string; readonly ownerUserId: string;
   readonly isPrimaryAdvisor: boolean; readonly collaboratorId: string | null;
 }
@@ -21,13 +22,13 @@ export interface CasesTaskFactsPort {
 }
 
 export interface AccessTaskBinding {
-  readonly role: "founder" | "advisor" | "contractor";
+  readonly role: TaskFactsAssigneeRole;
   readonly membershipId: string; readonly roleBindingId: string;
 }
 
 export interface AccessTaskFactsPort {
   readActorBindingFacts(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; userId: string }>): Promise<Readonly<{ bindings: readonly AccessTaskBinding[] }> | null>;
-  canAssigneeOperate(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; caseId: string; userId: string; kind: TaskFactsKind; assigneeRole: TaskFactsAssigneeRole; isPrimaryAdvisor: boolean; collaboratorId: string | null }>): Promise<boolean>;
+  canAssigneeOperate(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; caseId: string; userId: string; kind: TaskFactsKind; assigneeRole: TaskFactsAssigneeRole; businessCategory?: string | null; isPrimaryAdvisor: boolean; collaboratorId: string | null }>): Promise<boolean>;
 }
 
 export interface DocumentsCleanEvidencePort {
