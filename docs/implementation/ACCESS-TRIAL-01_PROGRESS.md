@@ -497,3 +497,16 @@
 - 类型 `/tmp/access-trial-school-read-types.log`、聚焦ESLint `/tmp/access-trial-school-read-lint.log`及diff检查通过。无数据库迁移，无页面修改；本次HTTP结果不等于学校详情页面验收。
 
 学校新建、人工变更与审批仍有旧角色/未配置运行时入口；详情页面及其余模块、整体试用验收仍待完成。main合并和远程推送未完成；未部署、发送外部邮件或操作真实资料。
+
+## 未验证学校最小建档与页面接通（2026-09-19，接续 a919a0e）
+
+总体仍 `in_progress`。本节完成 BR-051 已确认的最小建档和未验证资料展示，未实现学校自由编辑、抓取或审批。
+
+- 最小建档改为中文名称或英文名称至少一个非空，其余资料可为空并显示未知；系统生成内部学校编号，保留 `provisional` 状态、创建人、创建时间、版本和审计/outbox。未写入爬虫快照，也不按名称自动合并。
+- 新增 PostgreSQL 迁移 `202609190130_070_expand_provisional_school_intake.sql`：未验证资料单独追加保存、租户 RLS、名称约束、不可修改/删除历史。One-role 基线更新为69个源迁移、70个生成文件，并已重新生成和校验。
+- 正式 API：`POST/GET /api/v1/schools/provisionals`。Founder/L1/L2可在当前启用权限下建档和查看；L3、停用账号及权限撤销后的旧请求被拒绝。服务端事务内重新加载当前试用成员和角色，幂等键重放返回原回执；审计或outbox失败会回滚学校和建档记录。
+- `/tmp/access-trial-provisional-browser-final.log` **59/59**：真实PG17、Next/Chrome、学校页面、客户端契约、迁移基线和模块边界。包含仅英文名称建档、刷新保留、成功但响应丢失后同键重试不重复、L3拒绝、非法资料拒绝、权限拒绝清空页面。
+- 页面新增“未验证学校”区块，支持名称建档、未知资料提示、加载/失败/重试/权限收回状态及390px移动布局。`/tmp/access-trial-provisional-ui-mobile.png` 已检查，无横向溢出。
+- 聚焦类型检查 `/tmp/access-trial-provisional-types-final.log`、ESLint `/tmp/access-trial-provisional-lint-final.log`及UI ESLint `/tmp/access-trial-provisional-ui-lint-final.log`通过；客户端单测包含严格字段、无名称、错误状态和泄漏字段拒绝。没有外部部署或真实资料写入。
+
+学校人工变更申请、Founder审批、抓取来源审批、逐字段启用/恢复、四块详情页面仍待完成；其余模块和整体试用验收、main合并及远程推送尚未完成。

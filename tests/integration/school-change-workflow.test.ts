@@ -60,7 +60,7 @@ function changeCommand(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("an Advisor creates a provisional School with required identity/reason and no guessed URL", async () => {
+test("an Advisor creates a provisional School with required Chinese or English name and no guessed URL", async () => {
   const repository = new InMemorySchoolRepository();
   const service = new SchoolService({
     repository,
@@ -71,7 +71,8 @@ test("an Advisor creates a provisional School with required identity/reason and 
   const result = await service.createProvisionalSchool({
     actor: ADVISOR,
     command: {
-      identity: "Synthetic Academy",
+      schoolNameZh: null,
+      schoolNameEn: "Synthetic Academy",
       district: "Central",
       system: "DSS",
       stage: "secondary",
@@ -95,7 +96,8 @@ test("an Advisor creates a provisional School with required identity/reason and 
   });
   assert.deepEqual(repository.getProvisionalSchool(result.schoolId), {
     organizationId: ADVISOR.organizationId,
-    identity: "Synthetic Academy",
+    schoolNameZh: null,
+      schoolNameEn: "Synthetic Academy",
     district: "Central",
     system: "DSS",
     stage: "secondary",
@@ -215,7 +217,7 @@ test("missing provisional facts, invalid evidence, and a stale immutable base ar
     service.createProvisionalSchool({
       actor: ADVISOR,
       command: {
-        identity: " ",
+        schoolNameEn: " ",
         district: "Central",
         system: "DSS",
         stage: "secondary",
@@ -230,10 +232,11 @@ test("missing provisional facts, invalid evidence, and a stale immutable base ar
     service.createProvisionalSchool({
       actor: ADVISOR,
       command: {
-        identity: "Synthetic Academy",
         district: "Central",
         system: "DSS",
         stage: "secondary",
+        schoolNameZh: null,
+        schoolNameEn: "x".repeat(513),
         reason: " ",
         requestId: "request-p1-08-provisional-003",
         idempotencyKey: "school-provisional-p1-08-003",

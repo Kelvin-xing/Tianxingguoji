@@ -19,6 +19,18 @@ export class PostgresqlSchoolDirectoryRepository {
       return this.resolved.listCurrentResolvedSchools({organizationId:input.organizationId,transaction:adapt(transaction)});
     });
   }
+  listProvisionals(input:Reader){
+    return this.runner.run(input,async transaction=>{
+      await assertReader(transaction,input);
+      const result=await transaction.query<{
+        school_id:string; school_name_zh:string|null; school_name_en:string|null;
+        district:string|null; system:string|null; stage:string|null; reason:string|null;
+        status:'provisional'; record_version:number|string; created_at:Date|string;
+      }>({text:`SELECT school_id,school_name_zh,school_name_en,district,system,stage,reason,status,record_version,created_at
+        FROM schools_provisional_records WHERE organization_id=$1 ORDER BY created_at DESC,school_id`,values:[input.organizationId]});
+      return result.rows.map(row=>({...row,record_version:Number(row.record_version),created_at:new Date(row.created_at).toISOString()}));
+    });
+  }
   find(input:Reader&{readonly schoolId:string}):Promise<ResolvedSchoolTargetView>{
     return this.runner.run(input,async transaction=>{
       await assertReader(transaction,input);

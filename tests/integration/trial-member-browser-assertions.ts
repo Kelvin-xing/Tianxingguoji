@@ -1,3 +1,4 @@
+import {assertTrialProvisionalSchoolBrowser} from "./trial-provisional-school-browser-assertions.ts";
 import {assertTrialReferralSourceHttp} from './trial-referral-source-http-assertions.ts'
 import {assertTrialCrmDeletionHttp} from './trial-crm-deletion-http-assertions.ts'
 import {assertTrialGuardianHttp} from './trial-crm-guardian-http-assertions.ts'
@@ -240,6 +241,24 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await schoolResolved.json()).data.school_id,firstSchool.school_id)
     assert.equal((await restrictedContext.request.get(`${baseUrl}/api/v1/schools/${randomUUID()}/resolved`)).status(),404)
 
+    const provisionalUrl=`${baseUrl}/api/v1/schools/provisionals`
+    const provisionalCommand={headers:{'idempotency-key':randomUUID()},data:{school_name_zh:'合成待验证学校'}}
+    const provisionalResponse=await restrictedContext.request.post(provisionalUrl,provisionalCommand)
+    assert.equal(provisionalResponse.status(),200)
+    const provisional=(await provisionalResponse.json()).data
+    assert.equal(provisional.status,'provisional')
+    assert.equal(provisional.record_version,1)
+    const provisionalReplay=await restrictedContext.request.post(provisionalUrl,provisionalCommand)
+    assert.equal(provisionalReplay.status(),200)
+    assert.deepEqual((await provisionalReplay.json()).data,provisional)
+    const provisionalList=await restrictedContext.request.get(provisionalUrl)
+    assert.equal(provisionalList.status(),200)
+    assert.ok((await provisionalList.json()).data.items.some((item:{school_id:string})=>item.school_id===provisional.school_id))
+    assert.equal((await restrictedContext.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_zh:' '}})).status(),422)
+    assert.equal((await restrictedContext.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Synthetic',status:'verified'}})).status(),400)
+    assert.equal((await restrictedContext.request.post(provisionalUrl,{...provisionalCommand,data:{school_name_zh:'变更名称'}})).status(),409)
+
+    await assertTrialProvisionalSchoolBrowser(restricted,baseUrl)
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -285,6 +304,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       data: { ...submittedBody, business_category: 'local_school' },
     })).status(),403)
     assert.equal((await l2Context.request.get(resolvedSchoolUrl)).status(),200)
+    assert.equal((await l2Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Synthetic L2 school'}})).status(),200)
     await l2Context.close()
     const l3 = people.find((p) => p.level === 'l3')!
     const l3Context = await browser.newContext()
@@ -296,6 +316,9 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/schools`)).status(),403)
     assert.equal((await l3Context.request.get(resolvedSchoolUrl)).status(),403)
+    assert.equal((await l3Context.request.get(provisionalUrl)).status(),403)
+    assert.equal((await l3Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Denied school'}})).status(),403)
+    process.stdout.write(JSON.stringify({trial_school_provisionals_http:'pass',minimal:'name_only',l1:'create_list_replay',l2:'create',l3:'403',invalid:'422',injected:'400',changed_replay:'409'})+'\n')
     process.stdout.write(JSON.stringify({trial_school_reads_http:'pass',l1:'directory_and_resolved',l2:'resolved',l3:'403',missing:'404'})+'\n')
 
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/students`)).status(),403)

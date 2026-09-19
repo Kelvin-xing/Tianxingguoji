@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import {hasRequestCapability,type RequestAccessActor} from "../../access/public.ts";
 
 import {
   buildAtomicMutationEffects,
@@ -27,11 +28,12 @@ export interface SchoolServiceClock {
 }
 
 export interface CreateProvisionalSchoolCommand {
-  readonly identity: string;
-  readonly district: string;
-  readonly system: string;
-  readonly stage: string;
-  readonly reason: string;
+  readonly schoolNameZh?: string | null;
+  readonly schoolNameEn?: string | null;
+  readonly district?: string | null;
+  readonly system?: string | null;
+  readonly stage?: string | null;
+  readonly reason?: string | null;
   readonly requestId: string;
   readonly idempotencyKey: string;
 }
@@ -73,11 +75,12 @@ export interface SchoolRepository {
     readonly organizationId: string;
     readonly actorUserId: string;
     readonly schoolId: string;
-    readonly identity: string;
-    readonly district: string;
-    readonly system: string;
-    readonly stage: string;
-    readonly reason: string;
+    readonly schoolNameZh: string | null;
+    readonly schoolNameEn: string | null;
+    readonly district: string | null;
+    readonly system: string | null;
+    readonly stage: string | null;
+    readonly reason: string | null;
     readonly requestId: string;
     readonly idempotencyKey: string;
     readonly requestHash: string;
@@ -156,78 +159,7 @@ export class SchoolService {
     readonly actor: IdentitySessionActor;
     readonly command: CreateProvisionalSchoolCommand;
   }): Promise<ProvisionalSchoolResult> {
-    assertAdvisor(input.actor);
-    assertProvisionalCommand(input.command);
-
-    const schoolId = this.createId();
-    const auditId = this.createId();
-    const outboxId = this.createId();
-    for (const id of [schoolId, auditId, outboxId]) assertUuid(id);
-
-    const createdAtMs = validNow(this.clock.nowMs());
-    const occurredAt = new Date(createdAtMs).toISOString();
-    const eventType = "schools.provisional.created";
-    const audit = buildAuditEvent({
-      id: auditId,
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      actorKind: "user",
-      eventType,
-      eventVersion: 1,
-      action: "create",
-      resourceType: "School",
-      resourceId: schoolId,
-      outcome: "succeeded",
-      requestId: input.command.requestId,
-      occurredAt,
-      metadata: {
-        effect_type: "school_provisional_created",
-        record_version: 1,
-        status: "provisional",
-      },
-    });
-    const outbox = buildOutboxMessage({
-      id: outboxId,
-      auditEventId: auditId,
-      organizationId: input.actor.organizationId,
-      aggregateType: "School",
-      aggregateId: schoolId,
-      eventType,
-      eventVersion: 1,
-      idempotencyKey: `school-provisional-${outboxId}`,
-      requestId: input.command.requestId,
-      payload: {
-        aggregate_id: schoolId,
-        effect_type: "school_provisional_created",
-        record_version: 1,
-        request_id: input.command.requestId,
-        status: "provisional",
-      },
-      availableAt: occurredAt,
-      createdAt: occurredAt,
-    });
-
-    return this.repository.createProvisionalSchool({
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      schoolId,
-      identity: input.command.identity.trim(),
-      district: input.command.district.trim(),
-      system: input.command.system.trim(),
-      stage: input.command.stage.trim(),
-      reason: input.command.reason.trim(),
-      requestId: input.command.requestId,
-      idempotencyKey: input.command.idempotencyKey,
-      requestHash: hashRequestPayload({
-        district: input.command.district.trim(),
-        identity: input.command.identity.trim(),
-        reason: input.command.reason.trim(),
-        stage: input.command.stage.trim(),
-        system: input.command.system.trim(),
-      }),
-      createdAtMs,
-      effects: buildAtomicMutationEffects({ audit, outbox }),
-    });
+    return createProvisionalSchool(input, {repository:this.repository,clock:this.clock,createId:this.createId});
   }
 
   async submitSchoolChange(input: {
@@ -320,19 +252,96 @@ export class SchoolService {
   }
 }
 
+/** BR-051 minimal manual intake; the repository owns atomic persistence and current authorization. */
+export async function createProvisionalSchool(input: {actor: RequestAccessActor;command: CreateProvisionalSchoolCommand}, options: {repository: Pick<SchoolRepository,"createProvisionalSchool">;clock?: SchoolServiceClock;createId?:()=>string}):Promise<ProvisionalSchoolResult> {
+    if (!UUID.test(input.actor.organizationId) || !UUID.test(input.actor.userId) ||
+      !(hasRequestCapability(input.actor,"schools.provisional.create") ||
+        (!input.actor.trialPrincipal && "role" in input.actor && input.actor.role === "advisor"))) {
+      throw new SchoolServiceError("SCHOOL_ADVISOR_REQUIRED");
+    }
+    const fields = normalizeProvisionalCommand(input.command);
+
+    const schoolId = (options.createId ?? randomUUID)();
+    const auditId = (options.createId ?? randomUUID)();
+    const outboxId = (options.createId ?? randomUUID)();
+    for (const id of [schoolId, auditId, outboxId]) assertUuid(id);
+
+    const createdAtMs = validNow((options.clock ?? {nowMs:()=>Date.now()}).nowMs());
+    const occurredAt = new Date(createdAtMs).toISOString();
+    const eventType = "schools.provisional.created";
+    const audit = buildAuditEvent({
+      id: auditId,
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorKind: "user",
+      eventType,
+      eventVersion: 1,
+      action: "create",
+      resourceType: "School",
+      resourceId: schoolId,
+      outcome: "succeeded",
+      requestId: input.command.requestId,
+      occurredAt,
+      metadata: {
+        effect_type: "school_provisional_created",
+        record_version: 1,
+        status: "provisional",
+      },
+    });
+    const outbox = buildOutboxMessage({
+      id: outboxId,
+      auditEventId: auditId,
+      organizationId: input.actor.organizationId,
+      aggregateType: "School",
+      aggregateId: schoolId,
+      eventType,
+      eventVersion: 1,
+      idempotencyKey: `school-provisional-${outboxId}`,
+      requestId: input.command.requestId,
+      payload: {
+        aggregate_id: schoolId,
+        effect_type: "school_provisional_created",
+        record_version: 1,
+        request_id: input.command.requestId,
+        status: "provisional",
+      },
+      availableAt: occurredAt,
+      createdAt: occurredAt,
+    });
+
+    return options.repository.createProvisionalSchool({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      schoolId,
+      ...fields,
+      requestId: input.command.requestId,
+      idempotencyKey: input.command.idempotencyKey,
+      requestHash: hashRequestPayload(fields),
+      createdAtMs,
+      effects: buildAtomicMutationEffects({ audit, outbox }),
+    });
+}
+
 function assertAdvisor(actor: IdentitySessionActor): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || actor.role !== "advisor") {
     throw new SchoolServiceError("SCHOOL_ADVISOR_REQUIRED");
   }
 }
 
-function assertProvisionalCommand(command: CreateProvisionalSchoolCommand): void {
-  assertNonBlank(command.identity, 512);
-  assertNonBlank(command.district, 128);
-  assertNonBlank(command.system, 128);
-  assertNonBlank(command.stage, 128);
-  assertNonBlank(command.reason, 1_024);
-  assertRequest(command.requestId, command.idempotencyKey);
+function normalizeProvisionalCommand(command: CreateProvisionalSchoolCommand) {
+  const optional = (value: unknown, max: number): string | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.trim().length > max) throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
+    return value.trim() || null;
+  };
+  const fields = {
+    schoolNameZh: optional(command.schoolNameZh,512), schoolNameEn: optional(command.schoolNameEn,512),
+    district: optional(command.district,128), system: optional(command.system,128),
+    stage: optional(command.stage,128), reason: optional(command.reason,1024),
+  };
+  if (!fields.schoolNameZh && !fields.schoolNameEn) throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
+  assertRequest(command.requestId,command.idempotencyKey);
+  return fields;
 }
 
 function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{

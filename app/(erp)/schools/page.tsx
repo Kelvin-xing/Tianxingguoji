@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listSchoolDirectory, type SchoolDirectoryItem } from '@/modules/schools/client'
+import {ProvisionalSchoolsPanel} from '@/components/schools/ProvisionalSchoolsPanel'
 import type { AdmissionRecord } from '@/types'
 
 const CONFIDENCE_STYLES: Record<string, { bg: string; color: string }> = {
@@ -30,6 +31,7 @@ export default function SchoolsPage() {
   const [reviewFilter, setReviewFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const denySchoolAccess=useCallback(()=>{setSchools([]);setError('登入狀態或學校存取權限已變更，請重新登入或聯絡管理員。')},[])
 
   useEffect(() => {
     listSchoolDirectory()
@@ -56,6 +58,7 @@ export default function SchoolsPage() {
 
   return (
     <div className="space-y-4">
+      <ProvisionalSchoolsPanel onAccessDenied={denySchoolAccess}/>
       <div className="flex flex-wrap gap-3 items-center p-3 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <input type="text" placeholder={`${t('common.search')}…`} value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
         <FilterSelect label={t('schools.admission_type')} value={typeFilter} onChange={setTypeFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'transfer', label: t('schools.type_transfer') }, { value: 's1_admission', label: t('schools.type_s1') }, { value: 'unknown', label: t('schools.type_unknown') }]} />

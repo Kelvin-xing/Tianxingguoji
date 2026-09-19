@@ -1,32 +1,35 @@
-import { cookies } from "next/headers";
-
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import {
-  SchoolServiceError,
-  type CreateProvisionalSchoolCommand,
-} from "@/modules/schools/server";
-import { SchoolRuntimeUnavailable, getSchoolRuntime } from "@/modules/schools/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import {requireApiRequestAccessContext} from '@/app/api/v1/request-access';
+import {hasRequestCapability} from '@/modules/access/public';
+import {getApplicationTenantRunner} from '@/modules/shared/server';
+import {SchoolServiceError,SchoolResolutionError,PostgresqlSchoolDirectoryRepository,createProvisionalSchool,PostgresqlProvisionalSchoolRepository,type CreateProvisionalSchoolCommand} from '@/modules/schools/server';
+import {createApiError,handleApiRequest} from '@/modules/shared/public';
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+export async function GET(request:Request):Promise<Response>{
+  return handleApiRequest(request,async()=>{
+    const actor=await requireApiRequestAccessContext();
+    if(!hasRequestCapability(actor,'schools.read'))throw createApiError('FORBIDDEN');
+    try{
+      const items=await new PostgresqlSchoolDirectoryRepository(getApplicationTenantRunner()).listProvisionals({organizationId:actor.organizationId,actorUserId:actor.userId});
+      return {items};
+    }catch(error){
+      if(error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN')throw createApiError('FORBIDDEN');
+      throw createApiError('SERVICE_UNAVAILABLE');
+    }
+  });
+}
+
 export async function POST(request: Request): Promise<Response> {
   return handleApiRequest(request, async (requestContext) => {
     const command = await parseProvisionalCommand(request, requestContext.requestId);
-    const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-    if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-
+    const actor = await requireApiRequestAccessContext();
+    if (!hasRequestCapability(actor,'schools.provisional.create')) throw createApiError('FORBIDDEN');
     try {
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: true,
-      });
-      const result = await getSchoolRuntime().service.createProvisionalSchool({ actor, command });
+      const result = await createProvisionalSchool({actor,command},{repository:new PostgresqlProvisionalSchoolRepository(getApplicationTenantRunner())});
       return {
         school_id: result.schoolId,
         status: result.status,
@@ -55,25 +58,15 @@ async function parseProvisionalCommand(
   }
   if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
 
-  const { identity, district, system, stage, reason } = body;
-  if (
-    typeof identity !== "string" ||
-    typeof district !== "string" ||
-    typeof system !== "string" ||
-    typeof stage !== "string" ||
-    typeof reason !== "string"
-  ) {
-    throw createApiError("VALIDATION_FAILED");
-  }
-
-  return { identity, district, system, stage, reason, requestId, idempotencyKey };
+  const allowed=['school_name_zh','school_name_en','district','system','stage','reason'];
+  if(Object.keys(body).some(key=>!allowed.includes(key)))throw createApiError('INVALID_REQUEST');
+  for(const value of Object.values(body))if(value!==null&&typeof value!=='string')throw createApiError('VALIDATION_FAILED');
+  return {schoolNameZh:body.school_name_zh as string|null|undefined,schoolNameEn:body.school_name_en as string|null|undefined,
+    district:body.district as string|null|undefined,system:body.system as string|null|undefined,
+    stage:body.stage as string|null|undefined,reason:body.reason as string|null|undefined,requestId,idempotencyKey};
 }
 
 function mapSchoolError(error: unknown) {
-  if (error instanceof IdentityRuntimeUnavailable || error instanceof SchoolRuntimeUnavailable) {
-    return createApiError("SERVICE_UNAVAILABLE");
-  }
-  if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
   if (!(error instanceof SchoolServiceError)) return createApiError("SERVICE_UNAVAILABLE");
 
   switch (error.code) {

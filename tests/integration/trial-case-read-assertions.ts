@@ -1,3 +1,4 @@
+import {assertTrialProvisionalSchool} from "./trial-provisional-school-assertions.ts";
 import {PostgresqlSchoolDirectoryRepository} from "../../modules/schools/infrastructure/postgresql-directory-repository.ts";
 import {SchoolResolutionError} from "../../modules/schools/application/resolved-view.ts";
 import {assertTrialReferralSources} from "./trial-referral-source-assertions.ts";
@@ -139,6 +140,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
         const guardian=(await client.query(`SELECT g.id,g.display_name FROM crm_guardians g JOIN crm_student_guardian_relationships r ON r.guardian_id=g.id
           WHERE r.student_id=$1 AND r.ends_at IS NULL AND r.is_primary_contact`,[NEON_TEST_STUDENTS[0]!.id])).rows[0];
         assert.equal((await duplicates.findCandidates({...input,kind:'guardian',name:guardian.display_name,email:null,phone:null})).candidates.some(row=>row.id===guardian.id),allowed,'duplicate search cannot reveal out-of-scope guardians');
+        await assertTrialProvisionalSchool({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role});
         await assertTrialReferralSources({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,caseId,allowed:allowed&&(role==='advisor'||category!==null)});
         await assertTrialCrmDeletion({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,studentId:NEON_TEST_STUDENTS[0]!.id,guardianId:guardian.id,allowed});
         await assertTrialCrmProfileWrites({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,studentId:NEON_TEST_STUDENTS[0]!.id,guardianId:guardian.id,allowed});
