@@ -9,7 +9,7 @@ export class PostgresqlEmailTemplateResolver implements EmailTemplateResolver {
   constructor(repository: EmailTemplateRepository) { this.repository = repository }
 
   async resolve(input: Parameters<EmailTemplateResolver['resolve']>[0]) {
-    const template = await this.repository.read(input)
+    const template = await this.repository.readDeliveryTemplate(input)
     return Object.freeze({ kind: template.kind, subject: template.subject, bodyText: template.bodyText })
   }
 }

@@ -184,7 +184,7 @@ export class EmailSettingsService {
 }
 
 function requireManageCapability(actor: AccessContext): void {
-  if (!hasRequestCapability(actor, 'email.settings.manage') || !actor.roles.includes('admin')) throw new EmailSettingsError('FORBIDDEN')
+  if (!hasRequestCapability(actor, 'email.settings.manage') || (!actor.trialPrincipal && !actor.roles.includes('admin'))) throw new EmailSettingsError('FORBIDDEN')
 }
 
 function normalizeFromName(value: string | null): string | null {

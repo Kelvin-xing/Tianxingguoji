@@ -36,6 +36,12 @@ export interface EmailTemplateMutationReceipt {
 }
 
 export interface EmailTemplateRepository {
+  /** Internal delivery use; current Founder authorization is revalidated separately. */
+  readDeliveryTemplate(input: Readonly<{
+    organizationId: string
+    actorUserId: string
+    kind: EmailTemplateKind
+  }>): Promise<EmailTemplateStatus>
   read(input: Readonly<{
     organizationId: string
     actorUserId: string
@@ -169,7 +175,7 @@ export class EmailTemplateService {
 }
 
 function requireManageCapability(actor: AccessContext): void {
-  if (!hasRequestCapability(actor, 'email.templates.manage') || !actor.roles.includes('admin')) throw new EmailTemplateError('FORBIDDEN')
+  if (!hasRequestCapability(actor, 'email.templates.manage') || (!actor.trialPrincipal && !actor.roles.includes('admin'))) throw new EmailTemplateError('FORBIDDEN')
 }
 
 function normalizeSubject(value: string): string {

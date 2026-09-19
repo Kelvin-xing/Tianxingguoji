@@ -1,3 +1,4 @@
+import {assertTrialEmailBrowser} from "./trial-email-browser-assertions.ts";
 import {assertTrialSchoolReviewUi} from "./trial-school-review-ui-assertions.ts";
 import {assertTrialSchoolReviewHttp} from "./trial-school-review-http-assertions.ts";
 import {assertTrialSchoolChangeForm} from "./trial-school-change-form-assertions.ts";
@@ -343,6 +344,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,field_name:'district',base_value_sha256:sha256SchoolValue(firstSchool.fields.district),proposed_value:'Replacement'}})).status(),403)
     await assertTrialSchoolReviewHttp({baseUrl,schoolId:firstSchool.school_id,l1ChangeId:changeReceipt.change_request_id,l2ChangeId:l2SchoolChangeId,founder:rootContext.request,l1:restrictedContext.request,l2:l2Context.request})
     await assertTrialSchoolReviewUi({page:restricted,l2Page,founder:rootContext.request,baseUrl,schoolId:firstSchool.school_id})
+    await assertTrialEmailBrowser({page,l1Page:restricted,l2:l2Context.request,baseUrl})
     await rootContext.close()
     await restrictedContext.close()
     await l2Context.close()

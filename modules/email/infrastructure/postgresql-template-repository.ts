@@ -1,4 +1,6 @@
 import "server-only";
+import { readEmailMutationReceipt } from './postgresql-email-receipt.ts';
+import { hasCurrentEmailAccess } from './postgresql-email-access.ts';
 
 import type { MutationEffectBundle } from '../../audit/public.ts'
 import { appendAtomicMutationEffects, type AtomicMutationTransaction } from '../../audit/server.ts'
@@ -31,11 +33,20 @@ export class PostgresqlEmailTemplateRepository implements EmailTemplateRepositor
 
   constructor(runner: TenantTransactionRunner) { this.runner = runner }
 
-  async read(input: Readonly<{ organizationId: string; actorUserId: string; kind: EmailTemplateKind }>): Promise<EmailTemplateStatus> {
+  read(input: Parameters<EmailTemplateRepository['read']>[0]): Promise<EmailTemplateStatus> {
+    return this.readAuthorized(input, 'manage')
+  }
+
+  readDeliveryTemplate(input: Parameters<EmailTemplateRepository['readDeliveryTemplate']>[0]): Promise<EmailTemplateStatus> {
+    return this.readAuthorized(input, 'delivery')
+  }
+
+  private async readAuthorized(input: Readonly<{ organizationId: string; actorUserId: string; kind: EmailTemplateKind }>, purpose: 'manage' | 'delivery'): Promise<EmailTemplateStatus> {
     try {
       return await this.runner.run(
         { organizationId: input.organizationId, actorUserId: input.actorUserId },
         async (transaction) => {
+          if (!await hasCurrentEmailAccess(transaction, input.organizationId, input.actorUserId, purpose)) throw new EmailTemplateError('FORBIDDEN')
           const row = await readTemplateRow(transaction, input.organizationId, input.kind)
           return row === null ? defaultStatus() : statusFromRow(row)
         },
@@ -46,6 +57,7 @@ export class PostgresqlEmailTemplateRepository implements EmailTemplateRepositor
   }
 
   async save(input: Parameters<EmailTemplateRepository['save']>[0]): Promise<EmailTemplateMutationReceipt> {
+    let replay: Awaited<ReturnType<typeof readEmailMutationReceipt>> = null
     try {
       const result = await runIdempotentTransaction({
         runner: this.runner,
@@ -60,7 +72,10 @@ export class PostgresqlEmailTemplateRepository implements EmailTemplateRepositor
           requestHash: input.requestHash,
           createdAt: input.occurredAt,
         },
-        revalidate: async (transaction) => requireActiveAdmin(transaction, input.organizationId, input.actorUserId),
+        revalidate: async (transaction) => {
+          if (!await hasCurrentEmailAccess(transaction, input.organizationId, input.actorUserId, 'manage')) throw new EmailTemplateError('FORBIDDEN')
+          replay = await readEmailMutationReceipt(transaction, input, 'email.update_template')
+        },
         execute: async (transaction) => {
           const current = await transaction.query<{ record_version: number | string }>({
             text: `SELECT record_version FROM email_templates
@@ -101,7 +116,13 @@ export class PostgresqlEmailTemplateRepository implements EmailTemplateRepositor
           }
         },
       })
-      return result.status === 'replayed' ? receiptValue(input, true) : result.value
+      if (result.status !== 'replayed') return result.value
+      const stored = replay as Awaited<ReturnType<typeof readEmailMutationReceipt>>
+      if (!stored || stored.auditId !== result.resultReference) throw new EmailTemplateError('UNAVAILABLE')
+      const receipt = { ...receiptValue(input, false), recordVersion: stored.recordVersion, updatedAt: stored.updatedAt }
+      const hash = hashRequestPayload({ record_version: receipt.recordVersion, replayed: false, template_kind: receipt.templateKind })
+      if (hash !== result.responseHash) throw new EmailTemplateError('UNAVAILABLE')
+      return Object.freeze({ ...receipt, replayed: true })
     } catch (error) {
       throw mapRepositoryError(error)
     }
@@ -115,24 +136,6 @@ async function readTemplateRow(transaction: TenantTransaction, organizationId: s
     values: [organizationId, kind],
   })
   return result.rows[0] ?? null
-}
-
-async function requireActiveAdmin(transaction: TenantTransaction, organizationId: string, actorUserId: string): Promise<void> {
-  const result = await transaction.query<{ id: string }>({
-    text: `SELECT role_binding.id
-             FROM access_organization_memberships AS membership
-             JOIN identity_users AS identity_user ON identity_user.id=membership.user_id
-             JOIN access_role_bindings AS role_binding
-               ON role_binding.organization_id=membership.organization_id
-              AND role_binding.membership_id=membership.id
-              AND role_binding.user_id=membership.user_id
-            WHERE membership.organization_id=$1 AND membership.user_id=$2
-              AND membership.status='active' AND identity_user.status='active'
-              AND role_binding.status='active' AND role_binding.role='admin'
-            LIMIT 1 FOR SHARE OF membership,identity_user,role_binding`,
-    values: [organizationId, actorUserId],
-  })
-  if (result.rows.length !== 1) throw new EmailTemplateError('FORBIDDEN')
 }
 
 async function appendEffects(transaction: TenantTransaction, effects: MutationEffectBundle): Promise<void> {

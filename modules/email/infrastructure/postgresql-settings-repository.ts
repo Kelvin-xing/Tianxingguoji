@@ -1,4 +1,6 @@
 import "server-only";
+import { readEmailMutationReceipt } from './postgresql-email-receipt.ts';
+import { hasCurrentEmailAccess } from './postgresql-email-access.ts';
 
 import type { MutationEffectBundle } from '../../audit/public.ts'
 import { appendAtomicMutationEffects, type AtomicMutationTransaction } from '../../audit/server.ts'
@@ -39,6 +41,7 @@ export class PostgresqlEmailSettingsRepository implements EmailSettingsRepositor
       return await this.runner.run(
         { organizationId: input.organizationId, actorUserId: input.actorUserId },
         async (transaction) => {
+          if (!await hasCurrentEmailAccess(transaction, input.organizationId, input.actorUserId, 'manage')) throw new EmailSettingsError('FORBIDDEN')
           const row = await readSettingsRow(transaction, input.organizationId)
           return row === null ? emptyStatus() : statusFromRow(row)
         },
@@ -53,6 +56,7 @@ export class PostgresqlEmailSettingsRepository implements EmailSettingsRepositor
       return await this.runner.run(
         { organizationId: input.organizationId, actorUserId: input.actorUserId },
         async (transaction) => {
+          if (!await hasCurrentEmailAccess(transaction, input.organizationId, input.actorUserId, 'delivery')) throw new EmailSettingsError('FORBIDDEN')
           const row = await readSettingsRow(transaction, input.organizationId)
           if (row === null) return null
           return Object.freeze({
@@ -76,6 +80,7 @@ export class PostgresqlEmailSettingsRepository implements EmailSettingsRepositor
   }
 
   async save(input: Parameters<EmailSettingsRepository['save']>[0]): Promise<EmailSettingsMutationReceipt> {
+    let replay: Awaited<ReturnType<typeof readEmailMutationReceipt>> = null
     try {
       const result = await runIdempotentTransaction({
         runner: this.runner,
@@ -90,7 +95,10 @@ export class PostgresqlEmailSettingsRepository implements EmailSettingsRepositor
           requestHash: input.requestHash,
           createdAt: input.occurredAt,
         },
-        revalidate: async (transaction) => requireActiveAdmin(transaction, input.organizationId, input.actorUserId),
+        revalidate: async (transaction) => {
+          if (!await hasCurrentEmailAccess(transaction, input.organizationId, input.actorUserId, 'manage')) throw new EmailSettingsError('FORBIDDEN')
+          replay = await readEmailMutationReceipt(transaction, input, 'email.update_provider_settings')
+        },
         execute: async (transaction) => {
           const current = await transaction.query<{ record_version: number | string }>({
             text: `SELECT record_version FROM email_provider_settings
@@ -144,7 +152,13 @@ export class PostgresqlEmailSettingsRepository implements EmailSettingsRepositor
           }
         },
       })
-      return result.status === 'replayed' ? receiptValue(input, true) : result.value
+      if (result.status !== 'replayed') return result.value
+      const stored = replay as Awaited<ReturnType<typeof readEmailMutationReceipt>>
+      if (!stored || stored.auditId !== result.resultReference) throw new EmailSettingsError('UNAVAILABLE')
+      const receipt = { ...receiptValue(input, false), recordVersion: stored.recordVersion, updatedAt: stored.updatedAt }
+      const hash = hashRequestPayload({ record_version: receipt.recordVersion, replayed: false, settings_id: receipt.settingsId, updated_at: receipt.updatedAt })
+      if (hash !== result.responseHash) throw new EmailSettingsError('UNAVAILABLE')
+      return Object.freeze({ ...receipt, replayed: true })
     } catch (error) {
       throw mapRepositoryError(error)
     }
@@ -159,24 +173,6 @@ async function readSettingsRow(transaction: TenantTransaction, organizationId: s
     values: [organizationId],
   })
   return result.rows[0] ?? null
-}
-
-async function requireActiveAdmin(transaction: TenantTransaction, organizationId: string, actorUserId: string): Promise<void> {
-  const result = await transaction.query<{ id: string }>({
-    text: `SELECT role_binding.id
-             FROM access_organization_memberships AS membership
-             JOIN identity_users AS identity_user ON identity_user.id=membership.user_id
-             JOIN access_role_bindings AS role_binding
-               ON role_binding.organization_id=membership.organization_id
-              AND role_binding.membership_id=membership.id
-              AND role_binding.user_id=membership.user_id
-            WHERE membership.organization_id=$1 AND membership.user_id=$2
-              AND membership.status='active' AND identity_user.status='active'
-              AND role_binding.status='active' AND role_binding.role='admin'
-            LIMIT 1 FOR SHARE OF membership,identity_user,role_binding`,
-    values: [organizationId, actorUserId],
-  })
-  if (result.rows.length !== 1) throw new EmailSettingsError('FORBIDDEN')
 }
 
 async function appendEffects(transaction: TenantTransaction, effects: MutationEffectBundle): Promise<void> {
