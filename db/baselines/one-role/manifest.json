@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "dfd770eff1a25958340ed7b4959dc479df29d7782325215e47eef548919bd5a4",
+  "source_history_manifest_sha256": "bd0dbfc1ea21e146f42155d56a97549f61cadf43926d9ce4c3545a3a0c77692f",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -520,6 +520,13 @@
       "generated_file": "072_202609190160_073_capture_school_change_previous_value.sql",
       "generated_sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202609190170_074_enable_trial_employee_invitation.sql",
+      "source_sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
+      "generated_file": "073_202609190170_074_enable_trial_employee_invitation.sql",
+      "generated_sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -881,6 +888,11 @@
     {
       "name": "072_202609190160_073_capture_school_change_previous_value.sql",
       "sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "073_202609190170_074_enable_trial_employee_invitation.sql",
+      "sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
       "transform": "copy-v1"
     },
     {

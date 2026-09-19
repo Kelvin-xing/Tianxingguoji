@@ -44,7 +44,8 @@ export async function POST(request: Request): Promise<Response> {
     if (runtime.authMode === "internal-email" && runtime.internalEmail) {
       if (!password || password !== passwordConfirmation || !displayName?.trim()) return activationFailure(request, "invalid_invite");
       const session = await runtime.internalEmail.activateInvite({ activationCredential, password, displayName });
-      const response = NextResponse.redirect(new URL("/today", request.url), 303);
+      const destination = session.actor.role === "l3" || session.actor.role === "contractor" ? "/tasks" : "/today";
+      const response = NextResponse.redirect(new URL(destination, request.url), 303);
       response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
       return response;
     }
@@ -78,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
       return activationFailure(request, "invalid_invite");
     }
     if (error instanceof InternalEmailServiceError) {
-      return activationFailure(request, error.code === "INVITE_DELIVERY_FAILED" ? "service_unavailable" : "invalid_invite");
+      return activationFailure(request, (error.code === "INVITE_DELIVERY_FAILED" || error.code === "INVITE_UNAVAILABLE") ? "service_unavailable" : "invalid_invite");
     }
     return activationFailure(request, "configuration");
   }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from 'node:crypto'
 
-import type { OrganizationRole, EmploymentType } from '../../access/public.ts'
+import type { OrganizationRole, EmploymentType, K12BusinessCategory } from '../../access/public.ts'
 import type { IdentitySessionActor } from '../domain/actor.ts'
 import { withAuthTransaction, type DatabaseClient } from './postgresql-client.ts'
 import type { InternalEmailCredentialSnapshot, InternalEmailRepository, InternalInviteDeliveryReceipt } from '../application/internal-email.ts'
@@ -36,7 +36,7 @@ interface InviteRow {
 }
 
 export class InternalEmailRepositoryError extends Error {
-  readonly code: 'INVITE_ALREADY_EXISTS' | 'INVITE_NOT_FOUND' | 'INVITE_NOT_REDEEMABLE' | 'INVITE_EXPIRED' | 'SESSION_LIMIT_REACHED' | 'SESSION_NOT_FOUND'
+  readonly code: 'FOUNDER_REQUIRED' | 'INVITE_ALREADY_EXISTS' | 'INVITE_NOT_FOUND' | 'INVITE_NOT_REDEEMABLE' | 'INVITE_EXPIRED' | 'SESSION_LIMIT_REACHED' | 'SESSION_NOT_FOUND'
 
   constructor(code: InternalEmailRepositoryError['code']) {
     super(`Internal email repository rejected ${code}.`)
@@ -55,6 +55,7 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
     invitedByUserId: string
     normalizedEmail: string
     role: OrganizationRole
+    trialCategories?: readonly K12BusinessCategory[]
     employmentType: EmploymentType
     displayName: string
     secretHash: string
@@ -63,12 +64,13 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
   }>): Promise<void> {
     await withAuthTransaction(async (client) => {
       await setOrganizationContext(client, input.organizationId)
+      await client.query("SELECT set_config('app.actor_user_id',$1,true)", [input.invitedByUserId])
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`internal-email-invite:${input.normalizedEmail}`])
       try {
-        await client.query(`SELECT identity_internal_email_create_invite($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [input.inviteId, input.userId, input.membershipId, input.roleBindingId, input.organizationId, input.invitedByUserId, input.normalizedEmail, input.role, input.employmentType, input.displayName, hashBuffer(input.secretHash), new Date(input.expiresAtMs)])
+        await client.query(`SELECT identity_internal_email_create_invite($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [input.inviteId, input.userId, input.membershipId, input.roleBindingId, input.organizationId, input.invitedByUserId, input.normalizedEmail, input.role, input.employmentType, input.displayName, hashBuffer(input.secretHash), new Date(input.expiresAtMs), input.trialCategories ?? null])
       } catch (error) {
-        if (isUniqueViolation(error)) throw new InternalEmailRepositoryError('INVITE_ALREADY_EXISTS')
-        if (error instanceof Error && (error as Error & { code?: unknown }).code === '42501') throw new InternalEmailRepositoryError('INVITE_NOT_REDEEMABLE')
+        if (isUniqueViolation(error) && (error as Error & { constraint?: string }).constraint === 'identity_users_normalized_email_key') throw new InternalEmailRepositoryError('INVITE_ALREADY_EXISTS')
+        if (error instanceof Error && (error as Error & { code?: unknown }).code === '42501') throw new InternalEmailRepositoryError('FOUNDER_REQUIRED')
         throw error
       }
     })
@@ -86,9 +88,15 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
     })
   }
 
-  async rotateInvite(input: Readonly<{ inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }> {
+  async rotateInvite(input: Readonly<{ actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }> {
     return withAuthTransaction(async (client) => {
       await setOrganizationContext(client, input.organizationId)
+      await client.query("SELECT set_config('app.actor_user_id',$1,true)", [input.actorUserId])
+      try { await client.query('SELECT identity_require_current_inviter($1,$2,NULL)', [input.organizationId,input.actorUserId]) }
+      catch (error) {
+        if (error instanceof Error && (error as Error & { code?: unknown }).code === '42501') throw new InternalEmailRepositoryError('FOUNDER_REQUIRED')
+        throw error
+      }
       const result = await client.query<{ target_user_id: string; normalized_email: string; status: InviteRow['status']; expires_at: Date | string }>(`SELECT i.target_user_id, u.normalized_email, i.status, i.expires_at FROM identity_invites i JOIN identity_users u ON u.id = i.target_user_id WHERE i.id = $1 AND i.organization_id = $2 FOR UPDATE`, [input.inviteId, input.organizationId])
       const row = result.rows[0]
       if (!row) throw new InternalEmailRepositoryError('INVITE_NOT_FOUND')

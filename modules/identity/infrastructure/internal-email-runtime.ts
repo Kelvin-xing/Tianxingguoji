@@ -8,14 +8,14 @@ export interface InternalEmailIdentityRuntime {
   readonly service: InternalEmailService
 }
 
-const globalForInternalEmail = globalThis as typeof globalThis & {
-  __txInternalEmailIdentityRuntime?: InternalEmailIdentityRuntime
-}
+// Keep service instances in their module graph so route error constructors match.
+// PostgreSQL connection pooling remains shared by the database adapter.
+let runtime: InternalEmailIdentityRuntime | null = null
 
 export function getInternalEmailRuntime(): InternalEmailIdentityRuntime {
-  if (!globalForInternalEmail.__txInternalEmailIdentityRuntime) {
+  if (!runtime) {
     try {
-      globalForInternalEmail.__txInternalEmailIdentityRuntime = Object.freeze({
+      runtime = Object.freeze({
         service: new InternalEmailService({
           repository: new PostgresqlInternalEmailRepository(),
           email: getEmailRuntime().service,
@@ -26,5 +26,5 @@ export function getInternalEmailRuntime(): InternalEmailIdentityRuntime {
       throw new Error('Internal email identity runtime is unavailable.')
     }
   }
-  return globalForInternalEmail.__txInternalEmailIdentityRuntime
+  return runtime
 }

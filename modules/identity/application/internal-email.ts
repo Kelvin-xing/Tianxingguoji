@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
 
-import { isOrganizationRole, type EmploymentType, type OrganizationRole } from '../../access/public.ts'
+import { isOrganizationRole, isTrialLevel, isK12BusinessCategory, type TrialPrincipal, type K12BusinessCategory, type EmploymentType, type OrganizationRole } from '../../access/public.ts'
 import { INVITE_POLICY } from '../domain/contract.ts'
 import type { IdentitySessionActor } from '../domain/actor.ts'
 import { hashOpaqueSecret } from './opaque-secret.ts'
@@ -33,6 +33,7 @@ export interface InternalEmailInviteActor {
   readonly userId: string
   readonly organizationId: string
   readonly roles: readonly OrganizationRole[]
+  readonly trialPrincipal?: TrialPrincipal
 }
 
 export interface InternalEmailCredentialSnapshot {
@@ -53,6 +54,7 @@ export interface InternalEmailRepository {
     invitedByUserId: string
     normalizedEmail: string
     role: OrganizationRole
+    trialCategories?: readonly K12BusinessCategory[]
     employmentType: EmploymentType
     displayName: string
     secretHash: string
@@ -60,7 +62,7 @@ export interface InternalEmailRepository {
     idempotencyKey: string
   }>): Promise<void>
   recordInviteDelivery(input: Readonly<{ inviteId: string; organizationId: string; receipt: InternalInviteDeliveryReceipt }>): Promise<void>
-  rotateInvite(input: Readonly<{ inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }>
+  rotateInvite(input: Readonly<{ actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }>
   activateInvite(input: Readonly<{
     organizationId: string
     inviteId: string
@@ -107,6 +109,7 @@ export interface InternalEmailServiceOptions {
 export type InternalEmailServiceErrorCode =
   | 'FOUNDER_REQUIRED'
   | 'INVITE_INVALID'
+  | 'INVITE_UNAVAILABLE'
   | 'INVITE_ALREADY_EXISTS'
   | 'INVITE_NOT_FOUND'
   | 'INVITE_NOT_REDEEMABLE'
@@ -157,6 +160,7 @@ export class InternalEmailService {
     actor: InternalEmailInviteActor
     normalizedEmail: string
     role: OrganizationRole
+    trialCategories?: readonly K12BusinessCategory[]
     employmentType?: EmploymentType
     displayName?: string
     idempotencyKey: string
@@ -167,7 +171,12 @@ export class InternalEmailService {
       throw new InternalEmailServiceError('INVITE_INVALID')
     }
     const employmentType = input.employmentType ?? (input.role === 'contractor' ? 'PART_TIME' : 'FULL_TIME')
-    if (!isCompatibleEmployment(input.role, employmentType)) throw new InternalEmailServiceError('INVITE_INVALID')
+    const trial = input.actor.trialPrincipal !== undefined
+    const categories = input.trialCategories
+    if (trial ? (!isTrialLevel(input.role) || !Array.isArray(categories) || !categories.every(isK12BusinessCategory)
+      || new Set(categories).size !== categories.length || (input.role !== 'l2' && categories.length !== 0))
+      : (categories !== undefined || !['founder','admin','advisor','contractor'].includes(input.role))) throw new InternalEmailServiceError('INVITE_INVALID')
+    if (!['FULL_TIME','PART_TIME'].includes(employmentType) || (!trial && !isCompatibleEmployment(input.role, employmentType))) throw new InternalEmailServiceError('INVITE_INVALID')
     const inviteId = this.createId()
     const targetUserId = this.createId()
     const membershipId = this.createId()
@@ -183,7 +192,7 @@ export class InternalEmailService {
       await this.repository.createInvitedIdentity({
         inviteId, userId: targetUserId, membershipId, roleBindingId,
         organizationId: input.actor.organizationId, invitedByUserId: input.actor.userId,
-        normalizedEmail: email, role: input.role, employmentType,
+        normalizedEmail: email, role: input.role, trialCategories: categories === undefined ? undefined : [...categories].sort(), employmentType,
         displayName: normalizeDisplayName(input.displayName),
         secretHash: hashOpaqueSecret(activationSecret), expiresAtMs, idempotencyKey: input.idempotencyKey,
       })
@@ -233,7 +242,7 @@ export class InternalEmailService {
     const expiresAtMs = nowMs + INVITE_POLICY.expiresInMs
     let target: { targetUserId: string; normalizedEmail: string }
     try {
-      target = await this.repository.rotateInvite({ inviteId: input.inviteId, organizationId: input.actor.organizationId, secretHash: hashOpaqueSecret(activationSecret), expiresAtMs, nowMs })
+      target = await this.repository.rotateInvite({ actorUserId: input.actor.userId, inviteId: input.inviteId, organizationId: input.actor.organizationId, secretHash: hashOpaqueSecret(activationSecret), expiresAtMs, nowMs })
     } catch (error) {
       throw mapRepositoryError(error)
     }
@@ -308,7 +317,10 @@ function safeEqual(actual: Uint8Array, expected: Uint8Array): boolean {
 }
 
 function assertFounder(actor: InternalEmailInviteActor): void {
-  if (!UUID.test(actor.userId) || !UUID.test(actor.organizationId) || !actor.roles.includes('founder')) throw new InternalEmailServiceError('FOUNDER_REQUIRED')
+  const trial = actor.trialPrincipal
+  if (!UUID.test(actor.userId) || !UUID.test(actor.organizationId) || (trial
+    ? (!trial.active || trial.level !== 'founder' || trial.userId !== actor.userId || trial.organizationId !== actor.organizationId)
+    : !actor.roles.includes('founder'))) throw new InternalEmailServiceError('FOUNDER_REQUIRED')
 }
 
 function isCompatibleEmployment(role: OrganizationRole, employment: EmploymentType): boolean {
@@ -334,11 +346,12 @@ function parseActivationCredential(value: string): { organizationId: string; inv
 function mapRepositoryError(error: unknown): InternalEmailServiceError {
   if (error instanceof InternalEmailServiceError) return error
   const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined
+  if (code === 'FOUNDER_REQUIRED') return new InternalEmailServiceError('FOUNDER_REQUIRED')
   if (code === 'INVITE_ALREADY_EXISTS') return new InternalEmailServiceError('INVITE_ALREADY_EXISTS')
   if (code === 'INVITE_EXPIRED') return new InternalEmailServiceError('INVITE_EXPIRED')
   if (code === 'INVITE_NOT_FOUND') return new InternalEmailServiceError('INVITE_NOT_FOUND')
   if (code === 'INVITE_NOT_REDEEMABLE') return new InternalEmailServiceError('INVITE_NOT_REDEEMABLE')
   if (code === 'SESSION_LIMIT_REACHED') return new InternalEmailServiceError('SESSION_LIMIT_REACHED')
   if (code === 'SESSION_NOT_FOUND') return new InternalEmailServiceError('SESSION_NOT_FOUND')
-  return new InternalEmailServiceError('INVITE_INVALID', { cause: error })
+  return new InternalEmailServiceError('INVITE_UNAVAILABLE', { cause: error })
 }
