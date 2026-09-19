@@ -167,88 +167,7 @@ export class SchoolService {
     readonly schoolId: string;
     readonly command: SubmitSchoolChangeCommand;
   }): Promise<SchoolChangeRequestResult> {
-    assertAdvisor(input.actor);
-    assertUuid(input.schoolId);
-    const command = normalizeChangeCommand(input.command);
-
-    const changeRequestId = this.createId();
-    const auditId = this.createId();
-    const outboxId = this.createId();
-    for (const id of [changeRequestId, auditId, outboxId]) assertUuid(id);
-
-    const submittedAtMs = validNow(this.clock.nowMs());
-    const occurredAt = new Date(submittedAtMs).toISOString();
-    const eventType = "schools.change_request.submitted";
-    const audit = buildAuditEvent({
-      id: auditId,
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      actorKind: "user",
-      eventType,
-      eventVersion: 1,
-      action: "create",
-      resourceType: "SchoolChangeRequest",
-      resourceId: changeRequestId,
-      outcome: "succeeded",
-      requestId: command.requestId,
-      occurredAt,
-      metadata: {
-        effect_type: "school_change_submitted",
-        record_version: 1,
-        status: "submitted",
-      },
-    });
-    const outbox = buildOutboxMessage({
-      id: outboxId,
-      auditEventId: auditId,
-      organizationId: input.actor.organizationId,
-      aggregateType: "SchoolChangeRequest",
-      aggregateId: changeRequestId,
-      eventType,
-      eventVersion: 1,
-      idempotencyKey: `school-change-${outboxId}`,
-      requestId: command.requestId,
-      payload: {
-        aggregate_id: changeRequestId,
-        effect_type: "school_change_submitted",
-        record_version: 1,
-        request_id: command.requestId,
-        status: "submitted",
-      },
-      availableAt: occurredAt,
-      createdAt: occurredAt,
-    });
-
-    return this.repository.submitSchoolChange({
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      changeRequestId,
-      schoolId: input.schoolId,
-      fieldName: command.fieldName,
-      fieldClass: command.fieldClass,
-      baseSnapshotId: command.baseSnapshotId,
-      baseValueSha256: command.baseValueSha256,
-      proposedValue: command.proposedValue,
-      reason: command.reason,
-      evidence: command.evidence,
-      requestId: command.requestId,
-      idempotencyKey: command.idempotencyKey,
-      requestHash: hashRequestPayload({
-        baseSnapshotId: command.baseSnapshotId,
-        baseValueSha256: command.baseValueSha256,
-        evidence: {
-          sourceUrl: command.evidence.sourceUrl,
-          quote: command.evidence.quote,
-        },
-        fieldClass: command.fieldClass,
-        fieldName: command.fieldName,
-        proposedValue: command.proposedValue,
-        reason: command.reason,
-        schoolId: input.schoolId,
-      }),
-      submittedAtMs,
-      effects: buildAtomicMutationEffects({ audit, outbox }),
-    });
+    return submitSchoolChange(input,{repository:this.repository,clock:this.clock,createId:this.createId});
   }
 }
 
@@ -322,9 +241,94 @@ export async function createProvisionalSchool(input: {actor: RequestAccessActor;
     });
 }
 
-function assertAdvisor(actor: IdentitySessionActor): void {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || actor.role !== "advisor") {
-    throw new SchoolServiceError("SCHOOL_ADVISOR_REQUIRED");
+export async function submitSchoolChange(input:{actor:RequestAccessActor;schoolId:string;command:SubmitSchoolChangeCommand},options:{repository:Pick<SchoolRepository,'submitSchoolChange'>;clock?:SchoolServiceClock;createId?:()=>string}):Promise<SchoolChangeRequestResult>{
+    assertSchoolChangeActor(input.actor);
+    assertUuid(input.schoolId);
+    const command = normalizeChangeCommand(input.command);
+
+    const changeRequestId = (options.createId ?? randomUUID)();
+    const auditId = (options.createId ?? randomUUID)();
+    const outboxId = (options.createId ?? randomUUID)();
+    for (const id of [changeRequestId, auditId, outboxId]) assertUuid(id);
+
+    const submittedAtMs = validNow((options.clock ?? {nowMs:()=>Date.now()}).nowMs());
+    const occurredAt = new Date(submittedAtMs).toISOString();
+    const eventType = "schools.change_request.submitted";
+    const audit = buildAuditEvent({
+      id: auditId,
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorKind: "user",
+      eventType,
+      eventVersion: 1,
+      action: "create",
+      resourceType: "SchoolChangeRequest",
+      resourceId: changeRequestId,
+      outcome: "succeeded",
+      requestId: command.requestId,
+      occurredAt,
+      metadata: {
+        effect_type: "school_change_submitted",
+        record_version: 1,
+        status: "submitted",
+      },
+    });
+    const outbox = buildOutboxMessage({
+      id: outboxId,
+      auditEventId: auditId,
+      organizationId: input.actor.organizationId,
+      aggregateType: "SchoolChangeRequest",
+      aggregateId: changeRequestId,
+      eventType,
+      eventVersion: 1,
+      idempotencyKey: `school-change-${outboxId}`,
+      requestId: command.requestId,
+      payload: {
+        aggregate_id: changeRequestId,
+        effect_type: "school_change_submitted",
+        record_version: 1,
+        request_id: command.requestId,
+        status: "submitted",
+      },
+      availableAt: occurredAt,
+      createdAt: occurredAt,
+    });
+
+    return options.repository.submitSchoolChange({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      changeRequestId,
+      schoolId: input.schoolId,
+      fieldName: command.fieldName,
+      fieldClass: command.fieldClass,
+      baseSnapshotId: command.baseSnapshotId,
+      baseValueSha256: command.baseValueSha256,
+      proposedValue: command.proposedValue,
+      reason: command.reason,
+      evidence: command.evidence,
+      requestId: command.requestId,
+      idempotencyKey: command.idempotencyKey,
+      requestHash: hashRequestPayload({
+        baseSnapshotId: command.baseSnapshotId,
+        baseValueSha256: command.baseValueSha256,
+        evidence: {
+          sourceUrl: command.evidence.sourceUrl,
+          quote: command.evidence.quote,
+        },
+        fieldClass: command.fieldClass,
+        fieldName: command.fieldName,
+        proposedValue: command.proposedValue,
+        reason: command.reason,
+        schoolId: input.schoolId,
+      }),
+      submittedAtMs,
+      effects: buildAtomicMutationEffects({ audit, outbox }),
+    });
+}
+function assertSchoolChangeActor(actor:RequestAccessActor){
+  if(!UUID.test(actor.organizationId)||!UUID.test(actor.userId)||
+    !(hasRequestCapability(actor,'schools.read')||(!actor.trialPrincipal&&'role' in actor&&actor.role==='advisor'))){
+    throw new SchoolServiceError('SCHOOL_ADVISOR_REQUIRED');
   }
 }
 

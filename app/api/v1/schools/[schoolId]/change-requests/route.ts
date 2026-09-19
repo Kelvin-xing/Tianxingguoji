@@ -1,14 +1,7 @@
-import { cookies } from "next/headers";
-
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import {
-  SchoolServiceError,
-  type SubmitSchoolChangeCommand,
-} from "@/modules/schools/server";
-import { SchoolRuntimeUnavailable, getSchoolRuntime } from "@/modules/schools/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import {requireApiRequestAccessContext} from '@/app/api/v1/request-access';
+import {getApplicationTenantRunner} from '@/modules/shared/server';
+import {SchoolServiceError,submitSchoolChange,PostgresqlSchoolChangeRepository,type SubmitSchoolChangeCommand} from '@/modules/schools/server';
+import {createApiError,handleApiRequest} from '@/modules/shared/public';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -24,19 +17,9 @@ export async function POST(
     const { schoolId } = await context.params;
     if (!UUID.test(schoolId)) throw createApiError("INVALID_REQUEST");
     const command = await parseChangeCommand(request, requestContext.requestId);
-    const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-    if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-
+    const actor=await requireApiRequestAccessContext();
     try {
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: true,
-      });
-      const result = await getSchoolRuntime().service.submitSchoolChange({
-        actor,
-        schoolId,
-        command,
-      });
+      const result=await submitSchoolChange({actor,schoolId,command},{repository:new PostgresqlSchoolChangeRepository(getApplicationTenantRunner())});
       return {
         change_request_id: result.changeRequestId,
         school_id: result.schoolId,
@@ -68,6 +51,8 @@ async function parseChangeCommand(
   }
   if (!isRecord(body) || !isRecord(body.evidence)) throw createApiError("INVALID_REQUEST");
 
+  const allowed=['field_name','field_class','base_snapshot_id','base_value_sha256','proposed_value','reason','evidence'];
+  if(Object.keys(body).some(key=>!allowed.includes(key))||Object.keys(body.evidence).some(key=>!['source_url','quote'].includes(key)))throw createApiError('INVALID_REQUEST');
   const fieldName = body.field_name;
   const fieldClass = body.field_class;
   const baseSnapshotId = body.base_snapshot_id;
@@ -102,10 +87,6 @@ async function parseChangeCommand(
 }
 
 function mapSchoolError(error: unknown) {
-  if (error instanceof IdentityRuntimeUnavailable || error instanceof SchoolRuntimeUnavailable) {
-    return createApiError("SERVICE_UNAVAILABLE");
-  }
-  if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
   if (!(error instanceof SchoolServiceError)) return createApiError("SERVICE_UNAVAILABLE");
 
   switch (error.code) {

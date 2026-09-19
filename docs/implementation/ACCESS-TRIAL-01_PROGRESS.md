@@ -527,3 +527,16 @@
 - `/tmp/access-trial-upload-route-check.log`真实PG17+Next/Chrome **2/2**，原学校详情四标题/390px、建档、CRM、任务、上传扫描、文件生命周期、邀请全部执行通过。上传version201、intent200、bytes200；新动态路由检查也通过。聚焦ESLint `/tmp/access-trial-upload-route-lint.log`及diff检查通过。
 - 此检查同时预编译开发路由，结果与开发编译时序问题一致，但单次成功不足以证明原偶发404根因已修复；生产构建/生产环境没有本次证据。保留该限制，不将测试准备改动称为生产修复。
 - 整体仍in_progress，学校维护/审批及完整履历、其他模块权限复核、最终本地验收、main合并和推送未完成。
+
+## 学校资料变更申请正式落库（2026-09-19，接续 51c9d18）
+
+总体仍 `in_progress`，本节接通申请服务和正式HTTP，尚未接入申请表单或审批运行时。
+
+- `/api/v1/schools/[schoolId]/change-requests`替换始终不可用的运行时为正式PostgreSQL仓储。当前成员/角色在事务内锁定重查，Founder/L1可提交业务资料变更，L2只补充当前有效视图中的未知值，L3拒绝；历史Advisor沿用原提交资格。L2不能利用爬虫原始值仍为空绕过已批准人工值。
+- 申请保存为candidate overlay和不可变字段，包含提交人、理由、证据、原始快照及字段哈希，不直接改变当前有效资料。学校锁串行分配revision_number，活跃快照与字段基线不匹配时拒绝；幂等重放重新授权。原始快照不变，审计/outbox/申请字段一起提交或回滚。路由拒绝客户端注入审批人等额外字段。
+- `/tmp/access-trial-school-change-browser.log` **24/24**：真实PG17+Next/Chrome、学校变更服务单测和模块边界。正式HTTP覆盖L1提交/重放/有效值不变、L2补充允许且替换已有值403、L3提交403、过期基线409、注入审批人400；既有学校页面、CRM、任务和上传流程继续通过。未将HTTP当作申请表单验收。
+- `/tmp/access-trial-school-change-pg-final2.log` **24/24**覆盖当前新增补充断言：真实数据库禁止提交者审批自己；原始phone仍为空而已批准overlay非空时L2新请求被拒绝；审计主键失败后overlay/fields均回滚，原键可重试；停用后原回执也拒绝。审批的SQL夹具仅验证原约束，不代表审批API已接通。
+- 中间补充PG批次的新增学校断言通过，随后原有case_flow_foundation的background_blocker_rejections偶发失败；复核批次通过，未修改该断言或放宽业务规则，保留其偶发风险。
+- 类型 `/tmp/access-trial-school-change-types-final.log`、聚焦ESLint `/tmp/access-trial-school-change-lint.log`和新增测试ESLint `/tmp/access-trial-school-change-final-test-lint.log`、diff通过，无迁移。
+
+尚需申请表单、待处理申请读取、审批/拒绝的实际等级与禁止自审/并发/审计闭环、完整更新履历；其余模块权限复核与整体验收、main合并及推送未完成。无部署或真实员工/客户资料操作。

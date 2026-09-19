@@ -17,3 +17,4 @@ export * from "./infrastructure/postgresql-school-options-repository.ts";
 export * from "./infrastructure/school-options-runtime.ts";
 export * from "./infrastructure/database-test-resolved-fixture.ts";
 export * from "./infrastructure/postgresql-provisional-repository.ts";
+export * from "./infrastructure/postgresql-change-repository.ts";

@@ -1,3 +1,4 @@
+import {sha256SchoolValue} from "../../modules/schools/public.ts";
 import {assertTrialProvisionalSchoolBrowser} from "./trial-provisional-school-browser-assertions.ts";
 import {assertTrialReferralSourceHttp} from './trial-referral-source-http-assertions.ts'
 import {assertTrialCrmDeletionHttp} from './trial-crm-deletion-http-assertions.ts'
@@ -241,6 +242,19 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await schoolResolved.json()).data.school_id,firstSchool.school_id)
     assert.equal((await restrictedContext.request.get(`${baseUrl}/api/v1/schools/${randomUUID()}/resolved`)).status(),404)
 
+    const changeUrl=`${baseUrl}/api/v1/schools/${firstSchool.school_id}/change-requests`
+    const changeBody={field_name:'phone',field_class:'general',base_snapshot_id:firstSchool.base_snapshot_id,
+      base_value_sha256:sha256SchoolValue(firstSchool.fields.phone??null),proposed_value:'Synthetic reviewed phone',reason:'Synthetic supplementary evidence',
+      evidence:{source_url:'https://example.invalid/school',quote:'Synthetic phone evidence'}}
+    const changeOptions={headers:{'idempotency-key':randomUUID()},data:changeBody}
+    const changeResponse=await restrictedContext.request.post(changeUrl,changeOptions)
+    assert.equal(changeResponse.status(),200)
+    const changeReceipt=(await changeResponse.json()).data
+    assert.equal(changeReceipt.status,'submitted')
+    assert.deepEqual((await (await restrictedContext.request.post(changeUrl,changeOptions)).json()).data,changeReceipt)
+    assert.equal((await (await restrictedContext.request.get(resolvedSchoolUrl)).json()).data.fields.phone??null,firstSchool.fields.phone??null)
+    assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,approved_by_user_id:l1.user_id}})).status(),400)
+    assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,base_value_sha256:'a'.repeat(64)}})).status(),409)
     await restricted.goto(`${baseUrl}/schools/${firstSchool.school_id}`)
     for (const heading of ['基礎資料','招生資料','待處理更新','更新履歷']) await restricted.getByRole('heading',{name:heading,exact:true}).waitFor()
     assert.equal(await restricted.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
@@ -309,6 +323,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     })).status(),403)
     assert.equal((await l2Context.request.get(resolvedSchoolUrl)).status(),200)
     assert.equal((await l2Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Synthetic L2 school'}})).status(),200)
+    assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:changeBody})).status(),200)
+    assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,field_name:'district',base_value_sha256:sha256SchoolValue(firstSchool.fields.district),proposed_value:'Replacement'}})).status(),403)
     await l2Context.close()
     const l3 = people.find((p) => p.level === 'l3')!
     const l3Context = await browser.newContext()
@@ -323,6 +339,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l3Context.request.get(provisionalUrl)).status(),403)
     assert.equal((await l3Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Denied school'}})).status(),403)
     process.stdout.write(JSON.stringify({trial_school_provisionals_http:'pass',minimal:'name_only',l1:'create_list_replay',l2:'create',l3:'403',invalid:'422',injected:'400',changed_replay:'409'})+'\n')
+    assert.equal((await l3Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:changeBody})).status(),403)
+    process.stdout.write(JSON.stringify({trial_school_change_http:'pass',l1:'submit_replay_no_effective_change',l2:'supplement_only',l3:'403',stale:'409',injected_reviewer:'400'})+'\n')
     process.stdout.write(JSON.stringify({trial_school_reads_http:'pass',l1:'directory_and_resolved',l2:'resolved',l3:'403',missing:'404'})+'\n')
 
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/students`)).status(),403)
