@@ -252,6 +252,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       (SELECT 1 FROM cases_service_cases c WHERE c.student_id=s.id AND c.business_category='international_school') LIMIT 1`)).rows[0]
     assert.ok(hiddenStudent)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/students/${hiddenStudent.id}`)).status(),404)
+    for(const suffix of ['guardians','guardian-relationships/history']){
+      assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/students/${hiddenStudent.id}/${suffix}`)).status(),404)
+      assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/students/${expectedStudents[0]}/${suffix}`)).status(),200)
+    }
     const duplicateResponse=await l2Context.request.post(`${baseUrl}/api/v1/crm/potential-duplicates`,{
       data:{kind:'student',name:hiddenStudent.display_name,email:null,phone:null},
     })

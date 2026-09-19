@@ -376,3 +376,13 @@
 - 类型 `/tmp/access-trial-crm-profile-types-final.log`、聚焦ESLint `/tmp/access-trial-crm-profile-lint-final.log`、diff检查通过。无新迁移。
 
 家长关系列表/历史仍存在独立入口未按试用分类过滤，下一步须收窄；关系新增、交接、解除等写入仍须适配。整体试用验收及main合并/推送未完成；未部署或变更真实员工。
+
+## 家长当前关系与历史读取范围（2026-09-19，接续 72c9190）
+
+总体仍 `in_progress`。补齐独立家长关系列表/历史入口的分类检查，避免绕过学生详情读取联系人。
+
+- 两个仓储入口在同一租户事务中验证当前试用成员、真实角色及分类；仅可见学生可返回当前关系和关系历史。拒绝范围返回不存在，停用/撤销分类没有历史角色回落；旧账号路径保持既有语义。
+- `/tmp/access-trial-crm-relationship-read-final.log` **33/33**：真实PG17矩阵、Next/Chrome、关系仓储及解除关系回归、模块边界。四等级、两分类、未知分类、分类撤销均覆盖当前/历史两种读取；L2正式GET分类内200、分类外404，资料编辑和既有文件/任务/邀请流程继续通过。
+- 类型 `/tmp/access-trial-crm-relationship-read-types.log` 无错误；聚焦ESLint `/tmp/access-trial-crm-relationship-read-lint.log` 无错误，保留旧toEndResult未使用参数警告1条；diff检查通过。单测旧假查询增加未启用试用成员的显式空结果，不绕过真实权限检查。无迁移或页面修改。
+
+关系搜索、关联、主要联系人交接和解除等写入适配仍未完成；其余模块、整体试用验收及main合并/推送继续。未部署、未操作真实员工数据。

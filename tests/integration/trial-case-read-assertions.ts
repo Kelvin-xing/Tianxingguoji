@@ -1,3 +1,4 @@
+import {PostgresqlGuardianRelationshipRepository} from "../../modules/crm/infrastructure/postgresql-guardian-relationship-repository.ts";
 import {assertTrialCrmProfileWrites} from "./trial-crm-profile-assertions.ts";
 import { assertTrialCaseIntake } from "./trial-case-intake-assertions.ts";
 import { assertTrialCaseWriteSql } from "./trial-case-write-sql-assertions.ts";
@@ -40,6 +41,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
   }};
   const students=new PostgresqlStudentReadRepository(studentRunner);
   const duplicates=new PostgresqlPotentialDuplicateRepository(studentRunner);
+  const relationships=new PostgresqlGuardianRelationshipRepository(studentRunner);
   const cachedL2 = buildAccessContext({
     userId: l2!.userId, organizationId: org, membershipId: l2!.membershipId,
     roles: ["l2"], membershipRecordVersion: 1, roleBindingRecordVersions: [1],
@@ -113,6 +115,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
         const input={organizationId:org,actorUserId:person.userId};
         assert.equal((await students.listStudents(input)).some(s=>s.id===NEON_TEST_STUDENTS[0]!.id),allowed,'student list follows current category scope');
         assert.equal((await students.findStudent({...input,studentId:NEON_TEST_STUDENTS[0]!.id}))!==null,allowed,'student detail cannot bypass the list scope');
+        for(const read of ['listCurrent','listHistory'] as const)assert.equal((await relationships[read]({...input,studentId:NEON_TEST_STUDENTS[0]!.id}))!==null,allowed,`${read} cannot reveal out-of-scope guardian relationships`);
         const name=(await client.query('SELECT display_name FROM crm_students WHERE id=$1',[NEON_TEST_STUDENTS[0]!.id])).rows[0].display_name;
         assert.equal((await duplicates.findCandidates({...input,kind:'student',name,email:null,phone:null})).candidates.some(row=>row.id===NEON_TEST_STUDENTS[0]!.id),allowed,'duplicate search cannot reveal out-of-scope students');
         const guardian=(await client.query(`SELECT g.id,g.display_name FROM crm_guardians g JOIN crm_student_guardian_relationships r ON r.guardian_id=g.id
@@ -124,6 +127,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
       await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1", [l2!.userId]);
       assert.equal(await service.findCase(cachedL2,caseId), null, "category revocation applies despite cached request categories");
       assert.deepEqual(await students.listStudents({organizationId:org,actorUserId:l2!.userId}),[]);
+      for(const read of ['listCurrent','listHistory'] as const)assert.equal(await relationships[read]({organizationId:org,actorUserId:l2!.userId,studentId:NEON_TEST_STUDENTS[0]!.id}),null,'revoked categories deny both relationship read endpoints');
       assert.deepEqual((await duplicates.findCandidates({organizationId:org,actorUserId:l2!.userId,kind:'student',name:'Synthetic',email:null,phone:null})).candidates,[]);
       assert.equal(await students.findStudent({organizationId:org,actorUserId:l2!.userId,studentId:NEON_TEST_STUDENTS[0]!.id}),null);
       await context(founder!.userId);

@@ -1,4 +1,5 @@
 import "server-only";
+import {resolveTrialStudentScope} from "./trial-student-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { IdempotencyExecutionError, runIdempotentTransaction } from "../../shared/server.ts";
@@ -72,9 +73,19 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   }
 
   listCurrent(input: Parameters<GuardianRelationshipRepository["listCurrent"]>[0]) {
-    return this.run(input, (transaction) => listCurrent(transaction, input.studentId));
+    return this.run(input, async (transaction,tenantTransaction) => {
+      const visible=await resolveTrialStudentScope(tenantTransaction,input);
+      if(visible!==null&&!visible.includes(input.studentId))return null;
+      return listCurrent(transaction,input.studentId);
+    });
   }
-  listHistory(input: Parameters<GuardianRelationshipRepository["listHistory"]>[0]) { return this.run(input, tx => listHistory(tx, input.organizationId, input.studentId)); }
+  listHistory(input: Parameters<GuardianRelationshipRepository["listHistory"]>[0]) {
+    return this.run(input,async(transaction,tenantTransaction)=>{
+      const visible=await resolveTrialStudentScope(tenantTransaction,input);
+      if(visible!==null&&!visible.includes(input.studentId))return null;
+      return listHistory(transaction,input.organizationId,input.studentId);
+    });
+  }
 
   endRelationship(input: Parameters<GuardianRelationshipRepository["endRelationship"]>[0]): Promise<EndGuardianRelationshipResult> {
     const context = {
@@ -289,11 +300,11 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
 
   private run<Result>(
     input: { readonly organizationId: string; readonly actorUserId: string },
-    operation: (transaction: CrmTransaction) => Promise<Result>,
+    operation: (transaction: CrmTransaction, tenantTransaction: TenantTransaction) => Promise<Result>,
   ): Promise<Result> {
     return this.runner.run({ organizationId: input.organizationId, actorUserId: input.actorUserId }, async (tenantTransaction) => {
       try {
-        return await operation(adaptTransaction(tenantTransaction));
+        return await operation(adaptTransaction(tenantTransaction),tenantTransaction);
       } catch (cause) {
         if (cause instanceof GuardianRelationshipError) throw cause;
         const postgresCode = readConcurrencyPostgresCode(cause);
