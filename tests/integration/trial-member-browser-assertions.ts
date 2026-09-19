@@ -266,8 +266,16 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const acceptanceCommand=acceptanceResponse.request().postDataJSON()
     const acceptanceKey=acceptanceResponse.request().headers()['idempotency-key']!
     await l3Page.reload()
-    l3Page.on('response',response=>{const path=new URL(response.url()).pathname;
-      if(response.request().method()==='PUT'||path.endsWith('/upload-intents')||path.endsWith('/versions'))process.stdout.write(JSON.stringify({trial_upload_http:{method:response.request().method(),status:response.status(),operation:response.request().method()==='PUT'?'bytes':path.endsWith('/upload-intents')?'intent':'version'}})+'\n');})
+    l3Page.on('response',async response=>{const path=new URL(response.url()).pathname;
+      if(response.request().method()==='PUT'||path.endsWith('/upload-intents')||path.endsWith('/versions')){
+        const json=response.headers()['content-type']?.includes('application/json')??false;
+        let code:string|undefined;
+        if(response.status()>=400&&json){
+          const body=await response.json().catch(()=>null);
+          code=['NOT_FOUND','FORBIDDEN','UNAUTHENTICATED','CONFLICT','STALE_VERSION','SERVICE_UNAVAILABLE','INVALID_REQUEST','VALIDATION_FAILED'].includes(body?.error?.code)?body.error.code:'UNRECOGNIZED';
+        }
+        process.stdout.write(JSON.stringify({trial_upload_http:{method:response.request().method(),status:response.status(),json,code,operation:response.request().method()==='PUT'?'bytes':path.endsWith('/upload-intents')?'intent':'version'}})+'\n');
+      }})
     const uploadBytes=Buffer.alloc(1_048_576,0x20);uploadBytes.write('%PDF-1.7\nSynthetic task file\n')
     await l3Page.locator('input[type="file"]').setInputFiles({name:'synthetic-task.pdf',mimeType:'application/pdf',buffer:uploadBytes})
     await l3Page.getByRole('button',{name:'上傳文件',exact:true}).click()

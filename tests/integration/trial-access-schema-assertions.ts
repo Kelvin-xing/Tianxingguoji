@@ -32,6 +32,8 @@ export async function assertTrialAccessSchema(config: ClientConfig): Promise<voi
     await client.query(insert, [founder.membershipId, org, founder.userId, "founder", [], founder.userId]);
     await client.query(insert, [advisor.membershipId, org, advisor.userId, "l2", ["international_school"], founder.userId]);
     await rejected("SET CONSTRAINTS ALL IMMEDIATE", [], "23514");
+    const timing=(await client.query("SELECT transaction_timestamp()<created_at AS transaction_predates_binding,clock_timestamp()<created_at AS clock_predates_binding FROM access_role_bindings WHERE id=$1",[advisor.roleBindingId])).rows[0];
+    process.stdout.write(JSON.stringify({trial_binding_clock:timing})+'\n');
     await client.query("UPDATE access_role_bindings SET status='revoked',record_version=record_version+1 WHERE id=$1", [advisor.roleBindingId]);
     await client.query(`INSERT INTO access_role_bindings
       (id,organization_id,membership_id,user_id,role,status,created_by_user_id)
@@ -39,6 +41,19 @@ export async function assertTrialAccessSchema(config: ClientConfig): Promise<voi
     await client.query("SET CONSTRAINTS ALL IMMEDIATE");
     const workspace = await client.query("SELECT role FROM access_resolve_workspace_context($1,$2,$3)", [advisor.userId,org,advisor.membershipId]);
     assert.deepEqual(workspace.rows, [{ role: "l2" }]);
+    // A transaction can observe a binding newer than its start timestamp (READ COMMITTED),
+    // and a host clock adjustment can produce the same ordering. Revocation must remain valid.
+    await client.query('SAVEPOINT binding_timestamp_order');
+    await client.query('SET CONSTRAINTS ALL DEFERRED');
+    await client.query("UPDATE access_role_bindings SET status='revoked',record_version=record_version+1 WHERE user_id=$1 AND status='active'",[advisor.userId]);
+    const futureBinding=(await client.query(`INSERT INTO access_role_bindings
+      (id,organization_id,membership_id,user_id,role,status,created_by_user_id,created_at,updated_at)
+      VALUES(gen_random_uuid(),$1,$2,$3,'l2','active',$4,transaction_timestamp()+interval '2 seconds',transaction_timestamp()+interval '2 seconds') RETURNING id`,
+      [org,advisor.membershipId,advisor.userId,founder.userId])).rows[0].id;
+    await client.query("UPDATE access_role_bindings SET status='revoked',record_version=record_version+1 WHERE id=$1",[futureBinding]);
+    const preserved=(await client.query('SELECT updated_at>=created_at AS ordered,status FROM access_role_bindings WHERE id=$1',[futureBinding])).rows[0];
+    assert.deepEqual(preserved,{ordered:true,status:'revoked'});
+    await client.query('ROLLBACK TO SAVEPOINT binding_timestamp_order');await client.query('RELEASE SAVEPOINT binding_timestamp_order');
     const read = await client.query("SELECT * FROM access_resolve_trial_principal($1,$2,$3)", [advisor.userId, org, advisor.membershipId]);
     assert.equal(read.rows[0].level, "l2");
     assert.deepEqual(read.rows[0].categories, ["international_school"]);

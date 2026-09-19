@@ -316,3 +316,15 @@
 - 首次浏览器运行在既有L3上传阶段遇到upload-intents 404，新页面流程尚未开始；同一代码重跑该阶段及新增流程通过。保留 `/tmp/access-trial-document-lifecycle-ui.log` 失败证据，后续稳定性/并发排查仍需定位，不以一次重跑绿标记全系统稳定。
 
 未新增迁移、未部署、未映射真实员工、未合并main或推送。继续并发、其余模块和整体本地试用验收后再完成合并推送目标。
+
+## 角色撤销时间顺序与上传诊断（2026-09-19，接续 554242f）
+
+总体仍 `in_progress`。继续调查稳定性时再次遇到access_role_bindings_timestamps_check，这次发生在独立schema夹具撤销旧角色阶段；与上传404分开处理。
+
+- 旧角色触发器以transaction_timestamp覆盖updated_at，未考虑可见行的时间晚于事务快照。增加固定夹具：创建时间比当前事务晚2秒的角色绑定，然后撤销；旧代码稳定触发同一时间约束（`/tmp/access-trial-binding-clock-before.log`），并非靠重复运行期待失败。
+- 追加069纠正迁移，更新时间取事务时间、旧更新时间、创建时间的最大值；身份不可变、状态/版本、员工资料及最后一个Founder约束均保留。不改历史迁移。基线当前68源迁移/69生成文件、612公共对象。
+- `/tmp/access-trial-stability-after-final.log` **4/4**：PG17真实dry-run回滚/独立连接清洁校验、apply/RLS、固定角色撤销夹具、成员管理及并发最后Founder保护、Next/Chrome完整文件与任务/邀请流程、基线契约。基线生成/校验、类型 `/tmp/access-trial-stability-types.log`、聚焦ESLint `/tmp/access-trial-stability-lint.log`、diff检查通过。
+- 首次新迁移草稿带内部BEGIN/COMMIT，基线dry-run的独立清洁校验正确拒绝；已按本仓库约定移除内部事务，由runner管理，最终dry-run确认无残留。未在共享数据库执行。
+- 浏览器上传诊断增加JSON/非JSON响应区分及允许名单错误码，不输出私密URL、ID或响应正文。此次版本创建201、授权200、字节上传200，之前偶发授权404仍未定位，不能标记已修复；新增诊断供后续复现使用。
+
+未部署、未变更真实员工、未合并main或推送。任务/文件并发锁顺序及原计划其余模块、整体本地验收仍继续。
