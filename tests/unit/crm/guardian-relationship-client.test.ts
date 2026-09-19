@@ -5,6 +5,7 @@ import { ApiClientError } from "../../../lib/api/client.ts";
 import {
   GuardianRelationshipIdempotencyAttempt,
   attachGuardianRelationship,
+  endGuardianRelationship,
   classifyGuardianRelationshipFailure,
   getGuardianRelationships,
   guardianAttachFingerprint,
@@ -153,6 +154,21 @@ test("Guardian failures distinguish authentication, permission, validation, stal
   assert.equal(classifyGuardianRelationshipFailure(new Error("private detail")), "unavailable");
 });
 
+test("end command binds its receipt to both resource IDs and the expected next version",async context=>{
+  const originalFetch=globalThis.fetch;context.after(()=>{globalThis.fetch=originalFetch});
+  const valid={id:SECONDARY_RELATIONSHIP_ID,student_id:STUDENT_ID,status:'ended',ends_at:'2026-09-19T00:00:00.000Z',record_version:3};
+  for(const patch of [{},{id:PRIMARY_RELATIONSHIP_ID},{student_id:PRIMARY_GUARDIAN_ID},{record_version:9},{status:'active'},{object_key:'private'}]){
+    globalThis.fetch=async(input,init)=>{
+      assert.equal(input,`/api/v1/students/${STUDENT_ID}/guardian-relationships/${SECONDARY_RELATIONSHIP_ID}/end`);
+      assert.deepEqual(JSON.parse(String(init?.body)),{expected_record_version:2});
+      assert.equal(new Headers(init?.headers).get('idempotency-key'),'end-attempt-1');
+      return apiResponse({relationship:{...valid,...patch},occurred_at:valid.ends_at});
+    };
+    const result=endGuardianRelationship(STUDENT_ID,SECONDARY_RELATIONSHIP_ID,2,'end-attempt-1');
+    if(Object.keys(patch).length===0)await result;else await assert.rejects(result);
+  }
+});
+
 function attachDraft(): AttachGuardianRelationshipDraft {
   return {
     guardian_id: SECONDARY_GUARDIAN_ID,
@@ -177,6 +193,7 @@ function relationshipFixture(primary: boolean) {
     relationship_id: PRIMARY_RELATIONSHIP_ID,
     guardian: guardianFixture(PRIMARY_GUARDIAN_ID, "Primary Guardian"),
     relationship_type: "father",
+    relationship_description:null,
     is_legal_guardian: true,
     is_primary_contact: primary,
     is_emergency_contact: false,
@@ -196,6 +213,7 @@ function commandRelationshipFixture(primary: boolean) {
     relationship_id: SECONDARY_RELATIONSHIP_ID,
     guardian_id: SECONDARY_GUARDIAN_ID,
     relationship_type: "mother",
+    relationship_description:null,
     is_legal_guardian: true,
     is_primary_contact: primary,
     is_emergency_contact: false,

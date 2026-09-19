@@ -777,6 +777,7 @@ export function attachGuardianRelationship(
       body: {
         guardian_id: draft.guardian_id,
         relationship_type: draft.relationship_type,
+        relationship_description: draft.relationship_description,
         is_legal_guardian: draft.is_legal_guardian,
         is_emergency_contact: draft.is_emergency_contact,
         is_billing_contact: draft.is_billing_contact,
@@ -809,6 +810,19 @@ export function handoffPrimaryGuardian(
     },
     decodePrimaryGuardianHandoffResult,
   );
+}
+
+export function endGuardianRelationship(studentId:string,relationshipId:string,expectedRecordVersion:number,idempotencyKey:string):Promise<void> {
+  assertUuid(studentId,"studentId"); assertUuid(relationshipId,"relationshipId");
+  assertPositiveInteger(expectedRecordVersion,"expectedRecordVersion"); assertIdempotencyKey(idempotencyKey);
+  return requestApi({path:`/api/v1/students/${studentId}/guardian-relationships/${relationshipId}/end`,method:"POST",
+    headers:{"idempotency-key":idempotencyKey},body:{expected_record_version:expectedRecordVersion}},value=>{
+    const response=exactRecord(value,["relationship","occurred_at"]);
+    const relation=exactRecord(response.relationship,["id","student_id","status","ends_at","record_version"]);
+    if(uuid(relation.id,"id")!==relationshipId||uuid(relation.student_id,"student_id")!==studentId||relation.status!=="ended"
+      ||positiveInteger(relation.record_version,"record_version")!==expectedRecordVersion+1
+      ||isoDateTime(relation.ends_at,"ends_at")!==isoDateTime(response.occurred_at,"occurred_at"))throw new TypeError("Invalid relationship end receipt.");
+  });
 }
 
 export function searchDuplicateRecords(

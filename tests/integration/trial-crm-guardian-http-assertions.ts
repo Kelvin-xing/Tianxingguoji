@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import type {APIRequestContext} from 'playwright-core';
+import type {APIRequestContext,Page} from 'playwright-core';
 import type {Client} from 'pg';
-export async function assertTrialGuardianHttp(input:{request:APIRequestContext;baseUrl:string;client:Client;studentId:string;guardianId:string}){
-  const {request,baseUrl,client,studentId,guardianId}=input;
+export async function assertTrialGuardianHttp(input:{page:Page;request:APIRequestContext;baseUrl:string;client:Client;studentId:string;guardianId:string}){
+  const {page,request,baseUrl,client,studentId,guardianId}=input;
   const otherId=randomUUID();
   await client.query(`INSERT INTO crm_guardians(id,organization_id,display_name,email,status)
     SELECT $1,organization_id,'Trial HTTP Additional Guardian','additional@example.invalid','active' FROM crm_students WHERE id=$2`,[otherId,studentId]);
@@ -12,31 +12,66 @@ export async function assertTrialGuardianHttp(input:{request:APIRequestContext;b
   assert.equal(search.status(),200);
   assert.ok((await search.json()).data.some((row:{id:string})=>row.id===otherId));
   const attachData={guardian_id:otherId,relationship_type:'mother',relationship_description:null,is_legal_guardian:false,is_emergency_contact:true,is_billing_contact:false,notification_consent:false};
-  const attachHeaders={'idempotency-key':`attach-${randomUUID()}`};
-  const attached=await request.post(`${root}/guardians`,{headers:attachHeaders,data:attachData});
+  await page.goto(`${baseUrl}/students/${studentId}/guardians`);
+  await page.getByLabel('搜尋姓名、電郵或電話').fill('Trial HTTP Additional');
+  await page.getByRole('button',{name:'搜尋監護人',exact:true}).click();
+  await page.getByRole('radio').check();
+  await page.getByRole('combobox',{name:'關係類型',exact:true}).selectOption('mother');
+  await page.getByLabel('緊急聯絡人',{exact:true}).check();
+  let uncertainKey:string|undefined;
+  await page.route(`${root}/guardians`,async route=>{
+    if(route.request().method()!=='POST'||uncertainKey){await route.continue();return;}
+    uncertainKey=route.request().headers()['idempotency-key'];
+    const committed=await route.fetch();assert.equal(committed.status(),201);
+    await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({api_version:'v1',request_id:'synthetic-lost-ack',error:{code:'SERVICE_UNAVAILABLE',message:'Retry',retryable:true}})});
+  });
+  await page.getByRole('button',{name:'確認關聯',exact:true}).click();
+  await page.getByText('服務暫時不可用。可保留原內容重試，系統不會重複處理。',{exact:true}).waitFor();
+  const attachResponse=page.waitForResponse(response=>response.url()===`${root}/guardians`&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'確認關聯',exact:true}).click();
+  const attached=await attachResponse;
   assert.equal(attached.status(),201);
+  const attachHeaders={'idempotency-key':attached.request().headers()['idempotency-key']!};
+  assert.equal(attachHeaders['idempotency-key'],uncertainKey,'uncertain response retries preserve the original key');
+  await page.unroute(`${root}/guardians`);
   const attachReceipt=(await attached.json()).data;
+  await page.getByText('監護人已關聯。',{exact:true}).waitFor();
   const primary=(await client.query('SELECT id,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND is_primary_contact AND ends_at IS NULL',[studentId])).rows[0];
   assert.equal((await request.post(`${root}/guardian-relationships/${primary.id}/end`,{headers:{'idempotency-key':`deny-primary-${randomUUID()}`},data:{expected_record_version:Number(primary.record_version)}})).status(),409);
-  const handoffHeaders={'idempotency-key':`handoff-${randomUUID()}`};
   const handoffData={successor_guardian_id:otherId,expected_primary_record_version:Number(primary.record_version)};
-  const handed=await request.post(`${root}/guardians/primary-handoffs`,{headers:handoffHeaders,data:handoffData});
+  await page.getByRole('combobox',{name:'新主要聯絡人',exact:true}).selectOption(otherId);
+  await page.getByLabel('我確認交接主要聯絡人。',{exact:true}).check();
+  const handoffResponse=page.waitForResponse(response=>response.url().endsWith('/guardians/primary-handoffs')&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'確認交接',exact:true}).click();
+  const handed=await handoffResponse;
   assert.equal(handed.status(),200);
+  const handoffHeaders={'idempotency-key':handed.request().headers()['idempotency-key']!};
   const handoffReceipt=(await handed.json()).data;
+  await page.getByText('主要聯絡人已交接，原聯絡人仍保留關聯。',{exact:true}).waitFor();
   assert.deepEqual((await (await request.post(`${root}/guardians/primary-handoffs`,{headers:handoffHeaders,data:handoffData})).json()).data,handoffReceipt);
   const current=(await client.query('SELECT id,guardian_id,is_primary_contact,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND ends_at IS NULL',[studentId])).rows;
   assert.equal(current.length,2);
   assert.equal(current.find(row=>row.is_primary_contact)?.guardian_id,otherId);
   const former=current.find(row=>row.guardian_id===guardianId)!;
   assert.equal(former.is_primary_contact,false);
-  const endHeaders={'idempotency-key':`end-${randomUUID()}`};
   const endData={expected_record_version:Number(former.record_version)};
-  const ended=await request.post(`${root}/guardian-relationships/${former.id}/end`,{headers:endHeaders,data:endData});
+  await page.getByRole('button',{name:/解除與 .* 的關係/}).click();
+  const endResponse=page.waitForResponse(response=>response.url().endsWith(`/guardian-relationships/${former.id}/end`)&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'確認解除',exact:true}).click();
+  const ended=await endResponse;
   assert.equal(ended.status(),200);
+  const endHeaders={'idempotency-key':ended.request().headers()['idempotency-key']!};
+  await page.getByText('關係已解除，歷史已保留。',{exact:true}).waitFor();
   assert.deepEqual((await (await request.post(`${root}/guardian-relationships/${former.id}/end`,{headers:endHeaders,data:endData})).json()).data,(await ended.json()).data);
   assert.deepEqual((await (await request.post(`${root}/guardians`,{headers:attachHeaders,data:attachData})).json()).data,attachReceipt);
   const relationships=(await (await request.get(`${root}/guardians`)).json()).data.relationships;
   assert.equal(relationships.length,1);
   assert.equal(relationships[0].guardian.id,otherId);
-  process.stdout.write(JSON.stringify({trial_guardian_http:'pass',l1:'search_attach_handoff_end',former_primary:'retained_until_explicit_end',replay:'original_receipts'})+'\n');
+  await page.reload();
+  await page.getByRole('heading',{name:'目前關係',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:/解除與 .* 的關係/}).count(),0);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await page.screenshot({path:'/tmp/access-trial-guardian-ui-mobile.png',fullPage:true});
+  process.stdout.write(JSON.stringify({trial_guardian_http:'pass',l1:'ui_search_attach_handoff_end_reload',former_primary:'retained_until_explicit_end',replay:'original_receipts'})+'\n');
 }

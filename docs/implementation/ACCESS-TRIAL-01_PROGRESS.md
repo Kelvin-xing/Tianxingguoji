@@ -399,3 +399,16 @@
 - 类型 `/tmp/access-trial-crm-guardian-types.log` 无错误；聚焦ESLint `/tmp/access-trial-crm-guardian-lint.log` 无错误，旧未使用参数警告1条；diff检查通过。无新迁移。
 
 已确认家长管理页面仍使用旧F2契约，尚不能把本节正式HTTP证据当作关系页面验收。下一步接通搜索选择、交接和解除页面，并补齐已确认的新建家长关联入口。其余模块、整体试用验收和main合并/推送仍未完成；未部署或使用真实客户数据。
+
+## 家长管理页面接通（2026-09-19，接续 9e7b90a）
+
+总体仍 `in_progress`。替换实际页面使用的旧F2契约，接通已有家长搜索、关联、交接及解除；本节未实现新建家长关联。
+
+- 页面从正式CRM客户端读取当前关系、学生状态与当前能力。已有家长通过姓名/电邮/电话显式搜索并手动选择，只展示脱敏提示；关系类型使用受控词汇，other填写说明，各职责分别选择。交接只选当前关联家长并确认；主要联系人不提供直接解除，非主要关系需单独确认。员工不输入内部ID或版本号。
+- 统一同步提交锁，成功后重读权威关系；未知失败保存原操作指纹/幂等键，权限拒绝清空关系和候选。保留加载、空搜索、无权、旧版本、冲突和重载反馈。修复客户端关联请求漏传relationship_description，并新增严格绑定学生/关系ID、下一版本及结束时间的解除回执解析。
+- `/tmp/access-trial-guardian-ui-browser3.log` **2/2**真实Next/Chrome+PG17通过：L1页面搜索→选择→关联→交接→确认解除→刷新，核对数据库与原回执；模拟服务器已保存但响应503，页面重试保留原幂等键；原主要联系人保留到明确解除。既有资料、文件、任务、邀请流程继续通过。
+- `/tmp/access-trial-guardian-ui-mobile.png` 已查看，390px布局无横向溢出。首轮暴露旧selection-card样式隐藏radio，改成可点击原生单选；次轮明确下拉可访问名称，最终真实交互通过。
+- `/tmp/access-trial-guardian-ui-unit-final.log` **24/24**：客户端、模块边界及UI边界。解除回执拒绝错误ID/版本/状态和额外私密字段；旧UI测试中已废弃的other_guardian/次要联系人及实现细节断言由当前边界检查与真实浏览器交互覆盖，未恢复过期词汇。旧客户端夹具补齐正式relationship_description字段。
+- 类型 `/tmp/access-trial-guardian-ui-types-final2.log`、聚焦ESLint `/tmp/access-trial-guardian-ui-lint-final.log`、diff检查通过。无迁移。
+
+新建家长并关联入口、其余CRM生命周期和其他模块、整体本地试用验收尚未完成；main合并和远程推送仍待整体验收。未部署或操作真实客户数据。
