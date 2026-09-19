@@ -1,3 +1,5 @@
+import {PostgresqlSchoolDirectoryRepository} from "../../modules/schools/infrastructure/postgresql-directory-repository.ts";
+import {SchoolResolutionError} from "../../modules/schools/application/resolved-view.ts";
 import {assertTrialReferralSources} from "./trial-referral-source-assertions.ts";
 import {assertTrialCrmDeletion} from "./trial-crm-deletion-assertions.ts";
 import {assertTrialGuardianWrites} from "./trial-crm-guardian-write-assertions.ts";
@@ -45,6 +47,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
       catch(error){const cause=error as {code?:string;constraint?:string};process.stdout.write(JSON.stringify({trial_crm_sql_failure:{code:/^[0-9A-Z]{5}$/.test(cause.code??'')?cause.code:'OTHER',constraint:/^[a-z0-9_]{1,100}$/.test(cause.constraint??'')?cause.constraint:'NONE'}})+'\n');throw error;}
     }});
   }};
+  const schoolDirectory=new PostgresqlSchoolDirectoryRepository(studentRunner);
   const students=new PostgresqlStudentReadRepository(studentRunner);
   const duplicates=new PostgresqlPotentialDuplicateRepository(studentRunner);
   const relationships=new PostgresqlGuardianRelationshipRepository(studentRunner);
@@ -119,6 +122,15 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
       await assert.rejects(repository.listCases(actor(l2!.userId, "founder")), forbidden);
       for(const [person,allowed,role] of [[founder!,true,'founder'],[l1!,true,'l1'],[l2!,category==='international_school','l2'],[l3!,false,'l3'],[advisor!,true,'advisor']] as const){
         const input={organizationId:org,actorUserId:person.userId};
+        const schoolDenied=(error:unknown)=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN';
+        if(role==='l3'){
+          await assert.rejects(schoolDirectory.list(input),schoolDenied);
+          await assert.rejects(schoolDirectory.find({...input,schoolId:randomUUID()}),schoolDenied);
+        }else{
+          const schools=await schoolDirectory.list(input);assert.ok(schools.length>0);
+          assert.equal((await schoolDirectory.find({...input,schoolId:schools[0]!.view.schoolId})).view.schoolId,schools[0]!.view.schoolId);
+        }
+
         assert.equal((await students.listStudents(input)).some(s=>s.id===NEON_TEST_STUDENTS[0]!.id),allowed,'student list follows current category scope');
         assert.equal((await students.findStudent({...input,studentId:NEON_TEST_STUDENTS[0]!.id}))!==null,allowed,'student detail cannot bypass the list scope');
         for(const read of ['listCurrent','listHistory'] as const)assert.equal((await relationships[read]({...input,studentId:NEON_TEST_STUDENTS[0]!.id}))!==null,allowed,`${read} cannot reveal out-of-scope guardian relationships`);
@@ -142,6 +154,9 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
       await context(founder!.userId);
       await client.query("UPDATE access_trial_members SET status='disabled',record_version=record_version+1 WHERE user_id=$1", [l2!.userId]);
       await assert.rejects(repository.listCases(actor(l2!.userId, "l2")), forbidden);
+      await assert.rejects(schoolDirectory.list({organizationId:org,actorUserId:l2!.userId}),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN');
+      await assert.rejects(schoolDirectory.find({organizationId:org,actorUserId:l2!.userId,schoolId:randomUUID()}),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN');
+
       assert.deepEqual(await students.listStudents({organizationId:org,actorUserId:l2!.userId}),[],'disabled members never fall back to legacy reads');
       await assert.rejects(service.listCases(cachedL2), (error: unknown) =>
         error instanceof CaseWorkspaceError && error.code === "CASE_WORKSPACE_FORBIDDEN");

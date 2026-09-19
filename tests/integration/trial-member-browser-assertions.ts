@@ -230,6 +230,16 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await assertTrialGuardianHttp({page:restricted,request:restrictedContext.request,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
     await assertTrialCrmDeletionHttp({page:restricted,request:restrictedContext.request,baseUrl,client,studentId:studentReceipt.student.id})
     await assertTrialReferralSourceHttp({page:restricted,request:restrictedContext.request,baseUrl,caseId:createdData.case_id})
+    const schoolDirectoryResponse=await restrictedContext.request.get(`${baseUrl}/api/v1/schools`)
+    assert.equal(schoolDirectoryResponse.status(),200)
+    const firstSchool=(await schoolDirectoryResponse.json()).data.items[0]
+    assert.ok(firstSchool?.school_id)
+    const resolvedSchoolUrl=`${baseUrl}/api/v1/schools/${firstSchool.school_id}/resolved`
+    const schoolResolved=await restrictedContext.request.get(resolvedSchoolUrl)
+    assert.equal(schoolResolved.status(),200)
+    assert.equal((await schoolResolved.json()).data.school_id,firstSchool.school_id)
+    assert.equal((await restrictedContext.request.get(`${baseUrl}/api/v1/schools/${randomUUID()}/resolved`)).status(),404)
+
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -274,6 +284,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       headers: { 'idempotency-key': `denied-case-${randomBytes(8).toString('hex')}` },
       data: { ...submittedBody, business_category: 'local_school' },
     })).status(),403)
+    assert.equal((await l2Context.request.get(resolvedSchoolUrl)).status(),200)
     await l2Context.close()
     const l3 = people.find((p) => p.level === 'l3')!
     const l3Context = await browser.newContext()
@@ -283,6 +294,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByLabel('密碼', { exact:true }).fill(password)
     await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
+    assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/schools`)).status(),403)
+    assert.equal((await l3Context.request.get(resolvedSchoolUrl)).status(),403)
+    process.stdout.write(JSON.stringify({trial_school_reads_http:'pass',l1:'directory_and_resolved',l2:'resolved',l3:'403',missing:'404'})+'\n')
+
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/students`)).status(),403)
     await l3Page.goto(`${baseUrl}/tasks/${trialTaskId}`)
     await l3Page.getByRole('heading',{ name:'Synthetic L3 task',exact:true }).waitFor()

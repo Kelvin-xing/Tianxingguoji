@@ -485,3 +485,15 @@
 - 当前源码聚焦单测 `/tmp/access-trial-referral-ui-unit-final.log` **37/37**；类型 `/tmp/access-trial-referral-ui-types-final2.log`、聚焦ESLint `/tmp/access-trial-referral-ui-lint-final2.log`及diff通过。旧UI静态断言修正正式回执的referral_source嵌套字段。浏览器复制后仅移除了TypeScript确认已被提前返回排除的不可达错误分支。无迁移。
 
 学校模块已只读定位到旧角色入口（provisional、resolved、governance等）及目录仓储缺少事务内试用重查，尚未修改或验证这些入口。其余模块及整体试用验收、main合并与远程推送仍未完成；未部署或使用真实资料。
+
+## 学校目录与单校读取的试用权限（2026-09-19，接续 29c4378）
+
+总体仍 `in_progress`。本节只接通学校读取，不代表学校维护与详情页面已经完成。
+
+- 目录仓储在租户事务中加载并锁定当前试用成员，同时核对账号、组织成员、组织与实际角色的启用状态。Founder/L1/L2可读公共学校目录，L3拒绝；停用试用账号不能回退到旧角色。未加入试用的Founder/Advisor保留既有目录读取权限。
+- 单校resolved接口使用正式请求权限上下文和同一PostgreSQL仓储，读取现有快照、人工覆盖及版本来源，替换原来始终不可用的运行时入口；不存在返回404，无权限返回403，不添加文件或内存后备。
+- `/tmp/access-trial-school-read-pg.log` **20/20**：真实PG17和聚焦目录/模块边界检查。新增四等级、各案件分类循环中的目录/单校允许拒绝，以及L2停用后拒绝读取。学校公共目录不按案件分类裁剪，案件本身仍受原分类权限控制。
+- `/tmp/access-trial-school-read-browser-final.log` **20/20**：真实Next/Chrome+PG17及聚焦检查，L1正式目录/单校200、不存在404，L2单校200，L3两入口403；既有CRM、来源、任务、文件、邀请流程继续通过。首轮失败是测试在关闭L2浏览器上下文后才发送请求，已将断言移至关闭之前并重新通过，没有修改业务规则绕过验证。
+- 类型 `/tmp/access-trial-school-read-types.log`、聚焦ESLint `/tmp/access-trial-school-read-lint.log`及diff检查通过。无数据库迁移，无页面修改；本次HTTP结果不等于学校详情页面验收。
+
+学校新建、人工变更与审批仍有旧角色/未配置运行时入口；详情页面及其余模块、整体试用验收仍待完成。main合并和远程推送未完成；未部署、发送外部邮件或操作真实资料。

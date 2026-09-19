@@ -27,7 +27,7 @@ export async function GET(request: Request): Promise<Response> {
       } satisfies JsonValue;
     } catch (error) {
       if (error instanceof SchoolResolutionError) {
-        throw createApiError("SERVICE_UNAVAILABLE");
+        throw createApiError(error.code === "SCHOOL_RESOLUTION_FORBIDDEN" ? "FORBIDDEN" : "SERVICE_UNAVAILABLE");
       }
       throw error;
     }
