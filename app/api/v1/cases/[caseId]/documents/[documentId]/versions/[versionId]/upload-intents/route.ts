@@ -25,10 +25,11 @@ export function POST(request: Request, context: Context): Promise<Response> {
     try {
       assertNoDocumentQuery(request);
       const { caseId, documentId, versionId } = await context.params;
+      const actor = await requireDocumentActor();
       const command = await parseDocumentUploadIntent(request);
       return documentUploadIntentData(
         await getDocumentTransferRuntime().service.issueUploadIntent({
-          actor: await requireDocumentActor(),
+          actor,
           caseId,
           documentId,
           versionId,

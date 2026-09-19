@@ -420,9 +420,9 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       const routeKey='/api/v1/tasks/[taskId]/documents/[documentId]/versions/[versionId]/upload-intents/route';
       const json=anonymousIntent.headers.get('content-type')?.includes('application/json')??false;
       const body=json?await anonymousIntent.clone().json().catch(()=>null):null;
-      const manifest=await readFile(join(directory,'.next/server/app-paths-manifest.json'),'utf8').then(text=>JSON.parse(text) as Record<string,string>).catch(()=>({} as Record<string,string>));
+      const manifest=await readFile(join(directory,'.next/dev/server/app-paths-manifest.json'),'utf8').then(text=>JSON.parse(text) as Record<string,string>).catch(()=>({} as Record<string,string>));
       const sourcePresent=await readFile(join(directory,'app'+routeKey+'.ts'),'utf8').then(text=>text.includes('export function POST')).catch(()=>false);
-      const compiledPresent=manifest[routeKey]?await readFile(join(directory,'.next/server',manifest[routeKey])).then(()=>true).catch(()=>false):false;
+      const compiledPresent=manifest[routeKey]?await readFile(join(directory,'.next/dev/server',manifest[routeKey])).then(()=>true).catch(()=>false):false;
       process.stdout.write(JSON.stringify({trial_upload_route_failure:{status:anonymousIntent.status,json,code:['NOT_FOUND','FORBIDDEN','UNAUTHENTICATED','SERVICE_UNAVAILABLE'].includes(body?.error?.code)?body.error.code:null,sourcePresent,manifestPresent:Object.hasOwn(manifest,routeKey),compiledPresent,serverExitCode:server.exitCode}})+'\n');
     }
     assert.equal(anonymousIntent.status,401,'upload-intent route must resolve and require authentication')
@@ -698,7 +698,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
   }
 }
 
-async function createIsolatedAppDirectory(): Promise<string> {
+export async function createIsolatedAppDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'tianxing-internal-email-next-dev-'))
   const excluded = new Set(['.git', '.next', 'node_modules'])
   try {
@@ -714,7 +714,7 @@ async function createIsolatedAppDirectory(): Promise<string> {
   }
 }
 
-function startNextDev(directory: string, port: number, connectionString: string, baseUrl: string): ChildProcess {
+export function startNextDev(directory: string, port: number, connectionString: string, baseUrl: string): ChildProcess {
   return spawn(process.execPath, [
     resolve('node_modules/next/dist/bin/next'), 'dev', '--webpack', '--hostname', '127.0.0.1', '--port', String(port),
   ], {
@@ -736,7 +736,7 @@ function startNextDev(directory: string, port: number, connectionString: string,
   })
 }
 
-async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
+export async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
   child.stdout?.on('data',(chunk: Buffer) => { for (const line of chunk.toString().split('\n')) if (/ (GET|POST) \/api\/v1\/cases(?: |\?)/.test(line)) process.stdout.write(JSON.stringify({ trial_next_case_route:line.trim() })+'\n') })
   child.stdout?.resume()
   child.stderr?.on('data',(chunk: Buffer) => { const lines=chunk.toString().split('\n').filter((line) => /Error:|Module not found|Cannot find|Failed to|event=document_scan_/.test(line)); for (const line of lines) process.stdout.write(JSON.stringify({ trial_next_error:line.replace(/postgres(?:ql)?:\/\/\S+/g,'[redacted]').slice(0,300) })+'\n') })
@@ -752,7 +752,7 @@ async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<voi
   throw new Error('next_dev_readiness_timeout')
 }
 
-async function stopNextDev(child: ChildProcess | undefined): Promise<void> {
+export async function stopNextDev(child: ChildProcess | undefined): Promise<void> {
   if (!child || child.exitCode !== null) return
   child.kill('SIGTERM')
   const stopped = await Promise.race([
@@ -765,7 +765,7 @@ async function stopNextDev(child: ChildProcess | undefined): Promise<void> {
   }
 }
 
-async function reserveLoopbackPort(): Promise<number> {
+export async function reserveLoopbackPort(): Promise<number> {
   return new Promise((resolvePort, reject) => {
     const server = createServer()
     server.unref()
