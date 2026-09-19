@@ -6,6 +6,7 @@ import type { CasesTaskFactsPort, TaskFactsTransaction, TaskFactsAssigneeRole } 
  * Cases so Tasks never reaches into Cases' private tables. */
 export class PostgresqlCasesTaskFactsPort implements CasesTaskFactsPort {
   async readCurrentTargetTaskFacts(transaction: TaskFactsTransaction, input: Readonly<{ organizationId: string; caseId: string; targetId: string }>) {
+    if(!await lockCase(transaction,input))return null;
     const target = await transaction.query<{ current_assignment_id: string | null }>({
       text: `SELECT current_assignment_id FROM cases_school_targets
               WHERE organization_id=$1 AND service_case_id=$2 AND id=$3 FOR SHARE`,
@@ -19,6 +20,7 @@ export class PostgresqlCasesTaskFactsPort implements CasesTaskFactsPort {
   async readTargetTaskFacts(transaction: TaskFactsTransaction, input: Readonly<{
     organizationId: string; caseId: string; targetId: string; assignmentId: string;
   }>) {
+    if(!await lockCase(transaction,input))return null;
     const result = await transaction.query<CaseTaskFactRow>({
       text: `SELECT target.service_case_id AS case_id, target.id AS target_id,
                     assignment.id AS assignment_id, target.state,
@@ -64,4 +66,10 @@ interface CaseTaskFactRow {
   readonly business_category: string | null;
   readonly workflow_status: string; readonly owner_user_id: string;
   readonly is_primary_advisor: boolean; readonly case_collaborator_id: string | null;
+}
+
+// Case lock precedes target/assignment locks so file and task operations cannot invert the order.
+async function lockCase(transaction:TaskFactsTransaction,input:Readonly<{organizationId:string;caseId:string}>):Promise<boolean>{
+  const result=await transaction.query({text:'SELECT id FROM cases_service_cases WHERE organization_id=$1 AND id=$2 FOR SHARE',values:[input.organizationId,input.caseId]});
+  return result.rows.length===1;
 }

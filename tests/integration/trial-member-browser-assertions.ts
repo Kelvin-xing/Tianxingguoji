@@ -10,6 +10,7 @@ import { Client } from 'pg'
 import { deriveInternalEmailVerifier } from '../../modules/identity/application/internal-email.ts'
 import { createOneRoleBaselineClientConfig, type OneRoleBaselineTarget } from '../../scripts/db/run-one-role-baseline.ts'
 import { NEON_TEST_ORGANIZATION } from '../../scripts/db/neon-test-synthetic-fixture.ts'
+import {assertTaskWaitsWithoutHoldingTask} from './trial-task-lock-order-assertions.ts'
 
 export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): Promise<void> {
   const client = new Client(createOneRoleBaselineClientConfig(target))
@@ -259,8 +260,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByRole('combobox').selectOption('accept')
     await l3Page.locator('input[name="command_confirmed"]').check()
     const autoAccepted=l3Page.waitForResponse((r)=>r.url().endsWith(`/tasks/${automaticTaskId}/p3-transitions`) && r.request().method()==='POST')
-    await l3Page.getByRole('button',{name:'確認更新',exact:true}).click()
-    const acceptanceResponse=await autoAccepted
+    const acceptanceResponse=await assertTaskWaitsWithoutHoldingTask({target,observer:client,organizationId:NEON_TEST_ORGANIZATION.id,
+      actorUserId:l1.user_id,caseId:createdData.case_id,taskId:automaticTaskId,command:async()=>{
+        await l3Page.getByRole('button',{name:'確認更新',exact:true}).click();return await autoAccepted;
+      }})
     assert.equal(acceptanceResponse.status(),200)
     const originalAcceptance=(await acceptanceResponse.json()).data
     const acceptanceCommand=acceptanceResponse.request().postDataJSON()

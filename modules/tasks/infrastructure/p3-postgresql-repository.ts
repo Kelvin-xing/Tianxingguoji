@@ -155,20 +155,9 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
   }
 
   private async executeTransition(transaction: TenantTransaction, input: P3TransitionTargetTaskRepositoryInput) {
-    const taskResult = await transaction.query<TaskRow>({
-      text: `SELECT id,organization_id,service_case_id,school_target_id,task_kind,state,
-                    assignee_user_id,assignee_role,owner_user_id,record_version,last_transition_receipt_id
-               FROM tasks_tasks WHERE id=$1 AND organization_id=$2 FOR UPDATE`,
-      values: [input.taskId, input.actor.organizationId],
-    });
-    const task = taskResult.rows[0];
-    if (!task || !["application_prepare_submit","interview_support"].includes(task.task_kind)) throw new P3TaskError("NOT_FOUND");
+    const {task,facts}=await this.lockTaskAfterCaseFacts(transaction,input.actor.organizationId,input.taskId);
     if (Number(task.record_version) !== input.expectedRecordVersion) throw new P3TaskError("STALE_VERSION");
     const principal=await currentPrincipal(transaction,input.actor,"tasks.transition");
-    const facts = await this.casesFacts.readCurrentTargetTaskFacts(transaction, {
-      organizationId: input.actor.organizationId, caseId: task.service_case_id,
-      targetId: task.school_target_id,
-    });
     if (!facts || (!principal && facts.ownerUserId !== task.owner_user_id) || facts.caseStage === "closed" || facts.workflowStatus !== "active") {
       throw new P3TaskError("NOT_FOUND");
     }
@@ -296,14 +285,25 @@ export class PostgresqlP3TaskRepository implements P3TaskRepository {
       collaboratorId: null });
   }
 
+  /** Resolve immutable context without a row lock, then follow case -> target -> task -> assignment. */
+  private async lockTaskAfterCaseFacts(transaction:TenantTransaction,organizationId:string,taskId:string) {
+    const locator=(await transaction.query<{service_case_id:string;school_target_id:string}>({
+      text:'SELECT service_case_id,school_target_id FROM tasks_tasks WHERE id=$1 AND organization_id=$2',values:[taskId,organizationId]})).rows[0];
+    if(!locator)throw new P3TaskError("NOT_FOUND");
+    const facts=await this.casesFacts.readCurrentTargetTaskFacts(transaction,{organizationId,caseId:locator.service_case_id,targetId:locator.school_target_id});
+    if(!facts)throw new P3TaskError("NOT_FOUND");
+    const task=(await transaction.query<TaskRow>({text:`SELECT id,organization_id,service_case_id,school_target_id,task_kind,state,
+      assignee_user_id,assignee_role,owner_user_id,record_version,last_transition_receipt_id
+      FROM tasks_tasks WHERE id=$1 AND organization_id=$2 FOR UPDATE`,values:[taskId,organizationId]})).rows[0];
+    if(!task||!["application_prepare_submit","interview_support"].includes(task.task_kind)
+      ||task.service_case_id!==locator.service_case_id||task.school_target_id!==locator.school_target_id)throw new P3TaskError("NOT_FOUND");
+    return {task,facts};
+  }
+
   private async revalidateTaskScope(transaction:TenantTransaction,actor:RequestAccessActor,taskId:string):Promise<void> {
     const principal=await currentPrincipal(transaction,actor,"tasks.transition");
     if (!principal) return;
-    const result=await transaction.query<TaskRow>({text:`SELECT id,service_case_id,school_target_id,task_kind,state,
-      assignee_user_id,assignee_role FROM tasks_tasks WHERE id=$1 AND organization_id=$2 FOR UPDATE`,values:[taskId,actor.organizationId]});
-    const task=result.rows[0];
-    if (!task || !["application_prepare_submit","interview_support"].includes(task.task_kind)) throw new P3TaskError("NOT_FOUND");
-    const facts=await this.casesFacts.readCurrentTargetTaskFacts(transaction,{organizationId:actor.organizationId,caseId:task.service_case_id,targetId:task.school_target_id});
+    const {task,facts}=await this.lockTaskAfterCaseFacts(transaction,actor.organizationId,taskId);
     if (!facts || !isK12BusinessCategory(facts.businessCategory)) throw new P3TaskError("NOT_FOUND");
     if (canManage(principal,facts.businessCategory)) return;
     if (principal.level!=="l3" || task.assignee_user_id!==actor.userId || task.assignee_role!=="l3"
