@@ -6,13 +6,14 @@ import {
   buildOutboxMessage,
   type MutationEffectBundle,
 } from "../../audit/public.ts";
+import type { RequestAccessActor } from "../../access/public.ts";
 import type { IdentitySessionActor } from "../../identity/public.ts";
 import { hashRequestPayload, validateIdempotencyKey } from "../../shared/public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-export type SchoolGovernanceReviewerRole = "founder" | "data_reviewer";
+export type SchoolGovernanceReviewerRole = "founder" | "l1" | "data_reviewer";
 export type SchoolReviewDecision = "approve" | "reject";
 
 export interface ReviewSchoolChangeCommand {
@@ -131,80 +132,7 @@ export class SchoolGovernanceService {
     readonly changeRequestId: string;
     readonly command: ReviewSchoolChangeCommand;
   }): Promise<SchoolChangeReviewResult> {
-    const reviewerRole = assertReviewer(input.actor);
-    assertUuid(input.changeRequestId);
-    const command = validateReviewCommand(input.command);
-    const reviewedAtMs = validNow(this.clock.nowMs());
-    const resolvedRevisionId = command.decision === "approve" ? this.createId() : null;
-    const auditId = this.createId();
-    const outboxId = this.createId();
-    for (const id of [resolvedRevisionId, auditId, outboxId]) {
-      if (id !== null) assertUuid(id);
-    }
-
-    const status = command.decision === "approve" ? "approved" : "rejected";
-    const occurredAt = new Date(reviewedAtMs).toISOString();
-    const eventType = `schools.change_request.${status}`;
-    const audit = buildAuditEvent({
-      id: auditId,
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      actorKind: "user",
-      eventType,
-      eventVersion: 1,
-      action: command.decision,
-      resourceType: "SchoolChangeRequest",
-      resourceId: input.changeRequestId,
-      outcome: "succeeded",
-      requestId: command.requestId,
-      occurredAt,
-      metadata: {
-        effect_type: "school_change_reviewed",
-        next_version: command.expectedRecordVersion + 1,
-        status,
-      },
-    });
-    const outbox = buildOutboxMessage({
-      id: outboxId,
-      auditEventId: auditId,
-      organizationId: input.actor.organizationId,
-      aggregateType: "SchoolChangeRequest",
-      aggregateId: input.changeRequestId,
-      eventType,
-      eventVersion: 1,
-      idempotencyKey: `school-change-review-${outboxId}`,
-      requestId: command.requestId,
-      payload: {
-        aggregate_id: input.changeRequestId,
-        effect_type: "school_change_reviewed",
-        record_version: command.expectedRecordVersion + 1,
-        request_id: command.requestId,
-        status,
-      },
-      availableAt: occurredAt,
-      createdAt: occurredAt,
-    });
-
-    return this.repository.reviewChangeRequest({
-      organizationId: input.actor.organizationId,
-      actorUserId: input.actor.userId,
-      reviewerRole,
-      changeRequestId: input.changeRequestId,
-      decision: command.decision,
-      expectedRecordVersion: command.expectedRecordVersion,
-      reason: command.reason,
-      resolvedRevisionId,
-      requestId: command.requestId,
-      idempotencyKey: command.idempotencyKey,
-      requestHash: hashRequestPayload({
-        changeRequestId: input.changeRequestId,
-        decision: command.decision,
-        expectedRecordVersion: command.expectedRecordVersion,
-        reason: command.reason,
-      }),
-      reviewedAtMs,
-      effects: buildAtomicMutationEffects({ audit, outbox }),
-    });
+    return reviewSchoolChange(input,{repository:this.repository,clock:this.clock,createId:this.createId});
   }
 
   async reconcileApprovedOverlay(input: {
@@ -350,4 +278,93 @@ function validNow(value: number): number {
 
 function invalid(): never {
   throw new SchoolGovernanceError("SCHOOL_GOVERNANCE_INVALID");
+}
+
+export async function reviewSchoolChange(input:{actor:RequestAccessActor;changeRequestId:string;command:ReviewSchoolChangeCommand},options:{repository:Pick<SchoolGovernanceRepository,'reviewChangeRequest'>;clock?:{nowMs():number};createId?:()=>string}):Promise<SchoolChangeReviewResult>{
+  const createId=options.createId??randomUUID;
+    const reviewerRole = assertChangeReviewer(input.actor);
+    assertUuid(input.changeRequestId);
+    const command = validateReviewCommand(input.command);
+    const reviewedAtMs = validNow((options.clock ?? {nowMs:()=>Date.now()}).nowMs());
+    const resolvedRevisionId = command.decision === "approve" ? createId() : null;
+    const auditId = createId();
+    const outboxId = createId();
+    for (const id of [resolvedRevisionId, auditId, outboxId]) {
+      if (id !== null) assertUuid(id);
+    }
+
+    const status = command.decision === "approve" ? "approved" : "rejected";
+    const occurredAt = new Date(reviewedAtMs).toISOString();
+    const eventType = `schools.change_request.${status}`;
+    const audit = buildAuditEvent({
+      id: auditId,
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      actorKind: "user",
+      eventType,
+      eventVersion: 1,
+      action: command.decision,
+      resourceType: "SchoolChangeRequest",
+      resourceId: input.changeRequestId,
+      outcome: "succeeded",
+      requestId: command.requestId,
+      occurredAt,
+      metadata: {
+        effect_type: "school_change_reviewed",
+        next_version: command.expectedRecordVersion + 1,
+        status,
+      },
+    });
+    const outbox = buildOutboxMessage({
+      id: outboxId,
+      auditEventId: auditId,
+      organizationId: input.actor.organizationId,
+      aggregateType: "SchoolChangeRequest",
+      aggregateId: input.changeRequestId,
+      eventType,
+      eventVersion: 1,
+      idempotencyKey: `school-change-review-${outboxId}`,
+      requestId: command.requestId,
+      payload: {
+        aggregate_id: input.changeRequestId,
+        effect_type: "school_change_reviewed",
+        record_version: command.expectedRecordVersion + 1,
+        request_id: command.requestId,
+        status,
+      },
+      availableAt: occurredAt,
+      createdAt: occurredAt,
+    });
+
+    return options.repository.reviewChangeRequest({
+      organizationId: input.actor.organizationId,
+      actorUserId: input.actor.userId,
+      reviewerRole,
+      changeRequestId: input.changeRequestId,
+      decision: command.decision,
+      expectedRecordVersion: command.expectedRecordVersion,
+      reason: command.reason,
+      resolvedRevisionId,
+      requestId: command.requestId,
+      idempotencyKey: command.idempotencyKey,
+      requestHash: hashRequestPayload({
+        changeRequestId: input.changeRequestId,
+        decision: command.decision,
+        expectedRecordVersion: command.expectedRecordVersion,
+        reason: command.reason,
+      }),
+      reviewedAtMs,
+      effects: buildAtomicMutationEffects({ audit, outbox }),
+    });
+}
+function assertChangeReviewer(actor:RequestAccessActor):SchoolGovernanceReviewerRole{
+  if(!UUID.test(actor.organizationId)||!UUID.test(actor.userId))throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_REVIEWER_REQUIRED');
+  if(actor.trialPrincipal){
+    const principal=actor.trialPrincipal;
+    if(principal.active&&principal.userId===actor.userId&&principal.organizationId===actor.organizationId&&(principal.level==='founder'||principal.level==='l1'))return principal.level;
+    throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_REVIEWER_REQUIRED');
+  }
+  if('role' in actor&&(actor.role==='founder'||actor.role==='data_reviewer'))return actor.role;
+  if('roles' in actor&&actor.roles?.includes('founder'))return 'founder';
+  throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_REVIEWER_REQUIRED');
 }

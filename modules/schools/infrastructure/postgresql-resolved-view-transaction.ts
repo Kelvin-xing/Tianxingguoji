@@ -36,7 +36,7 @@ interface OverlayRow extends Record<string, unknown> {
   requested_by_user_id: string;
   reason: string;
   approved_by_user_id: string;
-  approved_role: "founder" | "data_reviewer";
+  approved_role: "founder" | "l1" | "data_reviewer";
   approved_at: Date | string;
   created_at: Date | string;
   field_name: string | null;

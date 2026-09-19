@@ -578,3 +578,17 @@
 - `/tmp/access-trial-school-baseline-migrations.log` **28/28**，生成基线检查通过：70个源迁移、71个生成文件。类型 `/tmp/access-trial-school-baseline-types-final.log`、聚焦ESLint `/tmp/access-trial-school-baseline-lint.log`及diff检查通过；早期类型检查发现resolved路由显式类型遗漏新属性，修正后通过。
 
 下一步继续审批/拒绝的真实事务、实际审批等级、禁止自审及决定履历。整体试用验收、main合并和远程推送仍未完成；没有外部部署或真实资料操作。
+
+## 学校审批与拒绝正式事务（2026-09-19，接续 a42ec42）
+
+总体仍 `in_progress`。本节接通正式审批API；审批按钮和完整决定履历展示尚未接通。
+
+- 正式 `POST /api/v1/admin/schools/change-requests/[changeRequestId]/reviews` 改用真实PostgreSQL仓储。保留敏感操作会话校验，并读取当前请求等级；数据库事务重查账号、组织、membership、实际role binding和试用成员状态。Founder/L1按BR-015全部业务权限审批，不将L1伪装Founder；L2/L3及普通Advisor不可审批，新运行时不启用Data Reviewer。
+- 禁止申请者批准或拒绝自己的申请。学校锁先于revision锁，批准时核对申请版本、当前活跃快照、原始字段基线和提交时有效值基线；旧记录没有有效值确认或资料已变化时拒绝批准。过期申请仍可拒绝并留下理由，不能重复处理已决定申请。
+- 追加072：允许实际L1批准业务资料（包括身份类字段），并要求当前启用试用成员；保留旧角色历史约束。新增不可变review receipt，记录实际审批人/等级、决定、理由、时间、版本及批准后的resolved revision；RLS、FK、状态/操作人匹配和禁止自审校验。批准覆盖层、resolved revision、receipt、审计/outbox及幂等记录原子提交或回滚。71源迁移、72生成文件，基线检查通过。
+- `/tmp/access-trial-school-review-pg-final.log` **22/22**：真实PG17加原治理/解析测试。新增覆盖四等级及旧Advisor、伪造等级拒绝、批准/拒绝与重放、L1身份字段、原请求变更冲突、资料变化拒绝、旧pending无基线拒绝、审计失败全回滚后同键重试、receipt不可改、停用后旧回执拒绝。首轮暴露停用状态检查遗漏，修正后通过；新增SQL的CASE表达式语法问题已修正并完成真实空库重放。
+- `/tmp/access-trial-school-review-browser-final.log` **66/66**：真实PG17+Next/Chrome、原治理/解析、迁移和模块边界。学校正式HTTP验证Founder/L1批准、自审两种决定403、L2审批403、注入审批角色400、过期409、拒绝记录、原键重放，以及两个不同键并发审批只有一个200/另一个409。既有学校表单、CRM、任务、上传扫描、文件和邀请完整回归通过。此处是浏览器登录后的正式HTTP验证，不宣称审批表单已经实现。
+- 类型 `/tmp/access-trial-school-review-types-final2.log`、聚焦ESLint `/tmp/access-trial-school-review-lint.log`、最终变动ESLint `/tmp/access-trial-school-review-lint-final.log`、测试时限/诊断ESLint及diff通过。早期架构检查要求的server-only标记已按仓库格式修正；浏览器测试提前关闭上下文已调整到跨角色审批场景之后关闭。
+- 中间浏览器批次曾在既有监护人关联的成功回执后等待页面提示超时，后续两次通过，尚未证明根因修复。仅增加受限的刷新接口状态诊断及合成页面失败截图；不放宽原断言。随后一批业务断言已通过但清理时触及原120秒整组时限，被标记cancelled；浏览器整组预算调整为180秒，非浏览器仍120秒，各交互等待/业务断言不变，最终整组约127秒全部通过。
+
+下一步为学校审批页面、决定理由/时间/操作人履历展示；其余模块范围复核与整体试用验收、main合并和远程推送仍未完成。无外部部署、真实员工映射或真实客户数据操作。

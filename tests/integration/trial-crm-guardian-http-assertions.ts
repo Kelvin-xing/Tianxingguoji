@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import type {APIRequestContext,Page} from 'playwright-core';
+import type {APIRequestContext,Page,Response} from 'playwright-core';
 import type {Client} from 'pg';
 export async function assertTrialGuardianHttp(input:{page:Page;request:APIRequestContext;baseUrl:string;client:Client;studentId:string;guardianId:string}){
   const {page,request,baseUrl,client,studentId,guardianId}=input;
@@ -27,6 +27,14 @@ export async function assertTrialGuardianHttp(input:{page:Page;request:APIReques
   });
   await page.getByRole('button',{name:'確認關聯',exact:true}).click();
   await page.getByText('服務暫時不可用。可保留原內容重試，系統不會重複處理。',{exact:true}).waitFor();
+  const refreshResponses:{endpoint:string;status:number}[]=[];
+  const captureRefresh=(response:Response)=>{
+    if(response.request().method()!=='GET')return;
+    const endpoints=[[`${root}/guardians`,'relationships'],[root,'student'],[`${baseUrl}/api/v1/auth/me`,'access']];
+    const endpoint=endpoints.find(([url])=>url===response.url())?.[1];
+    if(endpoint)refreshResponses.push({endpoint,status:response.status()});
+  };
+  page.on('response',captureRefresh);
   const attachResponse=page.waitForResponse(response=>response.url()===`${root}/guardians`&&response.request().method()==='POST');
   await page.getByRole('button',{name:'確認關聯',exact:true}).click();
   const attached=await attachResponse;
@@ -35,7 +43,12 @@ export async function assertTrialGuardianHttp(input:{page:Page;request:APIReques
   assert.equal(attachHeaders['idempotency-key'],uncertainKey,'uncertain response retries preserve the original key');
   await page.unroute(`${root}/guardians`);
   const attachReceipt=(await attached.json()).data;
-  await page.getByText('監護人已關聯。',{exact:true}).waitFor();
+  try{await page.getByText('監護人已關聯。',{exact:true}).waitFor();}
+  catch(error){
+    process.stdout.write(JSON.stringify({trial_guardian_refresh_failure:refreshResponses})+'\n');
+    await page.screenshot({path:'/tmp/access-trial-guardian-refresh-failure.png',fullPage:true});
+    throw error;
+  }finally{page.off('response',captureRefresh)}
   const primary=(await client.query('SELECT id,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND is_primary_contact AND ends_at IS NULL',[studentId])).rows[0];
   assert.equal((await request.post(`${root}/guardian-relationships/${primary.id}/end`,{headers:{'idempotency-key':`deny-primary-${randomUUID()}`},data:{expected_record_version:Number(primary.record_version)}})).status(),409);
   const handoffData={successor_guardian_id:otherId,expected_primary_record_version:Number(primary.record_version)};

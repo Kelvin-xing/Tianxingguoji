@@ -1,3 +1,4 @@
+import {assertTrialSchoolReviewHttp} from "./trial-school-review-http-assertions.ts";
 import {assertTrialSchoolChangeForm} from "./trial-school-change-form-assertions.ts";
 import {sha256SchoolValue} from "../../modules/schools/public.ts";
 import {assertTrialProvisionalSchoolBrowser} from "./trial-provisional-school-browser-assertions.ts";
@@ -71,7 +72,6 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),true)
     await page.screenshot({ path: '/tmp/access-trial-founder-levels-mobile.png', fullPage: true })
 
-    await rootContext.close()
     const restrictedContext = await browser.newContext()
     const restricted = await restrictedContext.newPage()
     await restricted.goto(`${baseUrl}/login`)
@@ -292,7 +292,6 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
 
     await assertTrialProvisionalSchoolBrowser(restricted,baseUrl)
     const submittedBody = created.request().postDataJSON()
-    await restrictedContext.close()
     const l2Context = await browser.newContext()
     const l2Page = await l2Context.newPage()
     await l2Page.goto(`${baseUrl}/login`)
@@ -337,8 +336,13 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     })).status(),403)
     assert.equal((await l2Context.request.get(resolvedSchoolUrl)).status(),200)
     assert.equal((await l2Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Synthetic L2 school'}})).status(),200)
-    assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:changeBody})).status(),200)
+    const l2SchoolChange=await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:changeBody})
+    assert.equal(l2SchoolChange.status(),200)
+    const l2SchoolChangeId=(await l2SchoolChange.json()).data.change_request_id
     assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,field_name:'district',base_value_sha256:sha256SchoolValue(firstSchool.fields.district),proposed_value:'Replacement'}})).status(),403)
+    await assertTrialSchoolReviewHttp({baseUrl,schoolId:firstSchool.school_id,l1ChangeId:changeReceipt.change_request_id,l2ChangeId:l2SchoolChangeId,founder:rootContext.request,l1:restrictedContext.request,l2:l2Context.request})
+    await rootContext.close()
+    await restrictedContext.close()
     await l2Context.close()
     const l3 = people.find((p) => p.level === 'l3')!
     const l3Context = await browser.newContext()

@@ -140,7 +140,8 @@ type SignedAdvanceDiagnosticEvidence = {
 };
 
 test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
-  timeout: 120_000,
+  // The browser suite includes real app compilation and multi-module flows.
+  timeout: process.env.TIANXING_TRIAL_BROWSER === "1" ? 180_000 : 120_000,
 }, async () => {
   const suffix = `${process.pid}-${randomBytes(6).toString("hex")}`;
   const containerName = `tianxing-one-role-pg17-${suffix}`;

@@ -9,7 +9,7 @@ export const SCHOOL_IDENTITY_FIELDS = Object.freeze([
 
 export type SchoolFieldClass = "identity" | "general";
 export type SchoolOverlayStatus = "candidate" | "approved" | "disabled" | "rejected";
-export type SchoolReviewRole = "founder" | "data_reviewer" | "advisor";
+export type SchoolReviewRole = "founder" | "l1" | "data_reviewer" | "advisor";
 
 export type JsonValue =
   | null
@@ -255,10 +255,10 @@ export function evaluateSchoolOverlayApproval(input: SchoolOverlayApprovalInput)
   if (input.requestedBy === input.reviewerId) {
     return { allowed: false, code: "SCHOOL_REVIEWER_SELF_REVIEW_DENIED" };
   }
-  if (input.reviewerRole !== "founder" && input.reviewerRole !== "data_reviewer") {
+  if (input.reviewerRole !== "founder" && input.reviewerRole !== "l1" && input.reviewerRole !== "data_reviewer") {
     return { allowed: false, code: "SCHOOL_REVIEWER_ROLE_NOT_ALLOWED" };
   }
-  if (input.fieldClasses.includes("identity") && input.reviewerRole !== "founder") {
+  if (input.fieldClasses.includes("identity") && input.reviewerRole !== "founder" && input.reviewerRole !== "l1") {
     return { allowed: false, code: "SCHOOL_IDENTITY_CHANGE_REQUIRES_FOUNDER" };
   }
   if (input.fieldClasses.length === 0) {
