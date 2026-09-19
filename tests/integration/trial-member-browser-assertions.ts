@@ -372,9 +372,20 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
         }
         process.stdout.write(JSON.stringify({trial_upload_http:{method:response.request().method(),status:response.status(),json,code,operation:response.request().method()==='PUT'?'bytes':path.endsWith('/upload-intents')?'intent':'version'}})+'\n');
       }})
+    // Exercise the actual dynamic handler without credentials before the UI submits bytes.
+    // A framework HTML 404 must fail this check; never retry a business upload to hide it.
+    const anonymousIntent=await fetch(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents/${taskFileId}/versions/${randomUUID()}/upload-intents`,{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({expected_record_version:1}),signal:AbortSignal.timeout(20_000),
+    })
+    assert.equal(anonymousIntent.status,401,'upload-intent route must resolve and require authentication')
+    assert.equal((await anonymousIntent.json()).error.code,'UNAUTHENTICATED')
+    const uploadIntentResponse=l3Page.waitForResponse(response=>response.url().endsWith('/upload-intents')&&response.request().method()==='POST')
     const uploadBytes=Buffer.alloc(1_048_576,0x20);uploadBytes.write('%PDF-1.7\nSynthetic task file\n')
     await l3Page.locator('input[type="file"]').setInputFiles({name:'synthetic-task.pdf',mimeType:'application/pdf',buffer:uploadBytes})
     await l3Page.getByRole('button',{name:'上傳文件',exact:true}).click()
+    const intentResponse=await uploadIntentResponse
+    assert.equal(intentResponse.status(),200,'authorized task upload intent must succeed')
+    assert.ok(intentResponse.headers()['content-type']?.includes('application/json'))
     await l3Page.getByText('文件已上傳並通過檢查。',{exact:true}).waitFor({timeout:30_000}).catch(async error=>{
       process.stdout.write(JSON.stringify({trial_upload_states:(await client.query(`SELECT v.state,s.state AS scan_state,s.engine FROM documents_document_versions v
         LEFT JOIN documents_scan_results s ON s.document_version_id=v.id WHERE v.document_id=$1`,[taskFileId])).rows})+'\n')

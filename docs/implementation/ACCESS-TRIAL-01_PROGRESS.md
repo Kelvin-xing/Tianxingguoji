@@ -520,3 +520,10 @@
 - 类型 `/tmp/access-trial-school-detail-types-final.log`、聚焦ESLint `/tmp/access-trial-school-detail-lint.log`、聚焦单测 `/tmp/access-trial-school-detail-unit-final.log`通过。真实浏览器 `/tmp/access-trial-school-detail-final.log`已通过新增四标题和390px无横向溢出断言，截图 `/tmp/access-trial-school-detail-mobile.png`已查看。
 - 该整组最终 **1/2**：后续既有文件上传意图接口出现非JSON 404，浏览器子测试失败，不能报告整体通过。保留失败待排查；学校页面L3显示状态、缺失/失败/重试交互和完整履历仍需补齐，HTTP L3拒绝已有本组证据。
 - 无迁移、部署、main合并或远程推送。
+
+## 上传意图路由检查与整组回归恢复（2026-09-19，接续 8148572）
+
+- 之前失败是上传意图返回非JSON 404，未证明业务权限拒绝。本次增加真实动态路由的未登录POST检查（必须401且UNAUTHENTICATED），再执行原浏览器上传；已登录上传意图必须200且JSON，失败直接定位响应而非仅等待页面成功提示超时。没有重试业务上传、放宽状态码或改权限。
+- `/tmp/access-trial-upload-route-check.log`真实PG17+Next/Chrome **2/2**，原学校详情四标题/390px、建档、CRM、任务、上传扫描、文件生命周期、邀请全部执行通过。上传version201、intent200、bytes200；新动态路由检查也通过。聚焦ESLint `/tmp/access-trial-upload-route-lint.log`及diff检查通过。
+- 此检查同时预编译开发路由，结果与开发编译时序问题一致，但单次成功不足以证明原偶发404根因已修复；生产构建/生产环境没有本次证据。保留该限制，不将测试准备改动称为生产修复。
+- 整体仍in_progress，学校维护/审批及完整履历、其他模块权限复核、最终本地验收、main合并和推送未完成。
