@@ -693,3 +693,12 @@
 - 在通知页面将未确认已读操作由 ref 改为可渲染的 pending state、并修正初始异步加载后，完整真实 PG17 + Next/Chrome 回归再次 **2/2** 通过；通知丢响应重试仍复用同一键且只递增一次版本，移动宽度390px无横向溢出。
 
 本节未新增迁移，未实现审计页面、BR038 多收件人日级去重、门户权限复核或目标/结案运行时；这些仍保持未完成状态。当前仍未合并 main、未推送、未部署或操作真实员工/客户资料。
+
+## 通知多收件人与日级去重（2026-09-19，接续当前阶段）
+
+- 通知 worker 现在按同一个 `audit_outbox` 事件逐个领取当前有效收件人；任务事件从任务/当前指派和 ServiceCase 主负责人解析，逾期及案件事件按事件类型补充 Founder。每次完成后，若仍有未写 receipt 的收件人，outbox 回到 `pending` 继续领取；全部收件人完成后才标记 `delivered`。
+- 每个收件人的稳定 effect key 由 `aggregate_id + event_type + UTC业务日期 + event_version + recipient_user_id` 计算。不同 outbox 但同一对象、同一事件、同一日期、同一版本和同一收件人的重复事件返回既有 receipt，不新增通知；当前权限在完成事务内重新校验，失权仍写 compensated receipt。
+- 修正 supporting adapter 的只读表白名单和实际候选清单表名 `cases_candidate_school_list_versions`；新增的 outbox 释放操作仍由 audit owning adapter 执行，没有修改历史迁移。
+- 真实 PostgreSQL 17 一角色基线 `pnpm run test:one-role-baseline-postgresql` **2/2** 通过，新增 `trial_notification_delivery: pass`：Advisor + Founder 两收件人各有一条通知/receipt，第二个同日同版本 outbox 返回 duplicate 且最终仍只有两条通知/receipt。类型、聚焦 ESLint、17 个通知/ownership 测试及 `git diff --check` 通过。
+
+本节完成 BR038 worker 的多收件人和日级去重验证，但尚未实现或验收逾期事件的定时产生器；审计页面、门户权限复核、目标/结案运行时、演示数据和整体本地验收仍未完成。当前仍未合并 main、未推送、未部署或操作真实员工/客户资料。

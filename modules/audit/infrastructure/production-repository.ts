@@ -57,8 +57,11 @@ export interface AtomicMutationTransaction {
   ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number }>;
 }
 
-const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
-const SUPPORTING_IDENTITY_READ_TABLES = new Set(['access_organizations','identity_users','access_trial_members']);
+const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+(?:lateral\s+)?|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
+const SUPPORTING_NOTIFICATION_READ_TABLES = new Set([
+  'access_organizations', 'identity_users', 'access_trial_members',
+  'audit_events', 'cases_candidate_school_list_versions', 'tasks_task_transition_receipts',
+]);
 const SHARED_TABLES = new Set([
   "shared_idempotency_records",
   "audit_outbox",
@@ -215,6 +218,20 @@ export function completeAuditOutboxRow(
   });
 }
 
+/** Return a leased source row to the queue while another recipient remains. */
+export function releaseAuditOutboxRowForNextRecipient(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion: number },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='pending', leased_until=NULL,
+              updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing' AND lease_version=$3
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion],
+  });
+}
+
 export function retryAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
   input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
@@ -265,9 +282,10 @@ function assertOwnedTables(module: SupportingModule, sql: string): void {
   TABLE_REFERENCE.lastIndex = 0;
   for (const match of sql.matchAll(TABLE_REFERENCE)) {
     const table = match[1];
-    const identityRead = module === 'notifications' && SUPPORTING_IDENTITY_READ_TABLES.has(table)
+    const notificationRead = module === 'notifications' && SUPPORTING_NOTIFICATION_READ_TABLES.has(table)
       && /^\s*SELECT\b/i.test(sql) && !/\b(?:INSERT|DELETE|MERGE|TRUNCATE)\b|(?<!FOR\s)\bUPDATE\b/i.test(sql);
-    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table) && !identityRead) {
+    if (table.toLowerCase() === 'lateral') continue;
+    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table) && !notificationRead) {
       throw new SupportingRepositoryError("SUPPORTING_MODULE_OWNERSHIP_VIOLATION");
     }
   }

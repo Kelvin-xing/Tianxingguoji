@@ -7,6 +7,7 @@ import { Client } from "pg";
 import { assertTrialMemberCommands } from "./trial-member-command-assertions.ts";
 import { assertTrialCaseReads } from "./trial-case-read-assertions.ts";
 import { assertTrialAuditReads } from "./trial-audit-read-assertions.ts";
+import { assertTrialNotificationDelivery } from "./trial-notification-delivery-assertions.ts";
 import { assertTrialAccessSchema } from "./trial-access-schema-assertions.ts";
 
 import {
@@ -282,6 +283,7 @@ test("dry-runs and applies the one-role baseline on disposable PostgreSQL 17", {
       l2: NEON_TEST_PRINCIPALS[3]!,
       l3: NEON_TEST_PRINCIPALS[4]!,
     });
+    await assertTrialNotificationDelivery(clientConfig);
     await assertPrimaryContactLifecycleInvariant(clientConfig);
     await assertCaseFlowFoundationInvariant(clientConfig);
     await assertTrialMemberCommands(clientConfig);

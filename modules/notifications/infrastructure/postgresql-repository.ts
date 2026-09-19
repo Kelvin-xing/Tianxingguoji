@@ -4,6 +4,7 @@ import {
   claimAuditOutboxRow,
   completeAuditOutboxRow,
   deadLetterAuditOutboxRow,
+  releaseAuditOutboxRowForNextRecipient,
   retryAuditOutboxRow,
   runSupportingModuleTransaction,
   SupportingRepositoryError,
@@ -20,6 +21,64 @@ import type { DeliveryReceipt, NotificationRecord } from "../domain/contract.ts"
 import { currentNotificationRecipient } from "./current-recipient.ts";
 
 type Row = Record<string, unknown>;
+
+const RECIPIENT_LATERAL = `
+  CROSS JOIN LATERAL (
+    SELECT DISTINCT candidate.recipient_user_id,
+      md5(concat_ws(':', o.aggregate_id::text, o.event_type,
+        to_char(o.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD'), o.event_version::text,
+        candidate.recipient_user_id::text)) AS effect_idempotency_key
+    FROM (
+      SELECT CASE
+        WHEN o.event_type IN ('tasks.due_3d','tasks.due_1d','tasks.overdue')
+          THEN task.assignee_user_id
+        WHEN o.event_type = 'tasks.task_transitioned'
+          AND transition_receipt.to_state = 'awaiting_reassignment'
+          THEN service_case.primary_user_id
+        ELSE task.assignee_user_id
+      END AS recipient_user_id
+      WHERE o.event_type LIKE 'tasks.%'
+      UNION ALL
+      SELECT service_case.primary_user_id
+       WHERE o.event_type IN ('tasks.due_3d','tasks.due_1d','tasks.overdue',
+                             'cases.candidate_list_approved','cases.candidate_list_rejected',
+                             'cases.service_case_stage_transitioned','cases.service_case_closed')
+      UNION ALL
+      SELECT binding.user_id
+        FROM access_role_bindings AS binding
+        JOIN access_organization_memberships AS membership
+          ON membership.id=binding.membership_id AND membership.organization_id=binding.organization_id
+         AND membership.user_id=binding.user_id
+        JOIN identity_users AS user_row
+          ON user_row.id=binding.user_id
+       WHERE binding.organization_id=o.organization_id
+         AND binding.status='active' AND membership.status='active' AND user_row.status='active'
+         AND binding.role='founder'
+         AND o.event_type IN ('tasks.overdue','cases.candidate_list_submitted',
+                              'cases.service_case_stage_transitioned','cases.service_case_closed')
+    ) AS candidate
+   WHERE candidate.recipient_user_id IS NOT NULL
+  ) AS recipient`;
+
+const SOURCE_JOINS = `
+        LEFT JOIN audit_events AS source_event
+          ON source_event.id=o.audit_event_id AND source_event.organization_id=o.organization_id
+        LEFT JOIN tasks_tasks AS task
+          ON o.aggregate_type='Task' AND task.id=o.aggregate_id AND task.organization_id=o.organization_id
+        LEFT JOIN cases_candidate_school_list_versions AS candidate_list
+          ON o.aggregate_type='CandidateSchoolListVersion'
+         AND candidate_list.id=o.aggregate_id AND candidate_list.organization_id=o.organization_id
+        LEFT JOIN cases_service_cases AS service_case
+          ON service_case.organization_id=o.organization_id
+         AND service_case.id=CASE
+           WHEN o.aggregate_type='Task' THEN task.service_case_id
+           WHEN o.aggregate_type='CandidateSchoolListVersion' THEN candidate_list.service_case_id
+           ELSE o.aggregate_id
+         END
+        LEFT JOIN tasks_task_transition_receipts AS transition_receipt
+          ON transition_receipt.task_id=task.id
+         AND transition_receipt.organization_id=task.organization_id
+         AND transition_receipt.result_record_version=task.record_version`;
 
 /** PostgreSQL worker adapter. It resolves current recipients at claim/complete time. */
 export class PostgresqlInAppNotificationRepository implements InAppNotificationRepository {
@@ -38,16 +97,13 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
       operation: async (tx) => {
         const row = await tx.query<Row>({
           text: `SELECT o.id, o.organization_id, o.event_type, o.idempotency_key,
-                   o.attempt_count, o.lease_version,
-                   COALESCE(t.assignee_user_id, t.owner_user_id, t.approver_user_id,
-                            c.primary_user_id) AS recipient_user_id
+                   o.attempt_count, o.lease_version, recipient.recipient_user_id,
+                   recipient.effect_idempotency_key,
+                   transition_receipt.from_state AS transition_from_state,
+                   transition_receipt.to_state AS transition_to_state
               FROM audit_outbox AS o
-              LEFT JOIN tasks_tasks AS t
-                ON o.aggregate_type = 'Task' AND t.id = o.aggregate_id
-               AND t.organization_id = o.organization_id
-              LEFT JOIN cases_service_cases AS c
-                ON o.aggregate_type IN ('Case', 'ServiceCase') AND c.id = o.aggregate_id
-               AND c.organization_id = o.organization_id
+              ${SOURCE_JOINS}
+              ${RECIPIENT_LATERAL}
              WHERE o.organization_id = $1
                AND ($2::uuid IS NULL OR o.id = $2)
                AND o.status = 'pending'
@@ -59,12 +115,19 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
                  'cases.candidate_list_rejected','tasks.due_3d','tasks.due_1d','tasks.overdue',
                  'cases.service_case_closed'
                )
+               AND NOT EXISTS (
+                 SELECT 1 FROM notifications_delivery_receipts AS prior_receipt
+                  WHERE prior_receipt.organization_id=o.organization_id
+                    AND prior_receipt.outbox_id=o.id
+                    AND prior_receipt.recipient_user_id=recipient.recipient_user_id
+               )
              ORDER BY o.available_at, o.created_at
              FOR UPDATE OF o SKIP LOCKED LIMIT 1`,
           values: [this.organizationId, input.outboxId],
         });
         const candidate = row[0];
-        if (!candidate || typeof candidate.id !== "string" || typeof candidate.recipient_user_id !== "string") {
+        if (!candidate || typeof candidate.id !== "string" || typeof candidate.recipient_user_id !== "string" ||
+            typeof candidate.effect_idempotency_key !== "string") {
           return { status: "idle" } as const;
         }
         const existing = await tx.query<Row>({
@@ -73,9 +136,9 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
             effect_type AS "effectType", effect_idempotency_key AS "effectIdempotencyKey",
             outcome, attempt_count AS "attemptCount", created_at AS "createdAt"
             FROM notifications_delivery_receipts
-           WHERE organization_id = $1 AND outbox_id = $2
+           WHERE organization_id = $1 AND outbox_id = $2 AND recipient_user_id = $3
            ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
-          values: [this.organizationId, candidate.id],
+          values: [this.organizationId, candidate.id, candidate.recipient_user_id],
         });
         if (existing[0]) {
           return { status: "duplicate", outboxId: candidate.id, receipt: toReceipt(existing[0]) } as const;
@@ -86,11 +149,14 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
         const claimed = updated[0];
         if (!claimed) return { status: "idle" } as const;
         return {
-          status: "claimed",
+            status: "claimed",
           work: Object.freeze({
             outboxId: String(claimed.id), organizationId: this.organizationId,
             recipientUserId: String(candidate.recipient_user_id), eventType: String(claimed.event_type),
-            effectIdempotencyKey: String(claimed.idempotency_key), attemptCount: Number(claimed.attempt_count),
+            effectIdempotencyKey: String(candidate.effect_idempotency_key),
+            transitionFromState: candidate.transition_from_state == null ? null : String(candidate.transition_from_state),
+            transitionToState: candidate.transition_to_state == null ? null : String(candidate.transition_to_state),
+            attemptCount: Number(claimed.attempt_count),
             leaseVersion: Number(claimed.lease_version),
           }),
         } as const;
@@ -114,6 +180,14 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
         });
         if (duplicate[0]) {
           const receipt = toReceipt(duplicate[0]);
+          if (receipt.outboxId !== input.work.outboxId) {
+            const closed = await completeAuditOutboxRow(tx, {
+              id: input.work.outboxId,
+              organizationId: input.work.organizationId,
+              leaseVersion: input.work.leaseVersion,
+            });
+            if (closed.length === 0) throw new SupportingRepositoryError("SUPPORTING_EFFECT_CONFLICT");
+          }
           const notice = await tx.query<Row>({
             text: `SELECT id, organization_id AS "organizationId", recipient_user_id AS "recipientUserId",
               channel, content_code AS "contentCode", 'A pending item needs attention.' AS text,
@@ -143,10 +217,29 @@ export class PostgresqlInAppNotificationRepository implements InAppNotificationR
           await insertNotification(tx, notification);
         }
         await insertReceipt(tx, receipt);
-        const completed = await completeAuditOutboxRow(tx, {
-          id: input.work.outboxId, organizationId: input.work.organizationId, leaseVersion: input.work.leaseVersion,
+        const pendingRecipient = await tx.query<Row>({
+          text: `SELECT 1
+                   FROM audit_outbox AS o
+                   ${SOURCE_JOINS}
+                   ${RECIPIENT_LATERAL}
+                  WHERE o.id=$1 AND o.organization_id=$2 AND o.status='processing'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM notifications_delivery_receipts AS prior_receipt
+                       WHERE prior_receipt.organization_id=o.organization_id
+                         AND prior_receipt.outbox_id=o.id
+                         AND prior_receipt.recipient_user_id=recipient.recipient_user_id
+                    )
+                  LIMIT 1`,
+          values: [input.work.outboxId, input.work.organizationId],
         });
-        if (completed.length === 0) throw new SupportingRepositoryError("SUPPORTING_EFFECT_CONFLICT");
+        const advanced = pendingRecipient.length > 0
+          ? await releaseAuditOutboxRowForNextRecipient(tx, {
+            id: input.work.outboxId, organizationId: input.work.organizationId, leaseVersion: input.work.leaseVersion,
+          })
+          : await completeAuditOutboxRow(tx, {
+            id: input.work.outboxId, organizationId: input.work.organizationId, leaseVersion: input.work.leaseVersion,
+          });
+        if (advanced.length === 0) throw new SupportingRepositoryError("SUPPORTING_EFFECT_CONFLICT");
         return { status: delivered ? "delivered" : "suppressed", notification, receipt };
       },
     });
