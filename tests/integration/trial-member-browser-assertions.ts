@@ -241,6 +241,10 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await schoolResolved.json()).data.school_id,firstSchool.school_id)
     assert.equal((await restrictedContext.request.get(`${baseUrl}/api/v1/schools/${randomUUID()}/resolved`)).status(),404)
 
+    await restricted.goto(`${baseUrl}/schools/${firstSchool.school_id}`)
+    for (const heading of ['基礎資料','招生資料','待處理更新','更新履歷']) await restricted.getByRole('heading',{name:heading,exact:true}).waitFor()
+    assert.equal(await restricted.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
+    await restricted.screenshot({path:'/tmp/access-trial-school-detail-mobile.png',fullPage:true})
     const provisionalUrl=`${baseUrl}/api/v1/schools/provisionals`
     const provisionalCommand={headers:{'idempotency-key':randomUUID()},data:{school_name_zh:'合成待验证学校'}}
     const provisionalResponse=await restrictedContext.request.post(provisionalUrl,provisionalCommand)

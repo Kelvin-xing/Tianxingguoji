@@ -510,3 +510,13 @@
 - 聚焦类型检查 `/tmp/access-trial-provisional-types-final.log`、ESLint `/tmp/access-trial-provisional-lint-final.log`及UI ESLint `/tmp/access-trial-provisional-ui-lint-final.log`通过；客户端单测包含严格字段、无名称、错误状态和泄漏字段拒绝。没有外部部署或真实资料写入。
 
 学校人工变更申请、Founder审批、抓取来源审批、逐字段启用/恢复、四块详情页面仍待完成；其余模块和整体试用验收、main合并及远程推送尚未完成。
+
+## 学校详情读取页面首步（2026-09-19，接续 7c656c2）
+
+总体仍 `in_progress`，本节为部分实现，不代表四区块全部完成。
+
+- 新增学校详情路由、正式resolved客户端及目录详情链接，展示当前基础/招生字段。待处理更新尚未接入，更新履历目前仅显示当前版本标识，完整历史待实现。
+- 首次浏览器失败定位到客户端误读接口不存在的顶层source_school_key；已按实际契约移除，并新增客户端身份一致性/契约测试。
+- 类型 `/tmp/access-trial-school-detail-types-final.log`、聚焦ESLint `/tmp/access-trial-school-detail-lint.log`、聚焦单测 `/tmp/access-trial-school-detail-unit-final.log`通过。真实浏览器 `/tmp/access-trial-school-detail-final.log`已通过新增四标题和390px无横向溢出断言，截图 `/tmp/access-trial-school-detail-mobile.png`已查看。
+- 该整组最终 **1/2**：后续既有文件上传意图接口出现非JSON 404，浏览器子测试失败，不能报告整体通过。保留失败待排查；学校页面L3显示状态、缺失/失败/重试交互和完整履历仍需补齐，HTTP L3拒绝已有本组证据。
+- 无迁移、部署、main合并或远程推送。
