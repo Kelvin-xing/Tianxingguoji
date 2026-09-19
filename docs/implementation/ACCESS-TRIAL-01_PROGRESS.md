@@ -449,3 +449,15 @@
 - 类型 `/tmp/access-trial-deletion-types-final3.log`、聚焦ESLint `/tmp/access-trial-deletion-lint-final2.log`及 `/tmp/access-trial-deletion-last-tests-lint.log`、diff检查通过。无迁移。中间一次独立PG批次在既有case_flow_foundation的background_blocker_rejections失败；最终浏览器批次包含同一检查且通过，未修改该检查或对应业务规则。
 
 下一步仍须接入审批页面、完成其余模块与整体试用验收。main合并/远程推送未完成；未部署、未发送外部邮件、未迁移真实员工。
+
+## 待删除审批页面（2026-09-19，接续 c5f0501）
+
+总体仍 `in_progress`。待审批清单接通正式批准/驳回命令，沿用当前能力与服务器重查。
+
+- 每项明确选择批准或驳回，再勾选确认；批准说明业务资料隐藏、历史保留且本期不可恢复，驳回说明恢复正常使用。审批时锁定其他行和分类筛选。页面移除无需用户理解的内部UUID/版本显示。
+- 未知处理结果保留原决定和幂等键，只允许重试原决定；成功后重新读取清单。冲突/资料不存在要求重新载入；权限或登录失效清空受保护列表。客户端在发送前绑定请求编号与资料类型/ID，并严格校验返回资料、状态、下一版本和时间。
+- 真实Next/Chrome+PG17流程覆盖页面驳回、批准前确认、服务端已成功但响应503后的同键重试、其他审阅者先处理后的冲突与刷新，以及模拟403后清空列表（服务端真实停用重查证据见上一节）。批准后刷新不再显示，数据库保持软删除。
+- `/tmp/access-trial-decision-confirm-mobile.png` 已查看，390px确认文案及按钮显示完整。首轮浏览器流程通过后补充异常状态；一次补充测试因下拉标签定位超时，改用页面唯一combobox的可访问角色后通过相关步骤，未改变业务逻辑绕过验证。
+- `/tmp/access-trial-decision-ui-final2.log` **32/32**：真实PG17/Next/Chrome、客户端与UI契约、模块边界全部通过；类型 `/tmp/access-trial-decision-ui-types-final3.log`、聚焦ESLint `/tmp/access-trial-decision-ui-lint-final2.log`及diff检查通过。无新迁移。
+
+尚需客户来源、学校及其他入口的权限适配/复核、合成试用场景及整体本地验收；main合并与远程推送仍未完成。未部署或操作真实员工/客户数据。

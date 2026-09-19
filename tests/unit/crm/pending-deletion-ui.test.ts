@@ -46,14 +46,15 @@ test('pending Student and Guardian status hide related write commands after auth
   assert.match(relationships, /\{canManage\?<><NewGuardianRelationshipForm/)
 })
 
-test('queue exposes only the six safe lifecycle facts and no destructive claim', async () => {
+test('queue shows business context and requires an explicit review control', async () => {
   const queue = await source('components/crm/DeletionRequestsQueue.tsx')
-  for (const field of ['entity_type', 'entity_id', 'display_label', 'status', 'deletion_requested_at', 'record_version']) {
+  for (const field of ['entity_type', 'entity_id', 'display_label', 'status', 'deletion_requested_at']) {
     assert.match(queue, new RegExp(`item\\.${field}`))
   }
   assert.doesNotMatch(queue, /item\.(?:email|phone|date_of_birth|requester|reason|retention|legal_hold)/)
   assert.doesNotMatch(queue, /可刪除|可以刪除|永久刪除|恢復資料|取消申請/)
-  assert.match(queue, /本頁不提供刪除或復原操作/)
+  assert.match(queue, /<DeletionDecisionControl/);
+  assert.match(queue, /歷史仍保留/)
   assert.match(queue, /<option value="all">全部<\/option>/)
   assert.match(queue, /<option value="student">學生<\/option>/)
   assert.match(queue, /<option value="guardian">監護人<\/option>/)

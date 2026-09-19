@@ -671,6 +671,23 @@ export function requestPendingDeletion(
   );
 }
 
+export function decidePendingDeletion(
+  item: PendingDeletionSummary,
+  decision: "approve" | "reject",
+  idempotencyKey: string,
+): Promise<void> {
+  assertDeletionEntityType(item.entity_type); assertUuid(item.entity_id, "entityId");
+  assertPositiveInteger(item.record_version, "recordVersion"); assertIdempotencyKey(idempotencyKey);
+  if (!["approve", "reject"].includes(decision) || item.request_id !== deletionLocator(item.entity_type,item.entity_id)) throw new TypeError("Invalid deletion decision.");
+  return requestApi({path:`/api/v1/crm/deletion-requests/${item.request_id}/decisions`,method:"POST",
+    headers:{"idempotency-key":idempotencyKey},body:{decision,expected_record_version:item.record_version}}, value=>{
+    const result=exactRecord(value,["entity_type","entity_id","status","record_version","occurred_at"]);
+    if(result.entity_type!==item.entity_type || result.entity_id!==item.entity_id ||
+      result.status!==(decision==="approve"?"deleted":"active") || result.record_version!==item.record_version+1) throw new TypeError("Mismatched deletion decision receipt.");
+    isoDateTime(result.occurred_at,"occurred_at");
+  });
+}
+
 export function listPendingDeletionRequests(
   entityType?: DeletionEntityType,
   signal?: AbortSignal,
@@ -1671,6 +1688,10 @@ function decodePendingDeletionReceipt(
   });
 }
 
+function deletionLocator(entityType:DeletionEntityType,entityId:string):string {
+  return "del_v1_" + btoa(`v1:${entityType}:${entityId.toLowerCase()}`).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
 function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletionSummary[] {
   const items = expectArray(value, (item) => {
     const record = exactRecord(item, [
@@ -1687,7 +1708,7 @@ function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletio
         .map((key) => [key, record[key]]),
     ));
     const requestId = nonEmptyString(record.request_id, "request_id");
-    const expectedLocator = "del_v1_" + btoa(`v1:${receipt.entity_type}:${receipt.entity_id}`).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    const expectedLocator = deletionLocator(receipt.entity_type,receipt.entity_id);
     if (requestId !== expectedLocator) throw new TypeError("Mismatched deletion request locator.");
     return Object.freeze({
       ...receipt,

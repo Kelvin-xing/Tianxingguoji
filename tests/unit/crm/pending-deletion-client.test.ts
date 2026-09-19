@@ -4,6 +4,7 @@ import test from 'node:test'
 import { ApiClientError } from '../../../lib/api/client.ts'
 import {
   PendingDeletionIdempotencyAttempt,
+  decidePendingDeletion,
   classifyPendingDeletionFailure,
   getStudent,
   listPendingDeletionRequests,
@@ -138,7 +139,7 @@ function receipt(entityType: 'student' | 'guardian', entityId: string, recordVer
   return {
     entity_type: entityType,
     entity_id: entityId,
-    status: 'pending_delete',
+    status: 'pending_delete' as const,
     deletion_requested_at: '2026-08-23T00:00:00.000Z',
     record_version: recordVersion,
   }
@@ -194,3 +195,30 @@ function malformedResponse(error: unknown): boolean {
 function apiError(code: string, status: number): ApiClientError {
   return new ApiClientError({ code, status, retryable: false, requestId: 'pending-deletion-client-test' })
 }
+
+
+test('decision receipts bind resource, expected next version and chosen decision',async context=>{
+  const original=globalThis.fetch;context.after(()=>{globalThis.fetch=original});
+  const item=summary('guardian',GUARDIAN_ID,'2026-09-19T00:00:00.000Z',2);
+  for(const decision of ['approve','reject'] as const){
+    const valid={entity_type:'guardian',entity_id:GUARDIAN_ID,status:decision==='approve'?'deleted':'active',record_version:3,occurred_at:'2026-09-19T01:00:00.000Z'};
+    for(const patch of [{},{entity_id:STUDENT_ID},{entity_type:'student'},{record_version:2},{status:'pending_delete'},{email:'hidden@example.invalid'}]){
+      globalThis.fetch=async(input,init)=>{
+        assert.equal(input,`/api/v1/crm/deletion-requests/${item.request_id}/decisions`);
+        assert.deepEqual(JSON.parse(String(init?.body)),{decision,expected_record_version:2});
+        assert.equal(new Headers(init?.headers).get('idempotency-key'),'decision-test');
+        return apiResponse({...valid,...patch});
+      };
+      if(Object.keys(patch).length===0)await decidePendingDeletion(item,decision,'decision-test');
+      else await assert.rejects(decidePendingDeletion(item,decision,'decision-test'),malformedResponse);
+    }
+  }
+});
+
+
+test('decision rejects a locator for a different resource before dispatch',context=>{
+  const original=globalThis.fetch;context.after(()=>{globalThis.fetch=original});
+  globalThis.fetch=async()=>{assert.fail('must not dispatch a mismatched decision')};
+  const item=summary('guardian',GUARDIAN_ID,'2026-09-19T00:00:00.000Z',2);
+  assert.throws(()=>decidePendingDeletion({...item,request_id:summary('student',STUDENT_ID,'2026-09-19T00:00:00.000Z',2).request_id},'approve','bound-decision'));
+});
