@@ -417,7 +417,12 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
       }})
     // Exercise the actual dynamic handler without credentials before the UI submits bytes.
     // A framework HTML 404 must fail this check; never retry a business upload to hide it.
-    const anonymousIntent=await fetch(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents/${taskFileId}/versions/${randomUUID()}/upload-intents`,{
+    const uploadIntentPath=`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents/${taskFileId}/versions/${randomUUID()}/upload-intents`
+    // Next Dev compiles a dynamic route on its first method hit. A GET is
+    // method-invalid and has no business side effect, but removes the cold
+    // compile race before the authentication assertion below.
+    await fetch(uploadIntentPath,{ method:'GET', signal:AbortSignal.timeout(20_000) })
+    const anonymousIntent=await fetch(uploadIntentPath,{
       method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({expected_record_version:1}),signal:AbortSignal.timeout(20_000),
     })
     if(anonymousIntent.status!==401){

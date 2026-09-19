@@ -27,6 +27,7 @@ export const WORKSPACE_NAVIGATION = Object.freeze([
   { href: "/schools", labelKey: "nav.schoolData", icon: "book-open", capability: "schools.read" },
   { href: "/tasks", labelKey: "nav.tasks", icon: "clipboard", capability: "tasks.read" },
   { href: "/documents", labelKey: "nav.documents", icon: "file-text", capability: "documents.read" },
+  { href: "/audit", labelKey: "nav.audit", icon: "activity", capability: "audit.read" },
 ] as const satisfies readonly WorkspaceNavigationItem[]);
 
 export const ADMIN_NAVIGATION = Object.freeze([

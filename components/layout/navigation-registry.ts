@@ -10,6 +10,7 @@ export type NavigationLabelKey =
   | "nav.schoolData"
   | "nav.tasks"
   | "nav.documents"
+  | "nav.audit"
   | "nav.access"
   | "nav.emailSettings"
   | "nav.emailTemplates"
@@ -32,6 +33,7 @@ export const NAVIGATION_REGISTRY = Object.freeze([
   defineNavigationItem({ route: "/schools", labelKey: "nav.schoolData", iconKey: "book-open", requiredCapability: "schools.read", audience: "workspace", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/tasks", labelKey: "nav.tasks", iconKey: "clipboard", requiredCapability: "tasks.read", audience: "workspace", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/documents", labelKey: "nav.documents", iconKey: "file-text", requiredCapability: "documents.read", audience: "workspace", activeMatch: "prefix" }),
+  defineNavigationItem({ route: "/audit", labelKey: "nav.audit", iconKey: "activity", requiredCapability: "audit.read", audience: "workspace", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/admin/access", labelKey: "nav.access", iconKey: "shield", requiredCapability: "access.manage", audience: "administration", activeMatch: "prefix" }),
   defineNavigationItem({ route: "/admin/email", labelKey: "nav.emailSettings", iconKey: "mail", requiredCapability: "email.settings.manage", audience: "administration", activeMatch: "exact" }),
   defineNavigationItem({ route: "/admin/email/templates", labelKey: "nav.emailTemplates", iconKey: "file-text", requiredCapability: "email.templates.manage", audience: "administration", activeMatch: "exact" }),

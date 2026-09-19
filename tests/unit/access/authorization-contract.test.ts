@@ -42,11 +42,12 @@ const EXPECTED_MATRIX = Object.freeze({
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
     "access.manage",
     "schools.manage",
     "crawler.manage",
   ]),
-  admin: Object.freeze(["today.read", "access.manage", "email.settings.manage", "email.templates.manage", "schools.manage", "crawler.manage"]),
+  admin: Object.freeze(["today.read", "access.manage", "email.settings.manage", "email.templates.manage", "schools.manage", "crawler.manage", "audit.read"]),
   advisor: Object.freeze([
     "today.read",
     "cases.read",
@@ -61,7 +62,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "students.profiles.manage",
     "students.deletion.request",
     "referral_sources.read",
-    "schools.read",
+    "schools.read", "schools.provisional.create",
     "tasks.read",
     "tasks.create",
     "tasks.transition",
@@ -69,6 +70,7 @@ const EXPECTED_MATRIX = Object.freeze({
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
   ]),
   contractor: Object.freeze(["tasks.read", "tasks.transition"]),
   l1: Object.freeze([
@@ -76,18 +78,18 @@ const EXPECTED_MATRIX = Object.freeze({
     "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
     "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
     "students.deletion.request", "students.deletion.review", "referral_sources.read", "referral_sources.manage",
-    "schools.read", "schools.manage", "crawler.manage", "tasks.read", "tasks.create", "tasks.transition",
-    "documents.read", "documents.create", "documents.upload", "documents.download",
+    "schools.read", "schools.provisional.create", "schools.manage", "crawler.manage", "tasks.read", "tasks.create", "tasks.transition",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
   ] as const),
   l2: Object.freeze([
     "today.read", "cases.read", "cases.create", "cases.workflow.manage",
     "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
     "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
-    "students.deletion.request", "referral_sources.read", "schools.read",
+    "students.deletion.request", "referral_sources.read", "schools.read", "schools.provisional.create",
     "tasks.read", "tasks.create", "tasks.transition",
-    "documents.read", "documents.create", "documents.upload", "documents.download",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
   ] as const),
-  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download"] as const),
+  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download", "audit.read"] as const),
 } as const satisfies Readonly<Record<Release1OrganizationRole, readonly WorkspaceCapability[]>>);
 
 test("keeps legacy capabilities and adds explicit trial-level entry capabilities", () => {
@@ -149,7 +151,7 @@ test("runtime validators and bootstrap evaluation fail closed for unknown vocabu
 
 test("publishes one deterministic serializable bootstrap policy manifest", () => {
   assert.equal(ACCESS_POLICY_MANIFEST_VERSION, "access-policy-manifest/v1");
-  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v16");
+  assert.equal(BOOTSTRAP_ACCESS_POLICY_VERSION, "release1-bootstrap-v17");
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.manifestVersion, ACCESS_POLICY_MANIFEST_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.policyVersion, BOOTSTRAP_ACCESS_POLICY_VERSION);
   assert.equal(BOOTSTRAP_ACCESS_POLICY_MANIFEST.defaultDecision, "deny");

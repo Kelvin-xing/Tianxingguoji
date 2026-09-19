@@ -73,6 +73,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "documents.create",
   "documents.upload",
   "documents.download",
+  "audit.read",
   "access.manage",
   "email.settings.manage",
   "email.templates.manage",
@@ -108,6 +109,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
     "access.manage",
     "schools.manage",
     "crawler.manage",
@@ -119,6 +121,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "email.templates.manage",
     "schools.manage",
     "crawler.manage",
+    "audit.read",
   ] as const),
   advisor: Object.freeze([
     "today.read",
@@ -142,6 +145,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
   ] as const),
   contractor: Object.freeze(["tasks.read", "tasks.transition"] as const),
   l1: Object.freeze([
@@ -150,7 +154,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
     "students.deletion.request", "students.deletion.review", "referral_sources.read", "referral_sources.manage",
     "schools.read", "schools.provisional.create", "schools.manage", "crawler.manage", "tasks.read", "tasks.create", "tasks.transition",
-    "documents.read", "documents.create", "documents.upload", "documents.download",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
   ] as const),
   l2: Object.freeze([
     "today.read", "cases.read", "cases.create", "cases.workflow.manage",
@@ -158,9 +162,9 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
     "students.deletion.request", "referral_sources.read", "schools.read", "schools.provisional.create",
     "tasks.read", "tasks.create", "tasks.transition",
-    "documents.read", "documents.create", "documents.upload", "documents.download",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
   ] as const),
-  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download"] as const),
+  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download", "audit.read"] as const),
 });
 
 export function workspaceCapabilitiesForRole(

@@ -272,8 +272,8 @@ async function insertNotification(tx: { query(input: { text: string; values?: re
   await tx.query({
     text: `INSERT INTO notifications_notifications
       (id, organization_id, recipient_user_id, outbox_id, effect_type, effect_idempotency_key,
-       channel, content_code, status, record_version, read_at, target_kind, target_opaque_id, target_action, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,'in_app','PENDING_ITEM',$7,1,$8,$9,$10,$11,$12)`,
+       channel, content_code, status, record_version, read_at, target_kind, target_opaque_id, target_action, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'in_app','PENDING_ITEM',$7,1,$8,$9,$10,$11,$12,$12)`,
     values: [notice.id, notice.organizationId, notice.recipientUserId, notice.outboxId,
       notice.effectType, notice.effectIdempotencyKey, notice.status, notice.readAt ?? null,
       notice.targetKind ?? "workspace", notice.targetOpaqueId ?? notice.outboxId,
@@ -285,8 +285,8 @@ async function insertReceipt(tx: { query(input: { text: string; values?: readonl
   await tx.query({
     text: `INSERT INTO notifications_delivery_receipts
       (id, organization_id, outbox_id, notification_id, recipient_user_id, effect_type,
-       effect_idempotency_key, outcome, attempt_count, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       effect_idempotency_key, outcome, attempt_count, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`,
     values: [receipt.id, receipt.organizationId, receipt.outboxId, receipt.notificationId,
       receipt.recipientUserId, receipt.effectType, receipt.effectIdempotencyKey,
       receipt.outcome, receipt.attemptCount, receipt.createdAt],
