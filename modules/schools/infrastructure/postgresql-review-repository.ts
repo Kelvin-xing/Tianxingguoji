@@ -4,6 +4,7 @@ import {loadTrialPrincipal} from '../../access/server.ts';
 import {appendAtomicMutationEffects} from '../../audit/server.ts';
 import {hashRequestPayload} from '../../shared/public.ts';
 import {IdempotencyExecutionError,runIdempotentTransaction,type TenantTransaction,type TenantTransactionRunner} from '../../shared/server.ts';
+import {SchoolResolutionError} from '../application/resolved-view.ts';
 import {sha256SchoolValue,type JsonValue} from '../domain/contract.ts';
 import {SchoolGovernanceError,type SchoolGovernanceRepository,type SchoolChangeReviewResult} from '../application/governance-service.ts';
 import {PostgresqlResolvedSchoolTransaction} from './postgresql-resolved-view-transaction.ts';
@@ -41,7 +42,10 @@ export class PostgresqlSchoolReviewRepository implements Pick<SchoolGovernanceRe
           const tx=adapt(transaction),resolver=new PostgresqlResolvedSchoolTransaction();
           if(input.decision==='approve'){
             if(!input.resolvedRevisionId)throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_INVALID');
-            const current=await resolver.readCurrentResolvedSchool({transaction:tx,organizationId:input.organizationId,schoolId:revision.school_id});
+            const current=await resolver.readCurrentResolvedSchool({transaction:tx,organizationId:input.organizationId,schoolId:revision.school_id}).catch(error=>{
+              if(error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_NOT_FOUND')throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_STALE_VERSION');
+              throw error;
+            });
             if(current.pin.baseSnapshotId!==revision.base_snapshot_id)throw new SchoolGovernanceError('SCHOOL_GOVERNANCE_STALE_VERSION');
             const fields=await transaction.query<Record<string,unknown>&{field_name:string;base_value_sha256:string;expected_effective_value_sha256:string|null;fields_json:Record<string,JsonValue>}>({text:`SELECT field.field_name,field.base_value_sha256,field.expected_effective_value_sha256,record.fields_json
               FROM schools_overlay_fields field JOIN schools_snapshot_records record

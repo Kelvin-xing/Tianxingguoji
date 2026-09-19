@@ -1,3 +1,4 @@
+import {assertTrialSchoolReviewUi} from "./trial-school-review-ui-assertions.ts";
 import {assertTrialSchoolReviewHttp} from "./trial-school-review-http-assertions.ts";
 import {assertTrialSchoolChangeForm} from "./trial-school-change-form-assertions.ts";
 import {sha256SchoolValue} from "../../modules/schools/public.ts";
@@ -9,7 +10,7 @@ import {assertTrialCrmProfileBrowser} from './trial-crm-profile-browser-assertio
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes,randomUUID } from 'node:crypto'
-import { cp, mkdtemp, readdir, rm, symlink } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -341,6 +342,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const l2SchoolChangeId=(await l2SchoolChange.json()).data.change_request_id
     assert.equal((await l2Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,field_name:'district',base_value_sha256:sha256SchoolValue(firstSchool.fields.district),proposed_value:'Replacement'}})).status(),403)
     await assertTrialSchoolReviewHttp({baseUrl,schoolId:firstSchool.school_id,l1ChangeId:changeReceipt.change_request_id,l2ChangeId:l2SchoolChangeId,founder:rootContext.request,l1:restrictedContext.request,l2:l2Context.request})
+    await assertTrialSchoolReviewUi({page:restricted,l2Page,founder:rootContext.request,baseUrl,schoolId:firstSchool.school_id})
     await rootContext.close()
     await restrictedContext.close()
     await l2Context.close()
@@ -414,6 +416,15 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const anonymousIntent=await fetch(`${baseUrl}/api/v1/tasks/${automaticTaskId}/documents/${taskFileId}/versions/${randomUUID()}/upload-intents`,{
       method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({expected_record_version:1}),signal:AbortSignal.timeout(20_000),
     })
+    if(anonymousIntent.status!==401){
+      const routeKey='/api/v1/tasks/[taskId]/documents/[documentId]/versions/[versionId]/upload-intents/route';
+      const json=anonymousIntent.headers.get('content-type')?.includes('application/json')??false;
+      const body=json?await anonymousIntent.clone().json().catch(()=>null):null;
+      const manifest=await readFile(join(directory,'.next/server/app-paths-manifest.json'),'utf8').then(text=>JSON.parse(text) as Record<string,string>).catch(()=>({} as Record<string,string>));
+      const sourcePresent=await readFile(join(directory,'app'+routeKey+'.ts'),'utf8').then(text=>text.includes('export function POST')).catch(()=>false);
+      const compiledPresent=manifest[routeKey]?await readFile(join(directory,'.next/server',manifest[routeKey])).then(()=>true).catch(()=>false):false;
+      process.stdout.write(JSON.stringify({trial_upload_route_failure:{status:anonymousIntent.status,json,code:['NOT_FOUND','FORBIDDEN','UNAUTHENTICATED','SERVICE_UNAVAILABLE'].includes(body?.error?.code)?body.error.code:null,sourcePresent,manifestPresent:Object.hasOwn(manifest,routeKey),compiledPresent,serverExitCode:server.exitCode}})+'\n');
+    }
     assert.equal(anonymousIntent.status,401,'upload-intent route must resolve and require authentication')
     assert.equal((await anonymousIntent.json()).error.code,'UNAUTHENTICATED')
     const uploadIntentResponse=l3Page.waitForResponse(response=>response.url().endsWith('/upload-intents')&&response.request().method()==='POST')

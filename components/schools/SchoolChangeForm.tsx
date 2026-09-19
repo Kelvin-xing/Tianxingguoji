@@ -24,7 +24,7 @@ export function SchoolChangeForm({school,field,label,onDone,onDenied,onCancel}:{
       if(!mounted.current)return
       const failure=schoolChangeFailure(error)
       if(failure==='denied'){onDenied();return}
-      if(failure==='conflict'){setStale(true);setNotice('學校資料已變更，請重新載入並核對後再提交。');return}
+      if(failure==='conflict'){setPending(false);setStale(true);setNotice('學校資料已變更，請重新載入並核對後再提交。');return}
       if(failure==='validation'){attempt.current=null;setPending(false);setNotice('資料格式不正確，請檢查後重新提交。');return}
       setPending(true);setNotice('尚未確認提交結果。請重試原申請，避免重複提交。')
     }finally{inFlight.current=false;if(mounted.current)setSaving(false)}

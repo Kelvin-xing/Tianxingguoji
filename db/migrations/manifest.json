@@ -71,6 +71,7 @@
     { "name": "202609190120_069_preserve_role_binding_timestamp_order.sql", "sha256": "9d703b4f4fdfd4b728a071c41a420b9a57e1112a39e19ff9d25fd8be9450af50" },
     { "name": "202609190130_070_expand_provisional_school_intake.sql", "sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b" },
     { "name": "202609190140_071_capture_school_change_effective_baseline.sql", "sha256": "b2cd176535529d7d56b08173cb678380f5d2c10739f4bdd451a321958e378551" },
-    { "name": "202609190150_072_record_school_change_reviews.sql", "sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2" }
+    { "name": "202609190150_072_record_school_change_reviews.sql", "sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2" },
+    { "name": "202609190160_073_capture_school_change_previous_value.sql", "sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b" }
   ]
 }

@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "01d438eb5e06d5f2357020224d5cc38c0d6d5a29901fc76aa1c6ab156cb0e9e1",
+  "source_history_manifest_sha256": "dfd770eff1a25958340ed7b4959dc479df29d7782325215e47eef548919bd5a4",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -513,6 +513,13 @@
       "generated_file": "071_202609190150_072_record_school_change_reviews.sql",
       "generated_sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202609190160_073_capture_school_change_previous_value.sql",
+      "source_sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "generated_file": "072_202609190160_073_capture_school_change_previous_value.sql",
+      "generated_sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -869,6 +876,11 @@
     {
       "name": "071_202609190150_072_record_school_change_reviews.sql",
       "sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "072_202609190160_073_capture_school_change_previous_value.sql",
+      "sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
       "transform": "copy-v1"
     },
     {

@@ -53,7 +53,7 @@ export async function assertSchoolDirectoryReader(transaction:TenantTransaction,
     WHERE actor.id=$2 AND actor.status='active' AND binding.role=ANY($3::text[])
     FOR SHARE OF actor,membership,organization,binding`,[input.organizationId,input.actorUserId,principal?[principal.level]:['founder','advisor']]);
   if(result.rows.length===0)throw new SchoolResolutionError('SCHOOL_RESOLUTION_FORBIDDEN');
-  return {canSubmitChanges:principal!==null||result.rows.some(row=>row.role==='advisor'),canEditExisting:principal?['founder','l1'].includes(principal.level):result.rows.some(row=>row.role==='advisor')};
+  return {canReviewChanges:principal?['founder','l1'].includes(principal.level):result.rows.some(row=>row.role==='founder'),canSubmitChanges:principal!==null||result.rows.some(row=>row.role==='advisor'),canEditExisting:principal?['founder','l1'].includes(principal.level):result.rows.some(row=>row.role==='advisor')};
 }
 function adapt(transaction:TenantTransaction){
   return {async query<Row extends Record<string,unknown>>(text:string,values?:readonly unknown[]){

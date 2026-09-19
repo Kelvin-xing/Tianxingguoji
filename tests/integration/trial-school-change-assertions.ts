@@ -34,6 +34,7 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
     assert.deepEqual(await submitSchoolChange(request,{repository}),result);
     const history=await repository.list(reader);
     const entry=history.find(item=>item.change_request_id===result.changeRequestId)!;
+    assert.deepEqual(entry.fields[0]?.submitted_effective_value,{value:null});assert.deepEqual(entry.allowed_actions,[]);
     assert.equal(entry.status,'candidate');assert.equal(entry.fields[0]?.snapshot_value,null);assert.equal(entry.fields[0]?.proposed_value,'Synthetic phone');
     assert.equal('requested_by_user_id' in entry,false);
     await assert.rejects(()=>repository.list({...reader,schoolId:randomUUID()}),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_NOT_FOUND');
@@ -91,6 +92,7 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
       assert.equal(refreshed.changeContext.effectiveValueHashes.phone,sha256SchoolValue('Synthetic phone'));
       const fresh=await submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID(),expectedEffectiveValueSha256:refreshed.changeContext.effectiveValueHashes.phone!,proposedValue:'Rechecked value'}},{repository});
       assert.equal((await client.query('SELECT expected_effective_value_sha256 FROM schools_overlay_fields WHERE revision_id=$1',[fresh.changeRequestId])).rows[0].expected_effective_value_sha256,sha256SchoolValue('Synthetic phone'));
+      assert.deepEqual((await repository.list(reader)).find(item=>item.change_request_id===fresh.changeRequestId)!.fields[0]!.submitted_effective_value,{value:'Synthetic phone'});
       await client.query('SAVEPOINT immutable_school_baseline');
       await assert.rejects(()=>client.query('UPDATE schools_overlay_fields SET expected_effective_value_sha256=$2 WHERE revision_id=$1',[fresh.changeRequestId,sha256SchoolValue(null)]));
       await client.query('ROLLBACK TO SAVEPOINT immutable_school_baseline');
