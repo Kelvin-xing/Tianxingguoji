@@ -22,17 +22,12 @@ export function isUserDirectoryRuntimeUnavailable(
   return error instanceof UserDirectoryRuntimeUnavailable;
 }
 
-const globalForUserDirectory = globalThis as typeof globalThis & {
-  __txUserDirectoryRuntimes?: Map<string, UserDirectoryRuntime>;
-};
+const runtimes = new Map<string, UserDirectoryRuntime>();
 
 export function getUserDirectoryRuntime(): UserDirectoryRuntime {
   const mode = loadRuntimeEnvironment().appRuntimeMode;
   if (mode === "production-aws") throw new UserDirectoryRuntimeUnavailable();
 
-  const runtimes = globalForUserDirectory.__txUserDirectoryRuntimes ??
-    new Map<string, UserDirectoryRuntime>();
-  globalForUserDirectory.__txUserDirectoryRuntimes = runtimes;
   let runtime = runtimes.get(mode);
   if (!runtime) {
     try {

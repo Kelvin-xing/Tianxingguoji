@@ -1,10 +1,11 @@
+import {isK12BusinessCategory,type K12BusinessCategory} from '../../../../../modules/access/public.ts'
 export const INTERNAL_EMAIL_INVITE_BODY_MAX_BYTES = 8 * 1024
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
-const INVITABLE_ROLES = new Set<InvitableRole>(['founder', 'admin', 'advisor', 'contractor'])
-const ALLOWED_FIELDS = new Set(['normalized_email', 'role', 'employment_type', 'display_name'])
+const INVITABLE_ROLES = new Set<InvitableRole>(['founder', 'admin', 'advisor', 'contractor', 'l1', 'l2', 'l3'])
+const ALLOWED_FIELDS = new Set(['normalized_email', 'role', 'employment_type', 'display_name', 'trial_categories'])
 
-export type InvitableRole = 'founder' | 'admin' | 'advisor' | 'contractor'
+export type InvitableRole = 'founder' | 'admin' | 'advisor' | 'contractor' | 'l1' | 'l2' | 'l3'
 export type InviteEmploymentType = 'FULL_TIME' | 'PART_TIME'
 
 export class InternalEmailInviteRequestError extends Error {
@@ -20,6 +21,7 @@ export class InternalEmailInviteRequestError extends Error {
 export async function readInternalEmailInviteRequest(request: Request): Promise<Readonly<{
   normalizedEmail: string
   role: InvitableRole
+  trialCategories?: readonly K12BusinessCategory[]
   employmentType?: InviteEmploymentType
   displayName?: string
   idempotencyKey: string
@@ -52,9 +54,13 @@ export async function readInternalEmailInviteRequest(request: Request): Promise<
   const role = body.role
   const employmentType = body.employment_type
   const displayName = body.display_name
+  const categories = body.trial_categories
   if (
     typeof normalizedEmail !== 'string' || normalizedEmail.length === 0 || normalizedEmail.length > 320 ||
     normalizedEmail !== normalizedEmail.trim().toLowerCase() || typeof role !== 'string' || !INVITABLE_ROLES.has(role as InvitableRole) ||
+    (categories !== undefined && (!Array.isArray(categories) || !categories.every(isK12BusinessCategory) || new Set(categories).size !== categories.length
+      || !['founder','l1','l2','l3'].includes(role as string) || (role !== 'l2' && categories.length !== 0))) ||
+    (['l1','l2','l3'].includes(role as string) && categories === undefined) ||
     (employmentType !== undefined && employmentType !== 'FULL_TIME' && employmentType !== 'PART_TIME') ||
     (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length > 100))
   ) throw new InternalEmailInviteRequestError('VALIDATION_FAILED')
@@ -62,6 +68,7 @@ export async function readInternalEmailInviteRequest(request: Request): Promise<
   return Object.freeze({
     normalizedEmail,
     role: role as InvitableRole,
+    ...(categories === undefined ? {} : {trialCategories: Object.freeze([...categories as K12BusinessCategory[]].sort())}),
     employmentType: employmentType as InviteEmploymentType | undefined,
     displayName: displayName as string | undefined,
     idempotencyKey,

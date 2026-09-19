@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization, type OrganizationRole } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability, type OrganizationRole, type TrialPrincipal } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -15,13 +15,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export type TaskAudience = "case_workspace" | "assigned_task";
-export type TaskAssigneeRole = "advisor" | "contractor";
+export type TaskAssigneeRole = "advisor" | "contractor" | "founder" | "l1" | "l2" | "l3";
 export interface TaskAssigneeView { readonly id: string; readonly role: TaskAssigneeRole; readonly label: string }
 export interface AvailableTaskTransitionView {
   readonly to: TaskState; readonly requiresReason: boolean; readonly requiresAssignee: boolean;
 }
 export type WorkspaceTaskKind = "application_prepare_submit" | "interview_support" | "manual";
-export type WorkspaceTaskAction = "accept" | "reject" | "reassign" | "complete" | "cancel";
+export type WorkspaceTaskAction = "accept" | "reject" | "reassign" | "complete" | "cancel" | "revoke_access";
 export interface CurrentTaskAssignmentView {
   readonly id: string; readonly assigneeUserId: string; readonly assigneeRole: TaskAssigneeRole; readonly status: string;
 }
@@ -44,6 +44,7 @@ export interface TaskAcknowledgement { readonly id: string; readonly recordVersi
 
 export interface TaskActorContext {
   readonly organizationId: string; readonly actorUserId: string; readonly actorRole: OrganizationRole;
+  readonly trialPrincipal?: TrialPrincipal;
 }
 export interface TaskWorkspaceRepository {
   list(input: TaskActorContext & { readonly caseId: string | null }): Promise<TaskCollectionView>;
@@ -54,6 +55,11 @@ export interface TaskWorkspaceRepository {
     readonly dueAt: string; readonly assigneeUserId: string; readonly requestId: string;
     readonly idempotencyKey: string; readonly requestHash: string; readonly effects: MutationEffectBundle;
   }): Promise<TaskAcknowledgement>;
+  revokeCompletedAssignment(input: TaskActorContext & {
+    readonly taskId:string; readonly assignmentId:string; readonly expectedRecordVersion:number;
+    readonly reason:string; readonly requestId:string; readonly idempotencyKey:string;
+    readonly requestHash:string; readonly effects:MutationEffectBundle;
+  }):Promise<TaskAcknowledgement>;
   transition(input: TaskActorContext & {
     readonly taskId: string; readonly receiptId: string; readonly to: TaskState;
     readonly expectedRecordVersion: number; readonly reason: string; readonly nextAssigneeUserId: string | null;
@@ -122,6 +128,23 @@ export class TaskWorkspaceService {
       requestHash: hashRequestPayload({ assignee_user_id: command.assigneeUserId, case_id: command.caseId,
         due_at: command.dueAt, task_brief: command.taskBrief, title: command.title }), effects });
   }
+  revokeCompletedAssignment(input:{ readonly actor:IdentitySessionActor;readonly taskId:string;readonly command:{
+    readonly assignmentId:string;readonly expectedRecordVersion:number;readonly reason:string;
+    readonly requestId:string;readonly idempotencyKey:string;
+  }}):Promise<TaskAcknowledgement> {
+    const context=authorize(input.actor,"tasks.create");
+    const command=input.command;
+    if (!UUID.test(input.taskId) || !UUID.test(command.assignmentId) || !REQUEST_ID.test(command.requestId)
+      || !Number.isSafeInteger(command.expectedRecordVersion) || command.expectedRecordVersion<1
+      || command.reason!==command.reason.trim() || command.reason.length<1 || command.reason.length>4000) invalid();
+    validateKey(command.idempotencyKey);
+    const effects=mutationEffects({actor:input.actor,resourceId:input.taskId,requestId:command.requestId,
+      operation:"tasks.revoke_assignment",status:"completed",recordVersion:command.expectedRecordVersion+1,
+      occurredAt:checkedNow(this.now),createId:this.createId});
+    return this.repository.revokeCompletedAssignment({...context,...command,taskId:input.taskId,effects,
+      requestHash:hashRequestPayload({task_id:input.taskId,assignment_id:command.assignmentId,
+        expected_record_version:command.expectedRecordVersion,reason:command.reason})});
+  }
   transition(input: { readonly actor: IdentitySessionActor; readonly taskId: string; readonly command: {
     readonly to: TaskState; readonly expectedRecordVersion: number; readonly reason: string;
     readonly nextAssigneeUserId: string | null; readonly requestId: string; readonly idempotencyKey: string;
@@ -144,16 +167,17 @@ export class TaskWorkspaceService {
 
 function authorize(actor: IdentitySessionActor, capability: "tasks.read" | "tasks.create" | "tasks.transition"): TaskActorContext {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
-      !evaluateBootstrapAuthorization(actor.role, { capability }).allowed) forbidden();
+      !(actor.trialPrincipal ? hasRequestCapability(actor,capability) && actor.trialPrincipal.level === actor.role
+        : evaluateBootstrapAuthorization(actor.role, { capability }).allowed)) forbidden();
   return { organizationId: actor.organizationId, actorUserId: actor.userId, actorRole: actor.role };
 }
 function mutationEffects(input: { actor: IdentitySessionActor; resourceId: string; requestId: string;
-  operation: "tasks.create" | "tasks.transition"; status: string; recordVersion: number; occurredAt: string;
+  operation: "tasks.create" | "tasks.transition" | "tasks.revoke_assignment"; status: string; recordVersion: number; occurredAt: string;
   createId: () => string }): MutationEffectBundle {
-  const auditId = checkedId(input.createId); const eventType = input.operation === "tasks.create" ? "tasks.task_created" : "tasks.task_transitioned";
+  const auditId = checkedId(input.createId); const eventType = input.operation === "tasks.create" ? "tasks.task_created" : input.operation === "tasks.revoke_assignment" ? "tasks.assignment_access_revoked" : "tasks.task_transitioned";
   const audit = buildAuditEvent({ id: auditId, organizationId: input.actor.organizationId,
     actorUserId: input.actor.userId, actorKind: "user", eventType, eventVersion: 1,
-    action: input.operation === "tasks.create" ? "create" : "transition", resourceType: "Task",
+    action: input.operation === "tasks.create" ? "create" : input.operation === "tasks.revoke_assignment" ? "revoke" : "transition", resourceType: "Task",
     resourceId: input.resourceId, outcome: "succeeded", requestId: input.requestId, occurredAt: input.occurredAt,
     metadata: { effect_type: input.operation, record_version: input.recordVersion, status: input.status } });
   const outbox = buildOutboxMessage({ id: checkedId(input.createId), auditEventId: auditId,

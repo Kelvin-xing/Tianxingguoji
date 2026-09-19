@@ -168,7 +168,7 @@ export class CandidateListService {
     const requestHash = hashRequestPayload({
       case_id: input.caseId, change_summary: input.changeSummary.trim(),
       expected_case_record_version: input.expectedCaseRecordVersion,
-      items: items.map(({ id: _id, ...item }) => ({
+      items: items.map((item) => ({
         application_deadline: item.applicationDeadline,
         ordinal: item.ordinal, pinned_resolution_sha256: item.pinnedResolutionSha256,
         pinned_resolved_revision_id: item.pinnedResolvedRevisionId, school_id: item.schoolId,
@@ -300,9 +300,14 @@ export function hashCandidateSchoolSet(items: readonly Pick<CandidateListItemInp
 }
 
 function authorize(actor: RequestAccessActor, requiredRole: "founder" | "advisor"): void {
+  const permittedRole = actor.trialPrincipal
+    ? actor.trialPrincipal.active && (requiredRole === "founder"
+      ? ["founder","l1"].includes(actor.trialPrincipal.level)
+      : ["founder","l1","l2"].includes(actor.trialPrincipal.level))
+    : actor.roles?.includes(requiredRole) === true;
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
       !hasRequestCapability(actor, "cases.workflow.manage") ||
-      actor.roles?.includes(requiredRole) !== true) forbidden();
+      !permittedRole) forbidden();
 }
 function assertCommon(caseId: string, version: number, requestId: string, key: string): void {
   if (!UUID.test(caseId) || !Number.isSafeInteger(version) || version < 1 ||

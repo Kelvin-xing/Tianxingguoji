@@ -121,3 +121,7 @@ export function formatTaskDate(value: string): string {
     timeZone: "Asia/Hong_Kong",
   }).format(new Date(value));
 }
+
+export function taskAssigneeRoleLabel(role: string): string {
+  return ({ advisor: "顧問", contractor: "外部協作人員", founder: "創始人", l1: "L1", l2: "L2", l3: "L3" } as Record<string, string>)[role] ?? role;
+}

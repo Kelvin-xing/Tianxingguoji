@@ -12,3 +12,6 @@ export * from "./infrastructure/postgresql-portal-read-adapter.ts";
 export * from "./application/member-management.ts";
 export * from "./infrastructure/postgresql-member-management-repository.ts";
 export * from "./infrastructure/member-management-runtime.ts";
+export * from "./infrastructure/postgresql-trial-principal.ts";
+export * from "./application/trial-member-management.ts";
+export * from "./infrastructure/trial-member-runtime.ts";

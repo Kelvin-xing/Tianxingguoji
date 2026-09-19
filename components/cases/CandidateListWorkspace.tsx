@@ -478,7 +478,7 @@ function CandidateListVersionView({
 
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4" style={{ borderColor: "var(--border-subtle)" }}>
         <DecisionSummary
-          title="Founder 決定"
+          title="審核決定"
           value={version.founder_approval
             ? `${version.founder_approval.decision === "approved" ? "批准" : "駁回"} · ${version.founder_approval.reason}`
             : "待決定"}
@@ -553,7 +553,7 @@ function FounderReviewForm({
   return (
     <form className="mt-5 border-t pt-4 space-y-3" style={{ borderColor: "var(--border-subtle)" }} onSubmit={submit}>
       <fieldset disabled={pending}>
-        <legend className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Founder 審核</legend>
+        <legend className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>名單審核</legend>
         <div className="mt-2 flex flex-wrap gap-4">
           <label className="flex items-center gap-2 text-sm"><input type="radio" name={`founder-${version.id}`} value="approved" checked={decision === "approved"} onChange={() => setDecision("approved")} />批准</label>
           <label className="flex items-center gap-2 text-sm"><input type="radio" name={`founder-${version.id}`} value="rejected" checked={decision === "rejected"} onChange={() => setDecision("rejected")} />駁回修改</label>
@@ -634,7 +634,7 @@ function GuardianDecisionForm({
 
   return (
     <form className="mt-5 border-t pt-4 space-y-3" style={{ borderColor: "var(--border-subtle)" }} onSubmit={submit}>
-      <div><h5 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>家長確認</h5><p className="section-detail">Founder 的審核結果已與此版本綁定。</p></div>
+      <div><h5 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>家長確認</h5><p className="section-detail">審核結果已與此版本綁定。</p></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="block text-sm font-medium" htmlFor={`guardian-${version.id}`}>
           家長關係
@@ -685,7 +685,7 @@ function feedbackForFailure(failure: CandidateListFailure): NonNullable<CommandF
 
 function statusLabel(status: CandidateListVersion["status"]): string {
   if (status === "draft") return "草稿";
-  if (status === "submitted") return "待 Founder 審核";
+  if (status === "submitted") return "待審核";
   if (status === "awaiting_guardian") return "待家長確認";
   if (status === "confirmed") return "已確認";
   return "已退回";

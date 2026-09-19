@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { createApiError, type ApiContractError } from '../../shared/public.ts'
 import type { OrganizationRole } from '../../access/public.ts'
+import { resolveRequestAccessContext, isRequestAccessContextError } from '../../access/server.ts'
 import { SESSION_COOKIE_NAME } from './cookies.ts'
 import { IdentityServiceError } from '../application/service.ts'
 import { getIdentityRuntime, IdentityRuntimeUnavailable } from './runtime.ts'
@@ -15,8 +16,11 @@ export async function requireActor(): Promise<SessionActor> {
   if (!secret) throw createApiError('UNAUTHENTICATED')
 
   try {
-    return await getIdentityRuntime().legacySessionReader.findByCookieSecret(secret)
+    const actor = await getIdentityRuntime().legacySessionReader.findByCookieSecret(secret)
+    const access = await resolveRequestAccessContext({ cookieSecret: secret })
+    return { ...actor, role: access.roles[0]! }
   } catch (error) {
+    if (isRequestAccessContextError(error, "REQUEST_ACCESS_FORBIDDEN")) throw createApiError("FORBIDDEN")
     if (error instanceof IdentityServiceError) {
       throw createApiError('UNAUTHENTICATED')
     }
@@ -33,11 +37,15 @@ export async function requireIdentityActor(): Promise<IdentitySessionActor> {
   if (!secret) throw createApiError('UNAUTHENTICATED')
 
   try {
-    return await getIdentityRuntime().service.requireSession({
+    const actor = await getIdentityRuntime().service.requireSession({
       cookieSecret: secret,
       sensitiveAction: false,
     })
+    const access = await resolveRequestAccessContext({ cookieSecret: secret })
+    return { ...actor, role: access.roles[0]!, roles: access.roles,
+      workspaceCapabilities: access.workspaceCapabilities, trialPrincipal: access.trialPrincipal }
   } catch (error) {
+    if (isRequestAccessContextError(error, "REQUEST_ACCESS_FORBIDDEN")) throw createApiError("FORBIDDEN")
     if (error instanceof IdentityServiceError) throw createApiError('UNAUTHENTICATED')
     if (error instanceof IdentityRuntimeUnavailable) throw createApiError('SERVICE_UNAVAILABLE')
     throw createApiError('SERVICE_UNAVAILABLE')

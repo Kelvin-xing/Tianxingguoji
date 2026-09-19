@@ -123,6 +123,9 @@ export class PostgresqlCaseIntakeRepository implements CaseIntakeRepository {
     return this.runner.run(
       { organizationId: input.organizationId, actorUserId: input.actorUserId },
       async (transaction) => {
+        if (!(await this.access.assertCurrentAdvisor(transaction, input))) {
+          throw new CaseIntakeError("CASE_INTAKE_FORBIDDEN");
+        }
         const result = await transaction.query<ReplayRow>({
           text: `SELECT service_case.id AS case_id, service_case.stage AS case_stage,
                         service_case.workflow_status, service_case.record_version AS case_record_version,
@@ -169,12 +172,15 @@ async function createInTransaction(
   if (!(await crm.lockStudent(transaction, {
     organizationId: input.organizationId,
     studentId: input.studentId,
+    actorUserId: input.actorUserId,
+    businessCategory: input.businessCategory,
   }))) {
     throw new CaseIntakeError("CASE_INTAKE_STUDENT_NOT_FOUND");
   }
   const advisor = await access.lockAdvisor(transaction, {
     organizationId: input.organizationId,
     roleBindingId: input.primaryAdvisorRoleBindingId,
+    businessCategory: input.businessCategory,
   });
   if (!advisor) throw new CaseIntakeError("CASE_INTAKE_ADVISOR_NOT_FOUND");
 
@@ -183,6 +189,8 @@ async function createInTransaction(
     : await crm.lockReferralSource(transaction, {
       organizationId: input.organizationId,
       sourceId: input.referralSourceId,
+      actorUserId: input.actorUserId,
+      businessCategory: input.businessCategory,
     });
   if (input.referralSourceId !== null && !referral) {
     throw new CaseIntakeError("CASE_INTAKE_REFERRAL_SOURCE_NOT_FOUND");
@@ -205,19 +213,19 @@ async function createInTransaction(
       (id, organization_id, student_id, case_number, application_type, intake_year,
        admission_type, primary_role_binding_id, primary_membership_id, primary_user_id,
        primary_role, current_primary_advisor_assignment_id, stage, workflow_status,
-       signed_at, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,'advisor',$10,'signed','active',$11,$12,$12)`,
+       signed_at, created_at, updated_at, business_category)
+     VALUES ($1,$2,$3,$4,'k12',$5,$6,$7,$8,$9,$13,$10,'signed','active',$11,$12,$12,$14)`,
     values: [input.caseId, input.organizationId, input.studentId, caseNumber, input.intakeYear,
       input.admissionType, advisor.id, advisor.membershipId, advisor.userId,
-      input.primaryAssignmentId, input.signedAt, serverTime],
+      input.primaryAssignmentId, input.signedAt, serverTime, advisor.role ?? "advisor", input.businessCategory ?? null],
   });
   await transaction.query({
     text: `INSERT INTO cases_primary_advisor_assignments
       (id, organization_id, service_case_id, advisor_role_binding_id, membership_id,
        advisor_user_id, advisor_role, starts_at, assignment_reason, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,'advisor',$7,'case_creation',$8,$8)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$9,$7,'case_creation',$8,$8)`,
     values: [input.primaryAssignmentId, input.organizationId, input.caseId, advisor.id,
-      advisor.membershipId, advisor.userId, input.signedAt, serverTime],
+      advisor.membershipId, advisor.userId, input.signedAt, serverTime, advisor.role ?? "advisor"],
   });
   await transaction.query({
     text: `INSERT INTO cases_assessments
@@ -243,8 +251,8 @@ async function createInTransaction(
     result_record_version: number | string | null;
   }>({
     text: `SELECT decision, result_stage, result_record_version
-             FROM cases_advance_new_service_case($1,'advisor',$2,$3::timestamptz)`,
-    values: [input.caseId, input.transitionFactId, serverTime],
+             FROM cases_advance_new_service_case($1,$4,$2,$3::timestamptz)`,
+    values: [input.caseId, input.transitionFactId, serverTime, input.actorRole],
   });
   const transition = advanced.rows[0];
   if (transition?.decision !== "allowed" || transition.result_stage !== "background_collection" ||

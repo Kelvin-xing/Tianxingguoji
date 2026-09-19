@@ -23,8 +23,12 @@ export async function parseAttachCommand(request: Request, studentId: string, re
     "is_billing_contact",
     "notification_consent",
   ]);
-  if (typeof body.guardian_id !== "string" || !UUID.test(body.guardian_id) ||
-      !isPrimaryGuardianRelationshipType(body.relationship_type) ||
+  if(typeof body.guardian_id!=="string"||!UUID.test(body.guardian_id))throw createApiError("VALIDATION_FAILED");
+  return {...parseRelationshipBody(body,studentId,requestId,idempotencyKey),guardianId:body.guardian_id};
+}
+
+function parseRelationshipBody(body:Record<string,unknown>,studentId:string,requestId:string,idempotencyKey:string){
+  if (!isPrimaryGuardianRelationshipType(body.relationship_type) ||
       (body.relationship_description !== null && typeof body.relationship_description !== "string") ||
       !validateRelationshipDescription({ relationshipType: body.relationship_type, relationshipDescription: body.relationship_description as string | null }) ||
       [body.is_legal_guardian, body.is_emergency_contact, body.is_billing_contact,
@@ -33,7 +37,6 @@ export async function parseAttachCommand(request: Request, studentId: string, re
   }
   return Object.freeze({
     studentId,
-    guardianId: body.guardian_id,
     relationshipType: body.relationship_type,
     relationshipDescription: body.relationship_description as string | null,
     isLegalGuardian: body.is_legal_guardian as boolean,
@@ -43,6 +46,20 @@ export async function parseAttachCommand(request: Request, studentId: string, re
     requestId,
     idempotencyKey,
   });
+}
+
+export async function parseNewGuardianCommand(request:Request,studentId:string,requestId:string){
+  const idempotencyKey=requiredIdempotencyKey(request,studentId);
+  const body=await exactJson(request,["guardian","relationship_type","relationship_description","is_legal_guardian","is_emergency_contact","is_billing_contact","notification_consent"]);
+  const guardian=body.guardian;
+  const fields=["display_name","email","phone","date_of_birth","gender","warning_token"];
+  if(!guardian||typeof guardian!=="object"||Array.isArray(guardian)||Object.keys(guardian).length!==fields.length||fields.some(field=>!Object.hasOwn(guardian,field)))throw createApiError("INVALID_REQUEST");
+  const record=guardian as Record<string,unknown>;
+  if(typeof record.display_name!=="string"||[record.email,record.phone,record.date_of_birth,record.warning_token].some(value=>value!==null&&typeof value!=="string")
+    ||record.gender!==null&&!['male','female','other','not_disclosed'].includes(record.gender as string))throw createApiError("VALIDATION_FAILED");
+  const relation=parseRelationshipBody(body,studentId,requestId,idempotencyKey);
+  return {...relation,guardian:{displayName:record.display_name,email:record.email as string|null,phone:record.phone as string|null,
+    dateOfBirth:record.date_of_birth as string|null,gender:record.gender as 'male'|'female'|'other'|'not_disclosed'|null,warningToken:record.warning_token as string|null}};
 }
 
 export async function parseSearchRequest(request: Request, studentId: string) {
@@ -94,6 +111,7 @@ export function mapGuardianRelationshipError(error: unknown): unknown {
   }
   if (!isGuardianRelationshipError(error)) return error;
   switch (error.code) {
+    case "GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED": return createApiError("CONFLICT",{details:{code:"DUPLICATE_WARNING_REQUIRED"}});
     case "GUARDIAN_RELATIONSHIP_FORBIDDEN": return createApiError("FORBIDDEN");
     case "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND":
     case "GUARDIAN_RELATIONSHIP_GUARDIAN_NOT_FOUND": return createApiError("NOT_FOUND");

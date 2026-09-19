@@ -24,10 +24,12 @@ export default function EmailTemplatesPage() {
   const [bodyText, setBodyText] = useState('')
   const [state, setState] = useState<'loading' | 'ready' | 'denied' | 'unavailable' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
+  const [attempt, setAttempt] = useState<{ key: string; body: { subject: string; body_text: string; expected_record_version: number | null } } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState('loading')
+    setAttempt(null)
     setMessage(null)
     void requestApi({ path: '/api/v1/email/templates/internal-user-invitation' }, decodeEmailTemplate)
       .then((value) => {
@@ -62,32 +64,31 @@ export default function EmailTemplatesPage() {
   }, [])
 
   async function save() {
-    if (!template || !subject.trim() || subject.trim().length > 160 || !bodyText.trim() || bodyText.trim().length > 4_000) {
+    if (!attempt && (!template || !subject.trim() || subject.trim().length > 160 || !bodyText.trim() || bodyText.trim().length > 4_000)) {
       setMessage('請填寫有效的郵件主旨和正文說明。')
       return
     }
+    const submitted = attempt ?? {
+      key: `email-template-${crypto.randomUUID()}`,
+      body: { subject: subject.trim(), body_text: bodyText.trim(), expected_record_version: template!.recordVersion },
+    }
+    setAttempt(submitted)
     setSaving(true)
     setMessage(null)
     try {
-      await requestApi({
-        path: '/api/v1/email/templates/internal-user-invitation',
-        method: 'PUT',
-        idempotencyKey: `email-template-${crypto.randomUUID()}`,
-        body: {
-          subject: subject.trim(),
-          body_text: bodyText.trim(),
-          expected_record_version: template.recordVersion,
-        },
-      }, decodeMutationReceipt)
+      await requestApi({ path: '/api/v1/email/templates/internal-user-invitation', method: 'PUT',
+        idempotencyKey: submitted.key, body: submitted.body }, decodeMutationReceipt)
       const refreshed = await requestApi({ path: '/api/v1/email/templates/internal-user-invitation' }, decodeEmailTemplate)
       setTemplate(refreshed)
       setSubject(refreshed.subject)
       setBodyText(refreshed.bodyText)
+      setAttempt(null)
       setMessage('郵件範本已儲存。')
     } catch (error) {
-      if (error instanceof ApiClientError && error.code === 'STALE_VERSION') setMessage('範本已由其他管理員更新，請重新載入後再試。')
-      else if (error instanceof ApiClientError && error.code === 'FORBIDDEN') setMessage('只有 Admin 可以修改郵件範本。')
-      else setMessage('郵件範本未能儲存，請稍後重試。')
+      if (error instanceof ApiClientError && (error.code === 'STALE_VERSION' || error.code === 'CONFLICT')) { setAttempt(null); setState('error'); setMessage('範本已變更，請重新載入後再核對。') }
+      else if (error instanceof ApiClientError && (error.code === 'FORBIDDEN' || error.code === 'UNAUTHENTICATED')) { setAttempt(null); setTemplate(null); setSubject(''); setBodyText(''); setState('denied') }
+      else if (error instanceof ApiClientError && (error.code === 'INVALID_REQUEST' || error.code === 'VALIDATION_FAILED')) { setAttempt(null); setMessage('請核對輸入內容後重新儲存。') }
+      else setMessage('儲存結果尚未確認，請重試原範本。')
     } finally {
       setSaving(false)
     }
@@ -101,9 +102,9 @@ export default function EmailTemplatesPage() {
     </section>
 
     {state === 'loading' && <LoadingState title="正在載入郵件範本" detail="請稍候。" />}
-    {state === 'denied' && <ErrorState title="無法查看郵件範本" detail="只有 Admin 可以管理此範本。" />}
+    {state === 'denied' && <ErrorState title="無法查看郵件範本" detail="你目前沒有管理郵件範本的權限。" />}
     {state === 'unavailable' && <UnavailableState title="郵件範本服務暫時不可用" detail="請聯絡系統管理員確認郵件服務設定。" onRetry={load} />}
-    {state === 'error' && <ErrorState title="郵件範本讀取失敗" detail="請稍後重試。" onRetry={load} />}
+    {state === 'error' && <ErrorState title="郵件範本讀取失敗" detail={message ?? "請稍後重試。"} onRetry={load} />}
 
     {state === 'ready' && template ? <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
       <section className="workspace-section space-y-5">
@@ -112,14 +113,14 @@ export default function EmailTemplatesPage() {
           <span className={`status-pill ${template.customized ? 'status-success' : 'status-warning'}`}>{template.customized ? `自訂版本 ${template.recordVersion}` : '系統預設'}</span>
         </div>
 
-        <label className="block"><span className="text-sm font-medium">郵件主旨</span><input className="mt-2 w-full" value={subject} maxLength={160} onChange={(event) => { setSubject(event.target.value); setMessage(null) }} /><span className="form-help">最多 160 個字元。</span></label>
-        <label className="block"><span className="text-sm font-medium">正文說明</span><textarea className="mt-2 w-full min-h-44" value={bodyText} maxLength={4_000} onChange={(event) => { setBodyText(event.target.value); setMessage(null) }} /><span className="form-help">只接受純文字；系統會安全處理換行和特殊字元。</span></label>
+        <label className="block"><span className="text-sm font-medium">郵件主旨</span><input aria-label="郵件主旨" disabled={saving || attempt !== null} className="mt-2 w-full" value={subject} maxLength={160} onChange={(event) => { setSubject(event.target.value); setMessage(null) }} /><span className="form-help">最多 160 個字元。</span></label>
+        <label className="block"><span className="text-sm font-medium">正文說明</span><textarea aria-label="正文說明" disabled={saving || attempt !== null} className="mt-2 w-full min-h-44" value={bodyText} maxLength={4_000} onChange={(event) => { setBodyText(event.target.value); setMessage(null) }} /><span className="form-help">只接受純文字；系統會安全處理換行和特殊字元。</span></label>
 
         {template.updatedAt ? <p className="section-detail">最後更新：{formatDateTime(template.updatedAt)}</p> : null}
         {message ? <div className="form-help" role="status">{message}</div> : null}
         <div className="flex flex-wrap justify-end gap-3">
-          <button type="button" className="secondary-button" disabled={saving} onClick={() => { setSubject(template.defaultSubject); setBodyText(template.defaultBodyText); setMessage('已還原為系統預設內容；儲存後才會生效。') }}>還原預設內容</button>
-          <button type="button" className="primary-button" disabled={saving || !subject.trim() || !bodyText.trim()} onClick={() => void save()}><Icon name="check" size={16} />{saving ? '儲存中' : '儲存範本'}</button>
+          <button type="button" className="secondary-button" disabled={saving || attempt !== null} onClick={() => { setSubject(template.defaultSubject); setBodyText(template.defaultBodyText); setMessage('已還原為系統預設內容；儲存後才會生效。') }}>還原預設內容</button>
+          <button type="button" className="primary-button" disabled={saving || (!attempt && (!subject.trim() || !bodyText.trim()))} onClick={() => void save()}><Icon name="check" size={16} />{saving ? '儲存中' : attempt ? '重試原範本' : '儲存範本'}</button>
         </div>
       </section>
 

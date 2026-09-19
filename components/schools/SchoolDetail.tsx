@@ -1,0 +1,76 @@
+'use client'
+
+import Link from 'next/link'
+import {SchoolReviewForm} from './SchoolReviewForm'
+import {SchoolChangeForm} from './SchoolChangeForm'
+import { useCallback,useEffect, useRef,useState, type ReactNode } from 'react'
+import { getResolvedSchool,listSchoolChanges, type SchoolChangeHistoryItem,type ResolvedSchoolDetail } from '@/modules/schools/client'
+
+function value(input: unknown): string { return typeof input === 'string' && input.trim() ? input.trim() : '未知' }
+function Block({ title, children }: { title: string; children: ReactNode }) {
+  return <section aria-labelledby={`${title}-heading`} className="space-y-3 rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}><h2 id={`${title}-heading`} className="font-semibold">{title}</h2>{children}</section>
+}
+function Field({ label, input }: { label: string; input: unknown }) { return <div className="min-w-0"><dt className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</dt><dd className="break-words">{value(input)}</dd></div> }
+
+export function SchoolDetail({ schoolId }: { schoolId: string }) {
+  const [school, setSchool] = useState<ResolvedSchoolDetail | null>(null)
+  const [editing,setEditing]=useState<{field:string;label:string}|null>(null)
+  const [reviewing,setReviewing]=useState<{id:string;decision:'approve'|'reject'}|null>(null)
+  const [changes,setChanges]=useState<readonly SchoolChangeHistoryItem[]>([])
+  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'denied'|'missing'>('loading')
+  const mounted=useRef(false)
+  const controller=useRef<AbortController|null>(null)
+  const load=useCallback(async()=>{
+    controller.current?.abort()
+    const current=new AbortController();controller.current=current
+    setState('loading');setSchool(null);setChanges([]);setEditing(null);setReviewing(null)
+    try{
+      const [result,history]=await Promise.all([getResolvedSchool(schoolId,current.signal),listSchoolChanges(schoolId,current.signal)])
+      if(!mounted.current||current.signal.aborted)return
+      setSchool(result);setChanges(history);setState('ready')
+    }catch(error){
+      if(!mounted.current||current.signal.aborted)return
+      const status=error&&typeof error==='object'&&'status' in error?error.status:null
+      setSchool(null);setChanges([]);setState(status===401||status===403?'denied':status===404?'missing':'error')
+    }
+  },[schoolId])
+  useEffect(()=>{mounted.current=true;queueMicrotask(()=>{if(mounted.current)void load()});return()=>{mounted.current=false;controller.current?.abort()}},[load])
+  if (state === 'loading') return <p role="status">正在載入學校資料…</p>
+  if (state === 'denied') return <p role="alert">登入狀態或學校存取權限已變更，請重新登入或聯絡管理員。</p>
+  if(state==='missing')return <p role="alert">找不到這所學校。<Link href="/schools">返回學校目錄</Link></p>
+  if (state === 'error' || !school) return <div role="alert">學校資料暫時無法載入。<button type="button" onClick={()=>void load()}>重新載入學校資料</button></div>
+  const fields = school.fields
+  const locked=editing!==null||reviewing!==null
+  const denied=()=>{setSchool(null);setChanges([]);setEditing(null);setReviewing(null);setState('denied')}
+  return <div className="max-w-5xl space-y-4"><Link href="/schools" className="text-sm underline">返回學校目錄</Link><header><h1 className="text-xl font-semibold">{value(fields.school_name_zh) !== '未知' ? value(fields.school_name_zh) : value(fields.school_name_en)}</h1><p className="text-sm" style={{ color: 'var(--text-muted)' }}>未取得的資料顯示為未知。</p><button type="button" disabled={locked} onClick={()=>void load()} className="mt-2 rounded border px-3 py-2 text-sm">重新載入學校資料</button></header>
+    <Block title="基礎資料"><dl className="grid gap-3 sm:grid-cols-2">{[
+      ['school_name_zh','中文名稱'],['school_name_en','英文名稱'],['district','地區'],['address','地址'],['official_website','官網'],['phone','電話'],
+    ].map(([field,label])=>{const current=fields[field!];const unknown=current===null||current===undefined||current==='';
+      return <div key={field} className="min-w-0"><Field label={label!} input={current}/>{school.change_context.can_submit&&(unknown||school.change_context.can_edit_existing)&&<button type="button" disabled={locked} onClick={()=>setEditing({field:field!,label:label!})} className="mt-1 text-sm underline">{unknown?'補充':'申請修改'}{label}</button>}</div>})}</dl>
+      {editing&&<SchoolChangeForm school={school} field={editing.field} label={editing.label} onDone={()=>void load()} onDenied={()=>{setSchool(null);setChanges([]);setEditing(null);setReviewing(null);setState('denied')}} onCancel={()=>void load()}/>}
+    </Block>
+    <Block title="招生資料"><dl className="grid gap-3 sm:grid-cols-2"><Field label="招生類型" input={fields.admission_type}/><Field label="適用學年" input={fields.admission_school_year || fields.school_year}/><Field label="招生年級" input={fields.admission_grade}/><Field label="申請方式" input={fields.application_method}/><Field label="申請開始日期" input={fields.application_start_date}/><Field label="截止日期" input={fields.application_deadline || fields.submission_deadline}/></dl></Block>
+    <Block title="待處理更新"><ChangeList items={changes.filter(item=>item.status==='candidate')} empty="目前沒有待審批的人工資料變更。" reviewing={reviewing} locked={locked} onReview={(item,decision)=>setReviewing({id:item.change_request_id,decision})} onDone={()=>void load()} onDenied={denied} onCancel={()=>void load()}/></Block>
+    <Block title="更新履歷"><p className="text-sm" style={{color:'var(--text-secondary)'}}>保留提交時的資料、申請內容及審批決定；舊記錄缺少的內容顯示為未記錄。</p><ChangeList items={changes.filter(item=>item.status!=='candidate')} empty="目前沒有已處理的人工變更紀錄。"/></Block>
+  </div>
+}
+
+const STATUS={candidate:'待審批',approved:'已批准',rejected:'已拒絕',disabled:'已停用'} as const
+const FIELD_NAMES:Readonly<Record<string,string>>={phone:'電話',district:'地區',address:'地址',school_name_zh:'中文名稱',school_name_en:'英文名稱',official_website:'官網'}
+function changeValue(input:unknown):string{if(input===null||input==='')return '未知';return typeof input==='string'?input:JSON.stringify(input)}
+function ChangeList({items,empty,reviewing,locked,onReview,onDone,onDenied,onCancel}:{items:readonly SchoolChangeHistoryItem[];empty:string;reviewing?:{id:string;decision:'approve'|'reject'}|null;locked?:boolean;onReview?:(item:SchoolChangeHistoryItem,decision:'approve'|'reject')=>void;onDone?:()=>void;onDenied?:()=>void;onCancel?:()=>void}){
+  if(!items.length)return <p className="text-sm">{empty}</p>
+  return <ul className="space-y-3">{items.map(item=><li key={item.change_request_id} className="rounded border p-3 space-y-2 text-sm break-words" style={{borderColor:'var(--border)'}}>
+    <p className="font-medium">人工變更 #{item.revision_number} · {STATUS[item.status]}</p>
+    <p>提交人：{item.requester_name??'未記錄'}</p>
+    <p>提交時間：{new Date(item.submitted_at).toLocaleString('zh-TW')}</p>
+    <p>理由：{item.reason}</p>
+    {item.fields.map(field=><dl key={field.field_name} className="space-y-2"><div><dt className="font-medium">{FIELD_NAMES[field.field_name]??field.field_name}</dt><dd>提交時有效值：{field.submitted_effective_value?changeValue(field.submitted_effective_value.value):'舊記錄未保存'}</dd><dd>目前有效值：{changeValue(field.current_value)}</dd><dd>申請值：{changeValue(field.proposed_value)}</dd></div><div><dt>證據摘要</dt><dd>{field.quote}</dd><dd className="break-all">{field.source_url}</dd><dd><details><summary>原始來源資料</summary>來源原始值：{changeValue(field.snapshot_value)}</details></dd></div></dl>)}
+    {item.approval_block_reason&&<p role="status">{item.approval_block_reason==='missing_baseline'?'此舊申請缺少資料版本確認，須重新提交後才能批准。':'資料已變更，此申請不能再批准；可拒絕並請同事重新核對提交。'}</p>}
+    {item.review&&<div className="space-y-1"><p>審批人：{item.review.reviewer_name??'未記錄'} · {item.review.reviewer_role==='founder'?'創始人':'L1'}</p><p>決定：{item.review.decision==='approve'?'批准':'拒絕'} · {new Date(item.review.reviewed_at).toLocaleString('zh-TW')}</p><p>審批理由：{item.review.reason}</p></div>}
+    {onReview&&item.allowed_actions.length>0&&<div className="flex gap-2">{item.allowed_actions.map(action=><button key={action} type="button" disabled={locked} onClick={()=>onReview(item,action)} className="rounded border px-3 py-2">{action==='approve'?'批准申請':'拒絕申請'}</button>)}</div>}
+    {reviewing?.id===item.change_request_id&&onDone&&onDenied&&onCancel&&<SchoolReviewForm item={item} decision={reviewing.decision} onDone={onDone} onDenied={onDenied} onCancel={onCancel}/>}
+    {!item.review&&item.approved_at&&<p>批准時間：{new Date(item.approved_at).toLocaleString('zh-TW')}</p>}
+    {item.disabled_at&&<p>停用時間：{new Date(item.disabled_at).toLocaleString('zh-TW')} · {item.disable_reason}</p>}
+  </li>)}</ul>
+}

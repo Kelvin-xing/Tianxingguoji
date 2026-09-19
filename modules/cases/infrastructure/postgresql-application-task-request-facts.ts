@@ -5,7 +5,10 @@ import type {
   ApplicationTaskRequestRef,
   CasesApplicationTaskRequestFactsPort,
   TaskFactsTransaction,
+  TaskFactsAssigneeRole,
 } from "../../shared/public.ts";
+
+import { PostgresqlAccessTaskFactsPort } from "../../access/server.ts";
 
 export class PostgresqlCasesApplicationTaskRequestFactsPort
 implements CasesApplicationTaskRequestFactsPort {
@@ -42,7 +45,7 @@ implements CasesApplicationTaskRequestFactsPort {
                     assignment.id AS assignment_id,assignment.assignee_user_id,
                     assignment.assignee_role,
                     assignment.assignee_membership_id,assignment.advisor_role_binding_id,
-                    service_case.primary_user_id AS owner_user_id,
+                    service_case.business_category,service_case.primary_user_id AS owner_user_id,
                     fact.actor_user_id AS source_actor_user_id
                FROM cases_school_target_transition_facts AS fact
                JOIN cases_school_targets AS target
@@ -78,13 +81,18 @@ implements CasesApplicationTaskRequestFactsPort {
     });
     const row = result.rows[0];
     if (!row || !sameInstant(row.application_deadline,row.fact_deadline)) return null;
+    if (!await new PostgresqlAccessTaskFactsPort().canAssigneeOperate(transaction, {
+      organizationId:input.organizationId,caseId:row.case_id,userId:row.assignee_user_id,
+      kind:"application_prepare_submit",assigneeRole:row.assignee_role as TaskFactsAssigneeRole,
+      businessCategory:row.business_category,isPrimaryAdvisor:row.assignee_user_id===row.owner_user_id,collaboratorId:null,
+    })) return null;
     const deadline = row.application_deadline === null
       ? null : new Date(row.application_deadline).toISOString();
     return Object.freeze({
       sourceEventId: row.source_event_id,targetId: row.target_id,caseId: row.case_id,
       applicationRound: Number(row.application_round),applicationDeadline: deadline,
       assignmentId: row.assignment_id,assigneeUserId: row.assignee_user_id,
-      assigneeRole: row.assignee_role as "advisor" | "contractor",
+      assigneeRole: row.assignee_role as TaskFactsAssigneeRole,
       assigneeMembershipId: row.assignee_membership_id,
       assigneeRoleBindingId: row.advisor_role_binding_id,ownerUserId: row.owner_user_id,
       sourceActorUserId: row.source_actor_user_id,
@@ -101,6 +109,7 @@ interface RequestFactRow extends RequestRefRow {
   readonly target_record_version: number | string; readonly assignment_id: string;
   readonly assignee_user_id: string; readonly assignee_role: string; readonly assignee_membership_id: string;
   readonly advisor_role_binding_id: string; readonly owner_user_id: string;
+  readonly business_category: string | null;
   readonly source_actor_user_id: string;
 }
 function sameInstant(left: Date | string | null,right: Date | string | null): boolean {

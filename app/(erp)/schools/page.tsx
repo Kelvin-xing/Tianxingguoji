@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listSchoolDirectory, type SchoolDirectoryItem } from '@/modules/schools/client'
+import {ProvisionalSchoolsPanel} from '@/components/schools/ProvisionalSchoolsPanel'
 import type { AdmissionRecord } from '@/types'
 
 const CONFIDENCE_STYLES: Record<string, { bg: string; color: string }> = {
@@ -30,6 +32,7 @@ export default function SchoolsPage() {
   const [reviewFilter, setReviewFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const denySchoolAccess=useCallback(()=>{setSchools([]);setError('登入狀態或學校存取權限已變更，請重新登入或聯絡管理員。')},[])
 
   useEffect(() => {
     listSchoolDirectory()
@@ -56,6 +59,7 @@ export default function SchoolsPage() {
 
   return (
     <div className="space-y-4">
+      <ProvisionalSchoolsPanel onAccessDenied={denySchoolAccess}/>
       <div className="flex flex-wrap gap-3 items-center p-3 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <input type="text" placeholder={`${t('common.search')}…`} value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
         <FilterSelect label={t('schools.admission_type')} value={typeFilter} onChange={setTypeFilter} options={[{ value: 'all', label: t('schools.filter_all') }, { value: 'transfer', label: t('schools.type_transfer') }, { value: 's1_admission', label: t('schools.type_s1') }, { value: 'unknown', label: t('schools.type_unknown') }]} />
@@ -82,7 +86,7 @@ export default function SchoolsPage() {
   )
 }
 
-function toAdmissionRecord(item: SchoolDirectoryItem): AdmissionRecord {
+function toAdmissionRecord(item: SchoolDirectoryItem): AdmissionRecord & { school_id: string } {
   const fields = item.fields
   const text = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
   const list = (value: unknown): string[] => Array.isArray(value)
@@ -93,6 +97,7 @@ function toAdmissionRecord(item: SchoolDirectoryItem): AdmissionRecord {
   const reviewStatus = text(fields.review_status)
   const website = text(fields.official_website || fields.website)
   return {
+    school_id: item.school_id,
     school_key: item.source_school_key,
     school_name_zh: text(fields.school_name_zh) || item.source_school_key,
     school_name_en: text(fields.school_name_en),
@@ -125,11 +130,11 @@ function toAdmissionRecord(item: SchoolDirectoryItem): AdmissionRecord {
   }
 }
 
-function FragmentRow({ school, expanded, onToggle }: { school: AdmissionRecord; expanded: boolean; onToggle: () => void }) {
+function FragmentRow({ school, expanded, onToggle }: { school: AdmissionRecord & { school_id?: string }; expanded: boolean; onToggle: () => void }) {
   return (
     <>
       <tr className="transition-colors cursor-pointer" style={{ borderBottom: '1px solid var(--border-subtle)' }} onClick={onToggle}>
-        <td className="px-4 py-3"><div className="font-medium" style={{ color: 'var(--text-primary)' }}>{school.school_name_zh}</div><div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{school.school_name_en}</div></td>
+        <td className="px-4 py-3"><Link href={school.school_id ? `/schools/${school.school_id}` : '#'} onClick={(event) => event.stopPropagation()} className="font-medium underline" style={{ color: 'var(--text-primary)' }}>{school.school_name_zh}</Link><div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{school.school_name_en}</div></td>
         <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-secondary)' }}>{school.district || '—'}<br />{school.school_type ? schoolTypeLabel(school.school_type) : school.finance_type ? financeTypeLabel(school.finance_type) : '—'}</td>
         <td className="px-4 py-3"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#f1f5f9', color: '#475569' }}>{admissionTypeLabel(school.admission_type)}</span></td>
         <td className="px-4 py-3"><Badge value={school.confidence} label={confidenceLabel(school.confidence)} styles={CONFIDENCE_STYLES} /></td>

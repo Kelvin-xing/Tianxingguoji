@@ -44,11 +44,11 @@ test('source writes use a synchronous lock, idempotent attempt and authoritative
   assert.match(directory, /if \(submitting\.current \|\| saving \|\| !canManage\) return/)
   assert.match(directory, /submitting\.current = true/)
   assert.match(directory, /attempt\.current!\.keyFor\(fingerprint\)/)
-  assert.match(directory, /await getReferralSource\(receipt\.id\)/)
+  assert.match(directory, /await getReferralSource\(receipt\.referral_source\.id\)/)
   assert.match(directory, /await listReferralSources/)
   assert.match(detail, /if \(inFlight\.current \|\| saving/)
   assert.match(detail, /await getReferralSource\(source\.id\)/)
-  assert.match(detail, /authoritative\.record_version !== receipt\.record_version/)
+  assert.match(detail, /authoritative\.record_version !== receipt\.referral_source\.record_version/)
   for (const content of [directory, detail]) {
     assert.doesNotMatch(content, /localStorage|sessionStorage|console\.|fetch\(/)
   }

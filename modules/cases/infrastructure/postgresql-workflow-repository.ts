@@ -81,8 +81,9 @@ async function assertReplayAuthority(
     primary_user_id: string;
     primary_role: string;
     student_id: string;
+    business_category: string | null;
   } & Record<string, unknown>>(
-    `SELECT primary_user_id, primary_role, student_id
+    `SELECT primary_user_id, primary_role, student_id, business_category
        FROM cases_service_cases
       WHERE id = $1
       FOR UPDATE`,
@@ -95,6 +96,14 @@ async function assertReplayAuthority(
     [selected.student_id],
   );
   if (student.rowCount !== 1) throw new CaseWorkflowError("CASE_WORKFLOW_CASE_NOT_FOUND");
+  const trial = await transaction.query<{ allowed: boolean | null }>(
+    `SELECT cases_trial_member_can_manage($1,$2,$3,$4) AS allowed`,
+    [input.organizationId,input.actor.userId,selected.business_category,input.actor.role],
+  );
+  if (trial.rows[0]?.allowed === true) return;
+  if (trial.rows[0]?.allowed !== null || !["founder","advisor"].includes(input.actor.role)) {
+    throw new CaseWorkflowError("CASE_WORKFLOW_CASE_NOT_FOUND");
+  }
   const actor = await transaction.query(
     `SELECT role_binding.id
        FROM identity_users AS identity_user

@@ -1,4 +1,5 @@
 import "server-only";
+import {resolveTrialStudentScope} from './trial-student-scope.ts';
 
 import type {
   StudentDetail,
@@ -47,9 +48,12 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 
   listStudents(input: Parameters<StudentReadRepository["listStudents"]>[0]) {
     return this.runner.run(input, async (transaction) => {
+      const visible=await resolveTrialStudentScope(transaction,input);
+      if(visible?.length===0)return [];
       const result = await transaction.query<StudentRow>({
-        text: studentSelect(`student.status IN ('active','pending_delete')`) +
+        text: studentSelect(`student.status IN ('active','pending_delete') AND ($1::uuid[] IS NULL OR student.id=ANY($1::uuid[]))`) +
           " ORDER BY student.updated_at DESC, student.id ASC",
+        values:[visible],
       });
       return Object.freeze(result.rows.map(toListItem));
     });
@@ -57,6 +61,8 @@ export class PostgresqlStudentReadRepository implements StudentReadRepository {
 
   findStudent(input: Parameters<StudentReadRepository["findStudent"]>[0]) {
     return this.runner.run(input, async (transaction) => {
+      const visible=await resolveTrialStudentScope(transaction,input);
+      if(visible!==null&&!visible.includes(input.studentId))return null;
       const studentResult = await transaction.query<StudentRow>({
         text: studentSelect("student.id = $1 AND student.status IN ('active','pending_delete')"),
         values: [input.studentId],

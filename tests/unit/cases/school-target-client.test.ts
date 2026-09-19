@@ -6,6 +6,8 @@ import { ApiClientError } from "../../../lib/api/client.ts";
 import {
   classifySchoolTargetFailure,
   getSchoolTargets,
+  recordInterviewInvitation,
+  resumeInterviewTask,
 } from "../../../modules/cases/client.ts";
 
 const CASE_ID = "10000000-0000-4000-8000-000000000001";
@@ -115,6 +117,7 @@ function viewFixture() {
     intake_year: 2027,
     admission_type: "hk_k12_standard_v1",
     can_create: false,
+    can_record_interview: false,
     create_blocked_reason: "selection_workflow_required",
     items: [],
     school_options: [],
@@ -143,6 +146,29 @@ function optionFixture(schoolId: string) {
     resolution_sha256: HASH,
   } as const;
 }
+
+test("interview invitation preserves pending receipts and rejects mismatched targets",async context=>{
+  const originalFetch=globalThis.fetch;context.after(()=>{globalThis.fetch=originalFetch;});
+  const command={expected_record_version:2,interview_at:"2026-09-25T02:00:00Z",interview_method:"Video",interview_language:"English",coaching_requirements:"Practice introduction",background_summary:"Synthetic task context",invitation_document_id:REVISION_ID};
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(url,`/api/v1/cases/${CASE_ID}/school-targets/${TARGET_ID}/interview-invitations`);
+    assert.deepEqual(JSON.parse(String(options?.body)),command);
+    return apiResponse({target_id:TARGET_ID,record_version:3,state:"interview",invitation_id:REVISION_ID,automation:{interview_task:"pending"}});
+  };
+  assert.equal((await recordInterviewInvitation(CASE_ID,TARGET_ID,command,"invitation-client-test")).interview_task,"pending");
+  globalThis.fetch=async()=>apiResponse({target_id:SCHOOL_ID,record_version:3,state:"interview",invitation_id:REVISION_ID,automation:{interview_task:"completed"}});
+  await assert.rejects(recordInterviewInvitation(CASE_ID,TARGET_ID,command,"invitation-client-test"));
+});
+
+test("interview recovery resumes stored facts without resending private form content",async context=>{
+  const originalFetch=globalThis.fetch;context.after(()=>{globalThis.fetch=originalFetch;});
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(url,`/api/v1/cases/${CASE_ID}/school-targets/${TARGET_ID}/interview-invitations`);
+    assert.equal(options?.method,"PATCH");assert.equal(options?.body,undefined);
+    return apiResponse({target_id:TARGET_ID,invitation_id:REVISION_ID,interview_task:"completed"});
+  };
+  assert.equal(await resumeInterviewTask(CASE_ID,TARGET_ID),"completed");
+});
 
 function apiResponse(data: unknown): Response {
   return Response.json({ api_version: "v1", request_id: "school-target-test", data }, {

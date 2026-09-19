@@ -1,3 +1,4 @@
+import { isK12BusinessCategory, type K12BusinessCategory } from "../../../../modules/access/public.ts";
 import {
   CaseIntakeError,
   isCaseIntakeError,
@@ -15,7 +16,7 @@ const REQUIRED_FIELDS = Object.freeze([
   "signed_at",
   "student_id",
 ] as const);
-const ALLOWED_FIELDS = new Set([...REQUIRED_FIELDS, "referral_source_id"]);
+const ALLOWED_FIELDS = new Set([...REQUIRED_FIELDS, "referral_source_id", "business_category"]);
 
 export async function parseCaseIntakeRequest(
   request: Request,
@@ -39,7 +40,7 @@ export async function parseCaseIntakeRequest(
     keys.some((key) => !ALLOWED_FIELDS.has(key)) ||
     REQUIRED_FIELDS.some((key) => !keys.includes(key)) ||
     keys.length < REQUIRED_FIELDS.length ||
-    keys.length > REQUIRED_FIELDS.length + 1
+    keys.length > REQUIRED_FIELDS.length + 2
   ) {
     throw createApiError("INVALID_REQUEST");
   }
@@ -56,7 +57,11 @@ export async function parseCaseIntakeRequest(
     throw createApiError("VALIDATION_FAILED");
   }
 
+  if (value.business_category !== undefined && !isK12BusinessCategory(value.business_category)) {
+    throw createApiError("VALIDATION_FAILED");
+  }
   return Object.freeze({
+    ...(value.business_category !== undefined ? { businessCategory: value.business_category } : {}),
     studentId: value.student_id,
     primaryAdvisorRoleBindingId: value.primary_advisor_role_binding_id,
     referralSourceId: value.referral_source_id ?? null,
@@ -69,6 +74,7 @@ export async function parseCaseIntakeRequest(
 }
 
 export interface CaseIntakeOptionFilters {
+  readonly businessCategory?: K12BusinessCategory;
   readonly studentQuery: string | null;
   readonly advisorQuery: string | null;
   readonly referralSourceQuery: string | null;
@@ -81,7 +87,7 @@ export function parseCaseIntakeOptions(request: Request): CaseIntakeOptionFilter
   } catch {
     throw createApiError("INVALID_REQUEST");
   }
-  const allowed = new Set(["student_q", "advisor_q", "source_q"]);
+  const allowed = new Set(["student_q", "advisor_q", "source_q", "business_category"]);
   const keys = [...url.searchParams.keys()];
   if (
     keys.some((key) => !allowed.has(key)) ||
@@ -89,7 +95,10 @@ export function parseCaseIntakeOptions(request: Request): CaseIntakeOptionFilter
   ) {
     throw createApiError("INVALID_REQUEST");
   }
+  const category = url.searchParams.get("business_category");
+  if (category !== null && !isK12BusinessCategory(category)) throw createApiError("VALIDATION_FAILED");
   return Object.freeze({
+    ...(category !== null ? { businessCategory: category } : {}),
     studentQuery: queryValue(url.searchParams.get("student_q")),
     advisorQuery: queryValue(url.searchParams.get("advisor_q")),
     referralSourceQuery: queryValue(url.searchParams.get("source_q")),
@@ -98,7 +107,7 @@ export function parseCaseIntakeOptions(request: Request): CaseIntakeOptionFilter
 
 export type CaseIntakeOptionsData = Readonly<{
   readonly students: readonly Readonly<{ id: string; display_name: string }>[];
-  readonly advisors: readonly Readonly<{ id: string; display_name: string; role: "advisor" }>[];
+  readonly advisors: readonly Readonly<{ id: string; display_name: string; role: "advisor" | "founder" | "l1" | "l2" }>[];
   readonly referral_sources: readonly Readonly<{ id: string; display_name: string }>[];
 }>;
 

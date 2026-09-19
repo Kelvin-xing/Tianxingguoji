@@ -38,7 +38,7 @@ test("Case intake parser accepts exact body and rejects client manifest or extra
   await assert.rejects(parseCaseIntakeRequest(request(BODY, { "idempotency-key": "" }), "d5"), apiError("INVALID_REQUEST"));
 });
 
-test("options parser only accepts three query filters and receipt has exact keys", () => {
+test("options parser accepts bounded search filters and receipt has exact keys", () => {
   const filters = parseCaseIntakeOptions(new Request("http://localhost/api/v1/cases/intake-options?student_q=An%20&advisor_q=Lee&source_q=web"));
   assert.deepEqual(filters, { studentQuery: "An", advisorQuery: "Lee", referralSourceQuery: "web" });
   assert.throws(() => parseCaseIntakeOptions(new Request("http://localhost/api/v1/cases/intake-options?total=1")), apiError("INVALID_REQUEST"));
@@ -77,3 +77,15 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
 function apiError(code: ApiContractError["code"]): (error: unknown) => boolean {
   return (error) => error instanceof ApiContractError && error.code === code;
 }
+
+test("trial intake category is explicit, canonical, and not an arbitrary query scope", async () => {
+  for (const category of ["international_school", "local_school"]) {
+    assert.equal((await parseCaseIntakeRequest(request({ ...BODY,business_category:category }),"trial-request")).businessCategory,category);
+    assert.equal(parseCaseIntakeOptions(new Request(`http://localhost/api/v1/cases/intake-options?business_category=${category}`)).businessCategory,category);
+  }
+  for (const category of ["all", "unknown", null, ["international_school"]]) {
+    await assert.rejects(parseCaseIntakeRequest(request({ ...BODY,business_category:category }),"trial-request"),apiError("VALIDATION_FAILED"));
+  }
+  assert.throws(() => parseCaseIntakeOptions(new Request("http://localhost/api/v1/cases/intake-options?business_category=all")),apiError("VALIDATION_FAILED"));
+  assert.throws(() => parseCaseIntakeOptions(new Request("http://localhost/api/v1/cases/intake-options?business_category=international_school&business_category=local_school")),apiError("INVALID_REQUEST"));
+});

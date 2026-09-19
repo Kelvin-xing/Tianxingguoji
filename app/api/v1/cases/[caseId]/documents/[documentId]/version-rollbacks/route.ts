@@ -1,3 +1,4 @@
+import { parseDocumentLifecycleBody } from "../../../../../documents/handler.ts";
 import { cookies } from "next/headers";
 
 import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
@@ -55,7 +56,7 @@ async function parseCommand(request: Request, requestId: string): Promise<Rollba
   }
   let body: unknown;
   try {
-    body = await request.json();
+    body = await parseDocumentLifecycleBody(request,["expected_record_version","target_version_id"]);
   } catch {
     throw createApiError("INVALID_REQUEST");
   }
@@ -89,9 +90,11 @@ function mapDocumentVersionError(error: unknown) {
     return createApiError("SERVICE_UNAVAILABLE");
   }
   if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
-  if (!(error instanceof DocumentVersionError)) return createApiError("SERVICE_UNAVAILABLE");
+  if (!(error instanceof Error) || error.name !== "DocumentVersionError") return createApiError("SERVICE_UNAVAILABLE");
 
-  switch (error.code) {
+  switch ((error as DocumentVersionError).code) {
+    case "DOCUMENT_VERSION_UNAVAILABLE":
+      return createApiError("SERVICE_UNAVAILABLE");
     case "DOCUMENT_VERSION_COMMAND_INVALID":
       return createApiError("VALIDATION_FAILED");
     case "DOCUMENT_VERSION_CASE_FORBIDDEN":

@@ -258,6 +258,8 @@ class ScriptedAdapter implements PostgreSqlAdapter, PostgreSqlTransaction {
   async query<Row extends Record<string, unknown>>(
     text: string,
   ): Promise<PostgreSqlQueryResult<Row>> {
+    // These legacy fixtures are not enrolled in the trial model.
+    if(text.includes("FROM access_trial_members"))return rows([]) as PostgreSqlQueryResult<Row>;
     this.statements.push(text);
     const result = this.results.shift();
     if (!result) throw new Error("Unexpected repository query.");

@@ -7,7 +7,7 @@ import {
   readInternalEmailInviteRequest,
 } from '../../app/api/v1/auth/invites/route-contract.ts'
 
-test('Founder invite accepts only the current four roles and normalized fields', async () => {
+test('Legacy Founder invite accepts the four compatibility roles and normalized fields', async () => {
   const result = await readInternalEmailInviteRequest(request({
     normalized_email: 'advisor@example.test.invalid', role: 'advisor', employment_type: 'FULL_TIME', display_name: '顧問',
   }))
@@ -45,3 +45,16 @@ function invalidRequest(error: unknown): boolean {
 function validationFailure(error: unknown): boolean {
   return error instanceof InternalEmailInviteRequestError && error.code === 'VALIDATION_FAILED'
 }
+
+test('trial invitation requires explicit categories and rejects scope injection', async () => {
+  const base = { normalized_email:'trial@example.test.invalid', role:'l2', trial_categories:['local_school','international_school'], employment_type:'PART_TIME' };
+  const parsed = await readInternalEmailInviteRequest(request(base));
+  assert.equal(parsed.role,'l2');
+  assert.deepEqual(parsed.trialCategories,['international_school','local_school']);
+  for (const role of ['founder','l1','l3']) assert.deepEqual((await readInternalEmailInviteRequest(request({...base,role,trial_categories:[]}))).trialCategories,[]);
+  for (const invalid of [
+    {...base,trial_categories:undefined}, {...base,trial_categories:['international_school','international_school']},
+    {...base,trial_categories:['other_business']}, {...base,role:'l3'}, {...base,role:'admin',trial_categories:[]},
+  ]) await assert.rejects(readInternalEmailInviteRequest(request(invalid)),validationFailure);
+  await assert.rejects(readInternalEmailInviteRequest(request({...base,trial_level:'founder'})),invalidRequest);
+});

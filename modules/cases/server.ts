@@ -35,3 +35,9 @@ export * from "./infrastructure/postgresql-portal-read-adapter.ts";
 export * from "./application/candidate-guardian-context-service.ts";
 export * from "./infrastructure/postgresql-candidate-guardian-context-repository.ts";
 export * from "./infrastructure/candidate-guardian-context-runtime.ts";
+
+export * from "./application/interview-invitation-service.ts";
+export * from "./infrastructure/postgresql-interview-invitation-repository.ts";
+export * from "./infrastructure/postgresql-interview-task-request-facts.ts";
+export * from "./infrastructure/interview-invitation-runtime.ts";
+export {readCategoryStudentIds} from './infrastructure/postgresql-crm-student-scope.ts';

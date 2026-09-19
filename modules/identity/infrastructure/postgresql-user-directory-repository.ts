@@ -1,17 +1,20 @@
 import "server-only";
 
+import { UserDirectoryServiceError } from "../application/user-directory.ts";
+import { loadTrialPrincipal } from "../../access/server.ts";
 import type {
   UserDirectoryEntry,
   UserDirectoryRepository,
   UserDirectoryRole,
 } from "../application/user-directory.ts";
 import type { MembershipStatus, UserStatus } from "../domain/contract.ts";
-import type { EmploymentType, OrganizationRole, RoleBindingStatus } from "../../access/public.ts";
+import type { EmploymentType, OrganizationRole, RoleBindingStatus, TrialLevel } from "../../access/public.ts";
 import { buildMemberAccessVersion } from "../../access/public.ts";
 import type { TenantTransactionRunner } from "../../shared/server.ts";
 
 interface UserDirectoryRow {
   user_id: string;
+  trial_level: TrialLevel | null;
   normalized_email: string;
   user_status: UserStatus;
   membership_status: MembershipStatus;
@@ -39,9 +42,28 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
     return this.runner.run(
       { organizationId: input.organizationId, actorUserId: input.actorUserId },
       async (transaction) => {
+        const principal = await loadTrialPrincipal({
+          async query<Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]) {
+            return transaction.query<Row>({text,values});
+          },
+        }, {organizationId:input.organizationId,userId:input.actorUserId,lock:true});
+        if (principal && (!principal.active || principal.level !== 'founder')) throw new UserDirectoryServiceError('FORBIDDEN');
+        const permission = await transaction.query<{id:string}>({
+          text:`SELECT b.id FROM access_organization_memberships m
+            JOIN identity_users u ON u.id=m.user_id
+            JOIN access_organizations o ON o.id=m.organization_id
+            JOIN access_role_bindings b ON b.membership_id=m.id AND b.organization_id=m.organization_id AND b.user_id=m.user_id
+            WHERE m.organization_id=$1 AND m.user_id=$2 AND m.status='active' AND u.status='active' AND o.status='active'
+              AND b.status='active' AND b.role=ANY($3::text[])
+              AND ($4::boolean OR NOT EXISTS(SELECT 1 FROM access_trial_members t WHERE t.membership_id=m.id))
+            LIMIT 1 FOR SHARE OF m,u,o,b`,
+          values:[input.organizationId,input.actorUserId,principal?['founder']:['founder','admin'],principal!==null],
+        });
+        if(permission.rows.length!==1) throw new UserDirectoryServiceError('FORBIDDEN');
         const result = await transaction.query<UserDirectoryRow>({
           text: `SELECT
                    identity_user.id AS user_id,
+                   trial.level AS trial_level,
                    identity_user.normalized_email,
                    identity_user.status AS user_status,
                    membership.status AS membership_status,
@@ -62,6 +84,7 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
                  JOIN access_organization_memberships AS membership
                    ON membership.user_id = identity_user.id
                   AND membership.organization_id = $1
+                 LEFT JOIN access_trial_members AS trial ON trial.membership_id=membership.id AND trial.organization_id=membership.organization_id
                  LEFT JOIN access_employee_profiles AS employee_profile
                    ON employee_profile.membership_id = membership.id
                   AND employee_profile.organization_id = membership.organization_id
@@ -70,7 +93,7 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
                   AND role_binding.organization_id = membership.organization_id
                   AND role_binding.user_id = identity_user.id
                   AND role_binding.status = 'active'
-                  AND role_binding.role IN ('founder','admin','advisor','contractor')
+                  AND role_binding.role IN ('founder','admin','advisor','contractor','l1','l2','l3')
                  LEFT JOIN LATERAL (
                    SELECT invite.id, invite.expires_at
                      FROM identity_invites AS invite
@@ -94,6 +117,7 @@ export class PostgresqlUserDirectoryRepository implements UserDirectoryRepositor
 function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirectoryEntry[] {
   const users = new Map<string, {
     readonly userId: string;
+    readonly trialLevel: TrialLevel | null;
     readonly normalizedEmail: string;
     readonly userStatus: UserStatus;
     readonly membershipStatus: MembershipStatus;
@@ -126,6 +150,7 @@ function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirecto
     }
     users.set(row.user_id, {
       userId: row.user_id,
+      trialLevel: row.trial_level,
       normalizedEmail: row.normalized_email,
       userStatus: row.user_status,
       membershipStatus: row.membership_status,
@@ -151,6 +176,7 @@ function aggregateUsers(rows: readonly UserDirectoryRow[]): readonly UserDirecto
 
   return Object.freeze([...users.values()].map((user) => Object.freeze({
     userId: user.userId,
+    trialLevel: user.trialLevel,
     normalizedEmail: user.normalizedEmail,
     userStatus: user.userStatus,
     membershipStatus: user.membershipStatus,

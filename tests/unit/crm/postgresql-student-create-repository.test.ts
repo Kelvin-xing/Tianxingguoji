@@ -20,4 +20,27 @@ function input():Parameters<StudentCreateRepository["createStudent"]>[0]{return 
 function effects():MutationEffectBundle{return {audit:{id:I.relationship,organizationId:I.organization,actorUserId:I.actor,actorKind:"user",eventType:"crm.student_primary_guardian_created",eventVersion:1,action:"create",resourceType:"Student",resourceId:I.student,outcome:"succeeded",requestId:"repository-test-request",occurredAt:"2026-08-22T08:00:00.000Z",beforeHashSha256:null,afterHashSha256:null,metadata:{}},outbox:{id:I.guardian,auditEventId:I.relationship,organizationId:I.organization,aggregateType:"Student",aggregateId:I.student,eventType:"crm.student_primary_guardian_created",eventVersion:1,idempotencyKey:"repository-test-outbox",requestId:"repository-test-request",payload:{},status:"pending",attemptCount:0,availableAt:"2026-08-22T08:00:00.000Z",createdAt:"2026-08-22T08:00:00.000Z"}} as MutationEffectBundle;}
 function row(o:any={}){return {id:"62000000-0000-4000-8000-000000000099",organization_id:I.organization,actor_kind:"user",actor_opaque_id:I.actor,operation:"crm.create_student_primary_guardian",idempotency_key:"crm-repository-attempt-1",request_hash:"a".repeat(64),state:"in_progress",result_reference:null,response_hash:null,record_version:1,created_at:"2026-08-22T08:00:00.000Z",updated_at:"2026-08-22T08:00:00.000Z",...o};}
 function out(rows:any[],rowCount=rows.length){return {rows,rowCount};}
-function runner(run:(context:Readonly<{organizationId:string;actorUserId:string}>,queryHarness:(execute:(text:string,values?:readonly unknown[])=>Promise<unknown>)=>Promise<unknown>)=>Promise<unknown>):TenantTransactionRunner{return {async run<Result>(context:TenantDatabaseContext,op:(transaction:TenantTransaction)=>Promise<Result>){return await run(context,async execute=>op({query:({text,values})=>execute(text,values) as never})) as Result;}};}
+function runner(run:(context:Readonly<{organizationId:string;actorUserId:string}>,queryHarness:(execute:(text:string,values?:readonly unknown[])=>Promise<unknown>)=>Promise<unknown>)=>Promise<unknown>):TenantTransactionRunner{return {async run<Result>(context:TenantDatabaseContext,op:(transaction:TenantTransaction)=>Promise<Result>){return await run(context,async execute=>op({query:({text,values})=>(text.includes("FROM access_trial_members")?Promise.resolve(out([])):execute(text,values)) as never})) as Result;}};}
+
+test("trial enrollment cannot fall back to a historical creator role", async () => {
+  for (const [level,active] of [["l1",false],["l2",true],["l3",true],["l1",true]] as const) {
+    const queries:string[]=[];
+    const trialRunner:TenantTransactionRunner={async run(_context,operation){
+      return operation({async query<Row>(query:{text:string;values?:readonly unknown[]}){
+        queries.push(query.text);
+        if(query.text.includes("pg_try_advisory_xact_lock"))return {rows:[{acquired:false}] as Row[],rowCount:1};
+        if(query.text.includes("FROM access_trial_members"))return {rows:[{
+          user_id:I.actor,organization_id:I.organization,level,categories:level==='l2'?['international_school']:[],active,record_version:1,
+        }] as Row[],rowCount:1};
+        if(query.text.includes("FROM identity_users")){
+          assert.deepEqual(query.values?.[2],['l1'],'a missing actual L1 binding cannot fall back to advisor');
+          return {rows:[],rowCount:0};
+        }
+        throw new Error('Denied creator reached persistence');
+      }});
+    }};
+    await assert.rejects(new PostgresqlStudentCreateRepository(trialRunner).createStudent(input()),(error:unknown)=>
+      error instanceof StudentCreateRepositoryError&&error.code==='STUDENT_CREATE_FORBIDDEN');
+    assert.equal(queries.some(sql=>sql.includes('INSERT')||sql.includes('UPDATE')),false);
+  }
+});

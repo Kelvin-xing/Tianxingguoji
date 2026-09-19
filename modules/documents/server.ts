@@ -39,5 +39,9 @@ export async function requireDocumentActor() {
     role: access.roles.includes("founder") ? "founder" : access.roles.includes("advisor") ? "advisor" : identity.role,
     roles: access.roles,
     workspaceCapabilities: access.workspaceCapabilities,
+    trialPrincipal: access.trialPrincipal,
   });
 }
+
+export * from "./application/task-link-service.ts";
+export * from "./infrastructure/postgresql-task-link-repository.ts";

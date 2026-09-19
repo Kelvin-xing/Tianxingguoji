@@ -82,7 +82,7 @@ test("DOC-02 upload intent is exact, bound to the digest, and PUT sets no Conten
     }
     assert.equal(input, "http://127.0.0.1:4566/private-upload?signature=opaque");
     assert.equal(init?.method, "PUT");
-    assert.equal(init?.credentials, "omit");
+    assert.equal(init?.credentials, "same-origin");
     assert.equal(init?.redirect, "error");
     const headers = new Headers(init?.headers);
     assert.equal(headers.get("content-type"), "application/pdf");
@@ -247,7 +247,7 @@ test("DOC-02 download intent and byte fetch use a fresh fixed-name private capab
     }
     assert.equal(input, "https://private-download.example.test/object?signature=opaque");
     assert.equal(init?.method, "GET");
-    assert.equal(init?.credentials, "omit");
+    assert.equal(init?.credentials, "same-origin");
     return new Response("downloaded bytes", { status: 200, headers: { "content-type": "application/pdf" } });
   };
   const intent = await issueDocumentDownloadIntent(CASE_ID, DOCUMENT_ID);

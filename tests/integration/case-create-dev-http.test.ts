@@ -870,7 +870,7 @@ async function assertP2CaseIntakeFlow(input: {
     body,
   );
   assert.equal(replay.response.status, 200);
-  assert.deepEqual(replay.body.data, created.body.data);
+  assertSensitiveEqual(replay.body.data, created.body.data, "case_intake_replay_receipt");
   assert.deepEqual(await readCaseCounts(input.target), after);
   const conflict = await createCase(
     input.baseUrl,

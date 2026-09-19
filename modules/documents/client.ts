@@ -330,7 +330,7 @@ export async function putDocumentBytes(intent: DocumentUploadIntent, file: Blob)
       method: "PUT",
       headers: intent.headers,
       body: file,
-      credentials: "omit",
+      credentials: "same-origin",
       cache: "no-store",
       redirect: "error",
     });
@@ -346,7 +346,7 @@ export async function fetchDocumentBytes(intent: DocumentDownloadIntent): Promis
   try {
     const response = await fetch(intent.url, {
       method: "GET",
-      credentials: "omit",
+      credentials: "same-origin",
       cache: "no-store",
       redirect: "error",
     });
@@ -706,5 +706,171 @@ async function abortableDelay(milliseconds: number, signal?: AbortSignal): Promi
       rejectDelay(new DocumentTransferError("unavailable"));
     };
     signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+export type TaskFileAction="document.read"|"document.upload"|"document.download";
+export interface TaskFileLink {
+  id:string;document_id:string;display_name:string;record_version:number;document_record_version:number;latest_version_state:string|null;pending_upload:{id:string;record_version:number}|null;
+  allowed_actions:readonly TaskFileAction[];configured_actions?:readonly TaskFileAction[];available_version:boolean;
+}
+export interface TaskFileLinks {
+  can_manage:boolean;can_grant:boolean;document_options:readonly {id:string;display_name:string}[];links:readonly TaskFileLink[];
+}
+function taskFileActions(value:unknown):readonly TaskFileAction[] {
+  return expectArray(value,entry=>{
+    const action=expectString(entry);
+    if(!['document.read','document.upload','document.download'].includes(action)) throw new Error('Invalid task file action');
+    return action as TaskFileAction;
+  });
+}
+export function getTaskFileLinks(taskId:string,signal?:AbortSignal):Promise<TaskFileLinks> {
+  if(!UUID.test(taskId)) throw new Error('Invalid task identifier');
+  return requestApi({path:`/api/v1/tasks/${taskId}/documents`,signal},value=>{
+    const row=expectRecord(value);
+    return {can_manage:expectBoolean(row.can_manage),can_grant:expectBoolean(row.can_grant),
+      document_options:expectArray(row.document_options,item=>{const r=expectRecord(item);return {id:expectString(r.id),display_name:expectString(r.display_name)};}),
+      links:expectArray(row.links,item=>{const r=expectRecord(item);return {id:expectString(r.id),document_id:expectString(r.document_id),
+        display_name:expectString(r.display_name),record_version:expectNumber(r.record_version),document_record_version:positiveInteger(r.document_record_version,"document_record_version"),latest_version_state:expectNullableString(r.latest_version_state),
+        pending_upload:r.pending_upload===null?null:{id:expectString(expectRecord(r.pending_upload).id),record_version:positiveInteger(expectRecord(r.pending_upload).record_version,"pending_upload.record_version")},allowed_actions:taskFileActions(r.allowed_actions),
+        ...(r.configured_actions===undefined?{}:{configured_actions:taskFileActions(r.configured_actions)}),available_version:expectBoolean(r.available_version)};})};
+  });
+}
+export function setTaskFileLink(taskId:string,input:{document_id:string;expected_record_version:number;allowed_actions:TaskFileAction[];reason:string},key:string) {
+  if(!UUID.test(taskId)||!UUID.test(input.document_id)||!IDEMPOTENCY_KEY.test(key)) throw new Error('Invalid task file command');
+  return requestApi({path:`/api/v1/tasks/${taskId}/documents`,method:'POST',headers:{'idempotency-key':key},body:input},
+    value=>decodeWriteReceipt(value,input.expected_record_version+1));
+}
+
+export function createTaskDocumentVersion(
+  taskId: string,
+  documentId: string,
+  input: CreateDocumentVersionInput,
+  idempotencyKey: string,
+): Promise<DocumentWriteReceipt> {
+  assertUuid(taskId, "taskId");
+  assertUuid(documentId, "documentId");
+  const normalized = normalizeVersionInput(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/documents/${documentId}/versions`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        checksum_sha256: normalized.checksum_sha256,
+        size_bytes: normalized.size_bytes,
+        content_type: normalized.content_type,
+        expected_document_record_version: normalized.expected_document_record_version,
+      },
+    },
+    (value) => decodeWriteReceipt(value, 1),
+  );
+}
+
+export async function issueTaskDocumentUploadIntent(
+  taskId: string,
+  documentId: string,
+  versionId: string,
+  expectedRecordVersion: number,
+  expectedFile: Pick<DocumentFileDigest, "content_type" | "checksum_base64">,
+): Promise<DocumentUploadIntent> {
+  assertUuid(taskId, "taskId");
+  assertUuid(documentId, "documentId");
+  assertUuid(versionId, "versionId");
+  const version = positiveInteger(expectedRecordVersion, "expected_record_version");
+  const intent = await requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/documents/${documentId}/versions/${versionId}/upload-intents`,
+      method: "POST",
+      body: { expected_record_version: version },
+    },
+    decodeUploadIntent,
+  );
+  if (intent.headers["content-type"] !== expectedFile.content_type
+    || intent.headers["x-amz-checksum-sha256"] !== expectedFile.checksum_base64) {
+    throw new DocumentTransferError("conflict");
+  }
+  return intent;
+}
+
+export function abandonTaskDocumentVersion(
+  taskId: string,
+  documentId: string,
+  versionId: string,
+  input: AbandonDocumentVersionInput,
+  idempotencyKey: string,
+): Promise<DocumentWriteReceipt> {
+  assertUuid(taskId, "taskId");
+  assertUuid(documentId, "documentId");
+  assertUuid(versionId, "versionId");
+  const normalized = normalizeAbandonmentInput(input);
+  assertIdempotencyKey(idempotencyKey);
+  return requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/documents/${documentId}/versions/${versionId}/abandonments`,
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: {
+        expected_document_record_version: normalized.expected_document_record_version,
+        expected_version_record_version: normalized.expected_version_record_version,
+      },
+    },
+    (value) => decodeWriteReceipt(value, normalized.expected_version_record_version + 1),
+  );
+}
+
+export function issueTaskDocumentDownloadIntent(
+  taskId: string,
+  documentId: string,
+): Promise<DocumentDownloadIntent> {
+  assertUuid(taskId, "taskId");
+  assertUuid(documentId, "documentId");
+  return requestApi(
+    {
+      path: `/api/v1/tasks/${taskId}/documents/${documentId}/download-intents`,
+      method: "POST",
+      body: {},
+    },
+    decodeDownloadIntent,
+  );
+}
+
+export interface DocumentVersionHistory {
+  readonly document_id:string;readonly record_version:number;readonly lifecycle_state:DocumentLifecycleState;
+  readonly legal_hold:boolean;readonly restore_deadline:string|null;
+  readonly can_delete:boolean;readonly can_restore:boolean;readonly can_rollback:boolean;
+  readonly versions:readonly {id:string;state:DocumentVersionState;created_at:string;active:boolean;selectable:boolean}[];
+}
+export function getDocumentVersionHistory(caseId:string,documentId:string):Promise<DocumentVersionHistory>{
+  assertUuid(caseId,'caseId');assertUuid(documentId,'documentId');
+  return requestApi({path:`/api/v1/cases/${caseId}/documents/${documentId}/history`},value=>{
+    const row=expectRecord(value);
+    exactRecord(row,['document_id','record_version','lifecycle_state','legal_hold','restore_deadline','can_delete','can_restore','can_rollback','versions']);
+    if(row.document_id!==documentId||!DOCUMENT_LIFECYCLE_STATES.includes(row.lifecycle_state as DocumentLifecycleState))throw new TypeError('Invalid history identity.');
+    const deadline=expectNullableString(row.restore_deadline);
+    if(deadline!==null&&!Number.isFinite(Date.parse(deadline)))throw new TypeError('Invalid recovery deadline.');
+    return {document_id:documentId,record_version:positiveInteger(row.record_version,'record_version'),lifecycle_state:row.lifecycle_state as DocumentLifecycleState,
+      legal_hold:expectBoolean(row.legal_hold),restore_deadline:deadline,can_delete:expectBoolean(row.can_delete),can_restore:expectBoolean(row.can_restore),can_rollback:expectBoolean(row.can_rollback),
+      versions:expectArray(row.versions,value=>{const item=expectRecord(value);
+        exactRecord(item,['id','state','created_at','active','selectable']);
+        const id=expectString(item.id);assertUuid(id,'versionId');
+        const created=expectString(item.created_at);
+        if(!Number.isFinite(Date.parse(created))||!DOCUMENT_VERSION_STATES.includes(item.state as DocumentVersionState))throw new TypeError('Invalid history version.');
+        return {id,state:item.state as DocumentVersionState,created_at:created,active:expectBoolean(item.active),selectable:expectBoolean(item.selectable)};
+      })};
+  });
+}
+export type DocumentLifecycleAction='delete'|'restore'|'rollback';
+export function mutateDocumentLifecycle(caseId:string,documentId:string,action:DocumentLifecycleAction,expectedRecordVersion:number,versionId:string|null,idempotencyKey:string){
+  assertUuid(caseId,'caseId');assertUuid(documentId,'documentId');assertIdempotencyKey(idempotencyKey);
+  const version=positiveInteger(expectedRecordVersion,'expected_record_version');
+  if(action!=='delete')assertUuid(versionId??'','versionId');
+  const route=action==='delete'?'deletions':action==='restore'?'restorations':'version-rollbacks';
+  const body={expected_record_version:version,...(action==='restore'?{version_id:versionId}:action==='rollback'?{target_version_id:versionId}:{})};
+  return requestApi({path:`/api/v1/cases/${caseId}/documents/${documentId}/${route}`,method:'POST',headers:{'idempotency-key':idempotencyKey},body},value=>{
+    const row=expectRecord(value);exactRecord(row,['document_id','active_version_id','record_version','lifecycle_state']);
+    if(row.document_id!==documentId||row.record_version!==version+1||row.active_version_id!==(action==='delete'?null:versionId)||row.lifecycle_state!==(action==='delete'?'pending_delete':'active'))throw new TypeError('Invalid document lifecycle receipt.');
+    return {record_version:version+1};
   });
 }

@@ -19,8 +19,8 @@ const PRINCIPAL = Object.freeze({
   membershipId: "10000000-0000-4000-8000-000000000011",
 });
 
-test("P1-BE-02 freezes the four active roles and no Data Reviewer", () => {
-  assert.deepEqual(ORGANIZATION_ROLES, ["founder", "admin", "advisor", "contractor"]);
+test("P1-BE-02 retains legacy roles with BR-015 trial levels and no Data Reviewer", () => {
+  assert.deepEqual(ORGANIZATION_ROLES, ["founder", "admin", "advisor", "contractor", "l1", "l2", "l3"]);
   assert.deepEqual(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE.contractor, ["tasks.read", "tasks.transition"]);
   for (const capability of ["tasks.create", "cases.read", "cases.assessments.read", "documents.read"] as const) {
     assert.equal(BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE.contractor.includes(capability as never), false);

@@ -12,7 +12,7 @@ import {
   isPrimaryGuardianRelationshipType,
   type PrimaryGuardianRelationshipType,
 } from "../domain/contract.ts";
-import { validateRelationshipDescription } from "../domain/approved-p2-contract.ts";
+import { CRM_GENDERS,normalizeDisplayName,normalizeEmail,normalizePhone,type CrmGender,validateRelationshipDescription } from "../domain/approved-p2-contract.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -73,6 +73,14 @@ export interface PrimaryGuardianHandoffResult {
   }>;
 }
 
+export interface NewRelatedGuardian {
+  readonly displayName:string;
+  readonly email:string|null;
+  readonly phone:string|null;
+  readonly dateOfBirth:string|null;
+  readonly gender:CrmGender|null;
+  readonly warningToken:string|null;
+}
 export interface AttachGuardianCommand {
   readonly studentId: string;
   readonly guardianId: string;
@@ -118,6 +126,7 @@ export interface GuardianRelationshipRepository {
     readonly query: string;
   }): Promise<readonly GuardianContactHint[] | null>;
   createRelationship(input: {
+    readonly newGuardian?:NewRelatedGuardian;
     readonly organizationId: string;
     readonly actorUserId: string;
     readonly studentId: string;
@@ -148,6 +157,7 @@ export interface GuardianRelationshipRepository {
 }
 
 export type GuardianRelationshipErrorCode =
+  | "GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED"
   | "GUARDIAN_RELATIONSHIP_INVALID"
   | "GUARDIAN_RELATIONSHIP_FORBIDDEN"
   | "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND"
@@ -173,6 +183,7 @@ export class GuardianRelationshipError extends Error {
 }
 
 const ERROR_CODES = new Set<GuardianRelationshipErrorCode>([
+  "GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED",
   "GUARDIAN_RELATIONSHIP_INVALID",
   "GUARDIAN_RELATIONSHIP_FORBIDDEN",
   "GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND",
@@ -264,7 +275,6 @@ export class GuardianRelationshipService {
       requestId: input.command.requestId,
       payload: {
         aggregate_id: input.command.relationshipId, status: "ended",
-        previous_record_version: input.command.expectedRecordVersion,
         record_version: input.command.expectedRecordVersion + 1, reason_code: END_REASON,
         request_id: input.command.requestId,
       },
@@ -298,10 +308,20 @@ export class GuardianRelationshipService {
     return result;
   }
 
-  async attachGuardian(input: {
+  async attachGuardian(input: {readonly actor:RequestAccessActor;readonly command:AttachGuardianCommand}):Promise<GuardianRelationshipResult>{
+    return this.attach(input);
+  }
+
+  async createAndAttachGuardian(input:{readonly actor:RequestAccessActor;readonly command:Omit<AttachGuardianCommand,"guardianId">&{readonly guardian:NewRelatedGuardian}}):Promise<GuardianRelationshipResult>{
+    assertAuthorized(input.actor,"students.guardians.manage");
+    const guardian=normalizeNewGuardian(input.command.guardian);
+    return this.attach({actor:input.actor,command:{...input.command,guardianId:this.createId()}},guardian);
+  }
+
+  private async attach(input: {
     readonly actor: RequestAccessActor;
     readonly command: AttachGuardianCommand;
-  }): Promise<GuardianRelationshipResult> {
+  },newGuardian?:NewRelatedGuardian): Promise<GuardianRelationshipResult> {
     assertAuthorized(input.actor, "students.guardians.manage");
     assertAttachCommand(input.command);
     const [relationshipId, auditId, outboxId] = createIds(this.createId, 3) as [string, string, string];
@@ -344,6 +364,7 @@ export class GuardianRelationshipService {
       createdAt: occurredAt,
     });
     return this.repository.createRelationship({
+      ...(newGuardian?{newGuardian}:{}),
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
       studentId: input.command.studentId,
@@ -357,7 +378,7 @@ export class GuardianRelationshipService {
       notificationConsent: input.command.notificationConsent,
       idempotencyKey: input.command.idempotencyKey,
       requestHash: hashRequestPayload({
-        guardianId: input.command.guardianId,
+        ...(newGuardian?{newGuardian:{...newGuardian}}:{guardianId:input.command.guardianId}),
         isBillingContact: input.command.isBillingContact,
         isEmergencyContact: input.command.isEmergencyContact,
         isLegalGuardian: input.command.isLegalGuardian,
@@ -505,4 +526,15 @@ function nowIso(nowMs: () => number): string {
     throw new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_INVALID");
   }
   return new Date(value).toISOString();
+}
+
+function normalizeNewGuardian(value:NewRelatedGuardian):NewRelatedGuardian{
+  const invalid=()=>new GuardianRelationshipError("GUARDIAN_RELATIONSHIP_INVALID");
+  if(!value||typeof value.displayName!=="string"||[value.email,value.phone,value.dateOfBirth,value.gender,value.warningToken].some(field=>field!==null&&typeof field!=="string"))throw invalid();
+  const displayName=normalizeDisplayName(value.displayName),email=normalizeEmail(value.email),phone=normalizePhone(value.phone);
+  if(!displayName||displayName.length>200||(!email&&!phone)||email&&(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))||phone&&phone.length>40
+    ||value.gender!==null&&!CRM_GENDERS.includes(value.gender)||value.warningToken!==null&&value.warningToken.length>4096)throw invalid();
+  if(value.dateOfBirth!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(value.dateOfBirth)||!Number.isFinite(Date.parse(value.dateOfBirth))
+    ||new Date(value.dateOfBirth).toISOString().slice(0,10)!==value.dateOfBirth||value.dateOfBirth>new Date().toISOString().slice(0,10)))throw invalid();
+  return Object.freeze({...value,displayName,email,phone});
 }

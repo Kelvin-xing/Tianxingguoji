@@ -55,7 +55,7 @@ const TARGET_STATES = Object.freeze([
 const SCHOOL_TARGET_CREATE_BLOCKED_REASON = "selection_workflow_required" as const;
 
 const ADMISSION_TYPES = Object.freeze(["s1_admission", "transfer"] as const);
-const PRIMARY_ROLES = Object.freeze(["advisor"] as const);
+const PRIMARY_ROLES = Object.freeze(["advisor", "founder", "l1", "l2"] as const);
 
 export type CaseWorkspaceStage = (typeof CASE_STAGES)[number];
 export type CaseWorkflowStatus = (typeof CASE_WORKFLOW_STATUSES)[number];
@@ -614,6 +614,7 @@ export interface SchoolTargetsView {
   readonly intake_year: number;
   readonly admission_type: string;
   readonly can_create: false;
+  readonly can_record_interview: boolean;
   readonly create_blocked_reason: SchoolTargetCreateBlockedReason;
   readonly items: readonly SchoolTargetItem[];
   readonly school_options: readonly [];
@@ -1173,6 +1174,7 @@ function decodeSchoolTargetsView(value: unknown, expectedCaseId: string): School
     "intake_year",
     "admission_type",
     "can_create",
+    "can_record_interview",
     "create_blocked_reason",
     "items",
     "school_options",
@@ -1205,6 +1207,7 @@ function decodeSchoolTargetsView(value: unknown, expectedCaseId: string): School
     intake_year: intakeYear,
     admission_type: admissionType,
     can_create: canCreate,
+    can_record_interview: expectBoolean(record.can_record_interview),
     create_blocked_reason: blockedReason,
     items: Object.freeze(items),
     school_options: Object.freeze([] as const),
@@ -1329,4 +1332,33 @@ function assertSha256(value: string, field: string): void {
 
 function assertUnique(values: readonly string[], field: string): void {
   if (new Set(values).size !== values.length) throw new TypeError(`Duplicate ${field}.`);
+}
+
+export interface InterviewInvitationInput {
+  readonly expected_record_version:number;
+  readonly interview_at:string;
+  readonly interview_method:string;readonly interview_language:string;readonly coaching_requirements:string;readonly background_summary:string;
+  readonly invitation_document_id:string;
+}
+export async function recordInterviewInvitation(caseId:string,targetId:string,input:InterviewInvitationInput,key:string) {
+  assertUuid(caseId,"caseId");assertUuid(targetId,"targetId");assertUuid(input.invitation_document_id,"invitation_document_id");
+  positiveInteger(input.expected_record_version,"expected_record_version");
+  if(!Number.isFinite(Date.parse(input.interview_at)))throw new TypeError("Invalid interview time");
+  return requestApi({path:`/api/v1/cases/${caseId}/school-targets/${targetId}/interview-invitations`,method:"POST",
+    headers:{"idempotency-key":key},body:{...input}},value=>{
+      const row=exactRecord(value,["target_id","record_version","state","invitation_id","automation"]);
+      if(row.target_id!==targetId||row.record_version!==input.expected_record_version+1||row.state!=="interview")throw new TypeError("Mismatched invitation receipt");
+      const automation=exactRecord(row.automation,["interview_task"]);
+      return {invitation_id:uuid(row.invitation_id,"invitation_id"),interview_task:oneOf(automation.interview_task,["completed","pending"] as const,"interview_task")};
+    });
+}
+
+export async function resumeInterviewTask(caseId:string,targetId:string) {
+  assertUuid(caseId,"caseId");assertUuid(targetId,"targetId");
+  return requestApi({path:`/api/v1/cases/${caseId}/school-targets/${targetId}/interview-invitations`,method:"PATCH"},value=>{
+    const row=exactRecord(value,["target_id","invitation_id","interview_task"]);
+    if(row.target_id!==targetId)throw new TypeError("Mismatched invitation recovery");
+    uuid(row.invitation_id,"invitation_id");
+    return oneOf(row.interview_task,["completed","pending"] as const,"interview_task");
+  });
 }

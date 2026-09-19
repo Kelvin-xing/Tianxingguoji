@@ -6,7 +6,6 @@ import { mergeWorkspaceCapabilities } from "../../../modules/access/public.ts";
 import {
   CandidateGuardianContextError,
   CandidateGuardianContextService,
-  type CandidateGuardianContextRepository,
 } from "../../../modules/cases/application/candidate-guardian-context-service.ts";
 import { PostgresqlCandidateGuardianContextRepository } from "../../../modules/cases/infrastructure/postgresql-candidate-guardian-context-repository.ts";
 import {
@@ -64,6 +63,7 @@ test("Cases repository enforces current Primary Advisor and resource-safe absenc
 test("CRM repository returns only active Guardians on current relationships without contact hints", async () => {
   const queries: DatabaseQuery[] = [];
   const repository = new PostgresqlGuardianConfirmationOptionsRepository(runner((query) => {
+    if (query.text.includes("FROM access_trial_members t")) return dbResult([]);
     queries.push(query);
     return dbResult([{ guardian_id:IDS.guardian,guardian_relationship_id:IDS.relationship,
       display_name:"Synthetic Guardian",relationship_type:"mother",

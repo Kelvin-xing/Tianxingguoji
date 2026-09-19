@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import type {APIRequestContext,Page} from 'playwright-core';
+export async function assertTrialReferralSourceHttp({page,request,baseUrl,caseId}:{page:Page;request:APIRequestContext;baseUrl:string;caseId:string}){
+  const root=`${baseUrl}/api/v1/referral-sources`;
+  await page.goto(`${baseUrl}/referral-sources`);
+  await page.getByRole('textbox',{name:'顯示名稱',exact:true}).fill('Synthetic trial source');
+  const creation=page.waitForResponse(response=>response.url()===root&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'建立來源',exact:true}).click();
+  const created=await creation;assert.equal(created.status(),201);
+  const options={headers:{'idempotency-key':created.request().headers()['idempotency-key']!},data:created.request().postDataJSON()};
+  const receipt=(await created.json()).data;
+  assert.deepEqual((await (await request.post(root,options)).json()).data,receipt);
+  const sourceId=receipt.referral_source.id;
+  assert.equal((await request.get(`${root}/${sourceId}`)).status(),200);
+  await page.getByRole('link',{name:'Synthetic trial source',exact:true}).click();
+  await page.getByRole('button',{name:'編輯來源',exact:true}).click();
+  await page.getByRole('textbox',{name:'顯示名稱',exact:true}).fill('Synthetic updated source');
+  const updating=page.waitForResponse(response=>response.url()===`${root}/${sourceId}`&&response.request().method()==='PATCH');
+  await page.getByRole('button',{name:'儲存來源',exact:true}).click();
+  assert.equal((await updating).status(),200);
+  await page.getByRole('heading',{name:'Synthetic updated source',exact:true}).waitFor();
+  const assignmentUrl=`${baseUrl}/api/v1/cases/${caseId}/referral-source-assignments`;
+  await page.goto(`${baseUrl}/cases/${caseId}`);
+  const panel=page.getByRole('region',{name:'案件推薦來源',exact:true});
+  await panel.getByRole('combobox').selectOption(sourceId);
+  const assigning=page.waitForResponse(response=>response.url()===assignmentUrl&&response.request().method()==='POST');
+  await panel.getByRole('button',{name:'儲存來源',exact:true}).click();
+  const assigned=await assigning;assert.equal(assigned.status(),200);
+  const assignmentOptions={headers:{'idempotency-key':assigned.request().headers()['idempotency-key']!},data:assigned.request().postDataJSON()};
+  assert.deepEqual((await (await request.post(assignmentUrl,assignmentOptions)).json()).data,(await assigned.json()).data);
+  assert.equal((await (await request.get(assignmentUrl)).json()).data.current.referral_source_id,sourceId);
+  await page.goto(`${baseUrl}/referral-sources/${sourceId}`);
+  await page.getByRole('button',{name:'編輯來源',exact:true}).click();
+  await page.getByLabel('停用此來源',{exact:true}).check();
+  const deactivating=page.waitForResponse(response=>response.url()===`${root}/${sourceId}/deactivate`&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'儲存來源',exact:true}).click();
+  assert.equal((await deactivating).status(),200);
+  await page.reload();await page.getByRole('heading',{name:'Synthetic updated source',exact:true}).waitFor();
+  assert.equal(await page.getByText('已停用',{exact:true}).count()>0,true);
+  assert.equal(await page.getByRole('button',{name:'編輯來源',exact:true}).count(),0);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await page.screenshot({path:'/tmp/access-trial-referral-ui-mobile.png',fullPage:true});
+  const after=await request.get(assignmentUrl);assert.equal(after.status(),200);
+  assert.equal((await after.json()).data.current.referral_source_id,sourceId,'deactivation preserves existing case association');
+  await page.goto(`${baseUrl}/referral-sources`);
+  await page.getByRole('textbox',{name:'顯示名稱',exact:true}).fill('Denied source');
+  await page.route(root,async route=>{
+    if(route.request().method()!=='POST'){await route.continue();return}
+    await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({api_version:'v1',request_id:'denied-source',error:{code:'FORBIDDEN',message:'Denied',retryable:false}})});
+  });
+  await page.getByRole('button',{name:'建立來源',exact:true}).click();
+  await page.getByText('無法查看推薦來源',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:'Synthetic updated source',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'建立來源',exact:true}).count(),0);
+  await page.unroute(root);
+  process.stdout.write(JSON.stringify({trial_referral_http:'pass',l1:'ui_create_update_assign_deactivate_reload',replay:'original_receipt',history:'preserved'})+'\n');
+}

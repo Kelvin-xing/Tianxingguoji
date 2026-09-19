@@ -51,7 +51,7 @@ test("deterministic fake is explicit, non-production, version exact, and checksu
   assert.equal(config.mode, "deterministic-fake");
   if (config.mode !== "deterministic-fake") assert.fail("fake config required");
   const transport = new DeterministicFakeDocumentTransport({ config, now: () => 1_800_000_000_000 });
-  const bytes = new Uint8Array(1_048_576);
+  const bytes = new Uint8Array(1024);
   bytes.set(Buffer.from("%PDF-1.7\n", "ascii"));
   const checksum = createHash("sha256").update(bytes).digest("base64");
   const key = createOpaqueDocumentObjectKey(DOCUMENT_ID, VERSION_ID);

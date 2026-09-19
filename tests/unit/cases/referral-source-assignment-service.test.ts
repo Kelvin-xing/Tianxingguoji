@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { CaseReferralSourceAssignmentService, CaseReferralSourceError, isCaseReferralSourceError,
   type CaseReferralSourceAssignmentRepository } from "../../../modules/cases/application/referral-source-assignment-service.ts";
+import { mergeWorkspaceCapabilities } from "../../../modules/access/public.ts";
 import type { IdentitySessionActor } from "../../../modules/identity/public.ts";
 
 const IDS = Object.freeze({ organization: "51000000-0000-4000-8000-000000000001",
@@ -49,7 +50,8 @@ function repository(calls: string[], overrides: Partial<CaseReferralSourceAssign
   CaseReferralSourceAssignmentRepository { return { async read() { calls.push("read"); return { current: null, history: [] }; },
     async assign(input) { calls.push("assign"); return { id: input.assignmentId, recordVersion: 1 }; }, ...overrides }; }
 function actor(role: IdentitySessionActor["role"]): IdentitySessionActor { return Object.freeze({
-  userId: IDS.actor, organizationId: IDS.organization, role, sessionId: "session",
+  userId: IDS.actor, organizationId: IDS.organization, role, roles: [role],
+  workspaceCapabilities: mergeWorkspaceCapabilities([role]), sessionId: "session",
   capturedSessionVersion: 1, reauthenticatedAtMs: null }); }
 function command() { return { caseId: IDS.case, referralSourceId: IDS.source,
   expectedCurrentAssignmentRecordVersion: null, requestId: "crm06-request", idempotencyKey: "crm06-request" }; }

@@ -6,6 +6,7 @@ import {
   ProfileMaintenanceService,
   type ProfileMaintenanceRepository,
 } from "../../../modules/crm/application/profile-maintenance-service.ts";
+import {workspaceCapabilitiesForRole,type RequestAccessActor} from "../../../modules/access/public.ts";
 import type { IdentitySessionActor } from "../../../modules/identity/public.ts";
 
 const IDS = Object.freeze({
@@ -17,8 +18,8 @@ const IDS = Object.freeze({
   outbox: "51000000-0000-4000-8000-000000000802",
 });
 
-function actor(role: IdentitySessionActor["role"]): IdentitySessionActor {
-  return Object.freeze({ userId: IDS.founder, organizationId: IDS.organization, role,
+function actor(role: IdentitySessionActor["role"]): RequestAccessActor {
+  return Object.freeze({ userId: IDS.founder, organizationId: IDS.organization, role, roles:[role],workspaceCapabilities:workspaceCapabilitiesForRole(role),
     sessionId: "51000000-0000-4000-8000-000000000901", capturedSessionVersion: 1,
     reauthenticatedAtMs: null });
 }

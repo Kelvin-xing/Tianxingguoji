@@ -1,6 +1,8 @@
+import type { TrialPrincipal } from "./trial-policy.ts";
 import {
   BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE,
   ORGANIZATION_ROLES,
+  WORKSPACE_CAPABILITIES,
   isOrganizationRole,
   isWorkspaceCapability,
   workspaceCapabilitiesForRole,
@@ -17,7 +19,7 @@ export const AUTHORIZATION_DENIAL_CODES = Object.freeze([
 ] as const);
 
 export const ACCESS_POLICY_MANIFEST_VERSION = "access-policy-manifest/v1" as const;
-export const BOOTSTRAP_ACCESS_POLICY_VERSION = "release1-bootstrap-v15" as const;
+export const BOOTSTRAP_ACCESS_POLICY_VERSION = "release1-bootstrap-v17" as const;
 
 export type AuthorizationDenialCode = (typeof AUTHORIZATION_DENIAL_CODES)[number];
 
@@ -33,6 +35,7 @@ export interface AccessContext {
   readonly roles: readonly Release1OrganizationRole[];
   readonly workspaceCapabilities: readonly WorkspaceCapability[];
   readonly authorizationVersion: string;
+  readonly trialPrincipal?: TrialPrincipal;
 }
 
 /** Minimal request actor accepted by business services during the legacy transition. */
@@ -41,13 +44,16 @@ export interface RequestAccessActor {
   readonly organizationId: string;
   readonly roles?: readonly OrganizationRole[];
   readonly workspaceCapabilities?: readonly WorkspaceCapability[];
+  readonly trialPrincipal?: TrialPrincipal;
 }
 
 export function hasRequestCapability(
   actor: RequestAccessActor,
   capability: WorkspaceCapability,
 ): boolean {
-  return actor.workspaceCapabilities?.includes(capability) === true;
+  return actor.trialPrincipal
+    ? trialWorkspaceCapabilities(actor.trialPrincipal).includes(capability)
+    : actor.workspaceCapabilities?.includes(capability) === true;
 }
 
 /**
@@ -60,12 +66,18 @@ export function compatibilityRoleForRepository(
   capability: WorkspaceCapability,
 ): Release1OrganizationRole | null {
   if (!hasRequestCapability(actor, capability)) return null;
+  if (actor.trialPrincipal) return actor.trialPrincipal.active ? actor.trialPrincipal.level : null;
   for (const role of ["founder", "advisor", "admin", "contractor"] as const) {
     if (actor.roles?.includes(role) && workspaceCapabilitiesForRole(role).includes(capability)) {
       return role;
     }
   }
   return null;
+}
+
+export function trialWorkspaceCapabilities(principal: TrialPrincipal): readonly WorkspaceCapability[] {
+  if (!principal.active) return Object.freeze([]);
+  return principal.level === "founder" ? WORKSPACE_CAPABILITIES : workspaceCapabilitiesForRole(principal.level);
 }
 
 export interface AccessResolutionFacts {
@@ -75,6 +87,7 @@ export interface AccessResolutionFacts {
   readonly roles: readonly Release1OrganizationRole[];
   readonly membershipRecordVersion: number;
   readonly roleBindingRecordVersions: readonly number[];
+  readonly trialPrincipal?: TrialPrincipal;
 }
 
 export function mergeWorkspaceCapabilities(
@@ -89,15 +102,21 @@ export function mergeWorkspaceCapabilities(
 }
 
 export function buildAccessContext(facts: AccessResolutionFacts): AccessContext {
-  const roles = Object.freeze([...new Set(facts.roles)].sort());
+  const candidate = facts.trialPrincipal;
+  const consistent = candidate && candidate.userId === facts.userId && candidate.organizationId === facts.organizationId
+    && facts.roles.length === 1 && facts.roles[0] === candidate.level;
+  const trial = candidate ? (consistent ? candidate : { ...candidate, active: false }) : undefined;
+  const orphanTrialRole = !trial && facts.roles.some((role) => ["l1", "l2", "l3"].includes(role));
+  const roles = Object.freeze(trial ? (trial.active ? [trial.level] : []) : orphanTrialRole ? [] : [...new Set(facts.roles)].sort());
   const versions = [facts.membershipRecordVersion, ...facts.roleBindingRecordVersions].join(",");
   return Object.freeze({
     userId: facts.userId,
     organizationId: facts.organizationId,
     membershipId: facts.membershipId,
     roles,
-    workspaceCapabilities: mergeWorkspaceCapabilities(roles),
-    authorizationVersion: `${facts.membershipId}:${versions}`,
+    workspaceCapabilities: trial ? trialWorkspaceCapabilities(trial) : mergeWorkspaceCapabilities(roles),
+    authorizationVersion: `${facts.membershipId}:${versions}${trial ? `:trial:${trial.recordVersion}` : ""}`,
+    ...(trial ? { trialPrincipal: trial } : {}),
   });
 }
 

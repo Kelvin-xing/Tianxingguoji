@@ -63,6 +63,7 @@ test("school options repository reads only persisted current immutable pins", as
   const queries: DatabaseQuery[] = [];
   const contexts: TenantDatabaseContext[] = [];
   const repository = new PostgresqlSchoolOptionsRepository(runner((query) => {
+    if (query.text.includes("FROM access_trial_members t")) return dbResult([]);
     queries.push(query);
     return dbResult([{ school_id:IDS.school,display_name:"Synthetic School",
       resolved_revision_id:IDS.revision,resolution_sha256:HASH }]);

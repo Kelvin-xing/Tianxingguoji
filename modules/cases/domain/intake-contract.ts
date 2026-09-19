@@ -1,3 +1,5 @@
+import type { K12BusinessCategory } from "../../access/public.ts";
+
 export const CASE_INTAKE_ADMISSION_TYPES = Object.freeze(["entry", "transfer"] as const);
 
 export type CaseIntakeAdmissionType = (typeof CASE_INTAKE_ADMISSION_TYPES)[number];
@@ -8,7 +10,7 @@ export interface CaseIntakeOption {
 }
 
 export interface CaseIntakeAdvisorOption extends CaseIntakeOption {
-  readonly role: "advisor";
+  readonly role: "advisor" | "founder" | "l1" | "l2";
 }
 
 export interface CaseIntakeOptions {
@@ -27,6 +29,7 @@ export interface CaseIntakeReceipt {
 }
 
 export interface CaseIntakeCommand {
+  readonly businessCategory?: K12BusinessCategory | null;
   readonly studentId: string;
   readonly primaryAdvisorRoleBindingId: string;
   readonly referralSourceId: string | null;

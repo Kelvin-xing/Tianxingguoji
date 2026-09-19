@@ -1,3 +1,4 @@
+import {assertTrialEmployeeInvites} from "./trial-employee-invite-assertions.ts";
 import assert from 'node:assert/strict'
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
@@ -98,6 +99,7 @@ test('Founder invitation, rotated link, activation and internal login work on Po
     const firstCredential = activationCredential(transport.messages[0]!.html)
 
     const resent = await service.resendFounderInvite({
+      idempotencyKey: `resend-${randomBytes(12).toString('hex')}`,
       actor: { userId: FOUNDER.userId, organizationId: NEON_TEST_ORGANIZATION.id, roles: ['founder'] },
       inviteId: created.inviteId,
     })
@@ -157,6 +159,7 @@ test('Founder invitation, rotated link, activation and internal login work on Po
     await assertEmailAdministrationBrowserFlow(baseUrl, httpEvidence.adminCookie, browser)
     await inspectEmailSettings(target)
     await inspectEmailTemplate(target)
+    await assertTrialEmployeeInvites({target,service,transport,baseUrl,founderCookie:httpEvidence.founderCookie,founderPassword,adminCookie:httpEvidence.adminCookie,browser})
   } finally {
     await browser?.close().catch(() => undefined)
     await stopNextDev(devServer)
@@ -270,7 +273,7 @@ async function assertInternalUserBrowserFlow(input: Readonly<{
   }
 }
 
-async function assertInternalEmailHttpFlow(baseUrl: string, email: string, password: string, adminEmail: string, adminPassword: string, suffix: string): Promise<{ readonly adminCookie: string }> {
+async function assertInternalEmailHttpFlow(baseUrl: string, email: string, password: string, adminEmail: string, adminPassword: string, suffix: string): Promise<{ readonly adminCookie: string; readonly founderCookie: string }> {
   const login = await fetch(`${baseUrl}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -374,7 +377,7 @@ async function assertInternalEmailHttpFlow(baseUrl: string, email: string, passw
   assert.equal(customizedTemplateBody.data?.customized, true)
   assert.equal(customizedTemplateBody.data?.subject, '合成邀請主旨')
   assert.equal(customizedTemplateBody.data?.body_text, '請完成合成帳戶設定。')
-  return Object.freeze({ adminCookie })
+  return Object.freeze({ adminCookie, founderCookie: cookie })
 }
 
 async function assertEmailAdministrationBrowserFlow(baseUrl: string, adminCookie: string, browser: Browser): Promise<void> {
@@ -489,7 +492,11 @@ function startNextDev(directory: string, port: number, connectionString: string,
 
 async function waitForNextDev(baseUrl: string, child: ChildProcess): Promise<void> {
   child.stdout?.resume()
-  child.stderr?.resume()
+  child.stderr?.on('data', (chunk: Buffer) => {
+    for (const line of chunk.toString().split('\n')) {
+      if (/^event=request_access_postgres_failure postgres_code=[0-9A-Z]+$/.test(line)) process.stderr.write(line + '\n')
+    }
+  })
   for (let attempt = 0; attempt < 180; attempt += 1) {
     if (child.exitCode !== null) throw new Error('next_dev_early_exit')
     try {

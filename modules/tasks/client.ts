@@ -10,16 +10,18 @@ import { TASK_STATES, type TaskState } from "./public.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor"] as const);
+const ASSIGNEE_ROLES = Object.freeze(["advisor", "contractor", "founder", "l1", "l2", "l3"] as const);
 const AUDIENCES = Object.freeze(["case_workspace", "assigned_task"] as const);
 const TASK_KINDS = Object.freeze(["application_prepare_submit", "interview_support", "manual"] as const);
 const AUTOMATIC_TASK_ACTIONS = Object.freeze(["accept", "reject", "reassign", "complete", "cancel"] as const);
+const TASK_ALLOWED_ACTIONS = Object.freeze([...AUTOMATIC_TASK_ACTIONS,"revoke_access"] as const);
 const SUBMISSION_CHANNELS = Object.freeze(["school_portal", "email", "courier", "in_person", "other"] as const);
 
 export type TaskAudience = (typeof AUDIENCES)[number];
 export type TaskAssigneeRole = (typeof ASSIGNEE_ROLES)[number];
 export type TaskKind = (typeof TASK_KINDS)[number];
 export type AutomaticTaskAction = (typeof AUTOMATIC_TASK_ACTIONS)[number];
+export type TaskAllowedAction = (typeof TASK_ALLOWED_ACTIONS)[number];
 export type SubmissionChannel = (typeof SUBMISSION_CHANNELS)[number];
 
 export interface TaskAssignee {
@@ -54,7 +56,7 @@ interface TaskBase {
   readonly school_target_id: string | null;
   readonly is_overdue: boolean;
   readonly current_assignment: CurrentTaskAssignment | null;
-  readonly allowed_actions: readonly AutomaticTaskAction[];
+  readonly allowed_actions: readonly TaskAllowedAction[];
 }
 
 export interface CaseWorkspaceTask extends TaskBase {
@@ -119,6 +121,44 @@ export interface CompleteApplicationTaskInput {
   readonly expected_record_version: number;
   readonly completion_record: ApplicationCompletionRecord;
   readonly evidence_reference: string | null;
+}
+
+export interface CompleteInterviewTaskInput {
+  readonly action: "complete";
+  readonly expected_record_version: number;
+  readonly completion_record: Readonly<{
+    completed_at: string;
+    interview_method: string;
+    coaching_summary: string;
+  }>;
+  readonly evidence_reference: null;
+}
+
+export function completeInterviewTask(taskId: string, input: CompleteInterviewTaskInput,
+  idempotencyKey: string): Promise<AutomaticTaskWriteReceipt> {
+  assertUuid(taskId, "taskId");
+  assertIdempotencyKey(idempotencyKey);
+  const normalized = normalizeCompleteInterviewTaskInput(input);
+  return requestApi({ path: `/api/v1/tasks/${taskId}/p3-transitions`, method: "POST",
+    headers: { "idempotency-key": idempotencyKey }, body: { ...normalized } }, value => {
+    const record = exactRecord(value, ["id", "record_version", "state", "completion_receipt_id"]);
+    const receipt = decodeTaskWriteReceipt({ id: record.id, record_version: record.record_version },
+      taskId, normalized.expected_record_version + 1);
+    if (record.state !== "completed") throw new TypeError("Mismatched interview Task receipt.");
+    return Object.freeze({ ...receipt, state: "completed" as const,
+      completion_receipt_id: uuid(record.completion_receipt_id, "completion_receipt_id") });
+  });
+}
+
+function normalizeCompleteInterviewTaskInput(input: CompleteInterviewTaskInput): CompleteInterviewTaskInput {
+  if (input.action !== "complete" || input.evidence_reference !== null) throw new TypeError("Invalid interview completion.");
+  const record = input.completion_record;
+  const method = record.interview_method.trim();
+  const summary = record.coaching_summary.trim();
+  if (!method || !summary) throw new TypeError("Interview completion fields are required.");
+  return Object.freeze({ action: "complete", expected_record_version: positiveInteger(input.expected_record_version, "expected_record_version"),
+    completion_record: Object.freeze({ completed_at: pastOrPresentIsoTimestamp(record.completed_at, "completed_at"),
+      interview_method: method, coaching_summary: summary }), evidence_reference: null });
 }
 
 export interface AutomaticTaskWriteReceipt extends TaskWriteReceipt {
@@ -218,6 +258,17 @@ export function transitionTask(
   );
 }
 
+export interface RevokeCompletedAssignmentInput {
+  readonly assignment_id:string;readonly expected_record_version:number;readonly reason:string;
+}
+export function revokeCompletedAssignment(taskId:string,input:RevokeCompletedAssignmentInput,idempotencyKey:string):Promise<TaskWriteReceipt> {
+  assertUuid(taskId,"taskId"); assertUuid(input.assignment_id,"assignment_id"); assertIdempotencyKey(idempotencyKey);
+  const version=positiveInteger(input.expected_record_version,"expected_record_version");
+  const reason=normalizeBoundedText(input.reason,"reason",4000);
+  return requestApi({path:`/api/v1/tasks/${taskId}/assignment-revocations`,method:"POST",headers:{"idempotency-key":idempotencyKey},
+    body:{assignment_id:input.assignment_id,expected_record_version:version,reason}},(value)=>decodeTaskWriteReceipt(value,taskId,version+1));
+}
+
 export function transitionAutomaticTask(
   taskId: string,
   input: AutomaticTaskTransitionInput,
@@ -312,11 +363,13 @@ export function transitionTaskFingerprint(taskId: string, input: TransitionTaskI
 
 export function automaticTaskTransitionFingerprint(
   taskId: string,
-  input: AutomaticTaskTransitionInput | CompleteApplicationTaskInput,
+  input: AutomaticTaskTransitionInput | CompleteApplicationTaskInput | CompleteInterviewTaskInput,
 ): string {
   assertUuid(taskId, "taskId");
   const normalized = input.action === "complete"
-    ? normalizeCompleteApplicationTaskInput(input)
+    ? "completed_at" in input.completion_record
+      ? normalizeCompleteInterviewTaskInput(input as CompleteInterviewTaskInput)
+      : normalizeCompleteApplicationTaskInput(input as CompleteApplicationTaskInput)
     : normalizeAutomaticTaskTransitionInput(input);
   return JSON.stringify({ task_id: taskId, ...normalized });
 }
@@ -470,8 +523,8 @@ function decodeCurrentTaskAssignment(value: unknown): CurrentTaskAssignment | nu
   });
 }
 
-function decodeAutomaticTaskActions(value: unknown): readonly AutomaticTaskAction[] {
-  const actions = expectArray(value, (action) => oneOf(action, AUTOMATIC_TASK_ACTIONS, "task.allowed_actions"));
+function decodeAutomaticTaskActions(value: unknown): readonly TaskAllowedAction[] {
+  const actions = expectArray(value, (action) => oneOf(action, TASK_ALLOWED_ACTIONS, "task.allowed_actions"));
   assertUnique(actions, "task.allowed_actions");
   return Object.freeze(actions);
 }

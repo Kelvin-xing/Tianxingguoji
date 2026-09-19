@@ -46,7 +46,7 @@ test("Founder and Advisor end through capability and emit bounded effects", asyn
     assert.equal(captured?.requestHash.length, 64);
     assert.equal(new Set([captured?.idempotencyRecordId, captured?.effects.audit.id, captured?.effects.outbox.id]).size, 3);
     assert.deepEqual(captured?.effects.audit.metadata, { status: "ended", previous_version: 4, next_version: 5, reason_code: "guardian.relationship.ended", request_id: "req-end-1" });
-    assert.deepEqual(captured?.effects.outbox.payload, { aggregate_id: REL, status: "ended", previous_record_version: 4, record_version: 5, reason_code: "guardian.relationship.ended", request_id: "req-end-1" });
+    assert.deepEqual(captured?.effects.outbox.payload, { aggregate_id: REL, status: "ended", record_version: 5, reason_code: "guardian.relationship.ended", request_id: "req-end-1" });
     const serialized = JSON.stringify(captured?.effects);
     assert.doesNotMatch(serialized, /display_name|email|phone|guardian_name/i);
     assert.match(serialized, /crm\.guardian_relationship_ended/);

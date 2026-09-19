@@ -20,7 +20,7 @@ test("P4-BE-07 exposes current-recipient notification read routes through module
   assert.match(read, /expected_record_version/);
   assert.match(read, /IDEMPOTENCY_KEY_PATTERN/);
   assert.match(read, /key !== "expected_record_version"/);
-  assert.match(resolveTarget, /WORKSPACE_PENDING_ITEM/);
+  assert.match(resolveTarget, /\.resolveTarget\(/);
 });
 
 test("P4-BE-07 migration permits suppressed receipt without a visible Notification", async () => {

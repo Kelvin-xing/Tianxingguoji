@@ -13,6 +13,7 @@ const EXPECTED_NAVIGATION = Object.freeze([
   ["/schools", "schools.read", "workspace"],
   ["/tasks", "tasks.read", "workspace"],
   ["/documents", "documents.read", "workspace"],
+  ["/audit", "audit.read", "workspace"],
   ["/admin/access", "access.manage", "administration"],
   ["/admin/email", "email.settings.manage", "administration"],
   ["/admin/email/templates", "email.templates.manage", "administration"],
@@ -20,7 +21,7 @@ const EXPECTED_NAVIGATION = Object.freeze([
   ["/admin/crawler", "crawler.manage", "administration"],
 ] as const);
 
-test("registers exactly the eleven approved capability-backed navigation routes", () => {
+test("registers exactly the twelve approved capability-backed navigation routes", () => {
   assert.deepEqual(
     NAVIGATION_REGISTRY.map(({ route, requiredCapability, audience }) => [
       route,
@@ -29,7 +30,7 @@ test("registers exactly the eleven approved capability-backed navigation routes"
     ]),
     EXPECTED_NAVIGATION,
   );
-  assert.equal(new Set(NAVIGATION_REGISTRY.map(({ route }) => route)).size, 11);
+  assert.equal(new Set(NAVIGATION_REGISTRY.map(({ route }) => route)).size, 12);
   assert.equal(NAVIGATION_REGISTRY.every(({ requiredCapability }) => (
     isWorkspaceCapability(requiredCapability)
   )), true);

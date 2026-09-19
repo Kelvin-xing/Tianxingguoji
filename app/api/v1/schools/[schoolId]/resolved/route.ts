@@ -1,17 +1,8 @@
-import { cookies } from "next/headers";
-
-import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import {
-  ResolvedSchoolViewRuntimeUnavailable,
-  getResolvedSchoolViewRuntime,
-} from "@/modules/schools/server";
-import {
-  SchoolResolutionError,
-  type ResolvedSchoolTargetView,
-} from "@/modules/schools/server";
-import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
-import { IdentityServiceError } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import {requireApiRequestAccessContext} from '@/app/api/v1/request-access';
+import {hasRequestCapability} from '@/modules/access/public';
+import {getApplicationTenantRunner} from '@/modules/shared/server';
+import {PostgresqlSchoolDirectoryRepository,SchoolResolutionError,type ResolvedSchoolTargetView} from '@/modules/schools/server';
+import {createApiError,handleApiRequest} from '@/modules/shared/public';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -25,17 +16,11 @@ export async function GET(
   return handleApiRequest(request, async () => {
     const { schoolId } = await context.params;
     if (!UUID.test(schoolId)) throw createApiError("INVALID_REQUEST");
-    const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-    if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
-
+    const actor=await requireApiRequestAccessContext();
+    if(!hasRequestCapability(actor,'schools.read'))throw createApiError('FORBIDDEN');
     try {
-      const actor = await getIdentityRuntime().service.requireSession({
-        cookieSecret,
-        sensitiveAction: false,
-      });
-      const resolved = await getResolvedSchoolViewRuntime().service.getResolvedSchool({
-        actor,
-        schoolId,
+      const resolved=await new PostgresqlSchoolDirectoryRepository(getApplicationTenantRunner()).find({
+        organizationId:actor.organizationId,actorUserId:actor.userId,schoolId,
       });
       return resolvedPayload(resolved);
     } catch (error) {
@@ -44,9 +29,11 @@ export async function GET(
   });
 }
 
-function resolvedPayload(resolved: ResolvedSchoolTargetView) {
+function resolvedPayload(resolved: ResolvedSchoolTargetView & {changeContext:{canSubmitChanges:boolean;canEditExisting:boolean;baseValueHashes:Record<string,string>;effectiveValueHashes:Record<string,string>;emptyValueSha256:string}}) {
   return {
     school_id: resolved.view.schoolId,
+    change_context:{can_submit:resolved.changeContext.canSubmitChanges,can_edit_existing:resolved.changeContext.canEditExisting,
+      base_value_hashes:resolved.changeContext.baseValueHashes,effective_value_hashes:resolved.changeContext.effectiveValueHashes,empty_value_sha256:resolved.changeContext.emptyValueSha256},
     resolved_revision_id: resolved.pin.resolvedRevisionId,
     base_snapshot_id: resolved.pin.baseSnapshotId,
     overlay_revision_id: resolved.pin.overlayRevisionId,
@@ -77,13 +64,6 @@ function resolvedPayload(resolved: ResolvedSchoolTargetView) {
 }
 
 function mapSchoolResolutionError(error: unknown) {
-  if (
-    error instanceof IdentityRuntimeUnavailable ||
-    error instanceof ResolvedSchoolViewRuntimeUnavailable
-  ) {
-    return createApiError("SERVICE_UNAVAILABLE");
-  }
-  if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
   if (!(error instanceof SchoolResolutionError)) return createApiError("SERVICE_UNAVAILABLE");
 
   switch (error.code) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { evaluateBootstrapAuthorization } from "../../access/public.ts";
+import { evaluateBootstrapAuthorization, hasRequestCapability } from "../../access/public.ts";
 import {
   buildAtomicMutationEffects,
   buildAuditEvent,
@@ -111,10 +111,10 @@ export class CaseWorkflowService {
     readonly command: ApplyCaseWorkflowActionCommand;
   }): Promise<CaseWorkflowAcknowledgement> {
     assertInput(input);
-    const authorization = evaluateBootstrapAuthorization(input.actor.role, {
-      capability: "cases.workflow.manage",
-    });
-    if (!authorization.allowed) throw new CaseWorkflowError("CASE_WORKFLOW_FORBIDDEN");
+    const allowed = input.actor.trialPrincipal
+      ? input.actor.trialPrincipal.level === input.actor.role && hasRequestCapability(input.actor,"cases.workflow.manage")
+      : evaluateBootstrapAuthorization(input.actor.role, { capability: "cases.workflow.manage" }).allowed;
+    if (!allowed) throw new CaseWorkflowError("CASE_WORKFLOW_FORBIDDEN");
 
     const lifecycleFactId = this.createId();
     const auditId = this.createId();

@@ -59,6 +59,7 @@ export interface SchoolTargetOption {
 }
 
 export interface SchoolTargetWorkspaceSnapshot {
+  readonly canRecordInterview?: boolean;
   readonly caseId: string;
   readonly caseStage: SchoolTargetCaseStage;
   readonly intakeYear: number;
@@ -78,7 +79,7 @@ export interface SchoolTargetRepository {
   readSchoolTargetWorkspace(input: {
     readonly organizationId: string;
     readonly actorUserId: string;
-    readonly actorRole: "founder" | "advisor";
+    readonly actorRole: "founder" | "advisor" | "l1" | "l2";
     readonly caseId: string;
   }): Promise<SchoolTargetWorkspaceSnapshot>;
 
@@ -251,11 +252,11 @@ export class SchoolTargetService {
   }
 }
 
-function assertReadableActor(actor: IdentitySessionActor): "founder" | "advisor" {
+function assertReadableActor(actor: IdentitySessionActor): "founder" | "advisor" | "l1" | "l2" {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId)) {
     throw new SchoolTargetError("SCHOOL_TARGET_READ_FORBIDDEN");
   }
-  if (actor.role === "founder" || actor.role === "advisor") return actor.role;
+  if (actor.role === "founder" || actor.role === "advisor" || actor.role === "l1" || actor.role === "l2") return actor.role;
   throw new SchoolTargetError("SCHOOL_TARGET_READ_FORBIDDEN");
 }
 

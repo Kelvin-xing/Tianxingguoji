@@ -247,6 +247,7 @@ export interface PendingDeletionReceipt {
 }
 
 export interface PendingDeletionSummary extends PendingDeletionReceipt {
+  readonly request_id: string;
   readonly display_label: string;
 }
 
@@ -670,6 +671,23 @@ export function requestPendingDeletion(
   );
 }
 
+export function decidePendingDeletion(
+  item: PendingDeletionSummary,
+  decision: "approve" | "reject",
+  idempotencyKey: string,
+): Promise<void> {
+  assertDeletionEntityType(item.entity_type); assertUuid(item.entity_id, "entityId");
+  assertPositiveInteger(item.record_version, "recordVersion"); assertIdempotencyKey(idempotencyKey);
+  if (!["approve", "reject"].includes(decision) || item.request_id !== deletionLocator(item.entity_type,item.entity_id)) throw new TypeError("Invalid deletion decision.");
+  return requestApi({path:`/api/v1/crm/deletion-requests/${item.request_id}/decisions`,method:"POST",
+    headers:{"idempotency-key":idempotencyKey},body:{decision,expected_record_version:item.record_version}}, value=>{
+    const result=exactRecord(value,["entity_type","entity_id","status","record_version","occurred_at"]);
+    if(result.entity_type!==item.entity_type || result.entity_id!==item.entity_id ||
+      result.status!==(decision==="approve"?"deleted":"active") || result.record_version!==item.record_version+1) throw new TypeError("Mismatched deletion decision receipt.");
+    isoDateTime(result.occurred_at,"occurred_at");
+  });
+}
+
 export function listPendingDeletionRequests(
   entityType?: DeletionEntityType,
   signal?: AbortSignal,
@@ -777,6 +795,7 @@ export function attachGuardianRelationship(
       body: {
         guardian_id: draft.guardian_id,
         relationship_type: draft.relationship_type,
+        relationship_description: draft.relationship_description,
         is_legal_guardian: draft.is_legal_guardian,
         is_emergency_contact: draft.is_emergency_contact,
         is_billing_contact: draft.is_billing_contact,
@@ -809,6 +828,33 @@ export function handoffPrimaryGuardian(
     },
     decodePrimaryGuardianHandoffResult,
   );
+}
+
+export interface NewGuardianRelationshipDraft extends Omit<AttachGuardianRelationshipDraft,"guardian_id"> {
+  readonly guardian:{readonly display_name:string;readonly email:string|null;readonly phone:string|null;
+    readonly date_of_birth:string|null;readonly gender:CrmGender|null;readonly warning_token:string|null};
+}
+export function createAndAttachGuardian(studentId:string,draft:NewGuardianRelationshipDraft,idempotencyKey:string):Promise<GuardianRelationshipCommandResult>{
+  assertUuid(studentId,"studentId");assertIdempotencyKey(idempotencyKey);
+  return requestApi({path:`/api/v1/students/${studentId}/guardians/new`,method:"POST",headers:{"idempotency-key":idempotencyKey},
+    body:{...draft,guardian:{...draft.guardian}}},value=>{
+      const relation=decodeGuardianCommandResult(exactRecord(value,["relationship"]).relationship);
+      if(relation.is_primary_contact||relation.record_version!==1)throw new TypeError("Invalid new guardian relationship receipt.");
+      return relation;
+    });
+}
+
+export function endGuardianRelationship(studentId:string,relationshipId:string,expectedRecordVersion:number,idempotencyKey:string):Promise<void> {
+  assertUuid(studentId,"studentId"); assertUuid(relationshipId,"relationshipId");
+  assertPositiveInteger(expectedRecordVersion,"expectedRecordVersion"); assertIdempotencyKey(idempotencyKey);
+  return requestApi({path:`/api/v1/students/${studentId}/guardian-relationships/${relationshipId}/end`,method:"POST",
+    headers:{"idempotency-key":idempotencyKey},body:{expected_record_version:expectedRecordVersion}},value=>{
+    const response=exactRecord(value,["relationship","occurred_at"]);
+    const relation=exactRecord(response.relationship,["id","student_id","status","ends_at","record_version"]);
+    if(uuid(relation.id,"id")!==relationshipId||uuid(relation.student_id,"student_id")!==studentId||relation.status!=="ended"
+      ||positiveInteger(relation.record_version,"record_version")!==expectedRecordVersion+1
+      ||isoDateTime(relation.ends_at,"ends_at")!==isoDateTime(response.occurred_at,"occurred_at"))throw new TypeError("Invalid relationship end receipt.");
+  });
 }
 
 export function searchDuplicateRecords(
@@ -1642,9 +1688,14 @@ function decodePendingDeletionReceipt(
   });
 }
 
+function deletionLocator(entityType:DeletionEntityType,entityId:string):string {
+  return "del_v1_" + btoa(`v1:${entityType}:${entityId.toLowerCase()}`).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
 function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletionSummary[] {
   const items = expectArray(value, (item) => {
     const record = exactRecord(item, [
+      "request_id",
       "entity_type",
       "entity_id",
       "display_label",
@@ -1656,8 +1707,12 @@ function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletio
       ["entity_type", "entity_id", "status", "deletion_requested_at", "record_version"]
         .map((key) => [key, record[key]]),
     ));
+    const requestId = nonEmptyString(record.request_id, "request_id");
+    const expectedLocator = deletionLocator(receipt.entity_type,receipt.entity_id);
+    if (requestId !== expectedLocator) throw new TypeError("Mismatched deletion request locator.");
     return Object.freeze({
       ...receipt,
+      request_id: requestId,
       display_label: nonEmptyString(record.display_label, "display_label"),
     });
   });

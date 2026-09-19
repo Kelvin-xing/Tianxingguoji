@@ -1,3 +1,3 @@
-import { ReferralSourcesWorkspace } from '@/components/crm/ReferralSourcesWorkspace'
+import { ReferralSourcesDirectory } from '@/components/crm/ReferralSourcesDirectory'
 
-export default function ReferralSourcesPage() { return <ReferralSourcesWorkspace /> }
+export default function ReferralSourcesPage() { return <ReferralSourcesDirectory /> }

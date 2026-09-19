@@ -103,7 +103,7 @@ test('assignment failures stay distinct and unknown errors fail closed', () => {
 })
 
 function assignment(id: string, endsAt: string | null, recordVersion = endsAt === null ? 1 : 2) {
-  return { id, referral_source_id: SOURCE_ID, source_display_name: 'Synthetic Partner', source_type: 'bank', source_record_version: 1, starts_at: '2026-08-20T00:00:00.000Z', ends_at: endsAt, record_version: recordVersion }
+  return { id, referral_source_id: SOURCE_ID, source_display_name: 'Synthetic Partner', source_type: 'partner_referral', source_record_version: 1, starts_at: '2026-08-20T00:00:00.000Z', ends_at: endsAt, record_version: recordVersion }
 }
 
 function syntheticUuid(index: number): string {

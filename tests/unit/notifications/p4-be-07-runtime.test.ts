@@ -46,7 +46,15 @@ test("notification read uses a scoped idempotency claim and replays the complete
     run: async (_context, operation) => operation({
       query: async <Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>> => {
         let rows: readonly Record<string, unknown>[];
-        if (query.text.includes("FROM shared_idempotency_records")) {
+        if (query.text.includes("pg_advisory_xact_lock")) {
+          rows = [];
+        } else if (query.text.includes("FROM access_organizations")) {
+          rows = [{ id: ORG }];
+        } else if (query.text.includes("FROM access_trial_members")) {
+          rows = [];
+        } else if (query.text.includes("FROM identity_users")) {
+          rows = [{ role: "founder" }];
+        } else if (query.text.includes("FROM shared_idempotency_records")) {
           rows = completed ? [{ state: "completed", request_hash: storedHash, result_reference: NOTICE }] : [];
         } else if (query.text.startsWith("INSERT INTO shared_idempotency_records")) {
           storedHash = String(query.values?.[4]);
@@ -85,7 +93,15 @@ test("notification read completes a new idempotency claim when the row is alread
     run: async (_context, operation) => operation({
       query: async <Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>> => {
         let rows: readonly Record<string, unknown>[];
-        if (query.text.includes("FROM shared_idempotency_records")) {
+        if (query.text.includes("pg_advisory_xact_lock")) {
+          rows = [];
+        } else if (query.text.includes("FROM access_organizations")) {
+          rows = [{ id: ORG }];
+        } else if (query.text.includes("FROM access_trial_members")) {
+          rows = [];
+        } else if (query.text.includes("FROM identity_users")) {
+          rows = [{ role: "founder" }];
+        } else if (query.text.includes("FROM shared_idempotency_records")) {
           rows = completed ? [{ state: "completed", request_hash: storedHash, result_reference: NOTICE }] : [];
         } else if (query.text.startsWith("INSERT INTO shared_idempotency_records")) {
           storedHash = String(query.values?.[4]);

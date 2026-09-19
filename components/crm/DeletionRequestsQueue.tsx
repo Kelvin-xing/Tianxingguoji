@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import {DeletionDecisionControl} from './DeletionDecisionControl'
 import { useEffect, useState } from 'react'
 
 import { Icon } from '@/components/workspace/Icon'
@@ -21,6 +22,9 @@ type QueueState =
   | { readonly kind: 'unavailable' }
 
 export function DeletionRequestsQueue() {
+  const [busy,setBusy]=useState(false)
+  const [reviewing,setReviewing]=useState<string|null>(null)
+  const [notice,setNotice]=useState('')
   const [filter, setFilter] = useState<QueueFilter>('all')
   const [state, setState] = useState<QueueState>({ kind: 'loading' })
   const [reloadToken, setReloadToken] = useState(0)
@@ -38,7 +42,7 @@ export function DeletionRequestsQueue() {
           filter === 'all' ? undefined : filter,
           controller.signal,
         )
-        setState({ kind: 'ready', items })
+        if (!controller.signal.aborted) setState({ kind: 'ready', items })
       } catch (error) {
         if (controller.signal.aborted) return
         const failure = classifyPendingDeletionFailure(error)
@@ -58,18 +62,19 @@ export function DeletionRequestsQueue() {
       <header>
         <div className="eyebrow">資料治理</div>
         <h2 className="page-title">待刪除審查</h2>
-        <p className="page-subtitle">查看已限制修改的學生與監護人資料；本頁不提供刪除或復原操作。</p>
+        <p className="page-subtitle">審查學生與監護人的刪除申請。批准後不再顯示於業務頁面，歷史仍保留。</p>
       </header>
 
+      {notice?<p role="status" className="inline-callout">{notice}</p>:null}
       <section className="workspace-section" aria-labelledby="deletion-request-queue-heading">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5">
           <div>
             <h3 id="deletion-request-queue-heading" className="section-title">審查清單</h3>
-            <p className="section-detail">只顯示資料類型、安全標籤、申請時間、狀態與版本。</p>
+            <p className="section-detail">請核對資料與申請時間，再選擇批准或駁回。</p>
           </div>
           <label className="field-label sm:w-52" htmlFor="deletion-request-filter">
             <span>資料類型</span>
-            <select id="deletion-request-filter" value={filter} onChange={(event) => { setState({ kind: 'loading' }); setFilter(event.target.value as QueueFilter) }}>
+            <select disabled={busy||reviewing!==null} id="deletion-request-filter" value={filter} onChange={(event) => { setState({ kind: 'loading' }); setFilter(event.target.value as QueueFilter) }}>
               <option value="all">全部</option>
               <option value="student">學生</option>
               <option value="guardian">監護人</option>
@@ -79,14 +84,17 @@ export function DeletionRequestsQueue() {
 
         {state.items.length === 0
           ? <div className="empty-state"><Icon name="check-circle" size={20} /><strong>目前沒有待刪除審查</strong><span>可切換資料類型查看其他清單。</span></div>
-          : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{state.items.map((item) => <DeletionRequestRow key={`${item.entity_type}:${item.entity_id}`} item={item} />)}</div>}
+          : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{state.items.map((item) => <DeletionRequestRow key={`${item.entity_type}:${item.entity_id}`} item={item} busy={busy||(reviewing!==null&&reviewing!==item.request_id)} onBusy={setBusy} onReviewing={value=>setReviewing(value?item.request_id:null)}
+            onCompleted={()=>{setReviewing(null);setNotice('審查決定已保存。');setState({kind:'loading'});setReloadToken(value=>value+1)}}
+            onDenied={unauthenticated=>{setNotice('');setState({kind:unauthenticated?'unauthenticated':'denied'})}}
+            onReload={()=>{setReviewing(null);setState({kind:'loading'});setReloadToken(value=>value+1)}} />)}</div>}
         <div className="pt-4 text-xs" style={{ color: 'var(--text-muted)' }} aria-live="polite">共 {state.items.length} 筆</div>
       </section>
     </div>
   )
 }
 
-function DeletionRequestRow({ item }: { readonly item: PendingDeletionSummary }) {
+function DeletionRequestRow({item,...controls}:Parameters<typeof DeletionDecisionControl>[0]) {
   const detailHref = item.entity_type === 'student' ? `/students/${item.entity_id}` : null
   return (
     <article className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center gap-4">
@@ -94,14 +102,15 @@ function DeletionRequestRow({ item }: { readonly item: PendingDeletionSummary })
         <div className="flex flex-wrap items-center gap-2">
           <span className="status-pill status-warning">{item.entity_type === 'student' ? '學生' : '監護人'}</span>
           <span className="status-pill status-warning">{item.status === 'pending_delete' ? '待刪除審查' : '狀態不可用'}</span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>版本 {item.record_version}</span>
+
         </div>
         <h4 className="mt-2 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{item.display_label}</h4>
         <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <div><dt className="font-medium">資料編號</dt><dd><code className="break-all">{item.entity_id}</code></dd></div>
+
           <div><dt className="font-medium">申請時間</dt><dd>{formatDateTime(item.deletion_requested_at)}</dd></div>
         </dl>
       </div>
+      <DeletionDecisionControl item={item} {...controls}/>
       {detailHref ? <Link href={detailHref} className="secondary-button justify-center shrink-0">查看學生資料<Icon name="chevron-right" size={15} /></Link> : null}
     </article>
   )

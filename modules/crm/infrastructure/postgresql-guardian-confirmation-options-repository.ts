@@ -1,5 +1,6 @@
 import "server-only";
 
+import { loadTrialPrincipal } from "../../access/server.ts";
 import type { TenantTransactionRunner } from "../../shared/server.ts";
 import {
   GuardianConfirmationOptionsError,
@@ -37,6 +38,24 @@ implements GuardianConfirmationOptionsRepository {
       requestId: `guardian-confirmation-options-${input.studentId}`,
     }, async (transaction) => {
       try {
+        const principal = await loadTrialPrincipal({
+          query: <Row extends Record<string,unknown>>(text: string,values?: readonly unknown[]) => transaction.query<Row>({ text,values }),
+        },{ organizationId:input.organizationId,userId:input.actorUserId,lock:true });
+        if (principal) {
+          if (!principal.active || !["founder","l1","l2"].includes(principal.level)) throw new GuardianConfirmationOptionsError("GUARDIAN_CONFIRMATION_OPTIONS_NOT_FOUND");
+          const binding = await transaction.query({
+            text:"SELECT id FROM access_role_bindings WHERE organization_id=$1 AND user_id=$2 AND role=$3 AND status='active' FOR SHARE",
+            values:[input.organizationId,input.actorUserId,principal.level],
+          });
+          if (binding.rows.length !== 1) throw new GuardianConfirmationOptionsError("GUARDIAN_CONFIRMATION_OPTIONS_NOT_FOUND");
+          if (principal.level === "l2") {
+            const scope = await transaction.query({
+              text:"SELECT id FROM cases_service_cases WHERE organization_id=$1 AND student_id=$2 AND business_category=ANY($3::text[]) LIMIT 1",
+              values:[input.organizationId,input.studentId,principal.categories],
+            });
+            if (scope.rows.length !== 1) throw new GuardianConfirmationOptionsError("GUARDIAN_CONFIRMATION_OPTIONS_NOT_FOUND");
+          }
+        }
         const result = await transaction.query<OptionRow>({
           text: `SELECT guardian.id AS guardian_id,relationship.id AS guardian_relationship_id,
                         guardian.display_name,relationship.relationship_type,

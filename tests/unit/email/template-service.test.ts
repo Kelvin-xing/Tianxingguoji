@@ -15,6 +15,7 @@ const IDS = [
 test('allows only Admin to update the current invitation template', async () => {
   let stored: Parameters<EmailTemplateRepository['save']>[0] | null = null
   const repository: EmailTemplateRepository = {
+    readDeliveryTemplate: async () => { throw new Error('management must not use delivery reads') },
     read: async () => ({ kind: 'internal_user_invitation', subject: '預設主旨', bodyText: '預設正文', customized: false, recordVersion: null, updatedAt: null }),
     save: async (input) => {
       stored = input

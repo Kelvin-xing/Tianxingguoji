@@ -81,6 +81,28 @@ test("module transaction does not mistake FOR UPDATE SKIP LOCKED for a table", a
   assert.equal(runner.queries.length, 1);
 });
 
+test("notifications may read current identity state but cannot write identity tables", async () => {
+  const runner = new RecordingRunner();
+  await runSupportingModuleTransaction({
+    runner, module: "notifications", context,
+    operation: (transaction) => transaction.query({
+      text: "SELECT organization_id FROM access_organizations WHERE id = $1 FOR SHARE",
+    }),
+  });
+  assert.equal(runner.queries.length, 1);
+  await assert.rejects(
+    runSupportingModuleTransaction({
+      runner, module: "notifications", context,
+      operation: (transaction) => transaction.query({
+        text: "UPDATE access_trial_members SET status = 'revoked' WHERE id = $1",
+      }),
+    }),
+    (error: unknown) => error instanceof SupportingRepositoryError &&
+      error.code === "SUPPORTING_MODULE_OWNERSHIP_VIOLATION",
+  );
+  assert.equal(runner.queries.length, 1);
+});
+
 test("mandatory audit failure rolls the owning mutation transaction back", async () => {
   const runner = new RecordingRunner();
   runner.failOn = "INSERT INTO audit_events";

@@ -39,7 +39,8 @@ test("DOC-01 repository registers metadata, effects and receipt in one tenant tr
           if (query.text.includes("SELECT request_hash,state,result_reference")) {
             return result([]) as DatabaseQueryResult<Row>;
           }
-          if (query.text.includes("SELECT binding.role")) {
+          if (query.text.includes("FROM access_trial_members t")) return {rows:[],rowCount:0};
+    if (query.text.includes("SELECT binding.role")) {
             return result([{ role: "advisor" }]) as DatabaseQueryResult<Row>;
           }
           if (query.text.includes("SELECT service_case.id")) {
@@ -145,7 +146,8 @@ function listRunner(
         async query<Row = Record<string, unknown>>(
           query: DatabaseQuery,
         ): Promise<DatabaseQueryResult<Row>> {
-          if (query.text.includes("SELECT binding.role")) {
+          if (query.text.includes("FROM access_trial_members t")) return {rows:[],rowCount:0};
+    if (query.text.includes("SELECT binding.role")) {
             // The actor remains authorized through another active Advisor binding.
             return result([{ role: "advisor" }]) as DatabaseQueryResult<Row>;
           }

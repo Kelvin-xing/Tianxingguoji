@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 
 import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import { ApiContractError, createApiError, handleApiRequest } from "@/modules/shared/public";
 import { IdentityRuntimeUnavailable, getIdentityRuntime } from "@/modules/identity/server";
 import { IdentityServiceError } from "@/modules/identity/server";
 import { InternalEmailServiceError } from "@/modules/identity/server";
@@ -27,18 +27,12 @@ export async function POST(request: Request): Promise<Response> {
     try {
       const runtime = getIdentityRuntime();
       if (runtime.authMode === "internal-email" && runtime.internalEmail) {
-        let access;
-        try {
-          access = await resolveRequestAccessContext({ cookieSecret, sensitiveAction: true });
-        } catch (error) {
-          if (error instanceof RequestAccessContextError && error.code === "REQUEST_ACCESS_UNAUTHENTICATED") throw createApiError("UNAUTHENTICATED");
-          if (error instanceof RequestAccessContextError && error.code === "REQUEST_ACCESS_FORBIDDEN") throw createApiError("FORBIDDEN");
-          throw createApiError("SERVICE_UNAVAILABLE");
-        }
+        const access = await resolveRequestAccessContext({ cookieSecret, sensitiveAction: true });
         const invite = await runtime.internalEmail.createFounderInvite({
-          actor: { userId: access.userId, organizationId: access.organizationId, roles: access.roles },
+          actor: { userId: access.userId, organizationId: access.organizationId, roles: access.roles, trialPrincipal: access.trialPrincipal },
           normalizedEmail: command.normalizedEmail,
           role: command.role,
+          trialCategories: command.trialCategories,
           employmentType: command.employmentType,
           displayName: command.displayName,
           idempotencyKey: command.idempotencyKey,
@@ -47,13 +41,15 @@ export async function POST(request: Request): Promise<Response> {
           invite_id: invite.inviteId,
           target_user_id: invite.targetUserId,
           expires_at_ms: invite.expiresAtMs,
-          delivery_receipt: {
+          delivery_status: invite.deliveryReceipt ? "sent" : "unconfirmed",
+          delivery_receipt: invite.deliveryReceipt ? {
             channel_policy_id: invite.deliveryReceipt.channelPolicyId,
             receipt_reference: invite.deliveryReceipt.receiptReference,
             delivered_at_ms: invite.deliveryReceipt.deliveredAtMs,
-          },
+          } : null,
         };
       }
+      if (command.trialCategories !== undefined || ['l1','l2','l3'].includes(command.role)) throw createApiError('VALIDATION_FAILED');
       const actor = await runtime.service.requireSession({
         cookieSecret,
         sensitiveAction: true,
@@ -71,6 +67,7 @@ export async function POST(request: Request): Promise<Response> {
         invite_id: invite.inviteId,
         target_user_id: invite.targetUserId,
         expires_at_ms: invite.expiresAtMs,
+        delivery_status: "sent",
         delivery_receipt: {
           channel_policy_id: invite.deliveryReceipt.channelPolicyId,
           receipt_reference: invite.deliveryReceipt.receiptReference,
@@ -78,6 +75,12 @@ export async function POST(request: Request): Promise<Response> {
         },
       };
     } catch (error) {
+      if (error instanceof ApiContractError) throw error;
+      if (error instanceof RequestAccessContextError) {
+        if (error.code === "REQUEST_ACCESS_UNAUTHENTICATED") throw createApiError("UNAUTHENTICATED");
+        if (error.code === "REQUEST_ACCESS_FORBIDDEN") throw createApiError("FORBIDDEN");
+        throw createApiError("SERVICE_UNAVAILABLE");
+      }
       if (error instanceof IdentityRuntimeUnavailable) {
         throw createApiError("SERVICE_UNAVAILABLE");
       }
@@ -95,8 +98,8 @@ export async function POST(request: Request): Promise<Response> {
       }
       if (error instanceof InternalEmailServiceError) {
         if (error.code === "FOUNDER_REQUIRED") throw createApiError("FORBIDDEN");
-        if (error.code === "INVITE_ALREADY_EXISTS") throw createApiError("CONFLICT");
-        if (error.code === "INVITE_DELIVERY_FAILED") throw createApiError("SERVICE_UNAVAILABLE");
+        if (error.code === "INVITE_ALREADY_EXISTS" || error.code === "INVITE_CONFLICT") throw createApiError("CONFLICT");
+        if (error.code === "INVITE_DELIVERY_FAILED" || error.code === "INVITE_UNAVAILABLE") throw createApiError("SERVICE_UNAVAILABLE");
         throw createApiError("VALIDATION_FAILED");
       }
       throw createApiError("SERVICE_UNAVAILABLE");

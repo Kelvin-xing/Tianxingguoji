@@ -57,7 +57,11 @@ export interface AtomicMutationTransaction {
   ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number }>;
 }
 
-const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
+const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+(?:lateral\s+)?|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
+const SUPPORTING_NOTIFICATION_READ_TABLES = new Set([
+  'access_organizations', 'identity_users', 'access_trial_members',
+  'audit_events', 'cases_candidate_school_list_versions', 'tasks_task_transition_receipts',
+]);
 const SHARED_TABLES = new Set([
   "shared_idempotency_records",
   "audit_outbox",
@@ -179,8 +183,8 @@ export function claimAuditOutboxSourceTransaction(
 ) {
   return transaction.query<AuditOutboxDeliveryRow>({
     text: `UPDATE audit_outbox SET status='processing',attempt_count=attempt_count+1,
-                  leased_until=transaction_timestamp()+interval '2 minutes',
-                  lease_version=lease_version+1,updated_at=transaction_timestamp(),
+                  leased_until=GREATEST(clock_timestamp(),updated_at)+interval '2 minutes',
+                  lease_version=lease_version+1,updated_at=GREATEST(clock_timestamp(),updated_at),
                   record_version=record_version+1
             WHERE id=$1 AND organization_id=$2 AND status='pending' AND attempt_count < 3
         RETURNING id,audit_event_id,aggregate_id,event_type,event_version,request_id,status,attempt_count`,
@@ -192,8 +196,8 @@ export function completeAuditOutboxSourceTransaction(
   transaction: AuditOutboxTransaction,input: Readonly<{ id:string;organizationId:string }>,
 ) {
   return transaction.query({
-    text: `UPDATE audit_outbox SET status='delivered',delivered_at=transaction_timestamp(),
-                  leased_until=NULL,last_error_code=NULL,updated_at=transaction_timestamp(),
+    text: `UPDATE audit_outbox SET status='delivered',delivered_at=GREATEST(clock_timestamp(),updated_at),
+                  leased_until=NULL,last_error_code=NULL,updated_at=GREATEST(clock_timestamp(),updated_at),
                   record_version=record_version+1
             WHERE id=$1 AND organization_id=$2 AND status='processing'`,
     values:[input.id,input.organizationId],
@@ -202,37 +206,57 @@ export function completeAuditOutboxSourceTransaction(
 
 export function completeAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='delivered', delivered_at=transaction_timestamp(),
               leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
+  });
+}
+
+/** Return a leased source row to the queue while another recipient remains. */
+export function releaseAuditOutboxRowForNextRecipient(
+  transaction: OwnedSupportingTransaction,
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion: number },
+): Promise<readonly Record<string, unknown>[]> {
+  return transaction.query({
+    text: `UPDATE audit_outbox SET status='pending', leased_until=NULL,
+              updated_at=transaction_timestamp(), record_version=record_version+1
+            WHERE id=$1 AND organization_id=$2 AND status='processing' AND lease_version=$3
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion],
   });
 }
 
 export function retryAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='pending', leased_until=NULL,
               available_at=transaction_timestamp(), updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
   });
 }
 
 export function deadLetterAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='dead_letter', dead_lettered_at=transaction_timestamp(),
               leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
   });
 }
 
@@ -258,7 +282,10 @@ function assertOwnedTables(module: SupportingModule, sql: string): void {
   TABLE_REFERENCE.lastIndex = 0;
   for (const match of sql.matchAll(TABLE_REFERENCE)) {
     const table = match[1];
-    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table)) {
+    const notificationRead = module === 'notifications' && SUPPORTING_NOTIFICATION_READ_TABLES.has(table)
+      && /^\s*SELECT\b/i.test(sql) && !/\b(?:INSERT|DELETE|MERGE|TRUNCATE)\b|(?<!FOR\s)\bUPDATE\b/i.test(sql);
+    if (table.toLowerCase() === 'lateral') continue;
+    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table) && !notificationRead) {
       throw new SupportingRepositoryError("SUPPORTING_MODULE_OWNERSHIP_VIOLATION");
     }
   }

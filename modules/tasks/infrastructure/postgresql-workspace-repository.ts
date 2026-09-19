@@ -1,4 +1,6 @@
 import "server-only";
+import { evaluateTrialAccess, evaluateTrialTaskAssignment, type K12BusinessCategory } from "../../access/public.ts";
+import { loadTrialPrincipal } from "../../access/server.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -30,7 +32,7 @@ interface TaskRow extends Record<string, unknown> {
   task_kind: "application_prepare_submit" | "interview_support" | "manual";
   state: TaskState; assignee_user_id: string; assignee_role: TaskAssigneeRole; assignee_redaction_profile: string | null;
   assignee_binding_id: string; owner_user_id: string; primary_user_id: string; primary_role: string;
-  record_version: number | string; updated_at: Date | string; student_status: string; case_stage: string;
+  record_version: number | string; updated_at: Date | string; student_status: string; case_stage: string; case_workflow_status: string;
   current_assignment_id: string | null; current_assignment_user_id: string | null;
   current_assignment_role: TaskAssigneeRole | null; current_assignment_status: string | null;
   is_overdue: boolean;
@@ -44,11 +46,12 @@ interface CaseRow extends Record<string, unknown> {
   stage: string;
   workflow_status: string;
   student_status: string;
+  business_category: K12BusinessCategory | null;
 }
 interface TaskLocationRow extends Record<string, unknown> { service_case_id: string }
 interface AssigneeRow extends Record<string, unknown> { id: string; user_id: string; role: TaskAssigneeRole }
 
-export interface TaskRepositoryTestHooks { readonly failBeforeCommit?: (operation: "create" | "transition") => void }
+export interface TaskRepositoryTestHooks { readonly failBeforeCommit?: (operation: "create" | "transition" | "revoke_assignment") => void }
 
 export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepository {
   private readonly runner: TenantTransactionRunner;
@@ -58,28 +61,28 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
   }
 
   list(input: Parameters<TaskWorkspaceRepository["list"]>[0]): Promise<TaskCollectionView> {
-    return this.run(input, async (tx) => {
+    return this.run(input, async (tx, input) => {
       await assertActor(tx, input);
-      if (input.actorRole === "contractor" && input.caseId !== null) forbidden();
+      if (isTaskOnly(input) && input.caseId !== null) forbidden();
       const rows = await selectVisibleTasks(tx, input, input.caseId, null, false);
       const rules = await loadApprovedRules(tx);
-      return Object.freeze({ audience: input.actorRole === "contractor" ? "assigned_task" : "case_workspace",
+      return Object.freeze({ audience: isTaskOnly(input) ? "assigned_task" : "case_workspace",
         tasks: Object.freeze(rows.map((row) => view(row, input, rules))) });
     });
   }
 
   detail(input: Parameters<TaskWorkspaceRepository["detail"]>[0]): Promise<TaskDetailView | null> {
-    return this.run(input, async (tx) => {
+    return this.run(input, async (tx, input) => {
       await assertActor(tx, input); const rows = await selectVisibleTasks(tx, input, null, input.taskId, false);
       const row = rows[0]; if (!row) return null; const rules = await loadApprovedRules(tx);
-      return Object.freeze({ audience: input.actorRole === "contractor" ? "assigned_task" : "case_workspace",
+      return Object.freeze({ audience: isTaskOnly(input) ? "assigned_task" : "case_workspace",
         task: view(row, input, rules) });
     });
   }
 
   options(input: Parameters<TaskWorkspaceRepository["options"]>[0]): Promise<TaskOptionsView | null> {
-    return this.run(input, async (tx) => {
-      await assertActor(tx, input); if (input.actorRole === "contractor") forbidden();
+    return this.run(input, async (tx, input) => {
+      await assertActor(tx, input); if (isTaskOnly(input)) forbidden();
       const serviceCase = await lockCase(tx, input, input.caseId, false); if (!serviceCase) return null;
       if (!isWritableCase(serviceCase) || !canCreateForCase(serviceCase, input)) return null;
       const result = await tx.query<AssigneeRow>(`SELECT binding.id,binding.user_id,binding.role
@@ -87,10 +90,13 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
         JOIN access_organization_memberships AS membership ON membership.id=binding.membership_id
           AND membership.organization_id=binding.organization_id AND membership.user_id=binding.user_id
         JOIN identity_users AS actor ON actor.id=binding.user_id
-        WHERE binding.role IN ('advisor','contractor') AND binding.status='active'
+        WHERE (($1::boolean AND binding.role='l3' AND EXISTS (
+            SELECT 1 FROM access_trial_members t WHERE t.user_id=binding.user_id AND t.organization_id=binding.organization_id
+              AND t.level='l3' AND t.status='active')) OR (NOT $1::boolean AND binding.role IN ('advisor','contractor')))
+          AND binding.status='active'
           AND membership.status='active' AND actor.status='active'
         ORDER BY binding.role,
-          RIGHT(binding.id::text,8),binding.user_id LIMIT 100`);
+          RIGHT(binding.id::text,8),binding.user_id LIMIT 100`,[!!input.trialPrincipal]);
       return Object.freeze({ assignees: Object.freeze(
         result.rows.map(assigneeView).sort(compareAssigneeViews),
       ) });
@@ -98,7 +104,7 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
   }
 
   create(input: Parameters<TaskWorkspaceRepository["create"]>[0]): Promise<TaskAcknowledgement> {
-    return this.run(input, async (tx) => {
+    return this.run(input, async (tx, input) => {
       const replay = await claimReceipt(tx, input, CREATE_OPERATION);
       const serviceCase = await lockCase(tx, input, input.caseId, true);
       if (!serviceCase || !isReadableCreateCase(serviceCase)) notFound();
@@ -107,26 +113,55 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       if (replay) return replay;
       if (serviceCase.workflow_status !== "active") conflict();
       await assertApprovedPolicy(tx);
-      const assignee = await lockAssignee(tx, input.assigneeUserId); if (!assignee) notFound();
+      const assignee = await lockAssignee(tx, input.assigneeUserId,input,serviceCase); if (!assignee) notFound();
       await tx.query(`INSERT INTO tasks_tasks
         (id,organization_id,service_case_id,title,task_brief,due_at,state,assignee_user_id,
          assignee_role,assignee_redaction_profile,owner_user_id,record_version)
         VALUES ($1,$2,$3,$4,$5,$6,'assigned',$7,$8,$9,$10,1)`,
       [input.taskId,input.organizationId,input.caseId,input.title,input.taskBrief,input.dueAt,
-        assignee.user_id,assignee.role,assignee.role === "contractor" ? "task_only" : null,serviceCase.primary_user_id]);
+        assignee.user_id,assignee.role,["contractor","l3"].includes(assignee.role) ? "task_only" : null,serviceCase.primary_user_id]);
       await tx.query(`INSERT INTO tasks_task_assignments
         (id,organization_id,task_id,assignee_user_id,assignee_role,redaction_profile,assigned_by_user_id,status,reason)
         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,'assigned','initial_assignment')`,
       [input.organizationId,input.taskId,assignee.user_id,assignee.role,
-        assignee.role === "contractor" ? "task_only" : null,input.actorUserId]);
+        ["contractor","l3"].includes(assignee.role) ? "task_only" : null,input.actorUserId]);
       const result = Object.freeze({ id: input.taskId, recordVersion: 1 });
       await appendAtomicMutationEffects(tx, input.effects); this.hooks.failBeforeCommit?.("create");
       await completeReceipt(tx, input, CREATE_OPERATION, result); return result;
     });
   }
 
+  revokeCompletedAssignment(input:Parameters<TaskWorkspaceRepository["revokeCompletedAssignment"]>[0]):Promise<TaskAcknowledgement> {
+    return this.run(input,async(tx,input)=>{
+      const operation="tasks.revoke_assignment";
+      const replay=await claimReceipt(tx,input,operation);
+      const caseId=await locateTaskCase(tx,input.taskId);
+      if (!caseId) notFound();
+      const serviceCase=await lockCase(tx,input,caseId,true);
+      await assertActor(tx,input);
+      if (!input.trialPrincipal || !serviceCase || !canCreateForCase(serviceCase,input)) forbidden();
+      const task=(await selectVisibleTasks(tx,input,null,input.taskId,true))[0];
+      if (!task) notFound();
+      if (replay) return replay;
+      if (version(task.record_version)!==input.expectedRecordVersion) stale();
+      if (task.state!=="completed" || task.current_assignment_id!==input.assignmentId || task.current_assignment_role!=="l3") conflict();
+      const assignment=await tx.query(`UPDATE tasks_task_assignments SET status='removed',ended_at=GREATEST(clock_timestamp(),updated_at),
+        ended_by_user_id=$3,end_reason=$4,record_version=record_version+1,updated_at=GREATEST(clock_timestamp(),updated_at)
+        WHERE id=$1 AND task_id=$2 AND ended_at IS NULL AND assignee_role='l3'`,[input.assignmentId,input.taskId,input.actorUserId,input.reason]);
+      if (assignment.rowCount!==1) conflict();
+      const updated=await tx.query(`UPDATE tasks_tasks SET record_version=record_version+1,updated_at=GREATEST(clock_timestamp(),updated_at)
+        WHERE id=$1 AND record_version=$2 AND state='completed'`,[input.taskId,input.expectedRecordVersion]);
+      if (updated.rowCount!==1) stale();
+      await appendAtomicMutationEffects(tx,input.effects);
+      this.hooks.failBeforeCommit?.("revoke_assignment");
+      const result=Object.freeze({id:input.taskId,recordVersion:input.expectedRecordVersion+1});
+      await completeReceipt(tx,input,operation,result);
+      return result;
+    });
+  }
+
   transition(input: Parameters<TaskWorkspaceRepository["transition"]>[0]): Promise<TaskAcknowledgement> {
-    return this.run(input, async (tx) => {
+    return this.run(input, async (tx, input) => {
       const replay = await claimReceipt(tx, input, TRANSITION_OPERATION);
       const caseId = await locateTaskCase(tx, input.taskId);
       if (!caseId) notFound();
@@ -140,13 +175,14 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       if (task.task_kind !== "manual") forbidden();
       await lockTaskAssignments(tx, task.id);
       if (replay) return replay;
+      if (serviceCase.workflow_status !== "active") conflict();
       if (version(task.record_version) !== input.expectedRecordVersion) stale();
       const rules = await loadApprovedRules(tx, true); const rule = rules.find((candidate) =>
         candidate.from === task.state && candidate.to === input.to && canActorUseRule(candidate, task, input));
       if (!rule) conflict();
       if (rule.requiresReason && input.reason === "") invalid();
       let nextAssignee: AssigneeRow | null = null;
-      if (input.to === "assigned") { nextAssignee = input.nextAssigneeUserId ? await lockAssignee(tx, input.nextAssigneeUserId) : null;
+      if (input.to === "assigned") { nextAssignee = input.nextAssigneeUserId ? await lockAssignee(tx, input.nextAssigneeUserId,input,serviceCase) : null;
         if (!nextAssignee) notFound(); }
       await tx.query(`INSERT INTO tasks_task_transition_receipts
         (id,organization_id,task_id,from_state,to_state,actor_user_id,actor_role,
@@ -159,7 +195,7 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
         assignee_user_id=COALESCE($3,assignee_user_id),
         assignee_role=COALESCE($4,assignee_role),
         assignee_redaction_profile=CASE WHEN $3::uuid IS NULL THEN assignee_redaction_profile
-          WHEN $4='contractor' THEN 'task_only' ELSE NULL END,
+          WHEN $4 IN ('contractor','l3') THEN 'task_only' ELSE NULL END,
         approver_user_id=CASE WHEN $2='approved' THEN $5 ELSE approver_user_id END,
         owner_user_id=$9,
         last_transition_actor_user_id=$5,last_transition_receipt_id=$6,last_transition_reason=$7,
@@ -168,20 +204,38 @@ export class PostgresqlTaskWorkspaceRepository implements TaskWorkspaceRepositor
       [input.taskId,input.to,nextAssignee?.user_id ?? null,nextAssignee?.role ?? null,
         input.actorUserId,input.receiptId,input.reason || null,input.expectedRecordVersion,task.primary_user_id]);
       if (updated.rowCount !== 1) stale();
+      if (input.trialPrincipal && task.current_assignment_id) {
+        if (input.to === "accepted") {
+          await tx.query(`UPDATE tasks_task_assignments SET status='accepted',accepted_at=clock_timestamp(),
+            record_version=record_version+1,updated_at=clock_timestamp() WHERE id=$1`,[task.current_assignment_id]);
+        } else if (["awaiting_reassignment","cancelled","assigned"].includes(input.to)) {
+          const status = input.to === "cancelled" ? "cancelled" : input.to === "assigned" ? "reassigned"
+            : task.assignee_user_id === input.actorUserId ? "rejected" : "removed";
+          await tx.query(`UPDATE tasks_task_assignments SET status=$2,ended_at=clock_timestamp(),
+            ended_by_user_id=$3,end_reason=$4,record_version=record_version+1,updated_at=clock_timestamp() WHERE id=$1`,
+          [task.current_assignment_id,status,input.actorUserId,input.reason]);
+        }
+      }
       if (nextAssignee) await tx.query(`INSERT INTO tasks_task_assignments
         (id,organization_id,task_id,assignee_user_id,assignee_role,redaction_profile,assigned_by_user_id,status,reason)
         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,'reassigned',$7)`,
       [input.organizationId,input.taskId,nextAssignee.user_id,nextAssignee.role,
-        nextAssignee.role === "contractor" ? "task_only" : null,input.actorUserId,input.reason]);
+        ["contractor","l3"].includes(nextAssignee.role) ? "task_only" : null,input.actorUserId,input.reason]);
       const result = Object.freeze({ id: input.taskId, recordVersion: input.expectedRecordVersion + 1 });
       await appendAtomicMutationEffects(tx, input.effects); this.hooks.failBeforeCommit?.("transition");
       await completeReceipt(tx, input, TRANSITION_OPERATION, result); return result;
     });
   }
 
-  private run<T>(input: TaskActorContext, operation: (tx: Db) => Promise<T>): Promise<T> {
+  private run<T, Input extends TaskActorContext>(input: Input, operation: (tx: Db, actor: Input) => Promise<T>): Promise<T> {
     return this.runner.run({ organizationId: input.organizationId, actorUserId: input.actorUserId }, async (tenantTx) => {
-      try { return await operation(adapt(tenantTx)); } catch (cause) {
+      try {
+        const tx = adapt(tenantTx);
+        const principal = await loadTrialPrincipal(tx,{ organizationId:input.organizationId,userId:input.actorUserId,lock:true });
+        if (principal && (!principal.active || principal.level !== input.actorRole)) forbidden();
+        if (!principal && ["l1","l2","l3"].includes(input.actorRole)) forbidden();
+        return await operation(tx,{ ...input,trialPrincipal:principal ?? undefined });
+      } catch (cause) {
         if (isTaskWorkspaceError(cause)) throw cause;
         const constraint = postgresConstraint(cause);
         if (constraint === "tasks_transition_receipt_version_check") stale();
@@ -203,7 +257,7 @@ async function assertActor(tx: Db, input: TaskActorContext): Promise<void> {
 }
 async function lockCase(tx: Db, input: TaskActorContext, caseId: string, update: boolean): Promise<CaseRow | null> {
   const result = await tx.query<CaseRow>(`SELECT service_case.id,service_case.primary_user_id,service_case.primary_role,
-      service_case.stage,service_case.workflow_status,student.status AS student_status
+      service_case.stage,service_case.workflow_status,service_case.business_category,student.status AS student_status
     FROM cases_service_cases AS service_case
     JOIN crm_students AS student ON student.id=service_case.student_id AND student.organization_id=service_case.organization_id
     WHERE service_case.id=$1 ${update
@@ -221,9 +275,9 @@ async function locateTaskCase(tx: Db, taskId: string): Promise<string | null> {
 async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: string | null, taskId: string | null, update: boolean): Promise<readonly TaskRow[]> {
   const result = await tx.query<TaskRow>(`SELECT task.id,task.service_case_id,service_case.case_number,task.title,
       task.school_target_id,task.task_kind,task.task_brief,task.due_at,task.state,task.assignee_user_id,task.assignee_role,
-      task.assignee_redaction_profile,assignee_binding.id AS assignee_binding_id,task.owner_user_id,
+      task.assignee_redaction_profile,COALESCE(assignee_binding.id,task.assignee_user_id) AS assignee_binding_id,task.owner_user_id,
       service_case.primary_user_id,service_case.primary_role,task.record_version,task.updated_at,
-      student.status AS student_status,service_case.stage AS case_stage,
+      student.status AS student_status,service_case.stage AS case_stage,service_case.workflow_status AS case_workflow_status,
       (task.due_at < transaction_timestamp() AND task.state NOT IN ('completed','cancelled','rejected')) AS is_overdue,
       current_assignment.id AS current_assignment_id,
       current_assignment.assignee_user_id AS current_assignment_user_id,
@@ -231,7 +285,7 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
       current_assignment.status AS current_assignment_status
     FROM tasks_tasks AS task JOIN cases_service_cases AS service_case ON service_case.id=task.service_case_id
     JOIN crm_students AS student ON student.id=service_case.student_id AND student.organization_id=service_case.organization_id
-    JOIN access_role_bindings AS assignee_binding ON assignee_binding.user_id=task.assignee_user_id
+    LEFT JOIN access_role_bindings AS assignee_binding ON assignee_binding.user_id=task.assignee_user_id
       AND assignee_binding.organization_id=task.organization_id AND assignee_binding.role=task.assignee_role
       AND assignee_binding.status='active'
     LEFT JOIN LATERAL (
@@ -242,7 +296,14 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
        ORDER BY assignment.created_at DESC,assignment.id DESC LIMIT 1
     ) AS current_assignment ON true
     WHERE ($1::uuid IS NULL OR task.service_case_id=$1) AND ($2::uuid IS NULL OR task.id=$2)
-      AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
+      AND (CASE WHEN $5::boolean THEN
+        service_case.business_category IN ('international_school','local_school') AND (
+          $3 IN ('founder','l1') OR ($3='l2' AND service_case.business_category=ANY($6::text[]))
+          OR ($3='l3' AND task.assignee_user_id=$4 AND task.assignee_role='l3'
+            AND task.assignee_redaction_profile='task_only' AND task.state IN ('assigned','accepted','completed')
+            AND student.status='active' AND current_assignment.assignee_user_id=$4
+            AND current_assignment.assignee_role='l3' AND current_assignment.status IN ('assigned','accepted','reassigned')))
+        ELSE (assignee_binding.id IS NOT NULL AND ($3='founder' OR ($3='advisor' AND (task.assignee_user_id=$4 OR service_case.primary_user_id=$4))
         OR ($3='contractor' AND task.assignee_user_id=$4 AND task.assignee_role='contractor'
           AND task.assignee_redaction_profile='task_only'
           AND task.state NOT IN ('completed','cancelled','rejected')
@@ -260,9 +321,9 @@ async function selectVisibleTasks(tx: Db, input: TaskActorContext, caseId: strin
                 WHERE latest_assignment.task_id=task.id
                   AND latest_assignment.organization_id=task.organization_id
                 ORDER BY latest_assignment.created_at DESC,latest_assignment.id DESC
-                LIMIT 1))))
+                LIMIT 1))))) END)
     ORDER BY task.updated_at DESC,task.id ${update ? "FOR UPDATE OF task" : ""}`,
-  [caseId,taskId,input.actorRole,input.actorUserId]); return result.rows;
+  [caseId,taskId,input.actorRole,input.actorUserId,!!input.trialPrincipal,input.trialPrincipal?.categories ?? []]); return result.rows;
 }
 async function lockTaskAssignments(tx: Db, taskId: string): Promise<void> {
   await tx.query(
@@ -274,7 +335,16 @@ async function lockTaskAssignments(tx: Db, taskId: string): Promise<void> {
     [taskId],
   );
 }
-async function lockAssignee(tx: Db, userId: string): Promise<AssigneeRow | null> {
+async function lockAssignee(tx: Db, userId: string, actor: TaskActorContext, serviceCase: CaseRow): Promise<AssigneeRow | null> {
+  if (actor.trialPrincipal) {
+    const recipient = await loadTrialPrincipal(tx,{ organizationId:actor.organizationId,userId,lock:true });
+    if (!recipient || !evaluateTrialTaskAssignment({ actor:actor.trialPrincipal,recipient,resource:{
+      organizationId:actor.organizationId,category:serviceCase.business_category,
+    } }).allowed) return null;
+    const selected = await tx.query<AssigneeRow>(`SELECT id,user_id,role FROM access_role_bindings
+      WHERE organization_id=$1 AND user_id=$2 AND role='l3' AND status='active' FOR SHARE`,[actor.organizationId,userId]);
+    return selected.rows.length === 1 ? selected.rows[0]! : null;
+  }
   const result = await tx.query<AssigneeRow>(`SELECT binding.id,binding.user_id,binding.role
     FROM access_role_bindings AS binding JOIN access_organization_memberships AS membership
       ON membership.id=binding.membership_id AND membership.status='active'
@@ -299,6 +369,9 @@ function isWritableCase(row: CaseRow): boolean {
   return isReadableCreateCase(row) && row.workflow_status === "active";
 }
 function canCreateForCase(row: CaseRow, actor: TaskActorContext): boolean {
+  if (actor.trialPrincipal) return evaluateTrialAccess(actor.trialPrincipal,"task.assign",{
+    organizationId:actor.organizationId,category:row.business_category,
+  }).allowed;
   return actor.actorRole === "founder" ||
     (actor.actorRole === "advisor" && row.primary_role === "advisor" &&
       row.primary_user_id === actor.actorUserId);
@@ -309,8 +382,9 @@ function isReadableCreateCase(row: CaseRow): boolean {
 function isWritableTask(row: TaskRow): boolean { return row.case_stage !== "closed" && row.student_status === "active"; }
 function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransitionRule[]): TaskView {
   const transitionsByState = new Map<TaskState, AvailableTaskTransitionView>();
+  const writable=row.case_workflow_status === "active" && isWritableTask(row);
   for (const rule of rules) {
-    if (rule.from !== row.state || !canActorUseRule(rule, row, actor)) continue;
+    if (!writable || rule.from !== row.state || !canActorUseRule(rule, row, actor)) continue;
     if (!transitionsByState.has(rule.to)) {
       transitionsByState.set(rule.to, Object.freeze({
         to: rule.to,
@@ -329,20 +403,24 @@ function view(row: TaskRow, actor: TaskActorContext, rules: readonly TaskTransit
   const contractorCanOperate = actor.actorRole === "contractor" &&
     currentAssignment?.assigneeUserId === actor.actorUserId &&
     ["application_prepare_submit", "interview_support", "manual"].includes(row.task_kind);
-  const allowedActions = actor.actorRole === "contractor" && !contractorCanOperate
+  const trialManager=!!actor.trialPrincipal && ["founder","l1","l2"].includes(actor.actorRole);
+  const allowedActions = !writable || (actor.actorRole === "contractor" && !contractorCanOperate)
     ? Object.freeze([]) : Object.freeze([
     ...(row.state === "assigned" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["accept", "reject"] as const : []),
     ...(row.state === "accepted" && currentAssignment?.assigneeUserId === actor.actorUserId ? ["complete"] as const : []),
-    ...(actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&
+    ...(trialManager && ["assigned","accepted","awaiting_reassignment"].includes(row.state) ? ["reassign"] as const : []),
+    ...(!trialManager && actor.actorRole === "advisor" && row.state === "assigned" && currentAssignment === null &&
         row.task_kind === "application_prepare_submit" && row.primary_user_id === actor.actorUserId ? ["reassign"] as const : []),
-    ...(row.primary_user_id === actor.actorUserId && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
+    ...((trialManager ? currentAssignment!==null : row.primary_user_id === actor.actorUserId) && !["completed", "cancelled", "rejected"].includes(row.state) ? ["cancel"] as const : []),
   ]);
+  const permittedActions=trialManager && row.state==="completed" && currentAssignment?.assigneeRole==="l3"
+    ? Object.freeze(["revoke_access"] as const) : allowedActions;
   const base = { id: row.id,title: row.title,taskBrief: row.task_brief,dueAt: new Date(row.due_at).toISOString(),
     state: row.state,recordVersion: version(row.record_version),updatedAt: new Date(row.updated_at).toISOString(),
     availableTransitions: Object.freeze(transitions), taskKind: row.task_kind,
     schoolTargetId: row.school_target_id ?? null, isOverdue: row.is_overdue === true,
-    currentAssignment, allowedActions };
-  if (actor.actorRole === "contractor") return Object.freeze(base);
+    currentAssignment, allowedActions:permittedActions };
+  if (isTaskOnly(actor)) return Object.freeze(base);
   return Object.freeze({ ...base,caseId: row.service_case_id,caseNumber: row.case_number,
     assignee: assigneeView({ id: row.assignee_binding_id,user_id: row.assignee_user_id,role: row.assignee_role }) });
 }
@@ -352,13 +430,19 @@ function canActorUseRule(
   task: TaskRow,
   actor: TaskActorContext,
 ): boolean {
+  if (actor.trialPrincipal) {
+    if (actor.actorRole === "l3") return rule.actorKind === "assignee" && task.assignee_user_id === actor.actorUserId
+      && task.current_assignment_user_id === actor.actorUserId && task.current_assignment_id !== null;
+    return ["founder","l1","l2"].includes(actor.actorRole) && (rule.actorKind === "owner" || rule.actorKind === "assignee");
+  }
   if (!rule.allowedActorRoles.includes(actor.actorRole)) return false;
   if (rule.actorKind === "assignee") return task.assignee_user_id === actor.actorUserId;
   if (rule.actorKind === "owner") return task.primary_user_id === actor.actorUserId;
   return actor.actorRole === "founder" && task.assignee_user_id !== actor.actorUserId;
 }
+function isTaskOnly(actor: TaskActorContext): boolean { return actor.actorRole === "contractor" || actor.actorRole === "l3"; }
 function assigneeView(row: AssigneeRow) { return Object.freeze({ id: row.user_id,role: row.role,
-  label: `${row.role === "advisor" ? "Advisor" : "Contractor"} · ${row.id.slice(-8)}` }); }
+  label: `${row.role === "advisor" ? "Advisor" : row.role === "contractor" ? "Contractor" : row.role.toUpperCase()} · ${row.id.slice(-8)}` }); }
 function compareAssigneeViews(left: TaskAssigneeView, right: TaskAssigneeView) {
   return left.role.localeCompare(right.role) ||
     left.label.localeCompare(right.label) ||

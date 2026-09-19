@@ -1,4 +1,7 @@
 import "server-only";
+import {findPotentialDuplicateCandidatesInTransaction} from './postgresql-potential-duplicate-repository.ts';
+import {canonicalPotentialDuplicateFieldsHash,verifyPotentialDuplicateWarningToken} from './potential-duplicate-token-codec.ts';
+import {resolveTrialStudentScope,resolveTrialStudentAuthorization} from "./trial-student-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { IdempotencyExecutionError, runIdempotentTransaction } from "../../shared/server.ts";
@@ -72,9 +75,19 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   }
 
   listCurrent(input: Parameters<GuardianRelationshipRepository["listCurrent"]>[0]) {
-    return this.run(input, (transaction) => listCurrent(transaction, input.studentId));
+    return this.run(input, async (transaction,tenantTransaction) => {
+      const visible=await resolveTrialStudentScope(tenantTransaction,input);
+      if(visible!==null&&!visible.includes(input.studentId))return null;
+      return listCurrent(transaction,input.studentId);
+    });
   }
-  listHistory(input: Parameters<GuardianRelationshipRepository["listHistory"]>[0]) { return this.run(input, tx => listHistory(tx, input.organizationId, input.studentId)); }
+  listHistory(input: Parameters<GuardianRelationshipRepository["listHistory"]>[0]) {
+    return this.run(input,async(transaction,tenantTransaction)=>{
+      const visible=await resolveTrialStudentScope(tenantTransaction,input);
+      if(visible!==null&&!visible.includes(input.studentId))return null;
+      return listHistory(transaction,input.organizationId,input.studentId);
+    });
+  }
 
   endRelationship(input: Parameters<GuardianRelationshipRepository["endRelationship"]>[0]): Promise<EndGuardianRelationshipResult> {
     const context = {
@@ -92,7 +105,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
         actorKind: "user", actorOpaqueId: input.actorUserId, operation: END_OPERATION,
         key: input.command.idempotencyKey, requestHash: input.requestHash, createdAt: input.occurredAt,
       },
-      revalidate: (transaction) => assertActiveGuardianManager(adaptTransaction(transaction), input.organizationId, input.actorUserId),
+      revalidate: async (transaction) => { await assertActiveGuardianManager(adaptTransaction(transaction),transaction,{...input,studentId:input.command.studentId}); },
       execute: async (transaction) => {
         const value = await endRelationshipInTransaction(transaction, input);
         await appendAtomicMutationEffects(adaptTransaction(transaction), input.effects);
@@ -104,6 +117,7 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
     }).then(async (result) => {
       if (result.status === "executed") return result.value;
       return this.runner.run(context, async (transaction) => {
+        await assertActiveGuardianManager(adaptTransaction(transaction),transaction,{...input,studentId:input.command.studentId});
         const value = await selectEndedRelationship(transaction, input);
         if (!value || value.relationshipId !== result.resultReference ||
             hashRequestPayload(endReceiptJson(value)) !== result.responseHash) {
@@ -127,8 +141,8 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   }
 
   searchGuardians(input: Parameters<GuardianRelationshipRepository["searchGuardians"]>[0]) {
-    return this.run(input, async (transaction) => {
-      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
+    return this.run(input, async (transaction,tenantTransaction) => {
+      const visible=await assertActiveGuardianManager(transaction,tenantTransaction,input);
       const student = await lockActiveStudent(transaction, input.studentId, false);
       if (!student) return null;
       const result = await transaction.query<GuardianHintRow>(
@@ -146,6 +160,11 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
                 END AS phone_hint
            FROM crm_guardians AS guardian
           WHERE guardian.status = 'active'
+            AND ($3::uuid[] IS NULL OR EXISTS (SELECT 1 FROM crm_student_guardian_relationships scope_relation
+              JOIN crm_students scope_student ON scope_student.id=scope_relation.student_id AND scope_student.organization_id=scope_relation.organization_id
+              WHERE scope_relation.guardian_id=guardian.id AND scope_relation.organization_id=guardian.organization_id
+                AND scope_relation.ends_at IS NULL AND scope_relation.student_id=ANY($3::uuid[])
+                AND scope_student.status IN ('active','pending_delete')))
             AND (position(lower($2) IN lower(guardian.display_name)) > 0
               OR position(lower($2) IN lower(coalesce(guardian.email, ''))) > 0
               OR position(lower($2) IN lower(coalesce(guardian.phone, ''))) > 0)
@@ -157,23 +176,44 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
             )
           ORDER BY lower(guardian.display_name) COLLATE "C", guardian.id
           LIMIT 20`,
-        [input.studentId, input.query],
+        [input.studentId, input.query, visible],
       );
       return Object.freeze(result.rows.map(toGuardianHint));
     });
   }
 
   createRelationship(input: Parameters<GuardianRelationshipRepository["createRelationship"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,tenantTransaction) => {
       const receipt = await claimReceipt(transaction, input, ATTACH_OPERATION);
-      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
+      const visible=await assertActiveGuardianManager(transaction,tenantTransaction,input);
       if (receipt.replayReference) {
         const replay = await selectRelationship(transaction, receipt.replayReference);
         if (!replay) throw error("GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS");
-        return replay;
+        // Ending a relationship advances its stored version, not this original creation receipt.
+        return Object.freeze({...replay,recordVersion:1});
       }
       if (!await lockActiveStudent(transaction, input.studentId, true)) {
         throw error("GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND");
+      }
+      if(input.newGuardian){
+        const guardian=input.newGuardian;
+        const fields={name:guardian.displayName,email:guardian.email,phone:guardian.phone};
+        const entries=Object.entries(fields).filter((entry):entry is [string,string]=>entry[1]!==null).sort(([a],[b])=>a.localeCompare(b));
+        for(const [field,value] of entries){
+          const single=field==='name'?{name:value,email:null,phone:null}:field==='email'?{name:null,email:value,phone:null}:{name:null,email:null,phone:value};
+          await tenantTransaction.query({text:'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',values:[`${input.organizationId}:guardian:${field}:${canonicalPotentialDuplicateFieldsHash(single)}`]});
+        }
+        const found=await findPotentialDuplicateCandidatesInTransaction(tenantTransaction,{organizationId:input.organizationId,actorUserId:input.actorUserId,kind:'guardian',...fields},true);
+        if(found.candidates.length>0&&(!guardian.warningToken||!verifyPotentialDuplicateWarningToken(guardian.warningToken,{org:input.organizationId,actor:input.actorUserId,kind:'guardian',fieldsHash:canonicalPotentialDuplicateFieldsHash(fields),candidateVersion:found.candidateVersion})))throw error('GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED');
+        await transaction.query(`INSERT INTO crm_guardians(id,organization_id,display_name,email,phone,date_of_birth,gender,status)
+          VALUES ($1,$2,$3,$4,$5,$6::date,$7,'active')`,[input.guardianId,input.organizationId,guardian.displayName,guardian.email,guardian.phone,guardian.dateOfBirth,guardian.gender]);
+      } else if (visible!==null) {
+        const allowed=await transaction.query(`SELECT scope_relation.id FROM crm_student_guardian_relationships scope_relation
+          JOIN crm_students scope_student ON scope_student.id=scope_relation.student_id AND scope_student.organization_id=scope_relation.organization_id
+          WHERE scope_relation.organization_id=$1 AND scope_relation.guardian_id=$2 AND scope_relation.ends_at IS NULL
+            AND scope_relation.student_id=ANY($3::uuid[]) AND scope_student.status IN ('active','pending_delete')
+          ORDER BY scope_relation.id FOR SHARE OF scope_relation`,[input.organizationId,input.guardianId,visible]);
+        if(allowed.rows.length===0)throw error("GUARDIAN_RELATIONSHIP_GUARDIAN_NOT_FOUND");
       }
       if (!await lockActiveGuardian(transaction, input.guardianId)) {
         throw error("GUARDIAN_RELATIONSHIP_GUARDIAN_NOT_FOUND");
@@ -208,13 +248,13 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
   }
 
   handoffPrimaryContact(input: Parameters<GuardianRelationshipRepository["handoffPrimaryContact"]>[0]) {
-    return this.run(input, async (transaction) => {
+    return this.run(input, async (transaction,tenantTransaction) => {
       const receipt = await claimReceipt(transaction, input, HANDOFF_OPERATION);
-      await assertActiveGuardianManager(transaction, input.organizationId, input.actorUserId);
+      await assertActiveGuardianManager(transaction,tenantTransaction,input);
       if (receipt.replayReference) {
         const replay = await selectHandoff(transaction, receipt.replayReference);
         if (!replay) throw error("GUARDIAN_RELATIONSHIP_IDEMPOTENCY_IN_PROGRESS");
-        return replay;
+        return Object.freeze({...replay,relationship:Object.freeze({...replay.relationship,recordVersion:input.expectedPrimaryRecordVersion+1})});
       }
       if (!await lockActiveStudent(transaction, input.studentId, true)) {
         throw error("GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND");
@@ -257,6 +297,13 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
           input.actorUserId, input.reason],
       );
       if (closed.rowCount !== 2) throw error("GUARDIAN_RELATIONSHIP_STALE_VERSION");
+      await transaction.query(`INSERT INTO crm_student_guardian_relationships
+        (id,organization_id,student_id,guardian_id,relationship_type,relationship_description,is_legal_guardian,
+         is_primary_contact,is_emergency_contact,is_billing_contact,notification_consent,starts_at,record_version,created_at,updated_at)
+        VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,false,$7,$8,$9,$10,$11,$10,$10)`,
+        [input.organizationId,input.studentId,primary.guardian_id,primary.relationship_type,primary.relationship_description,
+          primary.is_legal_guardian,primary.is_emergency_contact,primary.is_billing_contact,primary.notification_consent,
+          timestamp,toVersion(primary.record_version)+1]);
       const nextVersion = input.expectedPrimaryRecordVersion + 1;
       const inserted = await transaction.query<RelationshipRow>(
         `INSERT INTO crm_student_guardian_relationships
@@ -289,11 +336,11 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
 
   private run<Result>(
     input: { readonly organizationId: string; readonly actorUserId: string },
-    operation: (transaction: CrmTransaction) => Promise<Result>,
+    operation: (transaction: CrmTransaction, tenantTransaction: TenantTransaction) => Promise<Result>,
   ): Promise<Result> {
     return this.runner.run({ organizationId: input.organizationId, actorUserId: input.actorUserId }, async (tenantTransaction) => {
       try {
-        return await operation(adaptTransaction(tenantTransaction));
+        return await operation(adaptTransaction(tenantTransaction),tenantTransaction);
       } catch (cause) {
         if (cause instanceof GuardianRelationshipError) throw cause;
         const postgresCode = readConcurrencyPostgresCode(cause);
@@ -389,7 +436,7 @@ async function endRelationshipInTransaction(
   if (!relationship) throw error("GUARDIAN_RELATIONSHIP_NOT_FOUND");
   if (toVersion(relationship.record_version) !== input.command.expectedRecordVersion) throw error("GUARDIAN_RELATIONSHIP_STALE_VERSION");
   if (relationship.is_primary_contact) throw error("GUARDIAN_RELATIONSHIP_PRIMARY_CANNOT_END");
-  const updated = await transaction.query<EndRelationshipRow>({ text: `UPDATE crm_student_guardian_relationships SET ends_at=$6, updated_at=$6, ended_by_user_id=$4, end_reason_code=$5, record_version=record_version+1 WHERE organization_id=$1 AND student_id=$2 AND id=$3 AND ends_at IS NULL AND record_version=$7 RETURNING id AS relationship_id, student_id, is_primary_contact, ends_at, record_version`, values: [input.organizationId, input.command.studentId, input.command.relationshipId, input.actorUserId, input.reason, input.occurredAt, input.command.expectedRecordVersion] });
+  const updated = await transaction.query<EndRelationshipRow>({ text: `UPDATE crm_student_guardian_relationships SET ends_at=GREATEST(clock_timestamp(),starts_at+interval '1 microsecond',updated_at,$6::timestamptz), updated_at=GREATEST(clock_timestamp(),starts_at+interval '1 microsecond',updated_at,$6::timestamptz), ended_by_user_id=$4, end_reason_code=$5, record_version=record_version+1 WHERE organization_id=$1 AND student_id=$2 AND id=$3 AND ends_at IS NULL AND record_version=$7 RETURNING id AS relationship_id, student_id, is_primary_contact, ends_at, record_version`, values: [input.organizationId, input.command.studentId, input.command.relationshipId, input.actorUserId, input.reason, input.occurredAt, input.command.expectedRecordVersion] });
   if (updated.rows.length !== 1) throw error("GUARDIAN_RELATIONSHIP_STALE_VERSION");
   return toEndResult(updated.rows[0]!, input.occurredAt);
 }
@@ -411,9 +458,15 @@ function endReceiptJson(value: EndGuardianRelationshipResult) {
 
 async function assertActiveGuardianManager(
   transaction: CrmTransaction,
-  organizationId: string,
-  actorUserId: string,
-): Promise<void> {
+  tenantTransaction: TenantTransaction,
+  input: {organizationId:string;actorUserId:string;studentId:string},
+): Promise<readonly string[]|null> {
+  const {organizationId,actorUserId}=input;
+  const scope=await resolveTrialStudentAuthorization(tenantTransaction,input);
+  if(scope.enrolled){
+    if(scope.studentIds!==null&&!scope.studentIds.includes(input.studentId))throw error("GUARDIAN_RELATIONSHIP_FORBIDDEN");
+    return scope.studentIds;
+  }
   const result = await transaction.query<{ binding_id: string }>(
     `SELECT binding.id AS binding_id
        FROM identity_users AS actor
@@ -430,6 +483,7 @@ async function assertActiveGuardianManager(
     [organizationId, actorUserId],
   );
   if (result.rows.length === 0) throw error("GUARDIAN_RELATIONSHIP_FORBIDDEN");
+  return null;
 }
 
 async function lockActiveStudent(

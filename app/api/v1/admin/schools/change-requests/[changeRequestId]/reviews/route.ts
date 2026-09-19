@@ -1,3 +1,5 @@
+import {requireApiRequestAccessContext} from "@/app/api/v1/request-access";
+import {getApplicationTenantRunner} from "@/modules/shared/server";
 import { cookies } from "next/headers";
 
 import { SESSION_COOKIE_NAME } from "@/modules/identity/server";
@@ -8,10 +10,10 @@ import {
   type ReviewSchoolChangeCommand,
 } from "@/modules/schools/server";
 import {
-  SchoolGovernanceRuntimeUnavailable,
-  getSchoolGovernanceRuntime,
+  PostgresqlSchoolReviewRepository,
+  reviewSchoolChange,
 } from "@/modules/schools/server";
-import { createApiError, handleApiRequest } from "@/modules/shared/public";
+import { ApiContractError, createApiError, handleApiRequest } from "@/modules/shared/public";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -27,8 +29,10 @@ export async function POST(request: Request, context: { readonly params: Promise
     const cookieSecret = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     if (!cookieSecret) throw createApiError("UNAUTHENTICATED");
     try {
-      const actor = await getIdentityRuntime().service.requireSession({ cookieSecret, sensitiveAction: true });
-      const result = await getSchoolGovernanceRuntime().service.reviewChangeRequest({ actor, changeRequestId, command });
+      const session = await getIdentityRuntime().service.requireSession({ cookieSecret, sensitiveAction: true });
+      const actor = await requireApiRequestAccessContext();
+      if(actor.userId!==session.userId||actor.organizationId!==session.organizationId)throw createApiError("FORBIDDEN");
+      const result = await reviewSchoolChange({ actor, changeRequestId, command },{repository:new PostgresqlSchoolReviewRepository(getApplicationTenantRunner())});
       return {
         change_request_id: result.changeRequestId,
         school_id: result.schoolId,
@@ -48,7 +52,7 @@ async function parseCommand(request: Request, requestId: string): Promise<Review
   if (!idempotencyKey || !IDEMPOTENCY_KEY.test(idempotencyKey)) throw createApiError("INVALID_REQUEST");
   let body: unknown;
   try { body = await request.json(); } catch { throw createApiError("INVALID_REQUEST"); }
-  if (!isRecord(body)) throw createApiError("INVALID_REQUEST");
+  if (!isRecord(body)||Object.keys(body).some(key=>!["decision","expected_record_version","reason"].includes(key))) throw createApiError("INVALID_REQUEST");
   if ((body.decision !== "approve" && body.decision !== "reject") || typeof body.expected_record_version !== "number" || typeof body.reason !== "string") {
     throw createApiError("VALIDATION_FAILED");
   }
@@ -56,7 +60,8 @@ async function parseCommand(request: Request, requestId: string): Promise<Review
 }
 
 function mapError(error: unknown) {
-  if (error instanceof IdentityRuntimeUnavailable || error instanceof SchoolGovernanceRuntimeUnavailable) return createApiError("SERVICE_UNAVAILABLE");
+  if(error instanceof ApiContractError)return error;
+  if (error instanceof IdentityRuntimeUnavailable) return createApiError("SERVICE_UNAVAILABLE");
   if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
   if (!(error instanceof SchoolGovernanceError)) return createApiError("SERVICE_UNAVAILABLE");
   switch (error.code) {

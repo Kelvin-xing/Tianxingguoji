@@ -27,6 +27,7 @@ export const WORKSPACE_NAVIGATION = Object.freeze([
   { href: "/schools", labelKey: "nav.schoolData", icon: "book-open", capability: "schools.read" },
   { href: "/tasks", labelKey: "nav.tasks", icon: "clipboard", capability: "tasks.read" },
   { href: "/documents", labelKey: "nav.documents", icon: "file-text", capability: "documents.read" },
+  { href: "/audit", labelKey: "nav.audit", icon: "activity", capability: "audit.read" },
 ] as const satisfies readonly WorkspaceNavigationItem[]);
 
 export const ADMIN_NAVIGATION = Object.freeze([
@@ -59,7 +60,7 @@ export function isContractorWorkspace(capabilities: readonly WorkspaceCapability
 }
 
 export function isOrganizationRole(value: unknown): value is OrganizationRole {
-  return value === "founder" || value === "admin" || value === "advisor" || value === "data_reviewer" || value === "contractor";
+  return value === "founder" || value === "admin" || value === "advisor" || value === "data_reviewer" || value === "contractor" || value === "l1" || value === "l2" || value === "l3";
 }
 
 /** Data Reviewer and crawler surfaces are retained only for historical compatibility, not Release 1 entry. */
@@ -84,7 +85,8 @@ export function nicknameInitial(nickname: string | null): string {
 }
 
 export function roleLabel(role: OrganizationRole): string {
-  if (role === "founder") return "Founder";
+  if (role === "founder") return "創始人";
+  if (role === "l1" || role === "l2" || role === "l3") return role.toUpperCase();
   if (role === "admin") return "Admin";
   if (role === "advisor") return "Advisor";
   if (role === "contractor") return "Contractor";

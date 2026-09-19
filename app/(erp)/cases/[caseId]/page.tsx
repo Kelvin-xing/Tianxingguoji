@@ -5,6 +5,7 @@ import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/
 import { CandidateListWorkspace } from '@/components/cases/CandidateListWorkspace'
 import { CaseWorkflowControls } from '@/components/cases/CaseStageControls'
 import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
+import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
 import { Icon } from '@/components/workspace/Icon'
@@ -13,7 +14,6 @@ import {
   CaseWorkspaceError,
   getCaseWorkspaceRuntime,
   type AssessmentView,
-  type CaseWorkspaceStage,
 } from '@/modules/cases/server'
 import { requireApiRequestAccessContext } from '@/app/api/v1/request-access'
 import { ApiContractError } from '@/modules/shared/public'
@@ -38,6 +38,9 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   }
   if (!record || !assessment) notFound()
   const { roles: actorRoles } = actor
+  const trialLevel = actor.trialPrincipal?.level
+  const canManageCandidateLists = trialLevel ? ['founder','l1','l2'].includes(trialLevel) : actorRoles.includes('advisor')
+  const canReviewCandidateLists = trialLevel ? ['founder','l1'].includes(trialLevel) : actorRoles.includes('founder')
   const canOpenPortalAccess = actorRoles.includes('founder') || actor.userId === record.primaryUserId
 
   return (
@@ -64,6 +67,10 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         <section className="workspace-section"><div className="mb-4"><h3 className="section-title">評估設定</h3><p className="section-detail">評估會沿用案件建立時核准的版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="評估編號" value={record.assessmentId} /><Info label="版本編號" value={record.manifestId} /><Info label="狀態" value={assessmentStatusLabel(assessment.status)} /></div></section>
       </div>
 
+      {canManageCandidateLists && <Link className="secondary-button" href={`/cases/${caseId}/interviews`}>登記及查看面試邀請</Link>}
+
+      <CaseReferralSourcePanel caseId={caseId} />
+
       <AssessmentEditor
         endpoint={`/api/v1/cases/${caseId}/assessment`}
         initialView={serializeAssessmentView(assessment)}
@@ -75,8 +82,8 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         initialCaseStage={record.stage}
         initialWorkflowStatus={record.workflowStatus}
         selectionReady={assessment.status === 'background_complete' || assessment.status === 'selection_ready'}
-        canManageCandidateLists={actorRoles.includes('advisor')}
-        canReviewCandidateLists={actorRoles.includes('founder')}
+        canManageCandidateLists={canManageCandidateLists}
+        canReviewCandidateLists={canReviewCandidateLists}
       />
 
     </div>

@@ -156,7 +156,7 @@ export class CandidateListQueryService {
 function authorize(actor: RequestAccessActor): void {
   if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) ||
       !hasRequestCapability(actor, "cases.workflow.manage") ||
-      (actor.roles?.includes("founder") !== true && actor.roles?.includes("advisor") !== true)) {
+      (!actor.trialPrincipal && actor.roles?.includes("founder") !== true && actor.roles?.includes("advisor") !== true)) {
     throw new CandidateListQueryError("CANDIDATE_LIST_QUERY_FORBIDDEN");
   }
 }

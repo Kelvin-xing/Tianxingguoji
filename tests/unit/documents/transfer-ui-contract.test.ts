@@ -43,7 +43,7 @@ test("DOC-02 upload control locks one file, exact MIME, hash, idempotency and au
   assert.match(transfer, /pollCaseDocumentUntilSettled/);
   assert.match(client, /DOCUMENT_SCAN_POLL_TIMEOUT_MS = 90_000/);
   assert.match(client, /globalThis\.crypto\.subtle\.digest\("SHA-256"/);
-  assert.match(client, /credentials: "omit"/);
+  assert.match(client, /credentials: "same-origin"/);
   assert.doesNotMatch(client, /["']content-length["']/i);
 });
 

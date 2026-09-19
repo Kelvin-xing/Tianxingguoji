@@ -34,6 +34,7 @@ test("abandonment locks authority and latest pending generation before two exact
     queries.push(query);
     if (query.text.includes("INSERT INTO shared_idempotency_records")) return rows([{ id: IDS.audit }]);
     if (query.text.includes("SELECT request_hash,state,result_reference")) return rows([]);
+    if (query.text.includes("FROM access_trial_members t")) return rows([]);
     if (query.text.includes("SELECT binding.role")) return rows([{ role: "founder" }]);
     if (query.text.includes("SELECT service_case.id")) {
       return rows([{ id: IDS.case, stage: "signed", student_status: "active" }]);
@@ -89,6 +90,7 @@ test("exact abandonment replay returns the first acknowledgement without repeate
         response_hash: hashRequestPayload({ id: IDS.version, record_version: 2 }),
       }]);
     }
+    if (query.text.includes("FROM access_trial_members t")) return rows([]);
     if (query.text.includes("SELECT binding.role")) return rows([{ role: "founder" }]);
     if (query.text.includes("SELECT service_case.id")) {
       return rows([{ id: IDS.case, stage: "signed", student_status: "active" }]);
@@ -120,7 +122,8 @@ test("a new abandonment key conflicts after receipt or prior abandonment wins", 
     const service = createService(runner(async (query) => {
       if (query.text.includes("INSERT INTO shared_idempotency_records")) return rows([{ id: IDS.audit }]);
       if (query.text.includes("SELECT request_hash,state,result_reference")) return rows([]);
-      if (query.text.includes("SELECT binding.role")) return rows([{ role: "founder" }]);
+      if (query.text.includes("FROM access_trial_members t")) return rows([]);
+    if (query.text.includes("SELECT binding.role")) return rows([{ role: "founder" }]);
       if (query.text.includes("SELECT service_case.id")) {
         return rows([{ id: IDS.case, stage: "signed", student_status: "active" }]);
       }

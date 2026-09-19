@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveTrialStudentAuthorization } from "./trial-student-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -43,13 +44,13 @@ export class PostgresqlProfileMaintenanceRepository implements ProfileMaintenanc
     return this.run(input, async (transaction) => {
       const receipt = await claimReceipt(transaction, input, STUDENT_OPERATION, input.studentId);
       const state = await readTargetState(transaction, "crm_students", input.studentId);
-      if (state === null || state === "purged") throw notFound();
+      if (state === null || (state === "deleted" || state === "purged")) throw notFound();
       await assertStudentAccess(transaction, input);
       if (receipt !== null) return receipt;
       if (state !== "active") throw inactive();
       const locked = await lockTarget(transaction, "crm_students", input.studentId);
       if (locked === null || locked.status !== "active") {
-        if (locked === null || locked.status === "purged") throw notFound();
+        if (locked === null || (locked.status === "deleted" || locked.status === "purged")) throw notFound();
         throw inactive();
       }
       if (locked.recordVersion !== input.expectedRecordVersion) throw stale();
@@ -75,13 +76,13 @@ export class PostgresqlProfileMaintenanceRepository implements ProfileMaintenanc
     return this.run(input, async (transaction) => {
       const receipt = await claimReceipt(transaction, input, GUARDIAN_OPERATION, input.guardianId);
       const state = await readTargetState(transaction, "crm_guardians", input.guardianId);
-      if (state === null || state === "purged") throw notFound();
+      if (state === null || (state === "deleted" || state === "purged")) throw notFound();
       await assertGuardianAccess(transaction, input, state);
       if (receipt !== null) return receipt;
       if (state !== "active") throw inactive();
       const locked = await lockTarget(transaction, "crm_guardians", input.guardianId);
       if (locked === null || locked.status !== "active") {
-        if (locked === null || locked.status === "purged") throw notFound();
+        if (locked === null || (locked.status === "deleted" || locked.status === "purged")) throw notFound();
         throw inactive();
       }
       if (locked.recordVersion !== input.expectedRecordVersion) throw stale();
@@ -210,8 +211,13 @@ async function lockTarget(
 
 async function assertStudentAccess(
   transaction: CrmTransaction,
-  input: { readonly actorRole: string; readonly actorUserId: string; readonly studentId: string },
+  input: { readonly organizationId: string; readonly actorRole: string; readonly actorUserId: string; readonly studentId: string },
 ): Promise<void> {
+  const trial = await resolveTrialStudentAuthorization(toTenantTransaction(transaction), input);
+  if (trial.enrolled) {
+    if (trial.studentIds === null || trial.studentIds.includes(input.studentId)) return;
+    throw forbidden();
+  }
   if (input.actorRole === "founder") return;
   if (input.actorRole !== "advisor") throw forbidden();
   const result = await transaction.query<{ id: string }>(
@@ -231,9 +237,22 @@ async function assertStudentAccess(
 
 async function assertGuardianAccess(
   transaction: CrmTransaction,
-  input: { readonly actorRole: string; readonly actorUserId: string; readonly guardianId: string },
+  input: { readonly organizationId: string; readonly actorRole: string; readonly actorUserId: string; readonly guardianId: string },
   guardianStatus: string,
 ): Promise<void> {
+  const trial = await resolveTrialStudentAuthorization(toTenantTransaction(transaction), input);
+  if (trial.enrolled) {
+    if (trial.studentIds === null) return;
+    if (trial.studentIds.length === 0) throw forbidden();
+    const relationship = await transaction.query(`SELECT relationship.id
+      FROM crm_student_guardian_relationships relationship
+      JOIN crm_students student ON student.id=relationship.student_id AND student.organization_id=relationship.organization_id
+      WHERE relationship.organization_id=$1 AND relationship.guardian_id=$2 AND relationship.ends_at IS NULL
+        AND relationship.student_id=ANY($3::uuid[]) AND student.status IN ('active','pending_delete')
+      ORDER BY relationship.id FOR SHARE OF relationship,student`, [input.organizationId,input.guardianId,trial.studentIds]);
+    if (relationship.rows.length === 0) throw forbidden();
+    return;
+  }
   if (input.actorRole === "founder") return;
   if (input.actorRole !== "advisor") throw forbidden();
   const result = await transaction.query<{ id: string }>(
@@ -287,6 +306,13 @@ interface CrmTransaction {
     text: string,
     values?: readonly unknown[],
   ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number }>;
+}
+
+function toTenantTransaction(transaction: CrmTransaction): TenantTransaction {
+  return {async query<Row>({text,values}:{text:string;values?:readonly unknown[]}) {
+    const result=await transaction.query(text,values);
+    return {rows:result.rows as readonly Row[],rowCount:result.rowCount};
+  }};
 }
 
 function adaptTransaction(transaction: TenantTransaction): CrmTransaction {

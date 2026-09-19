@@ -4,7 +4,7 @@ import {
   isUserDirectoryServiceError,
   isUserDirectoryRuntimeUnavailable,
 } from "@/modules/identity/server";
-import { createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
+import { ApiContractError, createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +15,12 @@ export async function GET(request: Request): Promise<Response> {
       const actor = await requireApiRequestAccessContext();
       const users = await getUserDirectoryRuntime().service.listUsers(actor);
       return {
+        invitation_model: actor.trialPrincipal ? "trial" : "legacy",
         can_invite_users: actor.roles.includes("founder"),
         total: users.length,
         users: users.map((user) => ({
           user_id: user.userId,
+          trial_level: user.trialLevel,
           email: user.normalizedEmail,
           user_status: user.userStatus,
           membership_status: user.membershipStatus,
@@ -36,6 +38,7 @@ export async function GET(request: Request): Promise<Response> {
         })),
       } satisfies JsonValue;
     } catch (error) {
+      if (error instanceof ApiContractError) throw error;
       if (isUserDirectoryServiceError(error, "FORBIDDEN")) {
         throw createApiError("FORBIDDEN");
       }

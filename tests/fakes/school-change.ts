@@ -20,11 +20,12 @@ interface StoredResult<Result> {
 
 interface StoredProvisionalSchool {
   readonly organizationId: string;
-  readonly identity: string;
-  readonly district: string;
-  readonly system: string;
-  readonly stage: string;
-  readonly reason: string;
+  readonly schoolNameZh: string | null;
+  readonly schoolNameEn: string | null;
+  readonly district: string | null;
+  readonly system: string | null;
+  readonly stage: string | null;
+  readonly reason: string | null;
   readonly officialWebsite: null;
 }
 
@@ -108,7 +109,8 @@ export class InMemorySchoolRepository implements SchoolRepository {
     const nextEffects = new Map(this.effects);
     nextProvisionals.set(input.schoolId, {
       organizationId: input.organizationId,
-      identity: input.identity,
+      schoolNameZh: input.schoolNameZh,
+      schoolNameEn: input.schoolNameEn,
       district: input.district,
       system: input.system,
       stage: input.stage,

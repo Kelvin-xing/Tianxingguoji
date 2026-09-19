@@ -12,6 +12,12 @@ test("interview task may use Contractor but completion never advances result", (
   assert.equal(canCreateTargetTask({ actor,kind: "interview_support",assigneeRole: "contractor",isPrimaryAdvisor: false,isCaseAdvisorCollaborator: false,targetState: "interview",workflowStatus: "active" }),true);
   assert.equal(canCompleteTargetTask({ actor,kind: "interview_support",isAssignee: true,targetState: "interview",hasSubmissionReceipt: false,hasEvidenceReference: false }),true);
 });
+test("interview task provisioning requires a school interview state", () => {
+  for (const targetState of ["candidate", "preparing", "submitted", "accepted", "rejected", "withdrawn"] as const) {
+    assert.equal(canCreateTargetTask({ actor, kind: "interview_support", assigneeRole: "advisor",
+      isPrimaryAdvisor: true, isCaseAdvisorCollaborator: false, targetState, workflowStatus: "active" }), false);
+  }
+});
 test("application completion requires submission receipt and evidence", () => {
   assert.equal(canCompleteTargetTask({ actor,kind: "application_prepare_submit",isAssignee: true,targetState: "preparing",hasSubmissionReceipt: true,hasEvidenceReference: true }),true);
   assert.equal(canCompleteTargetTask({ actor,kind: "application_prepare_submit",isAssignee: true,targetState: "preparing",hasSubmissionReceipt: false,hasEvidenceReference: true }),false);

@@ -531,6 +531,7 @@ implements DocumentObjectReceiptRepository, DocumentScanRepository {
       );
     } catch (error) {
       if (isDocumentObjectReceiptError(error)) throw error;
+      logScanDatabaseFailure(error);
       throw new DocumentObjectReceiptError("DOCUMENT_OBJECT_RECEIPT_UNAVAILABLE");
     }
   }
@@ -548,6 +549,7 @@ implements DocumentObjectReceiptRepository, DocumentScanRepository {
       );
     } catch (error) {
       if (error instanceof DocumentScanError) throw error;
+      logScanDatabaseFailure(error);
       throw new DocumentScanError("DOCUMENT_SCAN_RESULT_INVALID");
     }
   }
@@ -740,4 +742,11 @@ function receiptUnavailable(): never {
 
 function scanTransition(): never {
   throw new DocumentScanError("DOCUMENT_SCAN_TRANSITION_INVALID");
+}
+
+function logScanDatabaseFailure(error:unknown):void {
+  const value=error as {code?:unknown;constraint?:unknown}|null;
+  const code=typeof value?.code==='string'&&/^[A-Z0-9]{5}$/.test(value.code)?value.code:'OTHER';
+  const constraint=typeof value?.constraint==='string'&&/^(documents_|audit_|shared_)[a-z0-9_]{1,90}$/.test(value.constraint)?value.constraint:'NONE';
+  process.stderr.write(`event=document_scan_database_failure postgres_code=${code} postgres_constraint=${constraint}\n`);
 }

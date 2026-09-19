@@ -38,6 +38,9 @@ export const ORGANIZATION_ROLES = Object.freeze([
   "admin",
   "advisor",
   "contractor",
+  "l1",
+  "l2",
+  "l3",
 ] as const);
 
 export type Release1OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
@@ -61,6 +64,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "students.deletion.review",
   "referral_sources.read",
   "referral_sources.manage",
+  "schools.provisional.create",
   "schools.read",
   "tasks.read",
   "tasks.create",
@@ -69,6 +73,7 @@ export const WORKSPACE_CAPABILITIES = Object.freeze([
   "documents.create",
   "documents.upload",
   "documents.download",
+  "audit.read",
   "access.manage",
   "email.settings.manage",
   "email.templates.manage",
@@ -104,6 +109,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
     "access.manage",
     "schools.manage",
     "crawler.manage",
@@ -115,6 +121,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "email.templates.manage",
     "schools.manage",
     "crawler.manage",
+    "audit.read",
   ] as const),
   advisor: Object.freeze([
     "today.read",
@@ -130,7 +137,7 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "students.profiles.manage",
     "students.deletion.request",
     "referral_sources.read",
-    "schools.read",
+    "schools.read", "schools.provisional.create",
     "tasks.read",
     "tasks.create",
     "tasks.transition",
@@ -138,8 +145,26 @@ export const BOOTSTRAP_WORKSPACE_CAPABILITIES_BY_ROLE: Readonly<
     "documents.create",
     "documents.upload",
     "documents.download",
+    "audit.read",
   ] as const),
   contractor: Object.freeze(["tasks.read", "tasks.transition"] as const),
+  l1: Object.freeze([
+    "today.read", "cases.read", "cases.create", "cases.workflow.manage",
+    "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
+    "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
+    "students.deletion.request", "students.deletion.review", "referral_sources.read", "referral_sources.manage",
+    "schools.read", "schools.provisional.create", "schools.manage", "crawler.manage", "tasks.read", "tasks.create", "tasks.transition",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
+  ] as const),
+  l2: Object.freeze([
+    "today.read", "cases.read", "cases.create", "cases.workflow.manage",
+    "cases.assessments.read", "cases.assessments.manage", "cases.referral_sources.assign",
+    "students.read", "students.create", "students.guardians.manage", "students.profiles.manage",
+    "students.deletion.request", "referral_sources.read", "schools.read", "schools.provisional.create",
+    "tasks.read", "tasks.create", "tasks.transition",
+    "documents.read", "documents.create", "documents.upload", "documents.download", "audit.read",
+  ] as const),
+  l3: Object.freeze(["tasks.read", "tasks.transition", "documents.read", "documents.upload", "documents.download", "audit.read"] as const),
 });
 
 export function workspaceCapabilitiesForRole(
@@ -159,6 +184,9 @@ export const ROLE_COMPATIBILITY = Object.freeze({
   admin: Object.freeze(["founder", "advisor"] as const),
   advisor: Object.freeze(["founder", "admin"] as const),
   contractor: Object.freeze([] as const),
+  l1: Object.freeze([] as const),
+  l2: Object.freeze([] as const),
+  l3: Object.freeze([] as const),
 } as const);
 
 export type EmploymentType = "FULL_TIME" | "PART_TIME";
@@ -206,7 +234,7 @@ export function evaluateRoleAssignment(input: Readonly<{
     projected.delete(input.removingRole);
   }
   if (input.removingRole !== input.candidateRole) projected.add(input.candidateRole);
-  if (projected.has("contractor") && projected.size > 1) {
+  if ((projected.has("contractor") || [...projected].some((role) => ["l1", "l2", "l3"].includes(role))) && projected.size > 1) {
     return { allowed: false, code: "ROLE_CONFLICT" };
   }
   if (

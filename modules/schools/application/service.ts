@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import {hasRequestCapability,type RequestAccessActor} from "../../access/public.ts";
 
 import {
   buildAtomicMutationEffects,
@@ -27,11 +28,12 @@ export interface SchoolServiceClock {
 }
 
 export interface CreateProvisionalSchoolCommand {
-  readonly identity: string;
-  readonly district: string;
-  readonly system: string;
-  readonly stage: string;
-  readonly reason: string;
+  readonly schoolNameZh?: string | null;
+  readonly schoolNameEn?: string | null;
+  readonly district?: string | null;
+  readonly system?: string | null;
+  readonly stage?: string | null;
+  readonly reason?: string | null;
   readonly requestId: string;
   readonly idempotencyKey: string;
 }
@@ -41,6 +43,7 @@ export interface SubmitSchoolChangeCommand {
   readonly fieldClass: SchoolFieldClass;
   readonly baseSnapshotId: string;
   readonly baseValueSha256: string;
+  readonly expectedEffectiveValueSha256: string;
   readonly proposedValue: unknown;
   readonly reason: string;
   readonly evidence: SchoolOverlayEvidence;
@@ -73,11 +76,12 @@ export interface SchoolRepository {
     readonly organizationId: string;
     readonly actorUserId: string;
     readonly schoolId: string;
-    readonly identity: string;
-    readonly district: string;
-    readonly system: string;
-    readonly stage: string;
-    readonly reason: string;
+    readonly schoolNameZh: string | null;
+    readonly schoolNameEn: string | null;
+    readonly district: string | null;
+    readonly system: string | null;
+    readonly stage: string | null;
+    readonly reason: string | null;
     readonly requestId: string;
     readonly idempotencyKey: string;
     readonly requestHash: string;
@@ -101,6 +105,7 @@ export interface SchoolRepository {
     readonly fieldClass: SchoolFieldClass;
     readonly baseSnapshotId: string;
     readonly baseValueSha256: string;
+    readonly expectedEffectiveValueSha256: string;
     readonly proposedValue: JsonValue;
     readonly reason: string;
     readonly evidence: SchoolOverlayEvidence;
@@ -156,15 +161,33 @@ export class SchoolService {
     readonly actor: IdentitySessionActor;
     readonly command: CreateProvisionalSchoolCommand;
   }): Promise<ProvisionalSchoolResult> {
-    assertAdvisor(input.actor);
-    assertProvisionalCommand(input.command);
+    return createProvisionalSchool(input, {repository:this.repository,clock:this.clock,createId:this.createId});
+  }
 
-    const schoolId = this.createId();
-    const auditId = this.createId();
-    const outboxId = this.createId();
+  async submitSchoolChange(input: {
+    readonly actor: IdentitySessionActor;
+    readonly schoolId: string;
+    readonly command: SubmitSchoolChangeCommand;
+  }): Promise<SchoolChangeRequestResult> {
+    return submitSchoolChange(input,{repository:this.repository,clock:this.clock,createId:this.createId});
+  }
+}
+
+/** BR-051 minimal manual intake; the repository owns atomic persistence and current authorization. */
+export async function createProvisionalSchool(input: {actor: RequestAccessActor;command: CreateProvisionalSchoolCommand}, options: {repository: Pick<SchoolRepository,"createProvisionalSchool">;clock?: SchoolServiceClock;createId?:()=>string}):Promise<ProvisionalSchoolResult> {
+    if (!UUID.test(input.actor.organizationId) || !UUID.test(input.actor.userId) ||
+      !(hasRequestCapability(input.actor,"schools.provisional.create") ||
+        (!input.actor.trialPrincipal && "role" in input.actor && input.actor.role === "advisor"))) {
+      throw new SchoolServiceError("SCHOOL_ADVISOR_REQUIRED");
+    }
+    const fields = normalizeProvisionalCommand(input.command);
+
+    const schoolId = (options.createId ?? randomUUID)();
+    const auditId = (options.createId ?? randomUUID)();
+    const outboxId = (options.createId ?? randomUUID)();
     for (const id of [schoolId, auditId, outboxId]) assertUuid(id);
 
-    const createdAtMs = validNow(this.clock.nowMs());
+    const createdAtMs = validNow((options.clock ?? {nowMs:()=>Date.now()}).nowMs());
     const occurredAt = new Date(createdAtMs).toISOString();
     const eventType = "schools.provisional.created";
     const audit = buildAuditEvent({
@@ -207,44 +230,30 @@ export class SchoolService {
       createdAt: occurredAt,
     });
 
-    return this.repository.createProvisionalSchool({
+    return options.repository.createProvisionalSchool({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
       schoolId,
-      identity: input.command.identity.trim(),
-      district: input.command.district.trim(),
-      system: input.command.system.trim(),
-      stage: input.command.stage.trim(),
-      reason: input.command.reason.trim(),
+      ...fields,
       requestId: input.command.requestId,
       idempotencyKey: input.command.idempotencyKey,
-      requestHash: hashRequestPayload({
-        district: input.command.district.trim(),
-        identity: input.command.identity.trim(),
-        reason: input.command.reason.trim(),
-        stage: input.command.stage.trim(),
-        system: input.command.system.trim(),
-      }),
+      requestHash: hashRequestPayload(fields),
       createdAtMs,
       effects: buildAtomicMutationEffects({ audit, outbox }),
     });
-  }
+}
 
-  async submitSchoolChange(input: {
-    readonly actor: IdentitySessionActor;
-    readonly schoolId: string;
-    readonly command: SubmitSchoolChangeCommand;
-  }): Promise<SchoolChangeRequestResult> {
-    assertAdvisor(input.actor);
+export async function submitSchoolChange(input:{actor:RequestAccessActor;schoolId:string;command:SubmitSchoolChangeCommand},options:{repository:Pick<SchoolRepository,'submitSchoolChange'>;clock?:SchoolServiceClock;createId?:()=>string}):Promise<SchoolChangeRequestResult>{
+    assertSchoolChangeActor(input.actor);
     assertUuid(input.schoolId);
     const command = normalizeChangeCommand(input.command);
 
-    const changeRequestId = this.createId();
-    const auditId = this.createId();
-    const outboxId = this.createId();
+    const changeRequestId = (options.createId ?? randomUUID)();
+    const auditId = (options.createId ?? randomUUID)();
+    const outboxId = (options.createId ?? randomUUID)();
     for (const id of [changeRequestId, auditId, outboxId]) assertUuid(id);
 
-    const submittedAtMs = validNow(this.clock.nowMs());
+    const submittedAtMs = validNow((options.clock ?? {nowMs:()=>Date.now()}).nowMs());
     const occurredAt = new Date(submittedAtMs).toISOString();
     const eventType = "schools.change_request.submitted";
     const audit = buildAuditEvent({
@@ -287,7 +296,7 @@ export class SchoolService {
       createdAt: occurredAt,
     });
 
-    return this.repository.submitSchoolChange({
+    return options.repository.submitSchoolChange({
       organizationId: input.actor.organizationId,
       actorUserId: input.actor.userId,
       changeRequestId,
@@ -296,6 +305,7 @@ export class SchoolService {
       fieldClass: command.fieldClass,
       baseSnapshotId: command.baseSnapshotId,
       baseValueSha256: command.baseValueSha256,
+      expectedEffectiveValueSha256: command.expectedEffectiveValueSha256,
       proposedValue: command.proposedValue,
       reason: command.reason,
       evidence: command.evidence,
@@ -304,6 +314,7 @@ export class SchoolService {
       requestHash: hashRequestPayload({
         baseSnapshotId: command.baseSnapshotId,
         baseValueSha256: command.baseValueSha256,
+        expectedEffectiveValueSha256: command.expectedEffectiveValueSha256,
         evidence: {
           sourceUrl: command.evidence.sourceUrl,
           quote: command.evidence.quote,
@@ -317,22 +328,28 @@ export class SchoolService {
       submittedAtMs,
       effects: buildAtomicMutationEffects({ audit, outbox }),
     });
+}
+function assertSchoolChangeActor(actor:RequestAccessActor){
+  if(!UUID.test(actor.organizationId)||!UUID.test(actor.userId)||
+    !(hasRequestCapability(actor,'schools.read')||(!actor.trialPrincipal&&'role' in actor&&actor.role==='advisor'))){
+    throw new SchoolServiceError('SCHOOL_ADVISOR_REQUIRED');
   }
 }
 
-function assertAdvisor(actor: IdentitySessionActor): void {
-  if (!UUID.test(actor.organizationId) || !UUID.test(actor.userId) || actor.role !== "advisor") {
-    throw new SchoolServiceError("SCHOOL_ADVISOR_REQUIRED");
-  }
-}
-
-function assertProvisionalCommand(command: CreateProvisionalSchoolCommand): void {
-  assertNonBlank(command.identity, 512);
-  assertNonBlank(command.district, 128);
-  assertNonBlank(command.system, 128);
-  assertNonBlank(command.stage, 128);
-  assertNonBlank(command.reason, 1_024);
-  assertRequest(command.requestId, command.idempotencyKey);
+function normalizeProvisionalCommand(command: CreateProvisionalSchoolCommand) {
+  const optional = (value: unknown, max: number): string | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.trim().length > max) throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
+    return value.trim() || null;
+  };
+  const fields = {
+    schoolNameZh: optional(command.schoolNameZh,512), schoolNameEn: optional(command.schoolNameEn,512),
+    district: optional(command.district,128), system: optional(command.system,128),
+    stage: optional(command.stage,128), reason: optional(command.reason,1024),
+  };
+  if (!fields.schoolNameZh && !fields.schoolNameEn) throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
+  assertRequest(command.requestId,command.idempotencyKey);
+  return fields;
 }
 
 function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
@@ -340,6 +357,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
   fieldClass: SchoolFieldClass;
   baseSnapshotId: string;
   baseValueSha256: string;
+  expectedEffectiveValueSha256: string;
   proposedValue: JsonValue;
   reason: string;
   evidence: SchoolOverlayEvidence;
@@ -356,7 +374,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
   ) {
     throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
   }
-  if (!UUID.test(command.baseSnapshotId) || !SHA256.test(command.baseValueSha256)) {
+  if (!UUID.test(command.baseSnapshotId) || !SHA256.test(command.baseValueSha256) || !SHA256.test(command.expectedEffectiveValueSha256)) {
     throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
   }
 
@@ -368,6 +386,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
       fieldClass: command.fieldClass,
       baseSnapshotId: command.baseSnapshotId,
       baseValueSha256: command.baseValueSha256.toLowerCase(),
+      expectedEffectiveValueSha256: command.expectedEffectiveValueSha256.toLowerCase(),
       proposedValue: canonicalSchoolValue(command.proposedValue),
       reason,
       evidence: normalizeEvidence(command.evidence),

@@ -27,6 +27,7 @@ test("case intake advisor options use the employee nickname and login email", as
         async query<Row = Record<string, unknown>>(
           query: DatabaseQuery,
         ): Promise<DatabaseQueryResult<Row>> {
+          if (query.text.includes("SELECT t.user_id,t.organization_id")) return { rows: [], rowCount: 0 };
           observedQuery = query.text;
           return {
             rows: [

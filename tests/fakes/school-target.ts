@@ -159,6 +159,7 @@ export class InMemorySchoolTargetRepository
   async readSchoolTargetWorkspace(
     input: Parameters<SchoolTargetRepository["readSchoolTargetWorkspace"]>[0],
   ) {
+    if(input.actorRole==="l1"||input.actorRole==="l2")throw new SchoolTargetError("SCHOOL_TARGET_READ_FORBIDDEN");
     const serviceCase = this.assertReadableCase(
       input.organizationId,
       input.actorUserId,

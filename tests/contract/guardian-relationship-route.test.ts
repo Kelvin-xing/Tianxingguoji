@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   mapGuardianRelationshipError,
   parseAttachCommand,
+  parseNewGuardianCommand,
   parseHandoffCommand,
   parseEndCommand,
   toEndData,
@@ -161,3 +162,15 @@ async function reject(promise: Promise<unknown>, code: ApiContractError["code"])
   await assert.rejects(promise, (error: unknown) =>
     error instanceof ApiContractError && error.code === code);
 }
+
+test("new guardian creation accepts only explicit profile and relationship fields",async()=>{
+  const {guardian_id,...relationship}=validAttach();void guardian_id;
+  const body={...relationship,guardian:{display_name:"Synthetic new guardian",email:"new@example.invalid",phone:null,date_of_birth:null,gender:null,warning_token:null}};
+  const result=await parseNewGuardianCommand(jsonRequest(body,true),STUDENT_ID,"new-guardian-request");
+  assert.equal(result.guardian.displayName,body.guardian.display_name);
+  assert.equal(Object.hasOwn(result,'guardianId'),false);
+  for(const invalid of [{...body,guardian_id:GUARDIAN_ID},{...body,is_primary_contact:true},{...body,guardian:{...body.guardian,organization_id:STUDENT_ID}}]){
+    await reject(parseNewGuardianCommand(jsonRequest(invalid,true),STUDENT_ID,"new-guardian-request"),"INVALID_REQUEST");
+  }
+  await reject(parseNewGuardianCommand(jsonRequest({...body,guardian:{...body.guardian,gender:'inferred'}},true),STUDENT_ID,"new-guardian-request"),"VALIDATION_FAILED");
+});

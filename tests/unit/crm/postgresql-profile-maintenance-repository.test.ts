@@ -177,6 +177,19 @@ test("fails closed when a completed receipt response hash does not match its ack
     code("PROFILE_MAINTENANCE_UNAVAILABLE"));
 });
 
+test("deleted profiles never return even an earlier successful receipt", async () => {
+  for (const kind of ["student","guardian"] as const) {
+    const id=kind==='student'?IDS.student:IDS.guardian;
+    const repository=new PostgresqlProfileMaintenanceRepository(runner(async(_input,query)=>query(async(text)=>{
+      if(text.includes("INSERT INTO shared_idempotency_records"))return result([],0);
+      if(text.includes("SELECT request_hash"))return result([{request_hash:HASH,state:'completed',result_reference:`${id}:2:${UPDATED_AT}`,response_hash:acknowledgementHash(id,2,UPDATED_AT)}]);
+      if(text.startsWith('SELECT status FROM'))return result([{status:'deleted'}]);
+      throw new Error('Deleted profile reached authorization or writes');
+    })));
+    await assert.rejects(kind==='student'?repository.updateStudent(studentInput()):repository.updateGuardian(guardianInput()),code('PROFILE_MAINTENANCE_NOT_FOUND'));
+  }
+});
+
 function studentInput(): Parameters<ProfileMaintenanceRepository["updateStudent"]>[0] {
   return { organizationId: IDS.organization, actorUserId: IDS.actor, actorRole: "founder",
     studentId: IDS.student, displayName: "Student", dateOfBirth: "2012-06-01", gender: null,
@@ -210,7 +223,7 @@ function runner(run: (context: TenantDatabaseContext,
   return Object.freeze({ async run<Result>(context: TenantDatabaseContext,
     operation: (transaction: TenantTransaction) => Promise<Result>): Promise<Result> {
     return await run(context, async (execute) => operation({
-      query: ({ text, values }) => execute(text, values) as never,
+      query: ({ text, values }) => (text.includes("FROM access_trial_members") ? Promise.resolve(result([])) : execute(text, values)) as never,
     })) as Result;
   } });
 }

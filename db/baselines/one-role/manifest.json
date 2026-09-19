@@ -5,7 +5,7 @@
   "transform_version": "one-role-transform-v3",
   "canonical_login_role": "tianxing_app",
   "source_history_manifest": "db/migrations/manifest.json",
-  "source_history_manifest_sha256": "1e3ceac998565852932cb964957637572299a5d2a31dbac038779514e202a778",
+  "source_history_manifest_sha256": "aeda3837d8c1a105daf860969d8ad6ee406db177840c8e413a3ec843c971b94c",
   "transaction_contract": {
     "single_transaction": true,
     "advisory_lock": "transaction-scoped",
@@ -408,6 +408,132 @@
       "generated_file": "056_202609080020_057_email_invitation_template.sql",
       "generated_sha256": "dce512c488f0e9509294f8e4726ea0f62091e6ec66631d77c61994e69363fdc4",
       "transform": "copy-v1"
+    },
+    {
+      "name": "202609190010_058_expand_trial_access.sql",
+      "source_sha256": "ea7615d9973095ca847e91307b5d3bf28ced6da8f05d3a5ff9427991ac913a62",
+      "generated_file": "057_202609190010_058_expand_trial_access.sql",
+      "generated_sha256": "ea7615d9973095ca847e91307b5d3bf28ced6da8f05d3a5ff9427991ac913a62",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190020_059_bind_trial_levels_to_identity.sql",
+      "source_sha256": "8117d778fb83190128cce52ea75f7450153bd91e19a9c94cc8b13af67f4ff252",
+      "generated_file": "058_202609190020_059_bind_trial_levels_to_identity.sql",
+      "generated_sha256": "8117d778fb83190128cce52ea75f7450153bd91e19a9c94cc8b13af67f4ff252",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190030_060_enable_trial_case_creation.sql",
+      "source_sha256": "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e",
+      "generated_file": "059_202609190030_060_enable_trial_case_creation.sql",
+      "generated_sha256": "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190040_061_enable_trial_candidate_authorization.sql",
+      "source_sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "generated_file": "060_202609190040_061_enable_trial_candidate_authorization.sql",
+      "generated_sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190050_062_fix_candidate_command_runtime.sql",
+      "source_sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "generated_file": "061_202609190050_062_fix_candidate_command_runtime.sql",
+      "generated_sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190060_063_use_actual_target_assignment_grade.sql",
+      "source_sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
+      "generated_file": "062_202609190060_063_use_actual_target_assignment_grade.sql",
+      "generated_sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190070_064_enable_actual_trial_task_grades.sql",
+      "source_sha256": "e9bd2d5b579ae9f6f39a0b529f076df6e0d34c64d80d7e09973210f98f3bcd69",
+      "generated_file": "063_202609190070_064_enable_actual_trial_task_grades.sql",
+      "generated_sha256": "e9bd2d5b579ae9f6f39a0b529f076df6e0d34c64d80d7e09973210f98f3bcd69",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190080_065_preserve_case_workflow_timestamp_order.sql",
+      "source_sha256": "da85d20f4a6849dc3371cc4e31f76c0969f0df7e516b04944d8de4c168b05bc1",
+      "generated_file": "064_202609190080_065_preserve_case_workflow_timestamp_order.sql",
+      "generated_sha256": "da85d20f4a6849dc3371cc4e31f76c0969f0df7e516b04944d8de4c168b05bc1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190090_066_expand_task_document_grants.sql",
+      "source_sha256": "bd8b70cd9f5899cef973fdc56a532ed0e3bfb16324909466afe44887cab988cd",
+      "generated_file": "065_202609190090_066_expand_task_document_grants.sql",
+      "generated_sha256": "bd8b70cd9f5899cef973fdc56a532ed0e3bfb16324909466afe44887cab988cd",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190100_067_align_local_scan_engine_receipts.sql",
+      "source_sha256": "985290b8663df63773cdb38f9b6c210095f3711f18ecade836233f0517a752de",
+      "generated_file": "066_202609190100_067_align_local_scan_engine_receipts.sql",
+      "generated_sha256": "985290b8663df63773cdb38f9b6c210095f3711f18ecade836233f0517a752de",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190110_068_expand_interview_task_context.sql",
+      "source_sha256": "eacdca1e9f57eba7f79efc575589996359ebfdd978e113ab1028ec51bee7b0eb",
+      "generated_file": "067_202609190110_068_expand_interview_task_context.sql",
+      "generated_sha256": "eacdca1e9f57eba7f79efc575589996359ebfdd978e113ab1028ec51bee7b0eb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190120_069_preserve_role_binding_timestamp_order.sql",
+      "source_sha256": "9d703b4f4fdfd4b728a071c41a420b9a57e1112a39e19ff9d25fd8be9450af50",
+      "generated_file": "068_202609190120_069_preserve_role_binding_timestamp_order.sql",
+      "generated_sha256": "9d703b4f4fdfd4b728a071c41a420b9a57e1112a39e19ff9d25fd8be9450af50",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190130_070_expand_provisional_school_intake.sql",
+      "source_sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b",
+      "generated_file": "069_202609190130_070_expand_provisional_school_intake.sql",
+      "generated_sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190140_071_capture_school_change_effective_baseline.sql",
+      "source_sha256": "b2cd176535529d7d56b08173cb678380f5d2c10739f4bdd451a321958e378551",
+      "generated_file": "070_202609190140_071_capture_school_change_effective_baseline.sql",
+      "generated_sha256": "b2cd176535529d7d56b08173cb678380f5d2c10739f4bdd451a321958e378551",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190150_072_record_school_change_reviews.sql",
+      "source_sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2",
+      "generated_file": "071_202609190150_072_record_school_change_reviews.sql",
+      "generated_sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190160_073_capture_school_change_previous_value.sql",
+      "source_sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "generated_file": "072_202609190160_073_capture_school_change_previous_value.sql",
+      "generated_sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190170_074_enable_trial_employee_invitation.sql",
+      "source_sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
+      "generated_file": "073_202609190170_074_enable_trial_employee_invitation.sql",
+      "generated_sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "202609190180_075_record_invitation_operations.sql",
+      "source_sha256": "d5c6d2b7cf0c144c0e83b85cb2468991ff4b0f32518fdb2f189e3421d8a0ae42",
+      "generated_file": "074_202609190180_075_record_invitation_operations.sql",
+      "generated_sha256": "d5c6d2b7cf0c144c0e83b85cb2468991ff4b0f32518fdb2f189e3421d8a0ae42",
+      "transform": "copy-v1"
     }
   ],
   "generated_files": [
@@ -689,6 +815,96 @@
     {
       "name": "056_202609080020_057_email_invitation_template.sql",
       "sha256": "dce512c488f0e9509294f8e4726ea0f62091e6ec66631d77c61994e69363fdc4",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "057_202609190010_058_expand_trial_access.sql",
+      "sha256": "ea7615d9973095ca847e91307b5d3bf28ced6da8f05d3a5ff9427991ac913a62",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "058_202609190020_059_bind_trial_levels_to_identity.sql",
+      "sha256": "8117d778fb83190128cce52ea75f7450153bd91e19a9c94cc8b13af67f4ff252",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "059_202609190030_060_enable_trial_case_creation.sql",
+      "sha256": "817ffa4899d9fa2873a935a394a5cb9cbfee9d2bd3b1d9adfba69f1a26d1b26e",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "060_202609190040_061_enable_trial_candidate_authorization.sql",
+      "sha256": "39434dd7073596ca993bbf087fe74a4071308873f68180499861a19998c71ed1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "061_202609190050_062_fix_candidate_command_runtime.sql",
+      "sha256": "a50516b2853ed70cccddee736012bad06b017af96c1096d76890417ec445f35a",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "062_202609190060_063_use_actual_target_assignment_grade.sql",
+      "sha256": "8b968726752f72d71d2db21f886db32b39e11add91b7f99da07003c48aa375d2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "063_202609190070_064_enable_actual_trial_task_grades.sql",
+      "sha256": "e9bd2d5b579ae9f6f39a0b529f076df6e0d34c64d80d7e09973210f98f3bcd69",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "064_202609190080_065_preserve_case_workflow_timestamp_order.sql",
+      "sha256": "da85d20f4a6849dc3371cc4e31f76c0969f0df7e516b04944d8de4c168b05bc1",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "065_202609190090_066_expand_task_document_grants.sql",
+      "sha256": "bd8b70cd9f5899cef973fdc56a532ed0e3bfb16324909466afe44887cab988cd",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "066_202609190100_067_align_local_scan_engine_receipts.sql",
+      "sha256": "985290b8663df63773cdb38f9b6c210095f3711f18ecade836233f0517a752de",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "067_202609190110_068_expand_interview_task_context.sql",
+      "sha256": "eacdca1e9f57eba7f79efc575589996359ebfdd978e113ab1028ec51bee7b0eb",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "068_202609190120_069_preserve_role_binding_timestamp_order.sql",
+      "sha256": "9d703b4f4fdfd4b728a071c41a420b9a57e1112a39e19ff9d25fd8be9450af50",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "069_202609190130_070_expand_provisional_school_intake.sql",
+      "sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "070_202609190140_071_capture_school_change_effective_baseline.sql",
+      "sha256": "b2cd176535529d7d56b08173cb678380f5d2c10739f4bdd451a321958e378551",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "071_202609190150_072_record_school_change_reviews.sql",
+      "sha256": "8eb3705183b4205987f9cf0c81a43eb7a8e3fa2ac276030907e3133bc9fe77e2",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "072_202609190160_073_capture_school_change_previous_value.sql",
+      "sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "073_202609190170_074_enable_trial_employee_invitation.sql",
+      "sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d",
+      "transform": "copy-v1"
+    },
+    {
+      "name": "074_202609190180_075_record_invitation_operations.sql",
+      "sha256": "d5c6d2b7cf0c144c0e83b85cb2468991ff4b0f32518fdb2f189e3421d8a0ae42",
       "transform": "copy-v1"
     },
     {

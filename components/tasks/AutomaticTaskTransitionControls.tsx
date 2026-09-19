@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { getTaskFileLinks,type TaskFileLink } from "@/modules/documents/client";
 import { Icon } from "@/components/workspace/Icon";
 import {
   TaskIdempotencyAttempt,
   automaticTaskTransitionFingerprint,
   classifyTaskFailure,
   completeApplicationTask,
+  completeInterviewTask,
   getTask,
   getTaskAssigneeOptions,
   transitionAutomaticTask,
@@ -15,10 +17,13 @@ import {
   type AutomaticTaskAction,
   type CaseWorkspaceTask,
   type CompleteApplicationTaskInput,
+  type CompleteInterviewTaskInput,
   type TaskAssignee,
   type SubmissionChannel,
   type TaskDetailResult,
 } from "@/modules/tasks/client";
+
+import { taskAssigneeRoleLabel } from "./task-ui";
 
 type TaskItem = CaseWorkspaceTask | AssignedTask;
 type Notice = "validation" | "stale" | "conflict" | "denied" | "unavailable" | null;
@@ -57,15 +62,17 @@ export function AutomaticTaskTransitionControls({
   if (attempt.current === null) attempt.current = new TaskIdempotencyAttempt();
 
   const caseId = "case_id" in task ? task.case_id : null;
-  const selectableActions = task.task_kind === "interview_support"
-    ? task.allowed_actions.filter((action) => action !== "complete" && action !== "reassign")
-    : task.allowed_actions.filter((action) => action !== "reassign" || caseId !== null);
-  const interviewCompletionPending = task.task_kind === "interview_support" && task.allowed_actions.includes("complete");
+  const workflowActions=task.allowed_actions.filter((action):action is AutomaticTaskAction=>action!=="revoke_access");
+  const selectableActions = workflowActions.filter((action) => action !== "reassign" || caseId !== null);
+  const actionLabels = { ...ACTION_LABELS, complete: task.task_kind === "interview_support" ? "完成面試支援" : ACTION_LABELS.complete };
   const [selectedAction, setSelectedAction] = useState<AutomaticTaskAction | "">("");
   const [reason, setReason] = useState("");
   const [nextAssigneeId, setNextAssigneeId] = useState("");
   const [assignees, setAssignees] = useState<readonly TaskAssignee[]>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [completedAt, setCompletedAt] = useState("");
+  const [interviewMethod, setInterviewMethod] = useState("");
+  const [coachingSummary, setCoachingSummary] = useState("");
   const [submittedAt, setSubmittedAt] = useState("");
   const [confirmedAt, setConfirmedAt] = useState("");
   const [submissionChannel, setSubmissionChannel] = useState<SubmissionChannel>("school_portal");
@@ -109,6 +116,9 @@ export function AutomaticTaskTransitionControls({
     setSelectedAction("");
     setReason("");
     setNextAssigneeId("");
+    setCompletedAt("");
+    setInterviewMethod("");
+    setCoachingSummary("");
     setSubmittedAt("");
     setConfirmedAt("");
     setSubmissionChannel("school_portal");
@@ -149,8 +159,8 @@ export function AutomaticTaskTransitionControls({
     setNotice(null);
     try {
       const key = attempt.current!.keyFor(automaticTaskTransitionFingerprint(task.id, input));
-      if (input.action === "complete") {
-        const receipt = await completeApplicationTask(task.id, task.school_target_id!, input, key);
+      if (input.action === "complete" && "submitted_at" in input.completion_record) {
+        const receipt = await completeApplicationTask(task.id, task.school_target_id!, input as CompleteApplicationTaskInput, key);
         let authoritative: TaskDetailResult;
         try {
           authoritative = await getTask(task.id);
@@ -172,12 +182,14 @@ export function AutomaticTaskTransitionControls({
         );
         return;
       }
-      const receipt = await transitionAutomaticTask(task.id, input, key);
+      const receipt = input.action === "complete"
+        ? await completeInterviewTask(task.id, input as CompleteInterviewTaskInput, key)
+        : await transitionAutomaticTask(task.id, input, key);
       let authoritative: TaskDetailResult;
       try {
         authoritative = await getTask(task.id);
       } catch (error) {
-        const assignmentEnded = caseId === null && input.action === "reject" &&
+        const assignmentEnded = caseId === null && (input.action === "reject" || input.action === "complete") &&
           classifyTaskFailure(error) === "not_found";
         if (!assignmentEnded) throw error;
         attempt.current!.complete();
@@ -217,8 +229,20 @@ export function AutomaticTaskTransitionControls({
     }
   }
 
-  function buildCompletionInput(form: HTMLFormElement): CompleteApplicationTaskInput | null {
+  function buildCompletionInput(form: HTMLFormElement): CompleteApplicationTaskInput | CompleteInterviewTaskInput | null {
     const formData = new FormData(form);
+    if (task.task_kind === "interview_support") {
+      const completed = localDateTimeToIso(String(formData.get("completed_at") ?? ""));
+      const method = String(formData.get("interview_method") ?? "").trim();
+      const summary = String(formData.get("coaching_summary") ?? "").trim();
+      if (!completed || Date.parse(completed) > Date.now() || !method || !summary) {
+        setValidationDetail("請填寫有效且不晚於目前的完成時間、面試方式及輔導摘要。");
+        return null;
+      }
+      return { action: "complete", expected_record_version: task.record_version,
+        completion_record: { completed_at: completed, interview_method: method, coaching_summary: summary },
+        evidence_reference: null };
+    }
     const submittedValue = formData.get("submitted_at");
     const confirmedValue = formData.get("confirmed_at");
     const channelValue = formData.get("submission_channel");
@@ -267,7 +291,7 @@ export function AutomaticTaskTransitionControls({
     };
   }
 
-  if (selectableActions.length === 0 && !interviewCompletionPending) return null;
+  if (selectableActions.length === 0) return null;
 
   return (
     <section className="workspace-section space-y-4" aria-labelledby="automatic-task-transition-heading">
@@ -275,12 +299,6 @@ export function AutomaticTaskTransitionControls({
         <h3 id="automatic-task-transition-heading" className="section-title">處理自動任務</h3>
         <p className="section-detail">可用操作會隨任務狀態更新。</p>
       </div>
-      {interviewCompletionPending ? (
-        <div className="inline-callout" role="status">
-          <Icon name="clock" size={15} />
-          <span>面試完成記錄尚未開放；可先處理接受、拒絕或取消。</span>
-        </div>
-      ) : null}
       {selectableActions.length > 0 ? (
         <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
           <label className="field-label" htmlFor={`automatic-task-action-${task.id}`}>
@@ -299,11 +317,11 @@ export function AutomaticTaskTransitionControls({
               }}
             >
               <option value="">選擇操作</option>
-              {selectableActions.map((action) => <option value={action} key={action}>{ACTION_LABELS[action]}</option>)}
+              {selectableActions.map((action) => <option value={action} key={action}>{actionLabels[action]}</option>)}
             </select>
           </label>
 
-          {selectedAction === "reject" || selectedAction === "cancel" ? (
+          {selectedAction === "reject" || selectedAction === "cancel" || selectedAction === "reassign" ? (
             <label className="field-label" htmlFor={`automatic-task-reason-${task.id}`}>
               原因 <span aria-hidden="true">*</span>
               <textarea
@@ -330,9 +348,8 @@ export function AutomaticTaskTransitionControls({
               >
                 <option value="">{assigneesLoading ? "正在載入負責人" : "選擇負責人"}</option>
                 {assignees
-                  .filter((assignee) => task.task_kind === "application_prepare_submit" || assignee.role === "advisor")
                   .map((assignee) => (
-                  <option value={assignee.id} key={assignee.id}>{assignee.label} · {assignee.role === "advisor" ? "顧問" : "外部協作人員"}</option>
+                  <option value={assignee.id} key={assignee.id}>{assignee.label} · {taskAssigneeRoleLabel(assignee.role)}</option>
                 ))}
               </select>
             </label>
@@ -341,6 +358,7 @@ export function AutomaticTaskTransitionControls({
           {selectedAction === "complete" && task.task_kind === "application_prepare_submit" ? (
             <ApplicationCompletionFields
               taskId={task.id}
+              taskOnly={!("case_id" in task)}
               values={{ submittedAt, confirmedAt, submissionChannel, checklistComplete, officialReference, noReferenceDeclared, evidenceReference }}
               pending={pending}
               onChange={(field, value) => {
@@ -356,10 +374,29 @@ export function AutomaticTaskTransitionControls({
             />
           ) : null}
 
+          {selectedAction === "complete" && task.task_kind === "interview_support" ? (
+            <fieldset className="space-y-4 border-y py-4" style={{ borderColor: "var(--border)" }}>
+              <legend className="section-title px-1">面試支援完成記錄</legend>
+              <p className="section-detail">只記錄本次支援工作，不會更改學校申請結果。時間按香港時間填寫。</p>
+              <label className="field-label" htmlFor={`interview-completed-${task.id}`}>完成時間
+                <input id={`interview-completed-${task.id}`} name="completed_at" type="datetime-local" required disabled={pending} value={completedAt}
+                  onChange={event => { commandChanged(); setCompletedAt(event.target.value); }} />
+              </label>
+              <label className="field-label" htmlFor={`interview-method-${task.id}`}>面試方式
+                <input id={`interview-method-${task.id}`} name="interview_method" required disabled={pending} value={interviewMethod}
+                  onChange={event => { commandChanged(); setInterviewMethod(event.target.value); }} />
+              </label>
+              <label className="field-label" htmlFor={`interview-summary-${task.id}`}>輔導摘要
+                <textarea id={`interview-summary-${task.id}`} name="coaching_summary" rows={4} required disabled={pending} value={coachingSummary}
+                  onChange={event => { commandChanged(); setCoachingSummary(event.target.value); }} />
+              </label>
+            </fieldset>
+          ) : null}
+
           {selectedAction ? (
             <label className="flex items-start gap-3 text-sm">
               <input name="command_confirmed" type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => { attempt.current!.rotate(); setNotice(null); setConfirmed(event.target.checked); }} />
-              <span>我確認執行「{ACTION_LABELS[selectedAction]}」，並儲存這次處理記錄。</span>
+              <span>我確認執行「{actionLabels[selectedAction]}」，並儲存這次處理記錄。</span>
             </label>
           ) : null}
 
@@ -376,8 +413,9 @@ export function AutomaticTaskTransitionControls({
   );
 }
 
-function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
+function ApplicationCompletionFields({ taskId, taskOnly, values, pending, onChange }: {
   readonly taskId: string;
+  readonly taskOnly:boolean;
   readonly values: Readonly<{
     submittedAt: string; confirmedAt: string; submissionChannel: SubmissionChannel;
     checklistComplete: boolean; officialReference: string; noReferenceDeclared: boolean; evidenceReference: string;
@@ -385,6 +423,16 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
   readonly pending: boolean;
   readonly onChange: (field: keyof typeof values, value: string | boolean) => void;
 }) {
+  const [files,setFiles]=useState<readonly TaskFileLink[]>([]);
+  const [filesUnavailable,setFilesUnavailable]=useState(false);
+  useEffect(()=>{
+    if(!taskOnly)return;
+    const controller=new AbortController();
+    getTaskFileLinks(taskId,controller.signal).then(result=>{
+      setFiles(result.links.filter(link=>link.available_version&&link.allowed_actions.includes("document.read")));setFilesUnavailable(false);
+    }).catch(()=>{if(!controller.signal.aborted){setFiles([]);setFilesUnavailable(true);}});
+    return()=>controller.abort();
+  },[taskId,taskOnly]);
   return (
     <fieldset className="space-y-4 border-y py-4" style={{ borderColor: "var(--border)" }}>
       <legend className="section-title px-1">申請提交記錄</legend>
@@ -413,9 +461,12 @@ function ApplicationCompletionFields({ taskId, values, pending, onChange }: {
         <span>學校沒有提供官方提交編號。</span>
       </label>
       <label className="field-label" htmlFor={`task-evidence-reference-${taskId}`}>
-        證據文件識別碼{values.noReferenceDeclared ? <span aria-hidden="true"> *</span> : null}
-        <input id={`task-evidence-reference-${taskId}`} name="evidence_reference" type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />
-        <small>沒有官方編號時，必須引用一份已授權且通過檢查的案件文件。</small>
+        {taskOnly?"提交憑證":"證據文件識別碼"}{values.noReferenceDeclared ? <span aria-hidden="true"> *</span> : null}
+        {taskOnly?<select id={`task-evidence-reference-${taskId}`} name="evidence_reference" value={values.evidenceReference} disabled={pending||filesUnavailable} required={values.noReferenceDeclared} onChange={event=>onChange("evidenceReference",event.target.value)}>
+          <option value="">{filesUnavailable?"暫時無法載入憑證":"請選擇已授權的憑證"}</option>
+          {files.map(file=><option key={file.document_id} value={file.document_id}>{file.display_name}</option>)}
+        </select>:<input id={`task-evidence-reference-${taskId}`} name="evidence_reference" type="text" value={values.evidenceReference} disabled={pending} required={values.noReferenceDeclared} inputMode="text" autoComplete="off" onChange={(event) => onChange("evidenceReference", event.target.value)} />}
+        <small>沒有官方編號時，必須選用一份已授權且掃描通過的文件。</small>
       </label>
       <div className="inline-callout">
         <Icon name="shield" size={15} /><span>提交人會使用目前登入帳號自動記錄，不能在此更改。</span>

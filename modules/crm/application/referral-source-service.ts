@@ -177,7 +177,7 @@ export class ReferralSourceService {
     if (sourceType !== null && !isType(sourceType)) invalid();
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) invalid();
     if (query !== null && query.length > 200) invalid();
-    const effectiveStatus = input.actorRole === "advisor" ? "active" : status;
+    const effectiveStatus = ["advisor","l2"].includes(input.actorRole) ? "active" : status;
     const filterHash = hashRequestPayload({
       organization_id: input.organizationId,
       q: query,

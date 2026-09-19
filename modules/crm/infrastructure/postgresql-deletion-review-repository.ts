@@ -1,4 +1,5 @@
 import "server-only";
+import { resolveTrialStudentAuthorization } from "./trial-student-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -141,13 +142,26 @@ export class PostgresqlDeletionReviewRepository
       const receipt = await this.at("receipt_claim", () =>
         claimReceipt(tx, input, operation),
       );
-      await this.at("actor_reauthorization", () =>
-        assertActor(tx, input, "request"),
+      const trial = await this.at("actor_reauthorization", () =>
+        assertActor(tx, tenantTransaction, input, "request"),
       );
       const target = await this.at("target_lock", () =>
         lockTarget(tx, input.organizationId, input.entityType, input.entityId),
       );
-      if (!target || target.status === "purged") notFound();
+      if (!target || target.status === "deleted") notFound();
+      if (trial.enrolled && trial.studentIds !== null) {
+        if (input.entityType === "student") {
+          if (!trial.studentIds.includes(input.entityId)) notFound();
+        } else {
+          const visible = await tx.query(
+            `SELECT id FROM crm_student_guardian_relationships
+             WHERE organization_id=$1 AND guardian_id=$2 AND ends_at IS NULL
+               AND student_id=ANY($3::uuid[]) FOR SHARE`,
+            [input.organizationId,input.entityId,trial.studentIds],
+          );
+          if (visible.rowCount === 0) notFound();
+        }
+      }
       if (input.entityType === "student") {
         const guard = await this.at("customer_deletion_guard", () =>
           this.customerDeletionGuard.evaluateStudentDeletion({
@@ -157,7 +171,7 @@ export class PostgresqlDeletionReviewRepository
             actorRole: input.actorRole,
           }),
         );
-        if (!guard.actorScoped) notFound();
+        if (!trial.enrolled && !guard.actorScoped) notFound();
         if (guard.hasOpenCase) conflict();
       } else if (input.entityType === "guardian") {
         const current = await this.at("customer_deletion_guard", () =>
@@ -172,7 +186,7 @@ export class PostgresqlDeletionReviewRepository
           ),
         );
         if (current.rowCount > 0) conflict();
-        if (input.actorRole !== "founder") {
+        if (!trial.enrolled && input.actorRole !== "founder") {
           const related = await this.at("advisor_scope", () =>
             tx.query<{ student_id: string }>(
               `SELECT DISTINCT relationship.student_id
@@ -214,9 +228,9 @@ export class PostgresqlDeletionReviewRepository
       const updated = await this.at("target_update", () =>
         tx.query<TargetRow>(
           `UPDATE ${table}
-        SET status='pending_delete', deletion_requested_at=transaction_timestamp(),
+        SET status='pending_delete', deletion_requested_at=GREATEST(statement_timestamp(),updated_at),
             deletion_requested_by_user_id=$4, deletion_reason=$5, record_version=record_version+1,
-            updated_at=transaction_timestamp()
+            updated_at=GREATEST(statement_timestamp(),updated_at)
         WHERE organization_id=$1 AND id=$2 AND status='active' AND record_version=$3
         RETURNING id,display_name,status,deletion_requested_at,record_version`,
           [
@@ -244,11 +258,12 @@ export class PostgresqlDeletionReviewRepository
   decideDeletion(
     input: Parameters<DeletionReviewRepository["decideDeletion"]>[0],
   ): Promise<DeletionDecisionResult> {
-    if (input.actorRole !== "founder") {
+    if (!["founder", "l1"].includes(input.actorRole)) {
       return Promise.reject(
         new DeletionReviewError("DELETION_REVIEW_FORBIDDEN"),
       );
     }
+    let trialEnrolled = false;
     let stage: DeletionReviewFailureStage = "receipt_claim";
     const context = {
       organizationId: input.organizationId,
@@ -272,7 +287,7 @@ export class PostgresqlDeletionReviewRepository
       },
       revalidate: async (transaction) => {
         stage = "actor_reauthorization";
-        await assertActor(adapt(transaction), input, "review");
+        trialEnrolled = (await assertActor(adapt(transaction), transaction, input, "review")).enrolled;
       },
       execute: async (transaction) => {
         const tx = adapt(transaction);
@@ -296,7 +311,7 @@ export class PostgresqlDeletionReviewRepository
               actorUserId: input.actorUserId,
               actorRole: input.actorRole,
             });
-          if (!guard.actorScoped) notFound();
+          if (!trialEnrolled && !guard.actorScoped) notFound();
           if (guard.hasOpenCase) conflict();
         }
         if (
@@ -362,9 +377,9 @@ export class PostgresqlDeletionReviewRepository
   listDeletionRequests(
     input: Parameters<DeletionReviewRepository["listDeletionRequests"]>[0],
   ) {
-    return this.run(input, async (tx) => {
+    return this.run(input, async (tx, tenantTransaction) => {
       await this.at("actor_reauthorization", () =>
-        assertActor(tx, input, "review"),
+        assertActor(tx, tenantTransaction, input, "review"),
       );
       const rows = await tx.query<QueueRow>(
         `SELECT entity_type,entity_id,display_label,status,
@@ -448,9 +463,16 @@ function writeSafeFailure(evidence: DeletionReviewFailureEvidence): void {
 
 async function assertActor(
   tx: Db,
+  tenantTransaction: TenantTransaction,
   input: { organizationId: string; actorUserId: string; actorRole: string },
   mode: "request" | "review",
 ) {
+  const trial = await resolveTrialStudentAuthorization(tenantTransaction,input);
+  if (trial.enrolled) {
+    if ((mode === "review" && trial.studentIds !== null) ||
+        (trial.studentIds !== null && trial.studentIds.length === 0)) forbidden();
+    return trial;
+  }
   if (
     (mode === "review" && input.actorRole !== "founder") ||
     (mode === "request" && !["founder", "advisor"].includes(input.actorRole))
@@ -468,6 +490,7 @@ async function assertActor(
     [input.actorUserId, input.actorRole, input.organizationId],
   );
   if (result.rowCount !== 1) forbidden();
+  return trial;
 }
 async function lockTarget(
   tx: Db,
@@ -634,10 +657,10 @@ async function updateDecisionTarget(
             deletion_requested_at=CASE WHEN $5 THEN deletion_requested_at ELSE NULL END,
             deletion_requested_by_user_id=CASE WHEN $5 THEN deletion_requested_by_user_id ELSE NULL END,
             deletion_reason=CASE WHEN $5 THEN deletion_reason ELSE NULL END,
-            deletion_approved_at=CASE WHEN $5 THEN $6 ELSE NULL END,
-            deletion_approved_by_user_id=CASE WHEN $5 THEN $7 ELSE NULL END,
-            deleted_at=CASE WHEN $5 THEN $6 ELSE NULL END,
-            updated_at=$6,record_version=record_version+1
+            deletion_approved_at=CASE WHEN $5 THEN GREATEST(statement_timestamp(),updated_at,$6::timestamptz) ELSE NULL END,
+            deletion_approved_by_user_id=CASE WHEN $5 THEN $7::uuid ELSE NULL END,
+            deleted_at=CASE WHEN $5 THEN GREATEST(statement_timestamp(),updated_at,$6::timestamptz) ELSE NULL END,
+            updated_at=GREATEST(statement_timestamp(),updated_at,$6::timestamptz),record_version=record_version+1
       WHERE organization_id=$1 AND id=$2 AND status='pending_delete' AND record_version=$3
       RETURNING id,display_name,status,deletion_requested_at,record_version`,
     [

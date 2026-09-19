@@ -54,6 +54,7 @@ function runner(
         async query<Row = Record<string, unknown>>(
           query: DatabaseQuery,
         ): Promise<DatabaseQueryResult<Row>> {
+          if (query.text.includes("FROM access_trial_members")) return rows([]) as DatabaseQueryResult<Row>;
           return handler(query) as DatabaseQueryResult<Row>;
         },
       });
@@ -310,11 +311,11 @@ test("reject Student and Guardian clear lifecycle fields and skip guards", async
     );
     assert.match(
       update?.text ?? "",
-      /deletion_approved_at=CASE WHEN \$5 THEN \$6 ELSE NULL END/,
+      /deletion_approved_at=CASE WHEN \$5 THEN GREATEST\(statement_timestamp\(\),updated_at,\$6::timestamptz\) ELSE NULL END/,
     );
     assert.match(
       update?.text ?? "",
-      /deleted_at=CASE WHEN \$5 THEN \$6 ELSE NULL END/,
+      /deleted_at=CASE WHEN \$5 THEN GREATEST\(statement_timestamp\(\),updated_at,\$6::timestamptz\) ELSE NULL END/,
     );
   }
 });

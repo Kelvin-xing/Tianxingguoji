@@ -37,6 +37,7 @@ export async function GET(
         intake_year: result.intakeYear,
         admission_type: result.admissionType,
         can_create: result.canCreate,
+        can_record_interview: result.canRecordInterview === true,
         create_blocked_reason: result.createBlockedReason,
         items: result.items.map(toApiItem),
         school_options: result.schoolOptions.map((option) => ({
@@ -89,9 +90,9 @@ function mapSchoolTargetError(error: unknown): ApiContractError {
     return createApiError("SERVICE_UNAVAILABLE");
   }
   if (error instanceof IdentityServiceError) return createApiError("UNAUTHENTICATED");
-  if (!(error instanceof SchoolTargetError)) return createApiError("SERVICE_UNAVAILABLE");
+  if (!(error instanceof Error) || error.name !== "SchoolTargetError") return createApiError("SERVICE_UNAVAILABLE");
 
-  switch (error.code) {
+  switch ((error as SchoolTargetError).code) {
     case "SCHOOL_TARGET_INVALID":
       return createApiError("VALIDATION_FAILED");
     case "SCHOOL_TARGET_READ_FORBIDDEN":

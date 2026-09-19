@@ -19,6 +19,13 @@ export async function parseTaskTransition(request:Request,taskId:string,requestI
   if(typeof body.to!=="string"||typeof body.expected_record_version!=="number"||typeof body.reason!=="string"||
     (body.next_assignee_user_id!==null&&typeof body.next_assignee_user_id!=="string"))invalid();return Object.freeze({to:body.to as never,
     expectedRecordVersion:body.expected_record_version,reason:body.reason,nextAssigneeUserId:body.next_assignee_user_id,requestId,idempotencyKey:key});}
+export async function parseCompletedAssignmentRevocation(request:Request,taskId:string,requestId:string){
+  if (!UUID.test(taskId)) invalid();
+  const body=await exactJson(request,["assignment_id","expected_record_version","reason"]);
+  if (typeof body.assignment_id!=="string" || typeof body.expected_record_version!=="number" || typeof body.reason!=="string") invalid();
+  return {assignmentId:body.assignment_id,expectedRecordVersion:body.expected_record_version,reason:body.reason,
+    requestId,idempotencyKey:idempotencyKey(request)};
+}
 export function collectionData(value:TaskCollectionView):JsonValue{return{audience:value.audience,tasks:value.tasks.map((task)=>taskData(task,value.audience))};}
 export function detailData(value:TaskDetailView):JsonValue{return{audience:value.audience,task:taskData(value.task,value.audience)};}
 export function optionsData(value:TaskOptionsView):JsonValue{return{assignees:value.assignees.map(assigneeData)};}

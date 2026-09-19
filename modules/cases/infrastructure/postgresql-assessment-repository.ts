@@ -1,5 +1,7 @@
 import "server-only";
 
+import { evaluateTrialAccess, type K12BusinessCategory } from "../../access/public.ts";
+import { loadTrialPrincipal } from "../../access/server.ts";
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
 import type {
@@ -24,6 +26,7 @@ interface AssessmentHeaderRow extends Record<string, unknown> {
   application_type: string;
   composition_version: string;
   primary_user_id: string;
+  business_category: K12BusinessCategory | null;
   case_stage: string;
   case_workflow_status: string;
   student_status: string;
@@ -290,6 +293,7 @@ function projectAnswersInCanonicalOrder(
 async function readAuthorizedHeader(
   transaction: PostgreSqlTransaction,
   input: {
+    readonly organizationId: string;
     readonly caseId: string;
     readonly actorUserId: string;
     readonly actorRole: string;
@@ -319,7 +323,7 @@ async function readAuthorizedHeader(
             assessment.record_version AS assessment_record_version,
             manifest.status AS manifest_status, manifest.application_type,
             manifest.composition_version,
-            service_case.primary_user_id, service_case.stage AS case_stage,
+            service_case.primary_user_id, service_case.business_category, service_case.stage AS case_stage,
             service_case.workflow_status AS case_workflow_status,
             student.status AS student_status,
             manifest.base_module_id, manifest.base_module_version,
@@ -342,6 +346,27 @@ async function readAuthorizedHeader(
   const header = result.rows[0];
   if (!header) throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
 
+  const principal = await loadTrialPrincipal(transaction, {
+    userId: input.actorUserId, organizationId: input.organizationId, lock: true,
+  });
+  if (principal) {
+    if (principal.level !== input.actorRole || !evaluateTrialAccess(principal,
+      capability === "write" ? "assessment.manage" : "assessment.read", {
+        organizationId: input.organizationId, category: header.business_category,
+      }).allowed) throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
+    const binding = await transaction.query(
+      `SELECT id FROM access_role_bindings WHERE organization_id=$1 AND user_id=$2
+        AND role=$3 AND status='active' FOR SHARE`,
+      [input.organizationId,input.actorUserId,principal.level],
+    );
+    if (binding.rowCount !== 1) throw new AssessmentServiceError("ASSESSMENT_CASE_NOT_FOUND");
+    const canEdit = isAssessmentWriteBoundaryActive(header);
+    return Object.assign(header, {
+      access_mode: "full" as const,
+      access_can_edit: canEdit,
+      access_can_complete_background: canEdit && header.case_stage === "background_collection",
+    });
+  }
   const role = await transaction.query<{
     role: "founder" | "admin" | "advisor";
     is_primary: boolean;

@@ -1,4 +1,5 @@
 import "server-only";
+import {currentNotificationRecipient} from "./current-recipient.ts";
 
 import { runSupportingModuleTransaction } from "../../audit/server.ts";
 import type { TenantDatabaseContext, TenantTransactionRunner } from "../../shared/server.ts";
@@ -28,6 +29,7 @@ export class NotificationHttpRepository {
     return runSupportingModuleTransaction({
       runner: this.runner, module: "notifications", context: context(input.organizationId, input.userId),
       operation: async (tx) => {
+        if(!(await currentNotificationRecipient(tx,input.organizationId,input.userId)).allowed) throw new NotificationHttpError('FORBIDDEN');
         const rows = await tx.query<NotificationHttpRow>({
           text: `SELECT id, content_code, status, created_at, read_at, record_version,
                         target_kind, target_opaque_id, target_action
@@ -46,6 +48,7 @@ export class NotificationHttpRepository {
     return runSupportingModuleTransaction({
       runner: this.runner, module: "notifications", context: context(input.organizationId, input.userId),
       operation: async (tx) => {
+        if(!(await currentNotificationRecipient(tx,input.organizationId,input.userId)).allowed) throw new NotificationHttpError('FORBIDDEN');
         const rows = await tx.query<{ count: string }>({
           text: `SELECT count(*)::text AS count FROM notifications_notifications
                   WHERE organization_id=$1 AND recipient_user_id=$2 AND status='unread'`,
@@ -56,10 +59,24 @@ export class NotificationHttpRepository {
     });
   }
 
+  async resolveTarget(input:{organizationId:string;userId:string;notificationId:string}):Promise<'WORKSPACE_PENDING_ITEM'|'TASK_PENDING_ITEM'>{
+    return runSupportingModuleTransaction({runner:this.runner,module:'notifications',context:context(input.organizationId,input.userId),
+      operation:async tx=>{
+        const recipient=await currentNotificationRecipient(tx,input.organizationId,input.userId);
+        if(!recipient.allowed)throw new NotificationHttpError('FORBIDDEN');
+        const rows=await tx.query({text:`SELECT id FROM notifications_notifications WHERE id=$1 AND organization_id=$2
+          AND recipient_user_id=$3 AND status IN ('unread','read') FOR SHARE`,values:[input.notificationId,input.organizationId,input.userId]});
+        if(rows.length!==1)throw new NotificationHttpError('NOT_FOUND');
+        return recipient.taskOnly?'TASK_PENDING_ITEM':'WORKSPACE_PENDING_ITEM';
+      }});
+  }
+
   async markRead(input: { readonly organizationId: string; readonly userId: string; readonly notificationId: string; readonly expectedRecordVersion: number; readonly idempotencyKey: string }): Promise<NotificationHttpRow> {
     return runSupportingModuleTransaction({
       runner: this.runner, module: "notifications", context: context(input.organizationId, input.userId),
       operation: async (tx) => {
+        if(!(await currentNotificationRecipient(tx,input.organizationId,input.userId)).allowed) throw new NotificationHttpError('FORBIDDEN');
+        await tx.query({text:'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',values:[`notifications.read:${input.organizationId}:${input.userId}:${input.idempotencyKey}`]});
         const requestHash = hashRequestPayload({ notification_id: input.notificationId, expected_record_version: input.expectedRecordVersion });
         const existing = await tx.query<{ state: string; request_hash: string; result_reference: string | null }>({
           text: `SELECT state, request_hash, result_reference FROM shared_idempotency_records
@@ -73,7 +90,7 @@ export class NotificationHttpRepository {
             text: `INSERT INTO shared_idempotency_records
               (id, organization_id, actor_user_id, actor_kind, actor_opaque_id, operation,
                idempotency_key, request_hash, state, record_version)
-              VALUES ($1,$2,$3,'user',$3,'notifications.read',$4,$5,'in_progress',1)`,
+              VALUES ($1,$2,$3::uuid,'user',$3::text,'notifications.read',$4,$5,'in_progress',1)`,
             values: [randomUUID(), input.organizationId, input.userId, input.idempotencyKey, requestHash],
           });
         } else if (existing[0].state === "completed") {
@@ -81,7 +98,7 @@ export class NotificationHttpRepository {
             text: `SELECT id, content_code, status, created_at, read_at, record_version,
                           target_kind, target_opaque_id, target_action
                      FROM notifications_notifications
-                    WHERE id=$1 AND organization_id=$2 AND recipient_user_id=$3`,
+                    WHERE id=$1 AND organization_id=$2 AND recipient_user_id=$3 AND status IN ('unread','read')`,
             values: [input.notificationId, input.organizationId, input.userId],
           });
           if (!replay[0]) throw new NotificationHttpError("NOT_FOUND");
@@ -136,7 +153,7 @@ export class NotificationHttpRepository {
   }
 }
 
-export type NotificationHttpErrorCode = "NOT_FOUND" | "STALE_VERSION" | "CONFLICT";
+export type NotificationHttpErrorCode = "FORBIDDEN" | "NOT_FOUND" | "STALE_VERSION" | "CONFLICT";
 export class NotificationHttpError extends Error {
   readonly code: NotificationHttpErrorCode;
 

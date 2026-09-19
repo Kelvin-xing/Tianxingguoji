@@ -130,7 +130,7 @@ test("requires a resolved OD-06 receipt and separate reviewer before policy acti
   );
 });
 
-test("allows a policy-defined completion only with an active assignee and reason", () => {
+test("allows Release 1 completion by an active assignee without a separate approval", () => {
   const policy = approvedSyntheticPolicy();
 
   assert.deepEqual(evaluateTaskCreation(policy), {
@@ -146,7 +146,7 @@ test("allows a policy-defined completion only with an active assignee and reason
   );
   assert.deepEqual(
     evaluateTaskTransition(
-      transitionInput(policy, { reason: "" }),
+      transitionInput(policy, { from: "assigned", to: "awaiting_reassignment", reason: "" }),
     ),
     { allowed: false, code: "TASK_REASON_REQUIRED" },
   );
@@ -169,33 +169,20 @@ test("enforces tenant/case context and optimistic concurrency before actor rules
   );
 });
 
-test("keeps completion and approval separate and denies assignee self-approval", () => {
-  const policy = approvedSyntheticPolicy();
+test("owner revocation resolves the owner rule even when the same state edge has an assignee rule", () => {
+  assert.deepEqual(evaluateTaskTransition(transitionInput(approvedSyntheticPolicy(), {
+    from: "assigned", to: "awaiting_reassignment", actorId: requesterId, actorRole: "founder",
+  })), { allowed: true });
+});
 
-  assert.deepEqual(
-    evaluateTaskTransition(
-      transitionInput(policy, {
-        from: "completed",
-        to: "approved",
-        actorId: assigneeId,
-        actorRole: "advisor",
-        reason: "Synthetic approval",
-      }),
-    ),
-    { allowed: false, code: "TASK_APPROVAL_SEPARATION_REQUIRED" },
-  );
-  assert.deepEqual(
-    evaluateTaskTransition(
-      transitionInput(policy, {
-        from: "completed",
-        to: "approved",
-        actorId: approverId,
-        actorRole: "founder",
-        reason: "Synthetic approval",
-      }),
-    ),
-    { allowed: true },
-  );
+test("Release 1 does not permit historical task approval writes", () => {
+  const policy = approvedSyntheticPolicy();
+  for (const actorId of [assigneeId, approverId]) {
+    assert.deepEqual(evaluateTaskTransition(transitionInput(policy, {
+      from: "completed", to: "approved", actorId, actorRole: "founder",
+    })), { allowed: false, code: "TASK_TRANSITION_NOT_ALLOWED" });
+  }
+  assert.deepEqual(evaluateTaskTransition(transitionInput(policy, { reason: "" })), { allowed: true });
 });
 
 test("requires a redacted task-only context for contractors", () => {

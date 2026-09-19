@@ -15,12 +15,12 @@ const GUARDIAN_ID = "51000000-0000-4000-8000-000000000701";
 
 test("parses the exact frozen Student and Guardian PATCH requests", async () => {
   assert.deepEqual(await parseStudentProfileUpdate(json(studentBody()), STUDENT_ID, "request-1"), {
-    studentId: STUDENT_ID, displayName: " Student ", dateOfBirth: "2012-06-01",
+    studentId: STUDENT_ID, displayName: " Student ", dateOfBirth: "2012-06-01", gender:null,
     contactEmail: "STUDENT@EXAMPLE.INVALID", contactPhone: null, expectedRecordVersion: 1,
     requestId: "request-1", idempotencyKey: "profile-attempt-1",
   });
   assert.deepEqual(await parseGuardianProfileUpdate(json(guardianBody()), GUARDIAN_ID, "request-2"), {
-    guardianId: GUARDIAN_ID, displayName: " Guardian ", email: "GUARDIAN@EXAMPLE.INVALID",
+    guardianId: GUARDIAN_ID, displayName: " Guardian ", dateOfBirth:null,gender:null,email: "GUARDIAN@EXAMPLE.INVALID",
     phone: null, expectedRecordVersion: 2, requestId: "request-2",
     idempotencyKey: "profile-attempt-1",
   });
@@ -58,12 +58,12 @@ test("serializes only the exact non-PII acknowledgement and maps stable errors",
 });
 
 function studentBody() {
-  return { display_name: " Student ", date_of_birth: "2012-06-01",
+  return { display_name: " Student ", date_of_birth: "2012-06-01",gender:null,
     contact_email: "STUDENT@EXAMPLE.INVALID", contact_phone: null, expected_record_version: 1 };
 }
 
 function guardianBody() {
-  return { display_name: " Guardian ", email: "GUARDIAN@EXAMPLE.INVALID", phone: null,
+  return { display_name: " Guardian ", date_of_birth:null,gender:null,email: "GUARDIAN@EXAMPLE.INVALID", phone: null,
     expected_record_version: 2 };
 }
 

@@ -10,6 +10,8 @@ import {
   listCaseDocuments,
   listDocuments,
   registerCaseDocument,
+  getDocumentVersionHistory,
+  mutateDocumentLifecycle,
 } from "../../../modules/documents/client.ts";
 
 const CASE_ID = "10000000-0000-4000-8000-000000000001";
@@ -17,6 +19,25 @@ const OTHER_CASE_ID = "10000000-0000-4000-8000-000000000002";
 const DOCUMENT_ID = "20000000-0000-4000-8000-000000000001";
 const OTHER_DOCUMENT_ID = "20000000-0000-4000-8000-000000000002";
 const VERSION_ID = "30000000-0000-4000-8000-000000000001";
+
+test('document history rejects storage coordinates and lifecycle binds the exact acknowledgement',async context=>{
+  const original=globalThis.fetch;context.after(()=>{globalThis.fetch=original;});
+  const history={document_id:DOCUMENT_ID,record_version:2,lifecycle_state:'active',legal_hold:false,restore_deadline:null,can_delete:true,can_restore:false,can_rollback:false,
+    versions:[{id:VERSION_ID,state:'available',created_at:'2026-09-19T00:00:00Z',active:true,selectable:true}]};
+  globalThis.fetch=async()=>apiResponse(history);
+  assert.equal((await getDocumentVersionHistory(CASE_ID,DOCUMENT_ID)).versions.length,1);
+  globalThis.fetch=async()=>apiResponse({...history,versions:[{...history.versions[0],object_key:'private'}]});
+  await assert.rejects(getDocumentVersionHistory(CASE_ID,DOCUMENT_ID),malformedResponse);
+  globalThis.fetch=async(input,init)=>{
+    assert.equal(input,`/api/v1/cases/${CASE_ID}/documents/${DOCUMENT_ID}/restorations`);
+    assert.equal(new Headers(init?.headers).get('idempotency-key'),'lifecycle-test');
+    assert.deepEqual(JSON.parse(String(init?.body)),{expected_record_version:2,version_id:VERSION_ID});
+    return apiResponse({document_id:DOCUMENT_ID,record_version:3,active_version_id:VERSION_ID,lifecycle_state:'active'});
+  };
+  assert.deepEqual(await mutateDocumentLifecycle(CASE_ID,DOCUMENT_ID,'restore',2,VERSION_ID,'lifecycle-test'),{record_version:3});
+  globalThis.fetch=async()=>apiResponse({document_id:OTHER_DOCUMENT_ID,record_version:3,active_version_id:null,lifecycle_state:'pending_delete'});
+  await assert.rejects(mutateDocumentLifecycle(CASE_ID,DOCUMENT_ID,'delete',2,null,'lifecycle-test'),malformedResponse);
+});
 
 test("Document reads use no-query paths and strictly decode all three exact wrappers", async (context) => {
   const originalFetch = globalThis.fetch;

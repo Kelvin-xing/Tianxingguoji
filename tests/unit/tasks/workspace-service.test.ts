@@ -11,6 +11,7 @@ test("TASK-01 service enforces create/transition capabilities and canonical hash
   const calls:unknown[]=[];const repository={
     list:async()=>({audience:"case_workspace" as const,tasks:[]}),detail:async()=>null,options:async()=>({assignees:[]}),
     create:async(input:unknown)=>{calls.push(input);return{id:IDS[3]!,recordVersion:1};},
+    revokeCompletedAssignment:async()=>({id:IDS[3]!,recordVersion:2}),
     transition:async(input:unknown)=>{calls.push(input);return{id:IDS[3]!,recordVersion:2};},
   } satisfies TaskWorkspaceRepository;
   const ids=[IDS[3]!,IDS[0]!,IDS[1]!,IDS[2]!,IDS[0]!,IDS[1]!,IDS[2]!];

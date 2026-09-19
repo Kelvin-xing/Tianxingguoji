@@ -80,6 +80,7 @@ test("assignee options stay in the client canonical role, label and user order",
         async query<Row = Record<string, unknown>>(
           query: DatabaseQuery,
         ): Promise<DatabaseQueryResult<Row>> {
+          if (query.text.includes("FROM access_trial_members t\n")) return result([]) as DatabaseQueryResult<Row>;
           if (query.text.includes("SELECT binding.role FROM identity_users")) {
             return result([{ role: "advisor" }]) as DatabaseQueryResult<Row>;
           }
@@ -146,6 +147,7 @@ function transitionSeam(updateRowCount: number, taskKind: "manual" | "applicatio
           query: DatabaseQuery,
         ): Promise<DatabaseQueryResult<Row>> {
           const sql = query.text;
+          if (sql.includes("FROM access_trial_members t\n")) return result([]) as DatabaseQueryResult<Row>;
           if (sql.includes("INSERT INTO shared_idempotency_records")) {
             return result([{ id: IDS[0] }]) as DatabaseQueryResult<Row>;
           }

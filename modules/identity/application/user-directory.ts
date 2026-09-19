@@ -1,5 +1,6 @@
 import {
   hasRequestCapability,
+  type TrialLevel,
   type EmploymentType,
   type OrganizationRole,
   type RequestAccessActor,
@@ -17,6 +18,7 @@ export interface UserDirectoryRole {
 
 export interface UserDirectoryEntry {
   readonly userId: string;
+  readonly trialLevel: TrialLevel | null;
   readonly normalizedEmail: string;
   readonly userStatus: UserStatus;
   readonly membershipStatus: MembershipStatus;

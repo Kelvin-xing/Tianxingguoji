@@ -17,3 +17,5 @@ export * from "./application/p3-read-service.ts";
 export * from "./infrastructure/postgresql-p3-read-repository.ts";
 export * from "./infrastructure/p3-read-runtime.ts";
 export * from "./infrastructure/runtime.ts";
+
+export * from "./application/interview-task-request-consumer.ts";

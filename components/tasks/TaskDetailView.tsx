@@ -11,8 +11,10 @@ import {
   type TaskDetailResult,
 } from "@/modules/tasks/client";
 import { AutomaticTaskTransitionControls, type AutomaticTaskOutcome } from "./AutomaticTaskTransitionControls";
+import { TaskAssignmentRevocationControl } from "./TaskAssignmentRevocationControl";
+import { TaskDocumentLinks } from "./TaskDocumentLinks";
 import { TaskTransitionControls } from "./TaskTransitionControls";
-import { TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
+import { taskAssigneeRoleLabel, TaskAudienceNotice, TaskKindPill, TaskPageState, TaskStatePill, formatTaskDate, taskStateLabel } from "./task-ui";
 
 type LoadState = "loading" | "ready" | "assignment_ended" | "unauthenticated" | "denied" | "not_found" | "unavailable";
 
@@ -112,7 +114,7 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
           <Info label="到期時間" value={formatTaskDate(task.due_at)} />
           <Info label="最後更新" value={formatTaskDate(task.updated_at)} />
           <Info label="任務類型" value={task.task_kind === "application_prepare_submit" ? "準備並提交申請" : task.task_kind === "interview_support" ? "面試支援" : "手工任務"} />
-          {task.current_assignment ? <Info label="目前指派" value={`${task.current_assignment.assignee_role === "advisor" ? "顧問" : "外部協作人員"} · ${taskStateLabel(task.current_assignment.status)}`} /> : null}
+          {task.current_assignment ? <Info label="目前指派" value={`${taskAssigneeRoleLabel(task.current_assignment.assignee_role)} · ${taskStateLabel(task.current_assignment.status)}`} /> : null}
           {internal ? <Info label="負責人" value={result.task.assignee.label} /> : null}
           {internal ? <div><dt className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>案件</dt><dd className="mt-1"><Link href={`/cases/${result.task.case_id}`} className="quiet-link">{result.task.case_number}</Link></dd></div> : null}
         </dl>
@@ -128,6 +130,13 @@ export function TaskDetailView({ taskId }: { readonly taskId: string }) {
                 ? "任務已有較新版本，內容已重新載入。"
                 : "任務已更新，內容已重新載入。"}</span>
         </div>
+      ) : null}
+      {task.state === "completed" || (task.available_transitions.length === 0 && task.allowed_actions.length === 0) ? (
+        <div className="inline-callout" role="status"><Icon name="shield" size={15} /><span>此任務目前為唯讀。</span></div>
+      ) : null}
+      <TaskDocumentLinks taskId={task.id} taskVersion={task.record_version} kind={task.task_kind}/>
+      {canTransition && result.audience==="case_workspace" && "case_id" in result.task && task.allowed_actions.includes("revoke_access") ? (
+        <TaskAssignmentRevocationControl task={result.task} onUpdate={(next)=>{setResult(next);setTransitionOutcome(null);}}/>
       ) : null}
       {canTransition && task.task_kind === "manual" && task.available_transitions.length > 0 ? (
         <TaskTransitionControls

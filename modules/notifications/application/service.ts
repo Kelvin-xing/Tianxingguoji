@@ -35,6 +35,8 @@ export interface InAppDeliveryWork {
   readonly recipientUserId: string;
   readonly eventType: string;
   readonly effectIdempotencyKey: string;
+  readonly transitionFromState?: string | null;
+  readonly transitionToState?: string | null;
   readonly attemptCount: number;
   readonly leaseVersion: number;
 }
@@ -167,7 +169,7 @@ export class InAppNotificationService {
       organizationId: work.organizationId,
       recipientUserId: work.recipientUserId,
       outboxId: work.outboxId,
-      effectType: notificationEffectForEvent(work.eventType),
+      effectType: notificationEffectForEvent(work.eventType, work.transitionFromState, work.transitionToState),
       effectIdempotencyKey: work.effectIdempotencyKey,
       createdAt,
     });
@@ -181,7 +183,7 @@ export class InAppNotificationService {
       outboxId: work.outboxId,
       notificationId,
       recipientUserId: work.recipientUserId,
-      effectType: notificationEffectForEvent(work.eventType),
+      effectType: notificationEffectForEvent(work.eventType, work.transitionFromState, work.transitionToState),
       effectIdempotencyKey: work.effectIdempotencyKey,
       outcome: "delivered",
       attemptCount: work.attemptCount,
@@ -210,7 +212,7 @@ export class InAppNotificationService {
     assertWork(work);
     const failedAtMs = this.now();
     const terminal = work.attemptCount === MAX_IN_APP_DELIVERY_ATTEMPTS;
-    let terminalNotification: NotificationRecord | null = null;
+    const terminalNotification: NotificationRecord | null = null;
     let terminalReceipt: DeliveryReceipt | null = null;
     if (terminal) {
       const receiptId = this.id();
@@ -221,7 +223,7 @@ export class InAppNotificationService {
         outboxId: work.outboxId,
         notificationId: null,
         recipientUserId: work.recipientUserId,
-        effectType: notificationEffectForEvent(work.eventType),
+        effectType: notificationEffectForEvent(work.eventType, work.transitionFromState, work.transitionToState),
         effectIdempotencyKey: work.effectIdempotencyKey,
         outcome: "failed",
         attemptCount: work.attemptCount,
@@ -294,15 +296,17 @@ function assertCompletion(result: InAppDeliveryCompletion, work: InAppDeliveryWo
     throw new InAppNotificationError("IN_APP_DELIVERY_RESULT_INVALID");
   }
   assertReceipt(result.receipt);
+  const effectType = notificationEffectForEvent(work.eventType, work.transitionFromState, work.transitionToState);
+  const duplicateAcrossOutboxes = result.status === "duplicate" && result.receipt.outboxId !== work.outboxId;
   if (
     result.notification.organizationId !== work.organizationId ||
     result.notification.recipientUserId !== work.recipientUserId ||
-    result.notification.outboxId !== work.outboxId ||
-    result.notification.effectType !== notificationEffectForEvent(work.eventType) ||
+    (!duplicateAcrossOutboxes && result.notification.outboxId !== work.outboxId) ||
+    result.notification.effectType !== effectType ||
     result.notification.effectIdempotencyKey !== work.effectIdempotencyKey ||
     result.receipt.organizationId !== work.organizationId ||
-    result.receipt.outboxId !== work.outboxId ||
-    result.receipt.effectType !== notificationEffectForEvent(work.eventType) ||
+    (!duplicateAcrossOutboxes && result.receipt.outboxId !== work.outboxId) ||
+    result.receipt.effectType !== effectType ||
     result.receipt.effectIdempotencyKey !== work.effectIdempotencyKey
   ) {
     throw new InAppNotificationError("IN_APP_DELIVERY_RESULT_INVALID");
@@ -331,9 +335,16 @@ function assertUuid(value: string): void {
 /** Maps producer events to the nine approved effects without exposing payload text. */
 export function notificationEffectForEvent(
   eventType: string,
+  transitionFromState?: string | null,
+  transitionToState?: string | null,
 ): (typeof APPROVED_NOTIFICATION_EFFECTS)[number] {
   if (isApprovedNotificationEffect(eventType)) return eventType;
-  if (eventType === "tasks.task_transitioned" || eventType === "tasks.task_created") return "task_assigned";
+  if (eventType === "tasks.task_transitioned") {
+    if (transitionToState === "awaiting_reassignment") return "task_rejected";
+    if (transitionFromState !== null && transitionFromState !== undefined) return "task_reassigned";
+    return "task_assigned";
+  }
+  if (eventType === "tasks.task_created") return "task_assigned";
   if (eventType === "cases.service_case_stage_transitioned" || eventType === "cases.service_case_closed") {
     return "case_closure_choice_required";
   }
