@@ -424,3 +424,13 @@
 - 新增路由字段边界契约 `/tmp/access-trial-new-guardian-contract-final.log` **7/7**；类型 `/tmp/access-trial-new-guardian-types-final2.log`、diff通过。聚焦ESLint `/tmp/access-trial-new-guardian-lint-final.log` 无错误，保留旧未使用参数警告1条。无迁移。
 
 尚需新建家长表单与重复确认交互、其余CRM生命周期和其他模块、整体试用验收；main合并/推送未完成。未部署、未外发通知或使用真实客户资料。
+
+## 新建家长表单与重复确认（2026-09-19，接续 1361eb0）
+
+总体仍 `in_progress`。正式家长管理页面接入新建并关联入口。
+
+- 表单收集最小资料、可选生日/性别及独立关系职责；保存前查询疑似重复，要求员工明确确认创建另一人，不自动匹配或合并。主要联系人不变。请求失败保留原提交内容及幂等键；权限拒绝交由父页面清空受保护内容。
+- `/tmp/access-trial-new-guardian-ui-browser.log` **2/2**：真实Next/Chrome与PG17，页面填写并新建、成功刷新、再次填写触发重复警告、未确认时禁止提交、明确确认后创建独立家长。保留正式HTTP重放与非法字段/联系方式校验，以及既有关联/交接/解除流程。新建表单自身未单独注入丢失响应场景，不将旧关联入口的失败重试证据替代此项。
+- `/tmp/access-trial-new-guardian-ui-mobile.png` 已查看，390px布局无横向溢出。`/tmp/access-trial-new-guardian-ui-unit-final.log` **25/25**，覆盖客户端严格回执解析及模块/UI边界。类型 `/tmp/access-trial-new-guardian-ui-types-final.log`、聚焦ESLint `/tmp/access-trial-new-guardian-ui-lint.log` 无错误。无迁移。
+
+其余CRM生命周期、其他模块及整体试用验收仍需继续；main合并和远程推送未完成，未部署或使用真实客户资料。

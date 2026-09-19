@@ -812,6 +812,20 @@ export function handoffPrimaryGuardian(
   );
 }
 
+export interface NewGuardianRelationshipDraft extends Omit<AttachGuardianRelationshipDraft,"guardian_id"> {
+  readonly guardian:{readonly display_name:string;readonly email:string|null;readonly phone:string|null;
+    readonly date_of_birth:string|null;readonly gender:CrmGender|null;readonly warning_token:string|null};
+}
+export function createAndAttachGuardian(studentId:string,draft:NewGuardianRelationshipDraft,idempotencyKey:string):Promise<GuardianRelationshipCommandResult>{
+  assertUuid(studentId,"studentId");assertIdempotencyKey(idempotencyKey);
+  return requestApi({path:`/api/v1/students/${studentId}/guardians/new`,method:"POST",headers:{"idempotency-key":idempotencyKey},
+    body:{...draft,guardian:{...draft.guardian}}},value=>{
+      const relation=decodeGuardianCommandResult(exactRecord(value,["relationship"]).relationship);
+      if(relation.is_primary_contact||relation.record_version!==1)throw new TypeError("Invalid new guardian relationship receipt.");
+      return relation;
+    });
+}
+
 export function endGuardianRelationship(studentId:string,relationshipId:string,expectedRecordVersion:number,idempotencyKey:string):Promise<void> {
   assertUuid(studentId,"studentId"); assertUuid(relationshipId,"relationshipId");
   assertPositiveInteger(expectedRecordVersion,"expectedRecordVersion"); assertIdempotencyKey(idempotencyKey);

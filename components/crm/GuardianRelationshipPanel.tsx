@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import {NewGuardianRelationshipForm} from './NewGuardianRelationshipForm'
 import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react'
 import {getWorkspaceAccessSnapshot} from '@/modules/access/client'
 import {getStudent,getGuardianRelationships,searchGuardians,attachGuardianRelationship,handoffPrimaryGuardian,endGuardianRelationship,
@@ -74,7 +75,10 @@ export function GuardianRelationshipPanel({studentId}:{readonly studentId:string
       <strong>{row.guardian.display_name}</strong><span>{labels[row.relationship_type]} · {row.is_primary_contact?'主要聯絡人':'關聯監護人'}</span><small>{[row.guardian.email_hint,row.guardian.phone_hint].filter(Boolean).join(' · ')||'未提供聯絡方式'}</small>
       {canManage&&!row.is_primary_contact?<><button type="button" className="secondary-button" disabled={busy} onClick={()=>setEndTarget(row.relationship_id)}>解除與 {row.guardian.display_name} 的關係</button>{endTarget===row.relationship_id?<div><p>確認解除此關係？歷史仍會保留。</p><button type="button" className="primary-button" disabled={busy} onClick={()=>void mutate({kind:'end',relationshipId:row.relationship_id,version:row.record_version})}>確認解除</button><button type="button" className="secondary-button" disabled={busy} onClick={()=>setEndTarget('')}>取消解除</button></div>:null}</>:null}
     </article>)}</div></section>
-    {canManage?<><section className="workspace-section" aria-labelledby="attach-guardian-heading"><h3 id="attach-guardian-heading" className="section-title">關聯已有監護人</h3><p className="section-detail">搜尋後由你選擇；系統不會自動匹配。</p>
+    {canManage?<><NewGuardianRelationshipForm studentId={studentId} busy={busy} relationshipLabels={labels}
+      onBusy={value=>{locked.current=value;setBusy(value)}} onDenied={failure}
+      onCreated={async()=>{await refresh();setNotice('新監護人已建立並關聯，主要聯絡人未變更。')}}/>
+    <section className="workspace-section" aria-labelledby="attach-guardian-heading"><h3 id="attach-guardian-heading" className="section-title">關聯已有監護人</h3><p className="section-detail">搜尋後由你選擇；系統不會自動匹配。</p>
       <form className="grid gap-3 mt-4" onSubmit={search}><label className="field-label">搜尋姓名、電郵或電話<input value={query} onChange={event=>{setQuery(event.target.value);setCandidates([]);setSelected('');setSearched(false)}} minLength={2} maxLength={100} required disabled={busy}/></label><button className="secondary-button" disabled={busy} type="submit">搜尋監護人</button></form>
       {searched&&candidates.length===0?<p role="status">未找到可關聯的監護人。</p>:null}
       <form className="grid gap-3 mt-4" onSubmit={event=>{event.preventDefault();void mutate({kind:'attach',guardianId:selected,relationshipType,description,legal,emergency,billing,consent})}}><fieldset disabled={busy} className="grid gap-3">
