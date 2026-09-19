@@ -1,4 +1,5 @@
 import "server-only";
+import {loadTrialPrincipal} from "../../access/server.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -59,7 +60,7 @@ export class PostgresqlReferralSourceRepository implements ReferralSourceReposit
             (display_name COLLATE "C" = $5 AND id::text COLLATE "C" > $6))
         ORDER BY display_name COLLATE "C" ASC,id::text COLLATE "C" ASC
         LIMIT $7`,
-      [input.organizationId, input.status, input.sourceType, input.query,
+      [input.organizationId, ["advisor","l2"].includes(input.actorRole)?"active":input.status, input.sourceType, input.query,
         input.cursor?.displayName ?? null, input.cursor?.id ?? null, input.limit + 1]);
       const rows = result.rows.map(view);
       return Object.freeze({ items: Object.freeze(rows.slice(0, input.limit)), hasMore: rows.length > input.limit });
@@ -72,8 +73,8 @@ export class PostgresqlReferralSourceRepository implements ReferralSourceReposit
       const result = await tx.query<SourceRow>(`SELECT id,display_name,source_type,description,status,record_version,updated_at
         FROM crm_referral_sources
         WHERE organization_id=$1 AND id=$2
-          AND ($3::text <> 'advisor' OR status='active')`, [input.organizationId, input.sourceId, input.actorRole]);
-      if (!result.rows[0] || (input.actorRole === "advisor" && result.rows[0].status !== "active")) return null;
+          AND ($3::text NOT IN ('advisor','l2') OR status='active')`, [input.organizationId, input.sourceId, input.actorRole]);
+      if (!result.rows[0] || (["advisor","l2"].includes(input.actorRole) && result.rows[0].status !== "active")) return null;
       return view(result.rows[0]);
     });
   }
@@ -199,7 +200,9 @@ export class PostgresqlReferralSourceRepository implements ReferralSourceReposit
 
 async function assertActor(tx: Db, input: { organizationId: string; actorUserId: string; actorRole: string },
   mode: "read" | "manage") {
-  const roles = mode === "read" ? ["founder", "advisor"] : ["founder"];
+  const principal=await loadTrialPrincipal(tx,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
+  if(principal && (!principal.active||principal.level!==input.actorRole)) forbidden();
+  const roles = principal ? (mode === "read" ? ["founder","l1","l2"] : ["founder","l1"]) : (mode === "read" ? ["founder", "advisor"] : ["founder"]);
   if (!roles.includes(input.actorRole)) forbidden();
   const result = await tx.query(`SELECT binding.id FROM identity_users AS actor
     JOIN access_organization_memberships AS membership ON membership.user_id=actor.id

@@ -461,3 +461,15 @@
 - `/tmp/access-trial-decision-ui-final2.log` **32/32**：真实PG17/Next/Chrome、客户端与UI契约、模块边界全部通过；类型 `/tmp/access-trial-decision-ui-types-final3.log`、聚焦ESLint `/tmp/access-trial-decision-ui-lint-final2.log`及diff检查通过。无新迁移。
 
 尚需客户来源、学校及其他入口的权限适配/复核、合成试用场景及整体本地验收；main合并与远程推送仍未完成。未部署或操作真实员工/客户数据。
+
+## 客户来源目录与案件关联的试用权限（2026-09-19，接续 ef9673e）
+
+总体仍 `in_progress`。本节适配来源服务端，未修改来源页面。
+
+- 目录事务内加载当前试用成员并核对真实角色。Founder/L1维护目录；L2只能读取启用来源，过滤同时落实到服务与仓储，L3拒绝。停用试用成员不得退回历史角色；旧账号保持原规则。
+- 案件来源读取/关联按当前等级、分类及案件分类过滤：Founder/L1处理明确分类案件，L2仅授权分类，L3拒绝，未知分类默认拒绝。写入及原幂等回执返回前均重查当前权限，保留Case状态、来源启用、并发版本及历史关系约束。
+- `/tmp/access-trial-referral-final.log` **29/29**：真实PG17、目录与关联服务/仓储单测、模块边界。新增四等级/两分类/未知分类和历史Advisor矩阵；目录新建/修改/停用、关联与替换历史、重复提交单份审计、L1停用及L2分类撤销后拒绝旧请求。L2不能通过inactive筛选或直接ID读取停用来源，仍可在有权案件历史中看到已有来源关联。
+- 正式HTTP新增L1新建→修改→案件关联→来源停用及原回执验证，停用后案件关联保留。来源自身的页面操作仍需验收，不能以HTTP证据替代。
+- `/tmp/access-trial-referral-browser.log` **29/29**通过，包含真实Next/Chrome+PG及上项正式HTTP；既有删除审批、家长、文件、任务、邀请流程继续通过。类型 `/tmp/access-trial-referral-types-final.log`、diff通过；聚焦ESLint `/tmp/access-trial-referral-lint-final.log`无错误，保留既有未使用ReferralSourceCursor警告1条。无迁移。
+
+来源页面、学校等其余入口和整体试用验收仍需完成；main合并/远程推送未完成。未部署或操作真实客户/员工数据。

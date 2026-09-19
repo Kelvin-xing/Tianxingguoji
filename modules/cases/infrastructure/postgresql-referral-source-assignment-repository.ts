@@ -1,4 +1,6 @@
 import "server-only";
+import {loadTrialPrincipal} from "../../access/server.ts";
+import type {TrialPrincipal} from "../../access/public.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import { hashRequestPayload } from "../../shared/public.ts";
@@ -31,8 +33,8 @@ export class PostgresqlCaseReferralSourceAssignmentRepository implements CaseRef
 
   read(input: Parameters<CaseReferralSourceAssignmentRepository["read"]>[0]) {
     return this.run(input, async (tx) => {
-      await assertActor(tx, input);
-      const serviceCase = await lockVisibleCase(tx, input, false);
+      const principal=await assertActor(tx, input);
+      const serviceCase = await lockVisibleCase(tx, input, false,principal);
       if (!serviceCase) return null;
       const rows = await tx.query<AssignmentRow>(`SELECT id,referral_source_id,source_display_name,
         source_type,source_record_version,starts_at,ends_at,record_version
@@ -49,8 +51,8 @@ export class PostgresqlCaseReferralSourceAssignmentRepository implements CaseRef
   assign(input: Parameters<CaseReferralSourceAssignmentRepository["assign"]>[0]) {
     return this.run(input, async (tx) => {
       const replay = await claimReceipt(tx, input);
-      await assertActor(tx, input);
-      const serviceCase = await lockVisibleCase(tx, input, true);
+      const principal=await assertActor(tx, input);
+      const serviceCase = await lockVisibleCase(tx, input, true,principal);
       if (!serviceCase) notFound();
       if (replay) return replay;
       if (serviceCase.stage === "closed" || serviceCase.student_status !== "active") conflict();
@@ -106,7 +108,8 @@ export class PostgresqlCaseReferralSourceAssignmentRepository implements CaseRef
 }
 
 async function assertActor(tx: Db, input: { organizationId: string; actorUserId: string; actorRole: string }) {
-  if (!['founder','advisor'].includes(input.actorRole)) forbidden();
+  const principal=await loadTrialPrincipal(tx,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
+  if(principal ? (!principal.active||principal.level!==input.actorRole||principal.level==='l3') : !['founder','advisor'].includes(input.actorRole)) forbidden();
   const result = await tx.query(`SELECT binding.id FROM identity_users AS actor
     JOIN access_organization_memberships AS membership ON membership.user_id=actor.id
       AND membership.organization_id=$3 AND membership.status='active'
@@ -116,16 +119,19 @@ async function assertActor(tx: Db, input: { organizationId: string; actorUserId:
     WHERE actor.id=$1 AND actor.status='active' AND binding.role=$2
     FOR SHARE OF actor,membership,binding,organization`, [input.actorUserId,input.actorRole,input.organizationId]);
   if (result.rowCount !== 1) forbidden();
+  return principal;
 }
-async function lockVisibleCase(tx: Db, input: { caseId: string; actorUserId: string; actorRole: string }, write: boolean) {
+async function lockVisibleCase(tx: Db, input: { caseId: string; actorUserId: string; actorRole: string }, write: boolean,principal:TrialPrincipal|null) {
   const result = await tx.query<CaseRow>(`SELECT service_case.id,service_case.stage,
       student.status AS student_status,service_case.primary_user_id,service_case.primary_role
     FROM cases_service_cases AS service_case
     JOIN crm_students AS student ON student.id=service_case.student_id
-    WHERE service_case.id=$1 AND ($2='founder' OR ($2='advisor' AND
-      service_case.primary_role='advisor' AND service_case.primary_user_id=$3))
+    WHERE service_case.id=$1 AND (
+      ($4::boolean AND service_case.business_category IN ('international_school','local_school') AND
+        ($2 IN ('founder','l1') OR ($2='l2' AND service_case.business_category=ANY($5::text[])))) OR
+      (NOT $4::boolean AND ($2='founder' OR ($2='advisor' AND service_case.primary_role='advisor' AND service_case.primary_user_id=$3))))
     ${write ? "FOR UPDATE OF service_case" : "FOR SHARE OF service_case"}`,
-  [input.caseId,input.actorRole,input.actorUserId]);
+  [input.caseId,input.actorRole,input.actorUserId,principal!==null,principal?.categories??[]]);
   return result.rows[0] ?? null;
 }
 async function claimReceipt(tx: Db, input: { organizationId: string; actorUserId: string;

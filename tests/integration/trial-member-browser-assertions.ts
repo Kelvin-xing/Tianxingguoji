@@ -1,3 +1,4 @@
+import {assertTrialReferralSourceHttp} from './trial-referral-source-http-assertions.ts'
 import {assertTrialCrmDeletionHttp} from './trial-crm-deletion-http-assertions.ts'
 import {assertTrialGuardianHttp} from './trial-crm-guardian-http-assertions.ts'
 import {assertTrialCrmProfileBrowser} from './trial-crm-profile-browser-assertions.ts'
@@ -228,6 +229,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await assertTrialCrmProfileBrowser({page:restricted,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
     await assertTrialGuardianHttp({page:restricted,request:restrictedContext.request,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
     await assertTrialCrmDeletionHttp({page:restricted,request:restrictedContext.request,baseUrl,client,studentId:studentReceipt.student.id})
+    await assertTrialReferralSourceHttp({request:restrictedContext.request,baseUrl,caseId:createdData.case_id})
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
