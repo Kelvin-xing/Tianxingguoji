@@ -1,3 +1,4 @@
+import {assertTrialCrmProfileBrowser} from './trial-crm-profile-browser-assertions.ts'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes,randomUUID } from 'node:crypto'
@@ -222,6 +223,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(createdRelationships.rows.length,1)
     assert.equal(createdRelationships.rows[0].guardian_id,studentReceipt.primary_guardian.id)
     assert.equal((await client.query(`SELECT count(*)::int AS count FROM audit_events WHERE resource_id=$1 AND event_type='crm.student_primary_guardian_created'`,[studentReceipt.student.id])).rows[0].count,1)
+    await assertTrialCrmProfileBrowser({page:restricted,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -231,6 +233,14 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l2Page.getByLabel('密碼', { exact: true }).fill(password)
     await Promise.all([l2Page.waitForURL('**/today'),l2Page.getByRole('button', { name: '登入工作台', exact: true }).click()])
     assert.equal((await l2Context.request.post(`${baseUrl}/api/v1/students`,{headers:{'idempotency-key':`denied-${randomUUID()}`},data:studentCreateBody})).status(),403)
+    assert.equal((await l2Context.request.patch(`${baseUrl}/api/v1/students/${studentReceipt.student.id}`,{
+      headers:{'idempotency-key':`denied-profile-${randomUUID()}`},
+      data:{display_name:'Forbidden profile edit',date_of_birth:null,gender:null,contact_email:null,contact_phone:null,expected_record_version:2},
+    })).status(),403)
+    assert.equal((await l2Context.request.patch(`${baseUrl}/api/v1/guardians/${studentReceipt.primary_guardian.id}`,{
+      headers:{'idempotency-key':`denied-profile-${randomUUID()}`},
+      data:{display_name:'Forbidden guardian edit',date_of_birth:null,gender:null,email:'forbidden@example.invalid',phone:null,expected_record_version:2},
+    })).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
     const scopedStudents=await l2Context.request.get(`${baseUrl}/api/v1/students`)

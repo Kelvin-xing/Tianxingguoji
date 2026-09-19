@@ -1,3 +1,4 @@
+import {assertTrialCrmProfileWrites} from "./trial-crm-profile-assertions.ts";
 import { assertTrialCaseIntake } from "./trial-case-intake-assertions.ts";
 import { assertTrialCaseWriteSql } from "./trial-case-write-sql-assertions.ts";
 import assert from "node:assert/strict";
@@ -108,7 +109,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
       await assert.rejects(repository.listCases(actor(l3!.userId, "l3")), forbidden);
       await assert.rejects(repository.findCase({ ...actor(l3!.userId, "l3"),caseId }), forbidden);
       await assert.rejects(repository.listCases(actor(l2!.userId, "founder")), forbidden);
-      for(const [person,allowed] of [[founder!,true],[l1!,true],[l2!,category==='international_school'],[l3!,false],[advisor!,true]] as const){
+      for(const [person,allowed,role] of [[founder!,true,'founder'],[l1!,true,'l1'],[l2!,category==='international_school','l2'],[l3!,false,'l3'],[advisor!,true,'advisor']] as const){
         const input={organizationId:org,actorUserId:person.userId};
         assert.equal((await students.listStudents(input)).some(s=>s.id===NEON_TEST_STUDENTS[0]!.id),allowed,'student list follows current category scope');
         assert.equal((await students.findStudent({...input,studentId:NEON_TEST_STUDENTS[0]!.id}))!==null,allowed,'student detail cannot bypass the list scope');
@@ -117,6 +118,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
         const guardian=(await client.query(`SELECT g.id,g.display_name FROM crm_guardians g JOIN crm_student_guardian_relationships r ON r.guardian_id=g.id
           WHERE r.student_id=$1 AND r.ends_at IS NULL AND r.is_primary_contact`,[NEON_TEST_STUDENTS[0]!.id])).rows[0];
         assert.equal((await duplicates.findCandidates({...input,kind:'guardian',name:guardian.display_name,email:null,phone:null})).candidates.some(row=>row.id===guardian.id),allowed,'duplicate search cannot reveal out-of-scope guardians');
+        await assertTrialCrmProfileWrites({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,studentId:NEON_TEST_STUDENTS[0]!.id,guardianId:guardian.id,allowed});
       }
       await context(founder!.userId);
       await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1", [l2!.userId]);

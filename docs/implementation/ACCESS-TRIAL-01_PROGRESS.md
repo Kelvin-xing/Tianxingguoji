@@ -363,3 +363,16 @@
 - 类型 `/tmp/access-trial-crm-create-types-final.log`、聚焦ESLint `/tmp/access-trial-crm-create-lint-final.log`、diff检查通过。本节验证正式HTTP建档，不代表已完成建档表单交互的新增浏览器验收。
 
 资料修改、家长关系写入等CRM适配、整体试用验收及main合并/推送仍未完成。未部署、未变更真实员工或外发邮件。
+
+## CRM 学生与家长资料修改（2026-09-19，接续 4a37176）
+
+总体仍 `in_progress`。本节把资料修改仓储从旧Founder/负责Advisor判断接入当前试用等级和分类。
+
+- 共用当前成员/真实角色/分类查询，以显式enrolled标记区分试用与历史账号；试用Founder/L1可维护正常主档，L2仅维护授权分类案件关联学生及其当前家长，L3拒绝。请求中旧等级与数据库当前等级不一致时拒绝；分类及关系在事务中锁定，旧角色不扩大新等级权限。
+- 新命令和同键回执读取都经过当前权限校验。保留版本冲突、待删除禁止写入、唯一主要联系人及审计/outbox事务语义；已删除资料即使有旧成功回执也返回不存在。
+- `/tmp/access-trial-crm-profile-final.log` **32/32**：PG17真实仓储/服务矩阵、资料服务和路由契约、模块边界。覆盖Founder/L1、分类内/外/未知分类L2、L3及历史Advisor，学生和家长分别验证；同键原回执、单份审计/outbox、旧版本拒绝、分类撤销及L1停用后的缓存请求/旧回执拒绝。修正既有测试夹具缺少当前AccessContext能力以及已确认gender/家长生日字段，未降低生产契约。
+- `/tmp/access-trial-crm-profile-browser-final.log` **2/2**：真实Next/Chrome中L1打开学生详情，编辑学生及家长姓名、保存并刷新；数据库核对家长持久化。L2正式PATCH分类外学生/家长均403；既有文件、任务、邀请流程继续通过。
+- `/tmp/access-trial-crm-profile-mobile.png` 已查看，390px下内容和操作可见，无横向溢出。第一次浏览器定位把必填标记计入label而超时，改用实际可访问textbox名称后通过，未修改页面规避测试。
+- 类型 `/tmp/access-trial-crm-profile-types-final.log`、聚焦ESLint `/tmp/access-trial-crm-profile-lint-final.log`、diff检查通过。无新迁移。
+
+家长关系列表/历史仍存在独立入口未按试用分类过滤，下一步须收窄；关系新增、交接、解除等写入仍须适配。整体试用验收及main合并/推送未完成；未部署或变更真实员工。
