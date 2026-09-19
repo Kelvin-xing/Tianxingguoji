@@ -724,4 +724,4 @@
 - 原有本地数据库仍未被重置：其当前结构没有一期 one-role baseline marker，`db:baseline:local:dry-run` 和 `db:seed:local-release1` 均安全拒绝；本节证据来自隔离临时库。目标结果/结案仍保持已批准的 P2-03 fail-closed 运行边界，未凭空增加新的事务运行时。
 - 最终 `PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm run test:trial-access` **2/2** 通过（约 152 秒）：真实 PostgreSQL 17、Next/Chrome 全链路、成员/案件/CRM/学校审批/邮件/通知/任务/文件/撤权及移动端场景全部通过；输出继续包含 `trial_notification_scheduler: pass`。
 
-本轮开发、真实 PostgreSQL/Next/Chrome 整体验收、合并到 `main` 和推送已完成；当前 `HEAD` 与 `origin/main` 均为 `fcb4264f735d28cf525d7a17300d4a6bfeb71aed`。目标结果正式事务运行时仍受已批准的香港生产数据库适配边界限制；客户测试环境部署、真实员工/客户资料迁移和外部邮件发送不在本轮授权内。
+本轮开发、真实 PostgreSQL/Next/Chrome 整体验收、合并到 `main` 和推送已完成；代码实现提交为 `e78e145`，其后的交付文档修正也已同步到 `origin/main`。目标结果正式事务运行时仍受已批准的香港生产数据库适配边界限制；客户测试环境部署、真实员工/客户资料迁移和外部邮件发送不在本轮授权内。
