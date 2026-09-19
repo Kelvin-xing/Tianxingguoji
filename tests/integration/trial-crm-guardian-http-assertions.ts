@@ -73,5 +73,23 @@ export async function assertTrialGuardianHttp(input:{page:Page;request:APIReques
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   await page.screenshot({path:'/tmp/access-trial-guardian-ui-mobile.png',fullPage:true});
+  const newBody={...attachData,guardian:{display_name:`Synthetic created guardian ${randomUUID()}`,email:`new-${randomUUID()}@example.invalid`,phone:null,date_of_birth:null,gender:null,warning_token:null}};
+  const {guardian_id:existingId,...newRequest}=newBody;void existingId;
+  const newHeaders={'idempotency-key':`new-guardian-${randomUUID()}`};
+  const newResult=await request.post(`${root}/guardians/new`,{headers:newHeaders,data:newRequest});
+  assert.equal(newResult.status(),201);
+  const newReceipt=(await newResult.json()).data;
+  assert.equal(newReceipt.relationship.is_primary_contact,false);
+  assert.deepEqual((await (await request.post(`${root}/guardians/new`,{headers:newHeaders,data:newRequest})).json()).data,newReceipt);
+  assert.equal((await request.post(`${root}/guardians/new`,{headers:{'idempotency-key':`duplicate-${randomUUID()}`},data:newRequest})).status(),409);
+  const warning=await request.post(`${baseUrl}/api/v1/crm/potential-duplicates`,{data:{kind:'guardian',name:newBody.guardian.display_name,email:newBody.guardian.email,phone:null}});
+  assert.equal(warning.status(),200);
+  const warningData=(await warning.json()).data;
+  assert.ok(warningData.warning_token);
+  const acknowledged=await request.post(`${root}/guardians/new`,{headers:{'idempotency-key':`acknowledged-${randomUUID()}`},data:{...newRequest,guardian:{...newRequest.guardian,warning_token:warningData.warning_token}}});
+  assert.equal(acknowledged.status(),201);
+  assert.notEqual((await acknowledged.json()).data.relationship.guardian_id,newReceipt.relationship.guardian_id);
+  assert.equal((await request.post(`${root}/guardians/new`,{headers:{'idempotency-key':`invalid-${randomUUID()}`},data:{...newRequest,guardian:{...newRequest.guardian,email:null,phone:null}}})).status(),422);
+  assert.equal((await request.post(`${root}/guardians/new`,{headers:{'idempotency-key':`identity-${randomUUID()}`},data:{...newRequest,guardian_id:otherId}})).status(),400);
   process.stdout.write(JSON.stringify({trial_guardian_http:'pass',l1:'ui_search_attach_handoff_end_reload',former_primary:'retained_until_explicit_end',replay:'original_receipts'})+'\n');
 }

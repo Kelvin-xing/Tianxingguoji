@@ -1,4 +1,6 @@
 import "server-only";
+import {findPotentialDuplicateCandidatesInTransaction} from './postgresql-potential-duplicate-repository.ts';
+import {canonicalPotentialDuplicateFieldsHash,verifyPotentialDuplicateWarningToken} from './potential-duplicate-token-codec.ts';
 import {resolveTrialStudentScope,resolveTrialStudentAuthorization} from "./trial-student-scope.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
@@ -193,7 +195,19 @@ export class PostgresqlGuardianRelationshipRepository implements GuardianRelatio
       if (!await lockActiveStudent(transaction, input.studentId, true)) {
         throw error("GUARDIAN_RELATIONSHIP_STUDENT_NOT_FOUND");
       }
-      if (visible!==null) {
+      if(input.newGuardian){
+        const guardian=input.newGuardian;
+        const fields={name:guardian.displayName,email:guardian.email,phone:guardian.phone};
+        const entries=Object.entries(fields).filter((entry):entry is [string,string]=>entry[1]!==null).sort(([a],[b])=>a.localeCompare(b));
+        for(const [field,value] of entries){
+          const single=field==='name'?{name:value,email:null,phone:null}:field==='email'?{name:null,email:value,phone:null}:{name:null,email:null,phone:value};
+          await tenantTransaction.query({text:'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',values:[`${input.organizationId}:guardian:${field}:${canonicalPotentialDuplicateFieldsHash(single)}`]});
+        }
+        const found=await findPotentialDuplicateCandidatesInTransaction(tenantTransaction,{organizationId:input.organizationId,actorUserId:input.actorUserId,kind:'guardian',...fields},true);
+        if(found.candidates.length>0&&(!guardian.warningToken||!verifyPotentialDuplicateWarningToken(guardian.warningToken,{org:input.organizationId,actor:input.actorUserId,kind:'guardian',fieldsHash:canonicalPotentialDuplicateFieldsHash(fields),candidateVersion:found.candidateVersion})))throw error('GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED');
+        await transaction.query(`INSERT INTO crm_guardians(id,organization_id,display_name,email,phone,date_of_birth,gender,status)
+          VALUES ($1,$2,$3,$4,$5,$6::date,$7,'active')`,[input.guardianId,input.organizationId,guardian.displayName,guardian.email,guardian.phone,guardian.dateOfBirth,guardian.gender]);
+      } else if (visible!==null) {
         const allowed=await transaction.query(`SELECT scope_relation.id FROM crm_student_guardian_relationships scope_relation
           JOIN crm_students scope_student ON scope_student.id=scope_relation.student_id AND scope_student.organization_id=scope_relation.organization_id
           WHERE scope_relation.organization_id=$1 AND scope_relation.guardian_id=$2 AND scope_relation.ends_at IS NULL

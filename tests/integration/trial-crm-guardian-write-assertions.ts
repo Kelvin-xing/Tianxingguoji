@@ -1,3 +1,5 @@
+import {buildPotentialDuplicateWarnings} from '../../modules/crm/infrastructure/potential-duplicate-token-codec.ts';
+import {PostgresqlPotentialDuplicateRepository} from '../../modules/crm/infrastructure/postgresql-potential-duplicate-repository.ts';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import type {Client} from 'pg';
@@ -40,16 +42,45 @@ export async function assertTrialGuardianWrites(input:{client:Client;runner:Tena
     const deny=(error:unknown)=>error instanceof GuardianRelationshipError&&error.code==='GUARDIAN_RELATIONSHIP_FORBIDDEN';
     const request=()=>({requestId:`guardian-${randomUUID()}`,idempotencyKey:`guardian-${randomUUID()}`});
     const attachCommand={...request(),studentId,guardianId:source.guardianId,relationshipType:'mother' as const,relationshipDescription:null,isLegalGuardian:true,isEmergencyContact:true,isBillingContact:false,notificationConsent:false};
+    const newCommand={...attachCommand,...request(),guardian:{displayName:`Synthetic new guardian ${randomUUID()}`,email:`new-${randomUUID()}@example.invalid`,phone:null,dateOfBirth:null,gender:null,warningToken:null}};
     const primary=(await client.query('SELECT id,guardian_id,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND is_primary_contact AND ends_at IS NULL',[studentId])).rows[0];
     const handoffCommand={...request(),studentId,successorGuardianId:source.guardianId,expectedPrimaryRecordVersion:Number(primary.record_version)};
     const endCommand={...request(),studentId,relationshipId:primary.id,expectedRecordVersion:Number(primary.record_version)};
     if(!input.allowed){
       await assert.rejects(service.searchGuardians({actor,studentId,query:'Scope'}),deny);
       await assert.rejects(service.attachGuardian({actor,command:attachCommand}),deny);
+      await assert.rejects(service.createAndAttachGuardian({actor,command:newCommand}),deny);
       await assert.rejects(service.handoffPrimaryContact({actor,command:handoffCommand}),deny);
       await assert.rejects(service.endRelationship({actor,command:endCommand}),deny);
       return;
     }
+    const failRunner:TenantTransactionRunner={async run(context,operation){
+      await client.query('SAVEPOINT new_guardian_failure');
+      try{return await input.runner.run(context,transaction=>operation({query:query=>{
+        if(query.text.includes('INSERT INTO audit_events'))throw new Error('Synthetic audit failure');
+        return transaction.query(query);
+      }}));}catch(error){await client.query('ROLLBACK TO SAVEPOINT new_guardian_failure');throw error;}
+      finally{await client.query('RELEASE SAVEPOINT new_guardian_failure');}
+    }};
+    await assert.rejects(new GuardianRelationshipService(new PostgresqlGuardianRelationshipRepository(failRunner)).createAndAttachGuardian({actor,command:newCommand}),error=>error instanceof GuardianRelationshipError&&error.code==='GUARDIAN_RELATIONSHIP_UNAVAILABLE');
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM crm_guardians WHERE email=$1',[newCommand.guardian.email])).rows[0].count,0,'audit failure rolls back new guardian and relationship');
+    await client.query('SAVEPOINT new_guardian_creation');
+    try{
+      const created=await service.createAndAttachGuardian({actor,command:newCommand});
+      assert.equal(created.isPrimaryContact,false);
+      assert.deepEqual(await service.createAndAttachGuardian({actor,command:newCommand}),created);
+      assert.equal((await client.query('SELECT count(*)::int AS count FROM crm_guardians WHERE email=$1',[newCommand.guardian.email])).rows[0].count,1);
+      assert.equal((await client.query('SELECT count(*)::int AS count FROM audit_events WHERE resource_id=$1',[created.relationshipId])).rows[0].count,1);
+      const duplicateCommand={...newCommand,...request()};
+      await assert.rejects(service.createAndAttachGuardian({actor,command:duplicateCommand}),error=>error instanceof GuardianRelationshipError&&error.code==='GUARDIAN_RELATIONSHIP_DUPLICATE_WARNING_REQUIRED');
+      const matches=await new PostgresqlPotentialDuplicateRepository(input.runner).findCandidates({organizationId:org,actorUserId:input.userId,kind:'guardian',name:newCommand.guardian.displayName,email:newCommand.guardian.email,phone:null});
+      const warning=buildPotentialDuplicateWarnings({organizationId:org,actorUserId:input.userId,kind:'guardian',name:newCommand.guardian.displayName,email:newCommand.guardian.email,phone:null,...matches});
+      assert.ok(warning.warningToken);
+      const acknowledged=await service.createAndAttachGuardian({actor,command:{...newCommand,...request(),guardian:{...newCommand.guardian,warningToken:warning.warningToken}}});
+      assert.notEqual(acknowledged.guardianId,created.guardianId,'acknowledgement explicitly creates another guardian, never auto-links');
+      assert.equal((await client.query('SELECT count(*)::int AS count FROM crm_student_guardian_relationships WHERE student_id=$1 AND is_primary_contact AND ends_at IS NULL',[studentId])).rows[0].count,1);
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');await client.query('SET CONSTRAINTS ALL DEFERRED');
+    }finally{await client.query('ROLLBACK TO SAVEPOINT new_guardian_creation');await client.query('RELEASE SAVEPOINT new_guardian_creation');}
     const found=await service.searchGuardians({actor,studentId,query:'Scope'});
     assert.ok(found.some(row=>row.id===source.guardianId));
     assert.equal(found.some(row=>row.id===hiddenGuardian),input.role!=='l2','scoped search must not reveal unassociated guardians');

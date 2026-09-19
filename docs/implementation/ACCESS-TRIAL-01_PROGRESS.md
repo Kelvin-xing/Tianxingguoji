@@ -412,3 +412,15 @@
 - 类型 `/tmp/access-trial-guardian-ui-types-final2.log`、聚焦ESLint `/tmp/access-trial-guardian-ui-lint-final.log`、diff检查通过。无迁移。
 
 新建家长并关联入口、其余CRM生命周期和其他模块、整体本地试用验收尚未完成；main合并和远程推送仍待整体验收。未部署或操作真实客户数据。
+
+## 新建家长并关联服务端（2026-09-19，接续 359ba29）
+
+总体仍 `in_progress`。按BR-024增加新建家长与非主要关系的原子入口；页面接入尚待下一步。
+
+- 新POST `/api/v1/students/[studentId]/guardians/new`只接受家长最小资料及明确关系/职责，禁止客户端指定家长ID、主要联系人或身份字段；姓名、联系方式、生日、性别在服务层验证并规范化。复用关系创建的当前等级/分类重查、租户事务、审计/outbox及幂等；新家长默认不改变主要联系人。
+- 新建前锁定规范化姓名/邮箱/电话查重范围，复用现有可见候选查询和签名确认token；发现重复且未确认时409，明确确认后新建独立家长，不自动匹配已有对象。同键重试排除服务器生成ID对请求哈希的影响，返回原关系回执。
+- `/tmp/access-trial-new-guardian-final.log` **39/39**：真实PG17、关系仓储/路由与模块边界。新增四等级/分类允许拒绝矩阵、重复提交单份家长/审计、重复提示与明确确认、主要联系人保持唯一；注入审计失败后家长和关系一起回滚。
+- `/tmp/access-trial-new-guardian-http.log` **2/2**：真实Next/Chrome+PG。L1正式HTTP新建201、同键原回执、未确认重复409、查重取得token后确认创建另一家长、无联系方式422、注入guardian_id400。既有关系页面、资料、文件、任务、邀请流程继续通过。新建入口自身此时是HTTP证据，不是新建表单验收。
+- 新增路由字段边界契约 `/tmp/access-trial-new-guardian-contract-final.log` **7/7**；类型 `/tmp/access-trial-new-guardian-types-final2.log`、diff通过。聚焦ESLint `/tmp/access-trial-new-guardian-lint-final.log` 无错误，保留旧未使用参数警告1条。无迁移。
+
+尚需新建家长表单与重复确认交互、其余CRM生命周期和其他模块、整体试用验收；main合并/推送未完成。未部署、未外发通知或使用真实客户资料。
