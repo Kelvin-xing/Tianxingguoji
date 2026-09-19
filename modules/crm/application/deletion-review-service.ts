@@ -263,8 +263,6 @@ export class DeletionReviewService {
       ? "record.lifecycle.soft_deletion_approved"
       : "record.lifecycle.soft_deletion_rejected";
     const metadata = {
-      entity_type: command.entityType,
-      decision: command.decision,
       previous_version: command.expectedRecordVersion,
       record_version: command.expectedRecordVersion + 1,
       status,
@@ -298,7 +296,8 @@ export class DeletionReviewService {
       eventVersion: 1,
       idempotencyKey: `deletion-decision-${ids[0]}`,
       requestId: command.correlationRequestId,
-      payload: { aggregate_id: entityId, ...metadata },
+      payload: { aggregate_id: entityId, record_version: command.expectedRecordVersion + 1,
+        status, reason_code: reasonCode, request_id: command.correlationRequestId },
       availableAt: occurredAt,
       createdAt: occurredAt,
     });
@@ -411,7 +410,6 @@ function effects(
     requestId: command.requestId,
     payload: {
       aggregate_id: command.entityId,
-      entity_type: command.entityType,
       effect_type: "pending_delete_requested",
       record_version: command.expectedRecordVersion + 1,
       request_id: command.requestId,

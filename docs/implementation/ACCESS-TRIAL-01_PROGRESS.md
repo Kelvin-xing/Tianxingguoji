@@ -434,3 +434,18 @@
 - `/tmp/access-trial-new-guardian-ui-mobile.png` 已查看，390px布局无横向溢出。`/tmp/access-trial-new-guardian-ui-unit-final.log` **25/25**，覆盖客户端严格回执解析及模块/UI边界。类型 `/tmp/access-trial-new-guardian-ui-types-final.log`、聚焦ESLint `/tmp/access-trial-new-guardian-ui-lint.log` 无错误。无迁移。
 
 其余CRM生命周期、其他模块及整体试用验收仍需继续；main合并和远程推送未完成，未部署或使用真实客户资料。
+
+## 客户软删除试用权限与正式接口修复（2026-09-19，接续 da60cef）
+
+总体仍 `in_progress`。本节适配服务端删除申请/审批和待审批读取，不新增删除审批按钮。
+
+- CRM仓储事务内重查当前试用成员、实际角色及分类；Founder/L1可申请和审批，L2仅对可见关联资料申请，L3拒绝，L2不得读取审批队列或作决定。新等级不使用旧Advisor责任关系扩权；无当前可见关系的家长不通过历史关系取得L2权限。停用后的旧决定回执也重新授权。
+- 未结案学生、有当前关系的家长继续阻止删除；已删除资料不返回旧申请回执。申请、驳回、批准保留软删除与审计/outbox，不执行物理删除或恢复。
+- 真实PG暴露并修复原有三个缺陷：事件额外字段违反数据库允许名单（类型/决定仍由事件类型、resourceType、action等正式信封字段表达）；审批CASE表达式缺少timestamp/UUID类型转换；连续驳回再申请时事务起点早于旧updated_at。数据库写入使用statement_timestamp及已存在时间下界，未放宽约束。
+- 待审批页面客户端原先拒绝服务端request_id字段，现按正式七字段契约解析并绑定编号与资料类型/ID；不放宽任意额外字段读取。
+- 新真实PG矩阵覆盖四等级、分类内外/未知分类及历史Advisor；Founder/L1申请→驳回→重新申请→批准、同键重试单份审计/outbox，注入审计失败后状态回滚，L1停用后拒绝旧命令/队列。正式HTTP覆盖L1同一流程及原回执，浏览器验证待审批队列载入、刷新和批准后消失。
+- 审批操作目前仍是HTTP验证；页面只有待审批列表，审批按钮尚未接入。`/tmp/access-trial-deletion-queue-mobile.png`已查看，390px可见且无横向溢出。
+- `/tmp/access-trial-deletion-browser2.log`真实PG+Next/Chrome子测试 **2/2** 通过（该批整组51/52，唯一失败为旧客户端学生详情夹具遗漏已确认gender/家长生日字段）；修正夹具后 `/tmp/access-trial-deletion-unit-final.log` **56/56** 通过。旧关系页面结构断言同步到当前能力和active状态检查，未恢复过期实现。
+- 类型 `/tmp/access-trial-deletion-types-final3.log`、聚焦ESLint `/tmp/access-trial-deletion-lint-final2.log`及 `/tmp/access-trial-deletion-last-tests-lint.log`、diff检查通过。无迁移。中间一次独立PG批次在既有case_flow_foundation的background_blocker_rejections失败；最终浏览器批次包含同一检查且通过，未修改该检查或对应业务规则。
+
+下一步仍须接入审批页面、完成其余模块与整体试用验收。main合并/远程推送未完成；未部署、未发送外部邮件、未迁移真实员工。

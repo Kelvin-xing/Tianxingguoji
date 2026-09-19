@@ -61,7 +61,7 @@ test('write receipt decoder is exact, PII-free and matches the requested target'
   }
 })
 
-test('Founder queue uses one optional enum query and strictly decodes the six-key ordered array', async (context) => {
+test('Founder queue uses one optional enum query and strictly decodes the typed locator and ordered array', async (context) => {
   const originalFetch = globalThis.fetch
   context.after(() => { globalThis.fetch = originalFetch })
   let request = 0
@@ -82,6 +82,7 @@ test('Founder queue uses one optional enum query and strictly decodes the six-ke
   assert.equal(Object.isFrozen(all), true)
 
   for (const malformed of [
+    [{ ...items[0], request_id: items[1]!.request_id }],
     [{ ...items[0], email: 'not-allowed@example.invalid' }],
     [{ ...items[0], status: 'active' }],
     [items[1], items[0]],
@@ -144,7 +145,7 @@ function receipt(entityType: 'student' | 'guardian', entityId: string, recordVer
 }
 
 function summary(entityType: 'student' | 'guardian', entityId: string, requestedAt: string, recordVersion: number) {
-  return { ...receipt(entityType, entityId, recordVersion), display_label: entityType === 'student' ? 'Synthetic Student' : 'Synthetic Guardian', deletion_requested_at: requestedAt }
+  return { ...receipt(entityType, entityId, recordVersion), request_id: "del_v1_"+Buffer.from(`v1:${entityType}:${entityId}`).toString("base64url"), display_label: entityType === 'student' ? 'Synthetic Student' : 'Synthetic Guardian', deletion_requested_at: requestedAt }
 }
 
 function studentDetail(guardianStatus: 'active' | 'pending_delete') {
@@ -152,6 +153,7 @@ function studentDetail(guardianStatus: 'active' | 'pending_delete') {
     id: STUDENT_ID,
     displayName: 'Synthetic Student',
     dateOfBirth: null,
+    gender: null,
     status: 'active',
     primaryGuardianName: 'Synthetic Guardian',
     updatedAt: '2026-08-23T00:00:00.000Z',
@@ -163,6 +165,8 @@ function studentDetail(guardianStatus: 'active' | 'pending_delete') {
       displayName: 'Synthetic Guardian',
       email: null,
       phone: 'synthetic-phone',
+      dateOfBirth: null,
+      gender: null,
       status: guardianStatus,
       recordVersion: 1,
       relationshipType: 'father',

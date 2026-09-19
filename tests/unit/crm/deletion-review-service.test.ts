@@ -90,7 +90,9 @@ test("hashes the exact command and emits only PII-free lifecycle effects", async
     captured?.effects.outbox.eventType,
     "crm.soft_deletion_requested",
   );
-  assert.equal(captured?.effects.outbox.payload.entity_type, "student");
+  assert.equal(captured?.effects.audit.resourceType, "Student");
+  assert.equal(captured?.effects.outbox.aggregateType, "Student");
+  assert.equal(captured?.effects.outbox.payload.entity_type, undefined);
 });
 
 test("stable deletion error guard accepts cross-module Error and rejects unsafe shapes", () => {
@@ -309,8 +311,6 @@ test("Founder decision freezes hash, ids, timestamp and PII-free effects", async
   assert.equal(captured?.effects.audit.action, "approve_soft_deletion");
   assert.equal(captured?.effects.audit.resourceType, "Student");
   assert.deepEqual(captured?.effects.audit.metadata, {
-    entity_type: "student",
-    decision: "approve",
     previous_version: 2,
     record_version: 3,
     status: "deleted",
@@ -324,9 +324,6 @@ test("Founder decision freezes hash, ids, timestamp and PII-free effects", async
   );
   assert.deepEqual(captured?.effects.outbox.payload, {
     aggregate_id: IDS.target,
-    entity_type: "student",
-    decision: "approve",
-    previous_version: 2,
     record_version: 3,
     status: "deleted",
     reason_code: "record.lifecycle.soft_deletion_approved",

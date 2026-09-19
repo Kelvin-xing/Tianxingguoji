@@ -247,6 +247,7 @@ export interface PendingDeletionReceipt {
 }
 
 export interface PendingDeletionSummary extends PendingDeletionReceipt {
+  readonly request_id: string;
   readonly display_label: string;
 }
 
@@ -1673,6 +1674,7 @@ function decodePendingDeletionReceipt(
 function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletionSummary[] {
   const items = expectArray(value, (item) => {
     const record = exactRecord(item, [
+      "request_id",
       "entity_type",
       "entity_id",
       "display_label",
@@ -1684,8 +1686,12 @@ function decodePendingDeletionSummaries(value: unknown): readonly PendingDeletio
       ["entity_type", "entity_id", "status", "deletion_requested_at", "record_version"]
         .map((key) => [key, record[key]]),
     ));
+    const requestId = nonEmptyString(record.request_id, "request_id");
+    const expectedLocator = "del_v1_" + btoa(`v1:${receipt.entity_type}:${receipt.entity_id}`).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    if (requestId !== expectedLocator) throw new TypeError("Mismatched deletion request locator.");
     return Object.freeze({
       ...receipt,
+      request_id: requestId,
       display_label: nonEmptyString(record.display_label, "display_label"),
     });
   });

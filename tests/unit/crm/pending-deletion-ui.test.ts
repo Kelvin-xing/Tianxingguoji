@@ -41,9 +41,9 @@ test('pending Student and Guardian status hide related write commands after auth
   assert.match(detail, /const active = guardian\.status === 'active'/)
   assert.match(detail, /studentActive && active/)
   assert.match(detail, /待刪除審查/)
-  assert.match(relationships, /getStudent\(studentId, controller\.signal\)/)
-  assert.match(relationships, /panel\.studentStatus === "pending_delete"/)
-  assert.match(relationships, /關聯監護人和交接主要聯絡人已受限制/)
+  assert.match(relationships, /getStudent\(studentId,\s*signal\)/)
+  assert.match(relationships, /setCanManage\(access\.capabilities\.includes\('students\.guardians\.manage'\)&&student\.status==='active'\)/)
+  assert.match(relationships, /\{canManage\?<><NewGuardianRelationshipForm/)
 })
 
 test('queue exposes only the six safe lifecycle facts and no destructive claim', async () => {
