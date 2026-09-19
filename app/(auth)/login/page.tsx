@@ -131,6 +131,10 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
           <option value="admin">Admin</option>
           <option value="advisor">Advisor</option>
           <option value="contractor">Contractor</option>
+          <option value="l1">L1</option>
+          <option value="l2_international">L2 国际学校</option>
+          <option value="l2_local">L2 本地学校</option>
+          <option value="l3">L3</option>
         </select>
         <button className="primary-button w-full justify-center" type="submit">
           <Icon name="log-in" size={16} />

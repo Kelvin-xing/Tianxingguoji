@@ -715,3 +715,13 @@
 - 复核中发现通知首次插入在长事务内可能因数据库默认 `updated_at=transaction_timestamp()` 早于应用事件时间而违反时间约束；生产仓储现在在通知和投递回执首次插入时显式写入同一事件时间。真实 PostgreSQL 基线重新通过 **2/2**；真实 Next/Chrome 全链路重新通过 **2/2**，包含成员、案件、CRM、学校审批、邮件、通知、任务、文件上传扫描/下载和撤权。动态上传路由的匿名预检查先触发无副作用的 GET 编译，随后 POST 稳定返回 JSON 401；不改变业务上传请求。
 
 仍待完成：逾期/到期事件的定时产生器、客户可查看的持久演示数据、目标结果正式事务运行时及整体验收。未部署、未迁移真实员工或客户资料；未合并 main、未推送。
+
+## 到期通知定时器与本地 K12 演示数据（2026-09-19，接续当前阶段）
+
+- 新增 `DueNotificationScheduler`、PostgreSQL 候选/写入仓储和本地 worker。定时器按 UTC 业务日期识别到期前 3 天、到期前 1 天和逾期任务，使用组织、任务、事件类型、业务日期和版本组成稳定幂等键；同一事件重复运行只产生一条 audit/outbox，不吞掉事务唯一性错误。worker 默认本地每 60 秒运行，可通过 `NOTIFICATION_SCHEDULER_INTERVAL_MS` 调整，未接入云端 cron、邮件供应商或生产部署。
+- 新增 `db:seed:local-trial-demo` 本地专用种子：固定 Founder、L1、国际学校 L2、本地学校 L2、L3 五个合成账号，两个 K12 case 和两个仅 L3 可见的任务。种子先通过显式 Founder bootstrap，再通过正式 case 推进命令从 `signed` 进入 `background_collection`；固定 ID、case 身份和阶段会在重复执行前校验，避免 `ON CONFLICT` 绕过业务触发器。无真实员工、客户资料或外部邮件。
+- 一次性 PostgreSQL 17 临时库完整顺序验证通过：一期基线 `pass`（74 源迁移、75 生成文件、631 public 对象、错误 owner/RLS/不安全 definer 均为 0）；一期合成种子通过；通知定时器 **`generated:1, duplicate:1`**；本地演示种子首次和第二次均返回 `principals:5, cases:2, tasks:2`。临时库已删除，原有本地数据库容器已恢复健康运行。
+- 原有本地数据库仍未被重置：其当前结构没有一期 one-role baseline marker，`db:baseline:local:dry-run` 和 `db:seed:local-release1` 均安全拒绝；本节证据来自隔离临时库。目标结果/结案仍保持已批准的 P2-03 fail-closed 运行边界，未凭空增加新的事务运行时。
+- 最终 `PATH=/opt/homebrew/opt/node@22/bin:$PATH pnpm run test:trial-access` **2/2** 通过（约 152 秒）：真实 PostgreSQL 17、Next/Chrome 全链路、成员/案件/CRM/学校审批/邮件/通知/任务/文件/撤权及移动端场景全部通过；输出继续包含 `trial_notification_scheduler: pass`。
+
+仍待完成：正式逐条整体验收、最终 main 回归、提交并推送；目标结果正式事务运行时仍受已批准的香港生产数据库适配边界限制。未部署、未迁移真实员工或客户资料、未发送外部邮件。
