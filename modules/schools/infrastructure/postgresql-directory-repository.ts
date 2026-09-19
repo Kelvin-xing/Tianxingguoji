@@ -15,13 +15,13 @@ export class PostgresqlSchoolDirectoryRepository {
 
   list(input:Reader):Promise<readonly ResolvedSchoolTargetView[]>{
     return this.runner.run(input,async transaction=>{
-      await assertReader(transaction,input);
+      await assertSchoolDirectoryReader(transaction,input);
       return this.resolved.listCurrentResolvedSchools({organizationId:input.organizationId,transaction:adapt(transaction)});
     });
   }
   listProvisionals(input:Reader){
     return this.runner.run(input,async transaction=>{
-      await assertReader(transaction,input);
+      await assertSchoolDirectoryReader(transaction,input);
       const result=await transaction.query<{
         school_id:string; school_name_zh:string|null; school_name_en:string|null;
         district:string|null; system:string|null; stage:string|null; reason:string|null;
@@ -33,12 +33,12 @@ export class PostgresqlSchoolDirectoryRepository {
   }
   find(input:Reader&{readonly schoolId:string}):Promise<ResolvedSchoolTargetView>{
     return this.runner.run(input,async transaction=>{
-      await assertReader(transaction,input);
+      await assertSchoolDirectoryReader(transaction,input);
       return this.resolved.readCurrentResolvedSchool({organizationId:input.organizationId,schoolId:input.schoolId,transaction:adapt(transaction)});
     });
   }
 }
-async function assertReader(transaction:TenantTransaction,input:Reader){
+export async function assertSchoolDirectoryReader(transaction:TenantTransaction,input:Reader){
   const tx=adapt(transaction);
   const principal=await loadTrialPrincipal(tx,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
   if(principal && !trialWorkspaceCapabilities(principal).includes('schools.read'))throw new SchoolResolutionError('SCHOOL_RESOLUTION_FORBIDDEN');

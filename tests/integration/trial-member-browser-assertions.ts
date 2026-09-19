@@ -251,6 +251,9 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(changeResponse.status(),200)
     const changeReceipt=(await changeResponse.json()).data
     assert.equal(changeReceipt.status,'submitted')
+    const changeList=await restrictedContext.request.get(changeUrl)
+    assert.equal(changeList.status(),200)
+    assert.ok((await changeList.json()).data.items.some((item:{change_request_id:string})=>item.change_request_id===changeReceipt.change_request_id))
     assert.deepEqual((await (await restrictedContext.request.post(changeUrl,changeOptions)).json()).data,changeReceipt)
     assert.equal((await (await restrictedContext.request.get(resolvedSchoolUrl)).json()).data.fields.phone??null,firstSchool.fields.phone??null)
     assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,approved_by_user_id:l1.user_id}})).status(),400)
@@ -258,7 +261,14 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await restricted.goto(`${baseUrl}/schools/${firstSchool.school_id}`)
     for (const heading of ['基礎資料','招生資料','待處理更新','更新履歷']) await restricted.getByRole('heading',{name:heading,exact:true}).waitFor()
     assert.equal(await restricted.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)
+    await restricted.getByRole('region',{name:'待處理更新',exact:true}).getByText('申請值：Synthetic reviewed phone',{exact:true}).waitFor()
+    await restricted.getByRole('region',{name:'更新履歷',exact:true}).getByText('目前沒有已處理的人工變更紀錄。',{exact:true}).waitFor()
     await restricted.screenshot({path:'/tmp/access-trial-school-detail-mobile.png',fullPage:true})
+    await restricted.route(changeUrl,route=>route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({api_version:'v1',request_id:'school-history-denied',error:{code:'FORBIDDEN',message:'Denied',retryable:false}})}))
+    await restricted.getByRole('button',{name:'重新載入學校資料',exact:true}).click()
+    await restricted.getByText('登入狀態或學校存取權限已變更，請重新登入或聯絡管理員。',{exact:true}).waitFor()
+    assert.equal(await restricted.getByRole('region',{name:'待處理更新',exact:true}).count(),0)
+    await restricted.unroute(changeUrl)
     const provisionalUrl=`${baseUrl}/api/v1/schools/provisionals`
     const provisionalCommand={headers:{'idempotency-key':randomUUID()},data:{school_name_zh:'合成待验证学校'}}
     const provisionalResponse=await restrictedContext.request.post(provisionalUrl,provisionalCommand)
@@ -339,6 +349,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await l3Context.request.get(provisionalUrl)).status(),403)
     assert.equal((await l3Context.request.post(provisionalUrl,{headers:{'idempotency-key':randomUUID()},data:{school_name_en:'Denied school'}})).status(),403)
     process.stdout.write(JSON.stringify({trial_school_provisionals_http:'pass',minimal:'name_only',l1:'create_list_replay',l2:'create',l3:'403',invalid:'422',injected:'400',changed_replay:'409'})+'\n')
+    assert.equal((await l3Context.request.get(changeUrl)).status(),403)
     assert.equal((await l3Context.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:changeBody})).status(),403)
     process.stdout.write(JSON.stringify({trial_school_change_http:'pass',l1:'submit_replay_no_effective_change',l2:'supplement_only',l3:'403',stale:'409',injected_reviewer:'400'})+'\n')
     process.stdout.write(JSON.stringify({trial_school_reads_http:'pass',l1:'directory_and_resolved',l2:'resolved',l3:'403',missing:'404'})+'\n')

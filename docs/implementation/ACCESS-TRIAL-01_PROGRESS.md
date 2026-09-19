@@ -540,3 +540,16 @@
 - 类型 `/tmp/access-trial-school-change-types-final.log`、聚焦ESLint `/tmp/access-trial-school-change-lint.log`和新增测试ESLint `/tmp/access-trial-school-change-final-test-lint.log`、diff通过，无迁移。
 
 尚需申请表单、待处理申请读取、审批/拒绝的实际等级与禁止自审/并发/审计闭环、完整更新履历；其余模块权限复核与整体验收、main合并及推送未完成。无部署或真实员工/客户资料操作。
+
+## 学校待处理申请与人工变更记录读取（2026-09-19，接续 6a2d329）
+
+总体仍 `in_progress`。本节接通已有人工申请读取及页面展示，不代表审批命令或完整爬虫更新履历完成。
+
+- 新GET `/api/v1/schools/[schoolId]/change-requests`复用学校目录的事务内当前成员/角色检查。按学校与组织读取candidate/approved/rejected/disabled人工revision及字段、证据、理由、提交/批准/停用时间；不存在404，L3/停用账号403。不返回账号编号、邮箱、凭据等内部资料。
+- 页面“待处理更新”显示待审批人工记录，“更新履历”显示已处理人工记录；明确标注原始快照值，避免伪称为最后生效值。移除不能表达履历的内部版本UUID/哈希展示。完整爬虫/恢复履历和各次操作人仍需后续实现。
+- 详情页新增重新载入、未找到、失败重试，重读期间及权限失效时清空旧资料，取消旧请求并忽略过期回调；客户端绑定学校ID，严格拒绝额外字段、非法状态/版本/时间及空字段清单。
+- `/tmp/access-trial-school-history-browser.log` **23/23**：真实PG17+Next/Chrome、客户端契约与模块边界。正式GET返回已提交申请；真实页面显示申请值/证据、空已处理记录，390px无横向溢出；模拟读取403后所有学校区块清空。L3正式GET403。原上传预检查与实际上传、CRM、任务、邀请继续通过。
+- `/tmp/access-trial-school-history-pg.log` **18/18**：新增记录与字段值、批准状态/时间、学校不存在、L3/停用读取拒绝检查。批准状态由SQL夹具建立，只证明读取，不宣称审批API已完成。
+- 已查看 `/tmp/access-trial-school-detail-mobile.png`。类型 `/tmp/access-trial-school-history-types-final.log`、聚焦ESLint `/tmp/access-trial-school-history-lint.log`及新客户端测试ESLint `/tmp/access-trial-school-history-test-lint.log`通过。无迁移。
+
+下一步为申请表单和审批/拒绝闭环；其余模块权限复核、整体试用验收、main合并和远程推送尚未完成。未部署或操作真实资料。

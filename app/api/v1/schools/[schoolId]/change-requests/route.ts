@@ -1,6 +1,6 @@
 import {requireApiRequestAccessContext} from '@/app/api/v1/request-access';
 import {getApplicationTenantRunner} from '@/modules/shared/server';
-import {SchoolServiceError,submitSchoolChange,PostgresqlSchoolChangeRepository,type SubmitSchoolChangeCommand} from '@/modules/schools/server';
+import {SchoolResolutionError,SchoolServiceError,submitSchoolChange,PostgresqlSchoolChangeRepository,type SubmitSchoolChangeCommand} from '@/modules/schools/server';
 import {createApiError,handleApiRequest} from '@/modules/shared/public';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,6 +8,24 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export async function GET(request:Request,context:{readonly params:Promise<{readonly schoolId:string}>}):Promise<Response>{
+  return handleApiRequest(request,async()=>{
+    const {schoolId}=await context.params;
+    if(!UUID.test(schoolId)||new URL(request.url).search)throw createApiError('INVALID_REQUEST');
+    const actor=await requireApiRequestAccessContext();
+    try{
+      const items=await new PostgresqlSchoolChangeRepository(getApplicationTenantRunner()).list({organizationId:actor.organizationId,actorUserId:actor.userId,schoolId});
+      return {items:items.map(item=>({...item,fields:item.fields.map(field=>({...field}))}))};
+    }catch(error){
+      if(error instanceof SchoolResolutionError){
+        if(error.code==='SCHOOL_RESOLUTION_FORBIDDEN')throw createApiError('FORBIDDEN');
+        if(error.code==='SCHOOL_RESOLUTION_NOT_FOUND')throw createApiError('NOT_FOUND');
+      }
+      throw createApiError('SERVICE_UNAVAILABLE');
+    }
+  });
+}
 
 export async function POST(
   request: Request,

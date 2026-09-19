@@ -1,3 +1,4 @@
+import {SchoolResolutionError} from "../../modules/schools/application/resolved-view.ts";
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import type {Client} from 'pg';
@@ -22,13 +23,20 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
     assert.equal(base.fields_json.phone??null,null);
     const request={actor,schoolId:base.school_id,command};
     const denied=(error:unknown)=>error instanceof SchoolServiceError&&error.code==='SCHOOL_ADVISOR_REQUIRED';
+    const reader={organizationId:org,actorUserId:input.userId,schoolId:base.school_id};
     if(input.role==='l3'){
+      await assert.rejects(()=>repository.list(reader),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN');
       await assert.rejects(()=>submitSchoolChange(request,{repository}),denied);
       await assert.rejects(()=>submitSchoolChange({...request,actor:{...actor,trialPrincipal:undefined,workspaceCapabilities:['schools.read']}},{repository}),denied);
       return;
     }
     const result=await submitSchoolChange(request,{repository});
     assert.deepEqual(await submitSchoolChange(request,{repository}),result);
+    const history=await repository.list(reader);
+    const entry=history.find(item=>item.change_request_id===result.changeRequestId)!;
+    assert.equal(entry.status,'candidate');assert.equal(entry.fields[0]?.snapshot_value,null);assert.equal(entry.fields[0]?.proposed_value,'Synthetic phone');
+    assert.equal('requested_by_user_id' in entry,false);
+    await assert.rejects(()=>repository.list({...reader,schoolId:randomUUID()}),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_NOT_FOUND');
     const saved=(await client.query('SELECT status,requested_by_user_id,approved_by_user_id FROM schools_overlay_revisions WHERE id=$1',[result.changeRequestId])).rows[0];
     assert.deepEqual(saved,{status:'candidate',requested_by_user_id:input.userId,approved_by_user_id:null});
     const read=await new PostgresqlSchoolDirectoryRepository(runner).find({organizationId:org,actorUserId:input.userId,schoolId:base.school_id});
@@ -58,6 +66,8 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
       await client.query(`UPDATE schools_overlay_revisions SET status='approved',approved_by_user_id=$2,
         approved_role='founder',approved_at=statement_timestamp(),record_version=record_version+1,
         updated_at=GREATEST(statement_timestamp(),updated_at) WHERE id=$1`,[result.changeRequestId,input.founderUserId]);
+      const approved=(await repository.list(reader)).find(item=>item.change_request_id===result.changeRequestId)!;
+      assert.equal(approved.status,'approved');assert.ok(approved.approved_at);
       // An immutable snapshot still says unknown; the effective approved value must prevent replacement.
       await assert.rejects(()=>submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID()}},{repository}),denied);
     }
@@ -65,6 +75,7 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
       await client.query("SELECT set_config('app.actor_user_id',$1,true)",[input.founderUserId]);
       await client.query("UPDATE access_trial_members SET status='disabled',record_version=record_version+1 WHERE user_id=$1",[input.userId]);
       await assert.rejects(()=>submitSchoolChange(request,{repository}),denied);
+      await assert.rejects(()=>repository.list(reader),error=>error instanceof SchoolResolutionError&&error.code==='SCHOOL_RESOLUTION_FORBIDDEN');
     }
   }finally{await client.query('ROLLBACK TO SAVEPOINT school_change_fixture');await client.query('RELEASE SAVEPOINT school_change_fixture')}
 }

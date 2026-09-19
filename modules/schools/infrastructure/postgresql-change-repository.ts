@@ -1,4 +1,8 @@
 import "server-only";
+import type {SchoolChangeHistoryItem} from '../domain/change-history.ts';
+import type {JsonValue} from '../domain/contract.ts';
+import {SchoolResolutionError} from '../application/resolved-view.ts';
+import {assertSchoolDirectoryReader} from './postgresql-directory-repository.ts';
 import {randomUUID} from 'node:crypto';
 import {loadTrialPrincipal} from '../../access/server.ts';
 import {trialWorkspaceCapabilities} from '../../access/public.ts';
@@ -13,6 +17,38 @@ type Input=Parameters<SchoolRepository['submitSchoolChange']>[0];
 export class PostgresqlSchoolChangeRepository implements Pick<SchoolRepository,'submitSchoolChange'>{
   private readonly runner:TenantTransactionRunner;
   constructor(runner:TenantTransactionRunner){this.runner=runner;}
+  list(input:{organizationId:string;actorUserId:string;schoolId:string}):Promise<readonly SchoolChangeHistoryItem[]>{
+    return this.runner.run(input,async transaction=>{
+      await assertSchoolDirectoryReader(transaction,input);
+      const school=await transaction.query({text:'SELECT id FROM schools_schools WHERE organization_id=$1 AND id=$2 FOR SHARE',values:[input.organizationId,input.schoolId]});
+      if(school.rows.length!==1)throw new SchoolResolutionError('SCHOOL_RESOLUTION_NOT_FOUND');
+      const rows=await transaction.query<{
+        id:string;school_id:string;revision_number:string|number;record_version:string|number;
+        status:SchoolChangeHistoryItem['status'];reason:string;created_at:Date|string;approved_at:Date|string|null;
+        disabled_at:Date|string|null;disable_reason:string|null;field_name:string;field_class:'identity'|'general';
+        proposed_value_json:JsonValue;snapshot_value:JsonValue;evidence_json:{sourceUrl?:string;source_url?:string;quote:string};
+      }>({text:`SELECT revision.id,revision.school_id,revision.revision_number,revision.record_version,revision.status,
+          revision.reason,revision.created_at,revision.approved_at,revision.disabled_at,revision.disable_reason,
+          field.field_name,field.field_class,field.proposed_value_json,field.evidence_json,
+          COALESCE(snapshot.fields_json->field.field_name,'null'::jsonb) AS snapshot_value
+        FROM schools_overlay_revisions revision
+        JOIN schools_overlay_fields field ON field.organization_id=revision.organization_id AND field.school_id=revision.school_id AND field.revision_id=revision.id
+        JOIN schools_snapshot_records snapshot ON snapshot.organization_id=revision.organization_id AND snapshot.school_id=revision.school_id AND snapshot.snapshot_id=revision.base_snapshot_id
+        WHERE revision.organization_id=$1 AND revision.school_id=$2
+        ORDER BY revision.revision_number DESC,revision.id,field.field_name`,values:[input.organizationId,input.schoolId]});
+      const grouped=new Map<string,SchoolChangeHistoryItem>();
+      for(const row of rows.rows){
+        const field={field_name:row.field_name,field_class:row.field_class,snapshot_value:row.snapshot_value,proposed_value:row.proposed_value_json,
+          source_url:row.evidence_json.sourceUrl??row.evidence_json.source_url??'',quote:row.evidence_json.quote};
+        const existing=grouped.get(row.id);
+        if(existing){grouped.set(row.id,{...existing,fields:[...existing.fields,field]});continue;}
+        grouped.set(row.id,{change_request_id:row.id,school_id:row.school_id,revision_number:Number(row.revision_number),record_version:Number(row.record_version),
+          status:row.status,reason:row.reason,submitted_at:new Date(row.created_at).toISOString(),approved_at:row.approved_at?new Date(row.approved_at).toISOString():null,
+          disabled_at:row.disabled_at?new Date(row.disabled_at).toISOString():null,disable_reason:row.disable_reason,fields:[field]});
+      }
+      return [...grouped.values()];
+    });
+  }
   async submitSchoolChange(input:Input):Promise<SchoolChangeRequestResult>{
     const occurredAt=new Date(input.submittedAtMs).toISOString();
     try{
