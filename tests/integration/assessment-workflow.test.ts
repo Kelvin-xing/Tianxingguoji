@@ -12,6 +12,8 @@ const ADVISOR = Object.freeze({
   userId: "11111111-1111-4111-8111-111111111111",
   organizationId: "22222222-2222-4222-8222-222222222222",
   role: "advisor" as const,
+  roles: ["advisor"] as const,
+  workspaceCapabilities: ["cases.assessments.read", "cases.assessments.manage"] as const,
   sessionId: "33333333-3333-4333-8333-333333333333",
   capturedSessionVersion: 1,
   reauthenticatedAtMs: 1_754_265_600_000,
@@ -24,6 +26,8 @@ const COLLABORATOR = Object.freeze({
 const CONTRACTOR = Object.freeze({
   ...ADVISOR,
   role: "contractor" as const,
+  roles: ["contractor"] as const,
+  workspaceCapabilities: [] as const,
   userId: "99999999-9999-4999-8999-999999999999",
   sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 import { useState } from "react";
 
 import { Icon } from "@/components/workspace/Icon";
@@ -66,6 +68,7 @@ export function AssessmentEditor({
   readonly endpoint: string;
   readonly initialView: AssessmentEditorView;
 }) {
+  const router = useRouter();
   const [view, setView] = useState(initialView);
   const [drafts, setDrafts] = useState(() => createDrafts(initialView));
   const [dirtyFieldIds, setDirtyFieldIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -187,6 +190,7 @@ export function AssessmentEditor({
         record_version: Number(payload.record_version),
       }));
       setNotice("背景資料收集已完成。");
+      router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && (error.code === "STALE_VERSION" || error.code === "VALIDATION_FAILED")) {
         try { const latestView = await fetchCurrentView(endpoint); setView(latestView); setDrafts((current) => mergeDrafts(current, latestView)); } catch { /* retain current state */ }

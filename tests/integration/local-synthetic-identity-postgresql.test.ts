@@ -86,7 +86,7 @@ test("persists all local roles across repository restarts and revokes them", asy
     await assert.rejects(
       restartedRepository.findActorBySessionSecretHash({
         secretHash: hashOpaqueSecret(expiring.cookieSecret),
-        nowMs: Date.now() + 16 * 60 * 1_000,
+        nowMs: Date.now() + (8 * 60 + 1) * 60 * 1_000,
         sensitiveAction: false,
       }),
     );

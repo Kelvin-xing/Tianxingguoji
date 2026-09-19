@@ -141,8 +141,8 @@ async function seedPrincipals(client: Client): Promise<void> {
   const founder = LOCAL_SYNTHETIC_PRINCIPALS[0]!;
   for (const principal of LOCAL_SYNTHETIC_PRINCIPALS) {
     await client.query(
-      `INSERT INTO identity_users (id, normalized_email, status, created_by_user_id)
-       VALUES ($1, $2, 'active', $3)
+      `INSERT INTO identity_users (id, normalized_email, status, activated_at, created_by_user_id)
+       VALUES ($1, $2, 'active', transaction_timestamp(), $3)
        ON CONFLICT (id) DO NOTHING`,
       [principal.userId, principal.normalizedEmail,
         principal.userId === founder.userId ? null : founder.userId],
@@ -157,10 +157,18 @@ async function seedPrincipals(client: Client): Promise<void> {
   for (const principal of LOCAL_SYNTHETIC_PRINCIPALS) {
     await client.query(
       `INSERT INTO access_organization_memberships
-        (id, organization_id, user_id, status, created_by_user_id)
-       VALUES ($1, $2, $3, 'active', $4)
+        (id, organization_id, user_id, status, activated_at, created_by_user_id)
+       VALUES ($1, $2, $3, 'active', transaction_timestamp(), $4)
        ON CONFLICT (id) DO NOTHING`,
       [principal.membershipId, LOCAL_SYNTHETIC_ORGANIZATION.id, principal.userId, founder.userId],
+    );
+    await client.query(
+      `INSERT INTO access_employee_profiles
+        (membership_id, organization_id, display_name, employment_type)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (membership_id) DO NOTHING`,
+      [principal.membershipId, LOCAL_SYNTHETIC_ORGANIZATION.id,
+        principal.displayName, principal.employmentType],
     );
     await client.query(
       `INSERT INTO access_role_bindings

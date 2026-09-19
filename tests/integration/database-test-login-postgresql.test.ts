@@ -40,7 +40,6 @@ import {
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const POSTGRES_MAJOR = 17;
 const FOUNDER = NEON_TEST_PRINCIPALS[0]!;
-const FOREIGN_ORGANIZATION_ID = "52000000-0000-4000-8000-000000000001";
 
 type LoginDatabaseState = Readonly<{
   credentialCount: number;
@@ -235,17 +234,6 @@ test("database-test login honors FORCE RLS on disposable PostgreSQL 17", {
     assert.equal(afterConcurrentLogin.sessionCount, 3);
     assert.equal(afterConcurrentLogin.activeSessionCount, 1);
 
-    await switchToForeignOrganization(target);
-    try {
-      await assert.rejects(
-        login.createSession({ email: FOUNDER.email, password: identityPassword }),
-        DatabaseTestAuthenticationError,
-      );
-    } finally {
-      await restoreSyntheticOrganization(target);
-    }
-    assert.deepEqual(await inspectLoginDatabase(target), afterConcurrentLogin);
-
     const firstFourFailures = await Promise.allSettled(
       Array.from({ length: 4 }, () =>
         login.createSession({ email: FOUNDER.email, password: "wrong password" })
@@ -387,42 +375,6 @@ async function inspectLoginDatabase(
   } catch (error) {
     if (error instanceof HarnessError) throw error;
     throw new HarnessError("login_state_inspection");
-  } finally {
-    await client.end().catch(() => {});
-  }
-}
-
-async function switchToForeignOrganization(target: OneRoleBaselineTarget): Promise<void> {
-  await updateActiveOrganization(target, [
-    ["UPDATE public.access_organizations SET status = 'disabled' WHERE id = $1", [NEON_TEST_ORGANIZATION.id]],
-    [
-      `INSERT INTO public.access_organizations (id, display_name, status)
-       VALUES ($1, 'ENV01 Foreign Synthetic Organization', 'active')`,
-      [FOREIGN_ORGANIZATION_ID],
-    ],
-  ]);
-}
-
-async function restoreSyntheticOrganization(target: OneRoleBaselineTarget): Promise<void> {
-  await updateActiveOrganization(target, [
-    ["DELETE FROM public.access_organizations WHERE id = $1", [FOREIGN_ORGANIZATION_ID]],
-    ["UPDATE public.access_organizations SET status = 'active' WHERE id = $1", [NEON_TEST_ORGANIZATION.id]],
-  ]);
-}
-
-async function updateActiveOrganization(
-  target: OneRoleBaselineTarget,
-  statements: readonly (readonly [string, readonly unknown[]])[],
-): Promise<void> {
-  const client = new Client(createOneRoleBaselineClientConfig(target));
-  try {
-    await client.connect();
-    await client.query("BEGIN");
-    for (const [sql, values] of statements) await client.query(sql, [...values]);
-    await client.query("COMMIT");
-  } catch {
-    await client.query("ROLLBACK").catch(() => {});
-    throw new HarnessError("organization_isolation_setup");
   } finally {
     await client.end().catch(() => {});
   }

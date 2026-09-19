@@ -79,7 +79,7 @@ export default function CasesPage() {
   }
 
   useEffect(() => {
-    loadCases()
+    queueMicrotask(loadCases)
   }, [])
 
   const filtered = useMemo(() => caseRecords.filter((item) => {
@@ -115,7 +115,7 @@ export default function CasesPage() {
 
 function CaseRow({ item }: { item: CaseListItem }) {
   const stageStyle = stageStyles[item.stage]
-  return <tr className="data-row"><td><Link href={`/cases/${item.id}`} className="table-primary">{item.caseNumber}</Link><div className="table-secondary">{item.intakeYear} · {item.admissionType === 's1_admission' ? 'S1 入學' : '插班'}</div></td><td><Link href={`/students/${item.studentId}`} className="table-primary">{item.studentName || '未命名學生'}</Link></td><td><span className="status-pill" style={stageStyle}>{caseStageLabels[item.stage]}</span></td><td className="table-muted">{item.primaryRole === 'advisor' ? 'Advisor' : 'Founder'}</td><td className="table-muted">{formatDate(item.updatedAt)}</td><td><Link href={`/cases/${item.id}`} className="icon-button" title="查看案件" aria-label="查看案件"><Icon name="chevron-right" size={16} /></Link></td></tr>
+  return <tr className="data-row"><td><Link href={`/cases/${item.id}`} className="table-primary">{item.caseNumber}</Link><div className="table-secondary">{item.intakeYear} · {item.admissionType === 'entry' ? '首次入學' : item.admissionType === 's1_admission' ? 'S1 入學' : item.admissionType === 'transfer' ? '插班' : item.admissionType}</div></td><td><Link href={`/students/${item.studentId}`} className="table-primary">{item.studentName || '未命名學生'}</Link></td><td><span className="status-pill" style={stageStyle}>{caseStageLabels[item.stage]}</span></td><td className="table-muted">{item.primaryRole === 'advisor' ? 'Advisor' : 'Founder'}</td><td className="table-muted">{formatDate(item.updatedAt)}</td><td><Link href={`/cases/${item.id}`} className="icon-button" title="查看案件" aria-label="查看案件"><Icon name="chevron-right" size={16} /></Link></td></tr>
 }
 
 function formatDate(value: string): string {

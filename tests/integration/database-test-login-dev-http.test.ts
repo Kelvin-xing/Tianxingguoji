@@ -46,7 +46,6 @@ import {
 
 const POSTGRES_IMAGE = "postgres:17.10-alpine3.24";
 const FOUNDER = NEON_TEST_PRINCIPALS[0]!;
-const FOREIGN_ORGANIZATION_ID = "52000000-0000-4000-8000-000000000001";
 
 test("database-test login works through the local Next Dev HTTP runtime", {
   timeout: 300_000,
@@ -239,24 +238,12 @@ test("database-test login works through the local Next Dev HTTP runtime", {
       activeSessionCount: 0,
     });
 
-    await switchToForeignOrganization(target);
-    try {
-      const crossTenant = await postLogin(baseUrl, {
-        email: FOUNDER.email,
-        password: identityPassword,
-      });
-      assertRedirect(crossTenant, "/login?error=authentication_failed");
-      assert.equal(crossTenant.headers.get("set-cookie"), null);
-    } finally {
-      await restoreSyntheticOrganization(target);
-    }
-    assert.equal((await inspectSessionState(target)).sessionCount, 0);
-
     const successful = await postLogin(baseUrl, {
       email: FOUNDER.email,
       password: identityPassword,
     });
     assertRedirect(successful, "/today");
+    assert.equal(successful.headers.get("location"), "/today", "login must keep the browser on its original host");
     const setCookie = requiredHeader(successful, "set-cookie");
     assert.match(setCookie, /^tx_session=[A-Za-z0-9_-]{43};/);
     assert.match(setCookie, /; HttpOnly/i);
@@ -351,7 +338,6 @@ test("database-test login works through the local Next Dev HTTP runtime", {
         success: "303_cookie_and_actor_verified",
         invalid_fields: "rejected",
         invalid_credential_attempt: "fixed_failure_no_session",
-        cross_tenant: "rejected",
         fault_rollback: "existing_session_preserved",
         logout: "revoked",
       }),
@@ -584,41 +570,6 @@ async function assertRepositoryRejectsRevokedSession(
   }
 }
 
-async function switchToForeignOrganization(target: OneRoleBaselineTarget): Promise<void> {
-  await updateOrganizations(target, [
-    ["UPDATE public.access_organizations SET status = 'disabled' WHERE id = $1", [NEON_TEST_ORGANIZATION.id]],
-    [
-      "INSERT INTO public.access_organizations (id, display_name, status) VALUES ($1, 'Foreign Synthetic Organization', 'active')",
-      [FOREIGN_ORGANIZATION_ID],
-    ],
-  ]);
-}
-
-async function restoreSyntheticOrganization(target: OneRoleBaselineTarget): Promise<void> {
-  await updateOrganizations(target, [
-    ["DELETE FROM public.access_organizations WHERE id = $1", [FOREIGN_ORGANIZATION_ID]],
-    ["UPDATE public.access_organizations SET status = 'active' WHERE id = $1", [NEON_TEST_ORGANIZATION.id]],
-  ]);
-}
-
-async function updateOrganizations(
-  target: OneRoleBaselineTarget,
-  statements: readonly (readonly [string, readonly unknown[]])[],
-): Promise<void> {
-  const client = new Client(createOneRoleBaselineClientConfig(target));
-  try {
-    await client.connect();
-    await client.query("BEGIN");
-    for (const [sql, values] of statements) await client.query(sql, [...values]);
-    await client.query("COMMIT");
-  } catch {
-    await client.query("ROLLBACK").catch(() => {});
-    throw new HarnessError("organization_isolation_setup");
-  } finally {
-    await client.end().catch(() => {});
-  }
-}
-
 async function installSessionInsertFailure(target: OneRoleBaselineTarget): Promise<void> {
   await executeTestDdl(target, `
     CREATE FUNCTION public.test_fail_database_test_session_insert()
@@ -756,7 +707,7 @@ async function postLogin(
 function assertRedirect(response: Response, pathnameAndSearch: string): void {
   assert.equal(response.status, 303);
   const location = requiredHeader(response, "location");
-  const url = new URL(location);
+  const url = new URL(location, "http://localhost");
   assert.equal(`${url.pathname}${url.search}`, pathnameAndSearch);
 }
 

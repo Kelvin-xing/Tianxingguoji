@@ -95,7 +95,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function admissionLabel(value: string): string {
-  return value === 's1_admission' ? 'S1 入學' : value === 'transfer' ? '插班' : value
+  return value === 'entry' ? '首次入學' : value === 's1_admission' ? 'S1 入學' : value === 'transfer' ? '插班' : value
 }
 
 function assessmentStatusLabel(value: AssessmentView['status']): string {

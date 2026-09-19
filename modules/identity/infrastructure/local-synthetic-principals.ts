@@ -1,7 +1,7 @@
 import type { OrganizationRole } from "../../access/public.ts";
 
 export const LOCAL_SYNTHETIC_ORGANIZATION = Object.freeze({
-  id: "10000000-0000-4000-8000-000000000001",
+  id: "51000000-0000-4000-8000-000000000001",
   displayName: "Tianxing Local Synthetic",
 });
 
@@ -11,6 +11,8 @@ export interface LocalSyntheticPrincipal {
   readonly membershipId: string;
   readonly roleBindingId: string;
   readonly normalizedEmail: string;
+  readonly displayName: string;
+  readonly employmentType: "FULL_TIME" | "PART_TIME";
 }
 
 export const LOCAL_SYNTHETIC_PRINCIPALS = Object.freeze([
@@ -42,6 +44,8 @@ function principal(
     membershipId: localUuid(membershipSuffix),
     roleBindingId: localUuid(roleBindingSuffix),
     normalizedEmail: `${role.replaceAll("_", "-")}@local.invalid`,
+    displayName: `Local ${role}`,
+    employmentType: role === "contractor" ? "PART_TIME" : "FULL_TIME",
   });
 }
 

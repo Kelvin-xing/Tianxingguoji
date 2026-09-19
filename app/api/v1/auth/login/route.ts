@@ -73,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       throw error;
     }
-    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
+    const response = new NextResponse(null, { status: 303, headers: { Location: loginDestination(session.actor.role) } });
     response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
     return response;
   } catch (error) {
@@ -99,7 +99,7 @@ async function databaseTestLogin(request: Request): Promise<Response> {
     const login = getIdentityRuntime().databaseTestLogin;
     if (!login) return loginError(request, "configuration");
     const session = await login.createSession(credentials);
-    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
+    const response = new NextResponse(null, { status: 303, headers: { Location: loginDestination(session.actor.role) } });
     response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
     return response;
   } catch (error) {
@@ -135,7 +135,7 @@ async function internalEmailLogin(request: Request): Promise<Response> {
     const login = getIdentityRuntime().internalEmail;
     if (!login) return loginError(request, "configuration");
     const session = await login.createSession(credentials);
-    const response = NextResponse.redirect(new URL(loginDestination(session.actor.role), request.url), 303);
+    const response = new NextResponse(null, { status: 303, headers: { Location: loginDestination(session.actor.role) } });
     response.cookies.set(SESSION_COOKIE_NAME, session.cookieSecret, sessionCookieOptions);
     return response;
   } catch (error) {
