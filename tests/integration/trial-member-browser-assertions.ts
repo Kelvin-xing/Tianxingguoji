@@ -207,6 +207,21 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     const fileGrant=restricted.waitForResponse(r=>r.url().endsWith(`/tasks/${automaticTaskId}/documents`)&&r.request().method()==='POST')
     await restricted.getByRole('button',{name:'儲存文件授權',exact:true}).click()
     assert.equal((await fileGrant).status(),200)
+    const studentCreateKey=`trial-student-${randomUUID()}`
+    const studentCreateBody={
+      student:{display_name:`Trial Student ${randomUUID()}`,date_of_birth:'2013-06-18',contact_email:null,contact_phone:null},
+      primary_guardian:{kind:'new',display_name:`Trial Guardian ${randomUUID()}`,email:`trial-${randomUUID()}@example.invalid`,phone:null,relationship_type:'father',is_legal_guardian:true,is_emergency_contact:false,is_billing_contact:false,notification_consent:false},
+    }
+    const studentCreate=await restrictedContext.request.post(`${baseUrl}/api/v1/students`,{headers:{'idempotency-key':studentCreateKey},data:studentCreateBody})
+    assert.equal(studentCreate.status(),201,'L1 can create a student and primary guardian atomically')
+    const studentReceipt=(await studentCreate.json()).data
+    const studentReplay=await restrictedContext.request.post(`${baseUrl}/api/v1/students`,{headers:{'idempotency-key':studentCreateKey},data:studentCreateBody})
+    assert.equal(studentReplay.status(),201)
+    assert.deepEqual((await studentReplay.json()).data,studentReceipt)
+    const createdRelationships=await client.query(`SELECT student_id,guardian_id FROM crm_student_guardian_relationships WHERE student_id=$1 AND ends_at IS NULL AND is_primary_contact`,[studentReceipt.student.id])
+    assert.equal(createdRelationships.rows.length,1)
+    assert.equal(createdRelationships.rows[0].guardian_id,studentReceipt.primary_guardian.id)
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM audit_events WHERE resource_id=$1 AND event_type='crm.student_primary_guardian_created'`,[studentReceipt.student.id])).rows[0].count,1)
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()
@@ -215,6 +230,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l2Page.getByLabel('帳戶電郵').fill(l2.email)
     await l2Page.getByLabel('密碼', { exact: true }).fill(password)
     await Promise.all([l2Page.waitForURL('**/today'),l2Page.getByRole('button', { name: '登入工作台', exact: true }).click()])
+    assert.equal((await l2Context.request.post(`${baseUrl}/api/v1/students`,{headers:{'idempotency-key':`denied-${randomUUID()}`},data:studentCreateBody})).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
     const scopedStudents=await l2Context.request.get(`${baseUrl}/api/v1/students`)

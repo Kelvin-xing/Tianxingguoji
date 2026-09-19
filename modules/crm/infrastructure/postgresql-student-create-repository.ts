@@ -1,4 +1,5 @@
 import "server-only";
+import { loadTrialPrincipal } from "../../access/server.ts";
 
 import { appendAtomicMutationEffects } from "../../audit/server.ts";
 import {
@@ -49,6 +50,7 @@ export class PostgresqlStudentCreateRepository implements StudentCreateRepositor
     }}).then(async (result) => {
       if (result.status === "executed") return result.value;
       return this.runner.run(context, async (tx) => {
+        await assertCurrentStudentCreator(tx, input);
         const value = await selectCreatedAggregate(adaptTransaction(tx), result.resultReference);
         if (!value || hashRequestPayload(receiptJson(value)) !== result.responseHash) throw new StudentCreateRepositoryError("STUDENT_CREATE_UNAVAILABLE");
         return value;
@@ -73,6 +75,13 @@ async function assertDuplicateAcknowledged(tx: TenantTransaction, input: {organi
 }
 
 async function assertCurrentStudentCreator(transaction: TenantTransaction, input: Parameters<StudentCreateRepository["createStudent"]>[0]): Promise<void> {
+  const principal = await loadTrialPrincipal({
+    query: <Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]) => transaction.query<Row>({text, values}),
+  }, {organizationId: input.organizationId, userId: input.actorUserId, lock: true});
+  if (principal && (!principal.active || (principal.level !== "founder" && principal.level !== "l1"))) {
+    throw new StudentCreateRepositoryError("STUDENT_CREATE_FORBIDDEN");
+  }
+  const roles = principal ? [principal.level] : ["founder", "advisor"];
   const result = await transaction.query<{ ok: boolean }>({
     text: `SELECT true AS ok
       FROM identity_users u
@@ -83,8 +92,8 @@ async function assertCurrentStudentCreator(transaction: TenantTransaction, input
        AND rb.organization_id=m.organization_id
        AND rb.user_id=m.user_id
        AND rb.status='active'
-      WHERE u.id=$2 AND u.status='active' AND rb.role IN ('founder','advisor')
-      FOR SHARE OF u,m,rb`, values: [input.organizationId, input.actorUserId],
+      WHERE u.id=$2 AND u.status='active' AND rb.role=ANY($3::text[])
+      FOR SHARE OF u,m,rb`, values: [input.organizationId, input.actorUserId, roles],
   });
   if (result.rows.length === 0) throw new StudentCreateRepositoryError("STUDENT_CREATE_FORBIDDEN");
 }
