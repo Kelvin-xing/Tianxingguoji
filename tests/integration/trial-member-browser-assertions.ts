@@ -1,3 +1,4 @@
+import {assertTrialGuardianHttp} from './trial-crm-guardian-http-assertions.ts'
 import {assertTrialCrmProfileBrowser} from './trial-crm-profile-browser-assertions.ts'
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -224,6 +225,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal(createdRelationships.rows[0].guardian_id,studentReceipt.primary_guardian.id)
     assert.equal((await client.query(`SELECT count(*)::int AS count FROM audit_events WHERE resource_id=$1 AND event_type='crm.student_primary_guardian_created'`,[studentReceipt.student.id])).rows[0].count,1)
     await assertTrialCrmProfileBrowser({page:restricted,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
+    await assertTrialGuardianHttp({request:restrictedContext.request,baseUrl,client,studentId:studentReceipt.student.id,guardianId:studentReceipt.primary_guardian.id})
     const submittedBody = created.request().postDataJSON()
     await restrictedContext.close()
     const l2Context = await browser.newContext()

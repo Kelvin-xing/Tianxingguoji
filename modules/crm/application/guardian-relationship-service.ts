@@ -264,7 +264,6 @@ export class GuardianRelationshipService {
       requestId: input.command.requestId,
       payload: {
         aggregate_id: input.command.relationshipId, status: "ended",
-        previous_record_version: input.command.expectedRecordVersion,
         record_version: input.command.expectedRecordVersion + 1, reason_code: END_REASON,
         request_id: input.command.requestId,
       },

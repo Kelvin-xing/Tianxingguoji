@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import type {APIRequestContext} from 'playwright-core';
+import type {Client} from 'pg';
+export async function assertTrialGuardianHttp(input:{request:APIRequestContext;baseUrl:string;client:Client;studentId:string;guardianId:string}){
+  const {request,baseUrl,client,studentId,guardianId}=input;
+  const otherId=randomUUID();
+  await client.query(`INSERT INTO crm_guardians(id,organization_id,display_name,email,status)
+    SELECT $1,organization_id,'Trial HTTP Additional Guardian','additional@example.invalid','active' FROM crm_students WHERE id=$2`,[otherId,studentId]);
+  const root=`${baseUrl}/api/v1/students/${studentId}`;
+  const search=await request.post(`${root}/guardians/search`,{data:{query:'Trial HTTP Additional'}});
+  assert.equal(search.status(),200);
+  assert.ok((await search.json()).data.some((row:{id:string})=>row.id===otherId));
+  const attachData={guardian_id:otherId,relationship_type:'mother',relationship_description:null,is_legal_guardian:false,is_emergency_contact:true,is_billing_contact:false,notification_consent:false};
+  const attachHeaders={'idempotency-key':`attach-${randomUUID()}`};
+  const attached=await request.post(`${root}/guardians`,{headers:attachHeaders,data:attachData});
+  assert.equal(attached.status(),201);
+  const attachReceipt=(await attached.json()).data;
+  const primary=(await client.query('SELECT id,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND is_primary_contact AND ends_at IS NULL',[studentId])).rows[0];
+  assert.equal((await request.post(`${root}/guardian-relationships/${primary.id}/end`,{headers:{'idempotency-key':`deny-primary-${randomUUID()}`},data:{expected_record_version:Number(primary.record_version)}})).status(),409);
+  const handoffHeaders={'idempotency-key':`handoff-${randomUUID()}`};
+  const handoffData={successor_guardian_id:otherId,expected_primary_record_version:Number(primary.record_version)};
+  const handed=await request.post(`${root}/guardians/primary-handoffs`,{headers:handoffHeaders,data:handoffData});
+  assert.equal(handed.status(),200);
+  const handoffReceipt=(await handed.json()).data;
+  assert.deepEqual((await (await request.post(`${root}/guardians/primary-handoffs`,{headers:handoffHeaders,data:handoffData})).json()).data,handoffReceipt);
+  const current=(await client.query('SELECT id,guardian_id,is_primary_contact,record_version FROM crm_student_guardian_relationships WHERE student_id=$1 AND ends_at IS NULL',[studentId])).rows;
+  assert.equal(current.length,2);
+  assert.equal(current.find(row=>row.is_primary_contact)?.guardian_id,otherId);
+  const former=current.find(row=>row.guardian_id===guardianId)!;
+  assert.equal(former.is_primary_contact,false);
+  const endHeaders={'idempotency-key':`end-${randomUUID()}`};
+  const endData={expected_record_version:Number(former.record_version)};
+  const ended=await request.post(`${root}/guardian-relationships/${former.id}/end`,{headers:endHeaders,data:endData});
+  assert.equal(ended.status(),200);
+  assert.deepEqual((await (await request.post(`${root}/guardian-relationships/${former.id}/end`,{headers:endHeaders,data:endData})).json()).data,(await ended.json()).data);
+  assert.deepEqual((await (await request.post(`${root}/guardians`,{headers:attachHeaders,data:attachData})).json()).data,attachReceipt);
+  const relationships=(await (await request.get(`${root}/guardians`)).json()).data.relationships;
+  assert.equal(relationships.length,1);
+  assert.equal(relationships[0].guardian.id,otherId);
+  process.stdout.write(JSON.stringify({trial_guardian_http:'pass',l1:'search_attach_handoff_end',former_primary:'retained_until_explicit_end',replay:'original_receipts'})+'\n');
+}

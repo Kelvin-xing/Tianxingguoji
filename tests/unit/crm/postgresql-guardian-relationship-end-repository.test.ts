@@ -33,7 +33,7 @@ test("end locks scoped Student then current non-primary relationship and complet
   const sql: string[] = [];
   const runner: TenantTransactionRunner = { async run<Result>(_context: TenantDatabaseContext, operation: (transaction: TenantTransaction) => Promise<Result>) {
     return operation({ query: async <Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>> => {
-      sql.push(query.text);
+      sql.push(query.text); if(query.text.includes("FROM access_trial_members"))return {rows:[] as Row[]};
       if (query.text.includes("pg_try_advisory")) return { rows: [{ acquired: true }] as Row[] };
       if (query.text.includes("FROM shared_idempotency_records")) return { rows: [] as Row[] };
       if (query.text.includes("INSERT INTO shared_idempotency_records")) return { rows: [{ id: input().idempotencyRecordId }] as Row[] };
@@ -58,7 +58,7 @@ test("end locks scoped Student then current non-primary relationship and complet
 test("primary relationship is rejected before update and effects", async () => {
   const sql: string[] = [];
   const runner: TenantTransactionRunner = { async run<Result>(_context: TenantDatabaseContext, operation: (transaction: TenantTransaction) => Promise<Result>) { return operation({ query: async <Row = Record<string, unknown>>(query: DatabaseQuery): Promise<DatabaseQueryResult<Row>> => {
-    sql.push(query.text);
+    sql.push(query.text); if(query.text.includes("FROM access_trial_members"))return {rows:[] as Row[]};
     if (query.text.includes("pg_try_advisory")) return { rows: [{ acquired: true }] as Row[] };
     if (query.text.includes("FROM shared_idempotency_records")) return { rows: [] as Row[] };
     if (query.text.includes("INSERT INTO shared_idempotency_records")) return { rows: [{ id: input().idempotencyRecordId }] as Row[] };

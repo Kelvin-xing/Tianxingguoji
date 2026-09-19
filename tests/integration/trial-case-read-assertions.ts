@@ -1,3 +1,4 @@
+import {assertTrialGuardianWrites} from "./trial-crm-guardian-write-assertions.ts";
 import {PostgresqlGuardianRelationshipRepository} from "../../modules/crm/infrastructure/postgresql-guardian-relationship-repository.ts";
 import {assertTrialCrmProfileWrites} from "./trial-crm-profile-assertions.ts";
 import { assertTrialCaseIntake } from "./trial-case-intake-assertions.ts";
@@ -37,7 +38,10 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
   const service = new CaseWorkspaceService(repository);
   const studentRunner:TenantTransactionRunner={async run(input,work){
     await context(input.actorUserId!);
-    return work({async query<Row>(query:{text:string;values?:readonly unknown[]}){const result=await client.query(query.text,query.values?[...query.values]:undefined);return {rows:result.rows as Row[],rowCount:result.rowCount};}});
+    return work({async query<Row>(query:{text:string;values?:readonly unknown[]}){
+      try {const result=await client.query(query.text,query.values?[...query.values]:undefined);return {rows:result.rows as Row[],rowCount:result.rowCount};}
+      catch(error){const cause=error as {code?:string;constraint?:string};process.stdout.write(JSON.stringify({trial_crm_sql_failure:{code:/^[0-9A-Z]{5}$/.test(cause.code??'')?cause.code:'OTHER',constraint:/^[a-z0-9_]{1,100}$/.test(cause.constraint??'')?cause.constraint:'NONE'}})+'\n');throw error;}
+    }});
   }};
   const students=new PostgresqlStudentReadRepository(studentRunner);
   const duplicates=new PostgresqlPotentialDuplicateRepository(studentRunner);
@@ -122,6 +126,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
           WHERE r.student_id=$1 AND r.ends_at IS NULL AND r.is_primary_contact`,[NEON_TEST_STUDENTS[0]!.id])).rows[0];
         assert.equal((await duplicates.findCandidates({...input,kind:'guardian',name:guardian.display_name,email:null,phone:null})).candidates.some(row=>row.id===guardian.id),allowed,'duplicate search cannot reveal out-of-scope guardians');
         await assertTrialCrmProfileWrites({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,studentId:NEON_TEST_STUDENTS[0]!.id,guardianId:guardian.id,allowed});
+        await assertTrialGuardianWrites({client,runner:studentRunner,organizationId:org,userId:person.userId,founderUserId:founder!.userId,role,studentId:NEON_TEST_STUDENTS[0]!.id,caseId,allowed});
       }
       await context(founder!.userId);
       await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1", [l2!.userId]);

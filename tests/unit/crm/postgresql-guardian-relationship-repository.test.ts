@@ -86,6 +86,7 @@ test("accepts multiple active Founder and Advisor bindings, but rejects zero", a
     async run<Result>(_context: TenantDatabaseContext, operation: (transaction: TenantTransaction) => Promise<Result>): Promise<Result> {
       let index = 0;
       return operation({ query: async <Row>(query: DatabaseQuery) => {
+        if(query.text.includes("FROM access_trial_members"))return {rows:[] as Row[]};
         index += 1;
         if (index === 1) return { rows: [{ binding_id: "b-founder" }, { binding_id: "b-advisor" }] as Row[] };
         if (query.text.includes("FROM crm_students")) return { rows: [{ id: CONTEXT.studentId, display_name: "Student" }] as Row[] };
