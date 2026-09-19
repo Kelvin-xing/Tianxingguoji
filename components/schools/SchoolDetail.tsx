@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import {SchoolChangeForm} from './SchoolChangeForm'
 import { useCallback,useEffect, useRef,useState, type ReactNode } from 'react'
-import { getResolvedSchool,listSchoolChanges, type SchoolChangeHistoryItem,type SchoolDirectoryItem } from '@/modules/schools/client'
+import { getResolvedSchool,listSchoolChanges, type SchoolChangeHistoryItem,type ResolvedSchoolDetail } from '@/modules/schools/client'
 
 function value(input: unknown): string { return typeof input === 'string' && input.trim() ? input.trim() : '未知' }
 function Block({ title, children }: { title: string; children: ReactNode }) {
@@ -11,7 +12,8 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 function Field({ label, input }: { label: string; input: unknown }) { return <div className="min-w-0"><dt className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</dt><dd className="break-words">{value(input)}</dd></div> }
 
 export function SchoolDetail({ schoolId }: { schoolId: string }) {
-  const [school, setSchool] = useState<Omit<SchoolDirectoryItem, "source_school_key"> | null>(null)
+  const [school, setSchool] = useState<ResolvedSchoolDetail | null>(null)
+  const [editing,setEditing]=useState<{field:string;label:string}|null>(null)
   const [changes,setChanges]=useState<readonly SchoolChangeHistoryItem[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'denied'|'missing'>('loading')
   const mounted=useRef(false)
@@ -19,7 +21,7 @@ export function SchoolDetail({ schoolId }: { schoolId: string }) {
   const load=useCallback(async()=>{
     controller.current?.abort()
     const current=new AbortController();controller.current=current
-    setState('loading');setSchool(null);setChanges([])
+    setState('loading');setSchool(null);setChanges([]);setEditing(null)
     try{
       const [result,history]=await Promise.all([getResolvedSchool(schoolId,current.signal),listSchoolChanges(schoolId,current.signal)])
       if(!mounted.current||current.signal.aborted)return
@@ -36,8 +38,13 @@ export function SchoolDetail({ schoolId }: { schoolId: string }) {
   if(state==='missing')return <p role="alert">找不到這所學校。<Link href="/schools">返回學校目錄</Link></p>
   if (state === 'error' || !school) return <div role="alert">學校資料暫時無法載入。<button type="button" onClick={()=>void load()}>重新載入學校資料</button></div>
   const fields = school.fields
-  return <div className="max-w-5xl space-y-4"><Link href="/schools" className="text-sm underline">返回學校目錄</Link><header><h1 className="text-xl font-semibold">{value(fields.school_name_zh) !== '未知' ? value(fields.school_name_zh) : value(fields.school_name_en)}</h1><p className="text-sm" style={{ color: 'var(--text-muted)' }}>未取得的資料顯示為未知。</p><button type="button" onClick={()=>void load()} className="mt-2 rounded border px-3 py-2 text-sm">重新載入學校資料</button></header>
-    <Block title="基礎資料"><dl className="grid gap-3 sm:grid-cols-2"><Field label="中文名稱" input={fields.school_name_zh}/><Field label="英文名稱" input={fields.school_name_en}/><Field label="地區" input={fields.district}/><Field label="地址" input={fields.address}/><Field label="官网" input={fields.official_website || fields.website}/><Field label="電話" input={fields.phone}/></dl></Block>
+  return <div className="max-w-5xl space-y-4"><Link href="/schools" className="text-sm underline">返回學校目錄</Link><header><h1 className="text-xl font-semibold">{value(fields.school_name_zh) !== '未知' ? value(fields.school_name_zh) : value(fields.school_name_en)}</h1><p className="text-sm" style={{ color: 'var(--text-muted)' }}>未取得的資料顯示為未知。</p><button type="button" disabled={editing!==null} onClick={()=>void load()} className="mt-2 rounded border px-3 py-2 text-sm">重新載入學校資料</button></header>
+    <Block title="基礎資料"><dl className="grid gap-3 sm:grid-cols-2">{[
+      ['school_name_zh','中文名稱'],['school_name_en','英文名稱'],['district','地區'],['address','地址'],['official_website','官網'],['phone','電話'],
+    ].map(([field,label])=>{const current=fields[field!];const unknown=current===null||current===undefined||current==='';
+      return <div key={field} className="min-w-0"><Field label={label!} input={current}/>{school.change_context.can_submit&&(unknown||school.change_context.can_edit_existing)&&<button type="button" disabled={editing!==null} onClick={()=>setEditing({field:field!,label:label!})} className="mt-1 text-sm underline">{unknown?'補充':'申請修改'}{label}</button>}</div>})}</dl>
+      {editing&&<SchoolChangeForm school={school} field={editing.field} label={editing.label} onDone={()=>void load()} onDenied={()=>{setSchool(null);setChanges([]);setEditing(null);setState('denied')}} onCancel={()=>void load()}/>}
+    </Block>
     <Block title="招生資料"><dl className="grid gap-3 sm:grid-cols-2"><Field label="招生類型" input={fields.admission_type}/><Field label="適用學年" input={fields.admission_school_year || fields.school_year}/><Field label="招生年級" input={fields.admission_grade}/><Field label="申請方式" input={fields.application_method}/><Field label="申請開始日期" input={fields.application_start_date}/><Field label="截止日期" input={fields.application_deadline || fields.submission_deadline}/></dl></Block>
     <Block title="待處理更新"><ChangeList items={changes.filter(item=>item.status==='candidate')} empty="目前沒有待審批的人工資料變更。"/></Block>
     <Block title="更新履歷"><p className="text-sm" style={{color:'var(--text-secondary)'}}>人工資料變更紀錄。原始快照值用於核對來源，不代表最近一次生效值。</p><ChangeList items={changes.filter(item=>item.status!=='candidate')} empty="目前沒有已處理的人工變更紀錄。"/></Block>

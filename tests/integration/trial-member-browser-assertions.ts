@@ -1,3 +1,4 @@
+import {assertTrialSchoolChangeForm} from "./trial-school-change-form-assertions.ts";
 import {sha256SchoolValue} from "../../modules/schools/public.ts";
 import {assertTrialProvisionalSchoolBrowser} from "./trial-provisional-school-browser-assertions.ts";
 import {assertTrialReferralSourceHttp} from './trial-referral-source-http-assertions.ts'
@@ -269,6 +270,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await restricted.getByText('登入狀態或學校存取權限已變更，請重新登入或聯絡管理員。',{exact:true}).waitFor()
     assert.equal(await restricted.getByRole('region',{name:'待處理更新',exact:true}).count(),0)
     await restricted.unroute(changeUrl)
+    await assertTrialSchoolChangeForm(restricted,baseUrl,firstSchool.school_id)
     const provisionalUrl=`${baseUrl}/api/v1/schools/provisionals`
     const provisionalCommand={headers:{'idempotency-key':randomUUID()},data:{school_name_zh:'合成待验证学校'}}
     const provisionalResponse=await restrictedContext.request.post(provisionalUrl,provisionalCommand)

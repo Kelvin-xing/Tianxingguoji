@@ -553,3 +553,16 @@
 - 已查看 `/tmp/access-trial-school-detail-mobile.png`。类型 `/tmp/access-trial-school-history-types-final.log`、聚焦ESLint `/tmp/access-trial-school-history-lint.log`及新客户端测试ESLint `/tmp/access-trial-school-history-test-lint.log`通过。无迁移。
 
 下一步为申请表单和审批/拒绝闭环；其余模块权限复核、整体试用验收、main合并和远程推送尚未完成。未部署或操作真实资料。
+
+## 学校基础资料变更申请表单（2026-09-19，接续 6c314f0）
+
+总体仍 `in_progress`。本节接通基础资料申请表单，审批命令尚未实现。
+
+- 详情页在基础字段旁提供补充/申请修改入口，填写申请值、理由、HTTPS证据网址和摘要；提交后刷新待审批记录，当前有效值保持原状。名称/地区/地址/官网/电话采用已有字段，不扩展待确认的招生记录schema。
+- resolved接口在同一授权事务内提供提交资格、是否可修改已有值及原始快照字段哈希。Founder/L1及原Advisor按原范围可申请修改，L2只出现未知资料补充；无提交资格的只读账号不出现操作入口。哈希不展示给用户，未使用人工覆盖值的哈希冒充原始基线。
+- 结果未知时冻结内容、保留原幂等键，仅允许重试原申请；冲突要求关闭并重新读取后核对，不能沿用原确认。权限/登录失效清空资料。正在填写/重试时禁用父页刷新及其他编辑入口。
+- `/tmp/access-trial-school-form-browser.log` **21/21**：真实PG17+Next/Chrome、客户端与模块边界。实际表单空值校验、填写、服务器提交后模拟响应503、相同键重试单份申请、刷新保留、当前值不变、模拟403清空；新增PG断言校验服务端提交资格、L2只补充和原始字段哈希。既有上传、CRM、任务及邀请继续通过。
+- `/tmp/access-trial-school-form-client.log` **6/6**：命令请求/原幂等键、学校/字段/快照绑定、非待审批回执拒绝、未知结果和冲突分类。已查看390px表单截图 `/tmp/access-trial-school-change-form-mobile.png`，页面无横向溢出。
+- 类型 `/tmp/access-trial-school-form-types-final.log`、聚焦ESLint `/tmp/access-trial-school-form-lint.log`、测试ESLint `/tmp/access-trial-school-form-test-lint.log`及diff通过。无迁移。
+
+审批/拒绝闭环、实际等级与禁止自审、审批并发基线保护和完整履历仍待完成；其余模块权限复核、整体试用验收、main合并和远程推送未完成。未部署或使用真实资料。

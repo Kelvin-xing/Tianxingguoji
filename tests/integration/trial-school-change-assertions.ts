@@ -40,6 +40,9 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
     const saved=(await client.query('SELECT status,requested_by_user_id,approved_by_user_id FROM schools_overlay_revisions WHERE id=$1',[result.changeRequestId])).rows[0];
     assert.deepEqual(saved,{status:'candidate',requested_by_user_id:input.userId,approved_by_user_id:null});
     const read=await new PostgresqlSchoolDirectoryRepository(runner).find({organizationId:org,actorUserId:input.userId,schoolId:base.school_id});
+    assert.equal(read.changeContext.canSubmitChanges,true);
+    assert.equal(read.changeContext.canEditExisting,input.role!=='l2');
+    assert.equal(read.changeContext.baseValueHashes.phone??read.changeContext.emptyValueSha256,command.baseValueSha256);
     assert.equal(read.view.fields.phone??null,null,'submission never changes the effective school record');
     assert.equal((await client.query('SELECT fields_json FROM schools_snapshot_records WHERE school_id=$1 AND snapshot_id=$2',[base.school_id,base.snapshot_id])).rows[0].fields_json.phone??null,null);
     for(const query of ['SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1','SELECT count(*)::int AS n FROM audit_outbox WHERE aggregate_id=$1'])assert.equal((await client.query(query,[result.changeRequestId])).rows[0].n,1);

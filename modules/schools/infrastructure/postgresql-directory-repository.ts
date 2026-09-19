@@ -1,5 +1,6 @@
 import "server-only";
 
+import {sha256SchoolValue,type JsonValue} from "../domain/contract.ts";
 import {loadTrialPrincipal} from "../../access/server.ts";
 import {trialWorkspaceCapabilities} from "../../access/public.ts";
 import type {TenantTransaction,TenantTransactionRunner} from "../../shared/server.ts";
@@ -31,10 +32,13 @@ export class PostgresqlSchoolDirectoryRepository {
       return result.rows.map(row=>({...row,record_version:Number(row.record_version),created_at:new Date(row.created_at).toISOString()}));
     });
   }
-  find(input:Reader&{readonly schoolId:string}):Promise<ResolvedSchoolTargetView>{
+  find(input:Reader&{readonly schoolId:string}){
     return this.runner.run(input,async transaction=>{
-      await assertSchoolDirectoryReader(transaction,input);
-      return this.resolved.readCurrentResolvedSchool({organizationId:input.organizationId,schoolId:input.schoolId,transaction:adapt(transaction)});
+      const permissions=await assertSchoolDirectoryReader(transaction,input);
+      const resolved=await this.resolved.readCurrentResolvedSchool({organizationId:input.organizationId,schoolId:input.schoolId,transaction:adapt(transaction)});
+      const base=await transaction.query<{fields_json:Record<string,JsonValue>}>({text:'SELECT fields_json FROM schools_snapshot_records WHERE organization_id=$1 AND school_id=$2 AND snapshot_id=$3',values:[input.organizationId,input.schoolId,resolved.pin.baseSnapshotId]});
+      if(!base.rows[0])throw new SchoolResolutionError('SCHOOL_RESOLUTION_NOT_FOUND');
+      return {...resolved,changeContext:{...permissions,baseValueHashes:Object.fromEntries(Object.entries(base.rows[0].fields_json).map(([key,value])=>[key,sha256SchoolValue(value)])),emptyValueSha256:sha256SchoolValue(null)}};
     });
   }
 }
@@ -42,13 +46,14 @@ export async function assertSchoolDirectoryReader(transaction:TenantTransaction,
   const tx=adapt(transaction);
   const principal=await loadTrialPrincipal(tx,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
   if(principal && !trialWorkspaceCapabilities(principal).includes('schools.read'))throw new SchoolResolutionError('SCHOOL_RESOLUTION_FORBIDDEN');
-  const result=await tx.query(`SELECT binding.id FROM identity_users actor
+  const result=await tx.query<{id:string;role:string}>(`SELECT binding.id,binding.role FROM identity_users actor
     JOIN access_organization_memberships membership ON membership.user_id=actor.id AND membership.organization_id=$1 AND membership.status='active'
     JOIN access_organizations organization ON organization.id=$1 AND organization.status='active'
     JOIN access_role_bindings binding ON binding.membership_id=membership.id AND binding.organization_id=$1 AND binding.user_id=actor.id AND binding.status='active'
     WHERE actor.id=$2 AND actor.status='active' AND binding.role=ANY($3::text[])
     FOR SHARE OF actor,membership,organization,binding`,[input.organizationId,input.actorUserId,principal?[principal.level]:['founder','advisor']]);
   if(result.rows.length===0)throw new SchoolResolutionError('SCHOOL_RESOLUTION_FORBIDDEN');
+  return {canSubmitChanges:principal!==null||result.rows.some(row=>row.role==='advisor'),canEditExisting:principal?['founder','l1'].includes(principal.level):result.rows.some(row=>row.role==='advisor')};
 }
 function adapt(transaction:TenantTransaction){
   return {async query<Row extends Record<string,unknown>>(text:string,values?:readonly unknown[]){
