@@ -98,7 +98,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (inFlight.current || saving || source === null || !canManage) return
+    if (inFlight.current || saving || source === null || source.status !== 'active' || !canManage) return
     const nextName = displayName.trim()
     const nextDescription = source.source_type === 'other' ? description.trim() : null
     const profileChanged = nextName !== source.display_name || nextDescription !== source.description
@@ -145,6 +145,10 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
     } catch (error) {
       if (!mounted.current) return
       const failure = classifyReferralSourceFailure(error)
+      if (failure === 'forbidden' || failure === 'unauthenticated' || failure === 'not_found') {
+        setSource(null);setCanManage(false);setEditing(false);setDisplayName('');setDescription('');setNotice(null)
+        setState(failure === 'unauthenticated' ? 'unauthenticated' : failure === 'not_found' ? 'not_found' : 'denied');return
+      }
       if (failure === 'stale' || failure === 'conflict') {
         attempt.current!.rotate()
         try {
@@ -157,11 +161,11 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
           setEditing(false)
           setNotice(failure)
         } catch {
-          setNotice('unavailable')
+          setSource(null);setCanManage(false);setEditing(false);setState('unavailable');setNotice('unavailable')
         }
       } else {
         if (failure !== 'unavailable') attempt.current!.rotate()
-        setNotice(failure === 'validation' ? 'validation' : failure === 'forbidden' || failure === 'unauthenticated' ? 'denied' : 'unavailable')
+        setNotice(failure === 'validation' ? 'validation' : 'unavailable')
       }
     } finally {
       inFlight.current = false
@@ -200,7 +204,7 @@ export function ReferralSourceDetail({ sourceId }: { readonly sourceId: string }
             <h3 id="referral-source-details-title" className="section-title">來源資料</h3>
             <p className="section-detail">來源類型建立後不能更改；停用後不能重新啟用。</p>
           </div>
-          {canManage && !editing ? <button ref={editTrigger} type="button" className="secondary-button" onClick={() => { setNotice(null); setEditing(true) }}><Icon name="settings" size={15} />編輯來源</button> : null}
+          {canManage && source.status === 'active' && !editing ? <button ref={editTrigger} type="button" className="secondary-button" onClick={() => { setNotice(null); setEditing(true) }}><Icon name="settings" size={15} />編輯來源</button> : null}
         </div>
 
         {editing ? (

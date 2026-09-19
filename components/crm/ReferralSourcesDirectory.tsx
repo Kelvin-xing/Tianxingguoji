@@ -120,12 +120,15 @@ export function ReferralSourcesDirectory() {
     } catch (error) {
       if (!mounted.current) return
       const failure = classifyReferralSourceFailure(error)
+      if (failure === 'forbidden' || failure === 'unauthenticated') {
+        setSources([]);setCanManage(false);setDisplayName('');setDescription('');setNotice(null)
+        setState(failure === 'unauthenticated' ? 'unauthenticated' : 'denied');return
+      }
       if (failure !== 'unavailable') attempt.current!.rotate()
       setNotice(
         failure === 'validation' ? 'validation'
           : failure === 'conflict' || failure === 'stale' ? 'conflict'
-            : failure === 'forbidden' || failure === 'unauthenticated' ? 'denied'
-              : 'unavailable',
+            : 'unavailable',
       )
     } finally {
       submitting.current = false

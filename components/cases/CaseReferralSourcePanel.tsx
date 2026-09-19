@@ -131,6 +131,10 @@ export function CaseReferralSourcePanel({ caseId }: { readonly caseId: string })
     } catch (error) {
       if (!mounted.current) return
       const failure = classifyCaseReferralSourceFailure(error)
+      if (failure === 'forbidden' || failure === 'unauthenticated' || failure === 'not_found') {
+        setView(null);setActiveSources([]);setCanAssign(false);setSelectedSourceId('');setConfirmedReplacement(false);setNotice(null)
+        setState(failure === 'unauthenticated' ? 'unauthenticated' : 'denied');return
+      }
       if (failure === 'stale' || failure === 'conflict') {
         attempt.current!.rotate()
         try {
@@ -141,11 +145,11 @@ export function CaseReferralSourcePanel({ caseId }: { readonly caseId: string })
           setConfirmedReplacement(false)
           setNotice(failure)
         } catch {
-          setNotice('unavailable')
+          setView(null);setActiveSources([]);setCanAssign(false);setState('unavailable');setNotice('unavailable')
         }
       } else {
         if (failure !== 'unavailable') attempt.current!.rotate()
-        setNotice(failure === 'validation' ? 'validation' : failure === 'forbidden' || failure === 'unauthenticated' ? 'denied' : 'unavailable')
+        setNotice(failure === 'validation' ? 'validation' : 'unavailable')
       }
     } finally {
       inFlight.current = false

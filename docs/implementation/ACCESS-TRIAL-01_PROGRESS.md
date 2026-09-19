@@ -473,3 +473,15 @@
 - `/tmp/access-trial-referral-browser.log` **29/29**通过，包含真实Next/Chrome+PG及上项正式HTTP；既有删除审批、家长、文件、任务、邀请流程继续通过。类型 `/tmp/access-trial-referral-types-final.log`、diff通过；聚焦ESLint `/tmp/access-trial-referral-lint-final.log`无错误，保留既有未使用ReferralSourceCursor警告1条。无迁移。
 
 来源页面、学校等其余入口和整体试用验收仍需完成；main合并/远程推送未完成。未部署或操作真实客户/员工数据。
+
+## 客户来源页面正式接通（2026-09-19，接续 97ae20a）
+
+总体仍 `in_progress`。真实页面验证发现路由仍使用旧F2只读目录/详情，正式管理组件没有接入。
+
+- 列表路由接入ReferralSourcesDirectory，详情路由按已安装Next16文档及既有学生详情模式await params后接入ReferralSourceDetail。复用正式客户端的建档、修改、停用、状态过滤与权限能力。
+- 停用来源不再显示编辑入口。目录、详情及案件来源写入收到权限/登录失效时清空旧资料及操作；案件不存在也收回来源上下文。冲突后权威重读失败不保留可操作旧内容。
+- `/tmp/access-trial-referral-ui-final.log` **39/39**：真实PG17+Next/Chrome，L1实际页面创建来源、跳转详情、修改、案件内选择关联、停用及刷新；正式原回执仍验证。模拟目录新建403后列表和创建入口消失。既有家长、删除审批、文件、任务、邀请流程继续通过。
+- `/tmp/access-trial-referral-ui-mobile.png`已查看，390px显示完整，无横向溢出。初次浏览器失败确认了实际旧页面缺少建档表单，修复路由后通过；没有把HTTP证据当作此前页面已完成。
+- 当前源码聚焦单测 `/tmp/access-trial-referral-ui-unit-final.log` **37/37**；类型 `/tmp/access-trial-referral-ui-types-final2.log`、聚焦ESLint `/tmp/access-trial-referral-ui-lint-final2.log`及diff通过。旧UI静态断言修正正式回执的referral_source嵌套字段。浏览器复制后仅移除了TypeScript确认已被提前返回排除的不可达错误分支。无迁移。
+
+学校模块已只读定位到旧角色入口（provisional、resolved、governance等）及目录仓储缺少事务内试用重查，尚未修改或验证这些入口。其余模块及整体试用验收、main合并与远程推送仍未完成；未部署或使用真实资料。
