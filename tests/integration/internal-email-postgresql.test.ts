@@ -99,6 +99,7 @@ test('Founder invitation, rotated link, activation and internal login work on Po
     const firstCredential = activationCredential(transport.messages[0]!.html)
 
     const resent = await service.resendFounderInvite({
+      idempotencyKey: `resend-${randomBytes(12).toString('hex')}`,
       actor: { userId: FOUNDER.userId, organizationId: NEON_TEST_ORGANIZATION.id, roles: ['founder'] },
       inviteId: created.inviteId,
     })
@@ -158,7 +159,7 @@ test('Founder invitation, rotated link, activation and internal login work on Po
     await assertEmailAdministrationBrowserFlow(baseUrl, httpEvidence.adminCookie, browser)
     await inspectEmailSettings(target)
     await inspectEmailTemplate(target)
-    await assertTrialEmployeeInvites({target,service,transport,baseUrl,founderCookie:httpEvidence.founderCookie,founderPassword})
+    await assertTrialEmployeeInvites({target,service,transport,baseUrl,founderCookie:httpEvidence.founderCookie,founderPassword,adminCookie:httpEvidence.adminCookie,browser})
   } finally {
     await browser?.close().catch(() => undefined)
     await stopNextDev(devServer)

@@ -60,9 +60,9 @@ export interface InternalEmailRepository {
     secretHash: string
     expiresAtMs: number
     idempotencyKey: string
-  }>): Promise<void>
-  recordInviteDelivery(input: Readonly<{ inviteId: string; organizationId: string; receipt: InternalInviteDeliveryReceipt }>): Promise<void>
-  rotateInvite(input: Readonly<{ actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }>
+  }>): Promise<InviteOperationResult>
+  recordInviteDelivery(input: Readonly<{ operationId: string; inviteId: string; organizationId: string; receipt: InternalInviteDeliveryReceipt }>): Promise<void>
+  rotateInvite(input: Readonly<{ idempotencyKey: string; actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<InviteOperationResult & { normalizedEmail?: string }>
   activateInvite(input: Readonly<{
     organizationId: string
     inviteId: string
@@ -111,6 +111,7 @@ export type InternalEmailServiceErrorCode =
   | 'INVITE_INVALID'
   | 'INVITE_UNAVAILABLE'
   | 'INVITE_ALREADY_EXISTS'
+  | 'INVITE_CONFLICT'
   | 'INVITE_NOT_FOUND'
   | 'INVITE_NOT_REDEEMABLE'
   | 'INVITE_EXPIRED'
@@ -133,7 +134,12 @@ export interface CreatedInternalInvite {
   readonly inviteId: string
   readonly targetUserId: string
   readonly expiresAtMs: number
-  readonly deliveryReceipt: InternalInviteDeliveryReceipt
+  readonly deliveryReceipt: InternalInviteDeliveryReceipt | null
+}
+
+export interface InviteOperationResult extends CreatedInternalInvite {
+  readonly operationId: string
+  readonly started: boolean
 }
 
 export interface CreatedInternalSession {
@@ -188,8 +194,9 @@ export class InternalEmailService {
     const nowMs = this.nowMs()
     const expiresAtMs = nowMs + INVITE_POLICY.expiresInMs
     const activationCredential = buildActivationCredential(input.actor.organizationId, inviteId, targetUserId, activationSecret)
+    let operation: InviteOperationResult
     try {
-      await this.repository.createInvitedIdentity({
+      operation = await this.repository.createInvitedIdentity({
         inviteId, userId: targetUserId, membershipId, roleBindingId,
         organizationId: input.actor.organizationId, invitedByUserId: input.actor.userId,
         normalizedEmail: email, role: input.role, trialCategories: categories === undefined ? undefined : [...categories].sort(), employmentType,
@@ -199,10 +206,11 @@ export class InternalEmailService {
     } catch (error) {
       throw mapRepositoryError(error)
     }
+    if (!operation.started) return publicInvite(operation)
     let receipt: InternalInviteDeliveryReceipt
     try {
       receipt = await this.email.sendInvitation({ inviteId, organizationId: input.actor.organizationId, actorUserId: input.actor.userId, recipientEmail: email, activationCredential, expiresAtMs })
-      await this.repository.recordInviteDelivery({ inviteId, organizationId: input.actor.organizationId, receipt })
+      await this.repository.recordInviteDelivery({ operationId: operation.operationId, inviteId, organizationId: input.actor.organizationId, receipt })
     } catch {
       throw new InternalEmailServiceError('INVITE_DELIVERY_FAILED')
     }
@@ -233,23 +241,24 @@ export class InternalEmailService {
     }
   }
 
-  async resendFounderInvite(input: Readonly<{ actor: InternalEmailInviteActor; inviteId: string }>): Promise<CreatedInternalInvite> {
+  async resendFounderInvite(input: Readonly<{ actor: InternalEmailInviteActor; inviteId: string; idempotencyKey: string }>): Promise<CreatedInternalInvite> {
     assertFounder(input.actor)
-    if (!UUID.test(input.inviteId)) throw new InternalEmailServiceError('INVITE_INVALID')
+    if (!UUID.test(input.inviteId) || !IDEMPOTENCY_KEY.test(input.idempotencyKey)) throw new InternalEmailServiceError('INVITE_INVALID')
     const activationSecret = this.createSecret()
     if (!isOpaqueSecret(activationSecret)) throw new InternalEmailServiceError('INVITE_INVALID')
     const nowMs = this.nowMs()
     const expiresAtMs = nowMs + INVITE_POLICY.expiresInMs
-    let target: { targetUserId: string; normalizedEmail: string }
+    let target: InviteOperationResult & { normalizedEmail?: string }
     try {
-      target = await this.repository.rotateInvite({ actorUserId: input.actor.userId, inviteId: input.inviteId, organizationId: input.actor.organizationId, secretHash: hashOpaqueSecret(activationSecret), expiresAtMs, nowMs })
+      target = await this.repository.rotateInvite({ idempotencyKey: input.idempotencyKey, actorUserId: input.actor.userId, inviteId: input.inviteId, organizationId: input.actor.organizationId, secretHash: hashOpaqueSecret(activationSecret), expiresAtMs, nowMs })
     } catch (error) {
       throw mapRepositoryError(error)
     }
+    if (!target.started) return publicInvite(target)
     const activationCredential = buildActivationCredential(input.actor.organizationId, input.inviteId, target.targetUserId, activationSecret)
     try {
-      const deliveryReceipt = await this.email.sendInvitation({ inviteId: input.inviteId, organizationId: input.actor.organizationId, actorUserId: input.actor.userId, recipientEmail: target.normalizedEmail, activationCredential, expiresAtMs })
-      await this.repository.recordInviteDelivery({ inviteId: input.inviteId, organizationId: input.actor.organizationId, receipt: deliveryReceipt })
+      const deliveryReceipt = await this.email.sendInvitation({ inviteId: input.inviteId, organizationId: input.actor.organizationId, actorUserId: input.actor.userId, recipientEmail: target.normalizedEmail!, activationCredential, expiresAtMs })
+      await this.repository.recordInviteDelivery({ operationId: target.operationId, inviteId: input.inviteId, organizationId: input.actor.organizationId, receipt: deliveryReceipt })
       return Object.freeze({ inviteId: input.inviteId, targetUserId: target.targetUserId, expiresAtMs, deliveryReceipt })
     } catch {
       throw new InternalEmailServiceError('INVITE_DELIVERY_FAILED')
@@ -354,4 +363,8 @@ function mapRepositoryError(error: unknown): InternalEmailServiceError {
   if (code === 'SESSION_LIMIT_REACHED') return new InternalEmailServiceError('SESSION_LIMIT_REACHED')
   if (code === 'SESSION_NOT_FOUND') return new InternalEmailServiceError('SESSION_NOT_FOUND')
   return new InternalEmailServiceError('INVITE_UNAVAILABLE', { cause: error })
+}
+
+function publicInvite(operation: InviteOperationResult): CreatedInternalInvite {
+  return Object.freeze({inviteId:operation.inviteId,targetUserId:operation.targetUserId,expiresAtMs:operation.expiresAtMs,deliveryReceipt:operation.deliveryReceipt})
 }

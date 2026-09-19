@@ -41,11 +41,12 @@ export async function POST(request: Request): Promise<Response> {
           invite_id: invite.inviteId,
           target_user_id: invite.targetUserId,
           expires_at_ms: invite.expiresAtMs,
-          delivery_receipt: {
+          delivery_status: invite.deliveryReceipt ? "sent" : "unconfirmed",
+          delivery_receipt: invite.deliveryReceipt ? {
             channel_policy_id: invite.deliveryReceipt.channelPolicyId,
             receipt_reference: invite.deliveryReceipt.receiptReference,
             delivered_at_ms: invite.deliveryReceipt.deliveredAtMs,
-          },
+          } : null,
         };
       }
       if (command.trialCategories !== undefined || ['l1','l2','l3'].includes(command.role)) throw createApiError('VALIDATION_FAILED');
@@ -66,6 +67,7 @@ export async function POST(request: Request): Promise<Response> {
         invite_id: invite.inviteId,
         target_user_id: invite.targetUserId,
         expires_at_ms: invite.expiresAtMs,
+        delivery_status: "sent",
         delivery_receipt: {
           channel_policy_id: invite.deliveryReceipt.channelPolicyId,
           receipt_reference: invite.deliveryReceipt.receiptReference,
@@ -96,7 +98,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       if (error instanceof InternalEmailServiceError) {
         if (error.code === "FOUNDER_REQUIRED") throw createApiError("FORBIDDEN");
-        if (error.code === "INVITE_ALREADY_EXISTS") throw createApiError("CONFLICT");
+        if (error.code === "INVITE_ALREADY_EXISTS" || error.code === "INVITE_CONFLICT") throw createApiError("CONFLICT");
         if (error.code === "INVITE_DELIVERY_FAILED" || error.code === "INVITE_UNAVAILABLE") throw createApiError("SERVICE_UNAVAILABLE");
         throw createApiError("VALIDATION_FAILED");
       }

@@ -21,8 +21,8 @@ export async function POST(request: Request, context: { readonly params: Promise
       const access = await resolveRequestAccessContext({ cookieSecret, sensitiveAction: true })
       const runtime = getIdentityRuntime()
       if (runtime.authMode !== 'internal-email' || !runtime.internalEmail) throw createApiError('SERVICE_UNAVAILABLE')
-      const invite = await runtime.internalEmail.resendFounderInvite({ actor: { userId: access.userId, organizationId: access.organizationId, roles: access.roles, trialPrincipal: access.trialPrincipal }, inviteId })
-      return { invite_id: invite.inviteId, target_user_id: invite.targetUserId, expires_at_ms: invite.expiresAtMs, delivery_receipt: { channel_policy_id: invite.deliveryReceipt.channelPolicyId, receipt_reference: invite.deliveryReceipt.receiptReference, delivered_at_ms: invite.deliveryReceipt.deliveredAtMs } }
+      const invite = await runtime.internalEmail.resendFounderInvite({ actor: { userId: access.userId, organizationId: access.organizationId, roles: access.roles, trialPrincipal: access.trialPrincipal }, inviteId, idempotencyKey })
+      return { invite_id: invite.inviteId, target_user_id: invite.targetUserId, expires_at_ms: invite.expiresAtMs, delivery_status: invite.deliveryReceipt ? 'sent' : 'unconfirmed', delivery_receipt: invite.deliveryReceipt ? { channel_policy_id: invite.deliveryReceipt.channelPolicyId, receipt_reference: invite.deliveryReceipt.receiptReference, delivered_at_ms: invite.deliveryReceipt.deliveredAtMs } : null }
     } catch (error) {
       if (error instanceof RequestAccessContextError) {
         if (error.code === 'REQUEST_ACCESS_UNAUTHENTICATED') throw createApiError('UNAUTHENTICATED')
@@ -32,7 +32,7 @@ export async function POST(request: Request, context: { readonly params: Promise
       if (error instanceof InternalEmailServiceError) {
         if (error.code === 'FOUNDER_REQUIRED') throw createApiError('FORBIDDEN')
         if (error.code === 'INVITE_NOT_FOUND') throw createApiError('NOT_FOUND')
-        if (error.code === 'INVITE_NOT_REDEEMABLE' || error.code === 'INVITE_EXPIRED') throw createApiError('CONFLICT')
+        if (error.code === 'INVITE_CONFLICT' || error.code === 'INVITE_NOT_REDEEMABLE' || error.code === 'INVITE_EXPIRED') throw createApiError('CONFLICT')
         if (error.code === 'INVITE_DELIVERY_FAILED' || error.code === 'INVITE_UNAVAILABLE') throw createApiError('SERVICE_UNAVAILABLE')
         throw createApiError('VALIDATION_FAILED')
       }

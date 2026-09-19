@@ -1,4 +1,5 @@
 import "server-only";
+import { loadTrialPrincipal } from "./postgresql-trial-principal.ts";
 
 import type { MutationEffectBundle } from "../../audit/public.ts";
 import {
@@ -174,6 +175,14 @@ export class PostgresqlMemberManagementRepository implements MemberManagementRep
           createdAt: input.occurredAt,
         },
         revalidate: async (transaction) => {
+          const organization = await transaction.query({text:"SELECT id FROM access_organizations WHERE id=$1 AND status='active' FOR UPDATE",values:[input.organizationId]});
+          if(organization.rows.length!==1) throw new MemberManagementError('FORBIDDEN');
+          const adapter = {async query<Row extends Record<string, unknown>>(text:string,values?:readonly unknown[]){return transaction.query<Row>({text,values});}};
+          const actor = await loadTrialPrincipal(adapter,{organizationId:input.organizationId,userId:input.actorUserId,lock:true});
+          if(actor && (!actor.active || actor.level!=='founder')) throw new MemberManagementError('FORBIDDEN');
+          const target = await loadTrialPrincipal(adapter,{organizationId:input.organizationId,userId:input.targetUserId,lock:true});
+          // Explicit trial members are changed only by the grade/category command.
+          if(target) throw new MemberManagementError('FORBIDDEN');
           await requireActiveManager(transaction, input.organizationId, input.actorUserId);
         },
         execute: async (transaction) => {

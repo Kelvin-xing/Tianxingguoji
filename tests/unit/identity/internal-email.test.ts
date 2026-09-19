@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { InternalEmailService, INTERNAL_EMAIL_PASSWORD_POLICY, normalizeInternalEmail, type InternalEmailRepository } from '../../../modules/identity/application/internal-email.ts'
+import { InternalEmailService, INTERNAL_EMAIL_PASSWORD_POLICY, normalizeInternalEmail, type InternalEmailRepository, type InviteOperationResult } from '../../../modules/identity/application/internal-email.ts'
 
 test('internal email identity is invite-only and normalizes email addresses', () => {
   assert.equal(normalizeInternalEmail(' Founder@Example.Test.Invalid '), 'founder@example.test.invalid')
@@ -45,9 +45,9 @@ test('email delivery failure keeps the pending invite available for controlled r
 class FakeRepository implements InternalEmailRepository {
   created = 0
   lastCreated: Parameters<InternalEmailRepository['createInvitedIdentity']>[0] | undefined
-  async createInvitedIdentity(input: Parameters<InternalEmailRepository['createInvitedIdentity']>[0]) { this.created += 1; this.lastCreated = input }
+  async createInvitedIdentity(input: Parameters<InternalEmailRepository['createInvitedIdentity']>[0]) { this.created += 1; this.lastCreated = input; return {operationId:input.inviteId,started:true,inviteId:input.inviteId,targetUserId:input.userId,expiresAtMs:input.expiresAtMs,deliveryReceipt:null} }
   async recordInviteDelivery() {}
-  async rotateInvite(): Promise<{ targetUserId: string; normalizedEmail: string }> { throw new Error('not used') }
+  async rotateInvite(): Promise<InviteOperationResult & {normalizedEmail?:string}> { throw new Error('not used') }
   async activateInvite(): Promise<never> { throw new Error('not used') }
   async findCredential() { return null }
   async completeLoginAttempt() { return null }

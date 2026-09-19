@@ -1,11 +1,13 @@
 import "server-only";
 
+import {hashRequestPayload} from '../../shared/public.ts'
+import {readInviteOperation,recordInviteOperation} from './postgresql-invite-operations.ts'
 import { randomUUID } from 'node:crypto'
 
 import type { OrganizationRole, EmploymentType, K12BusinessCategory } from '../../access/public.ts'
 import type { IdentitySessionActor } from '../domain/actor.ts'
 import { withAuthTransaction, type DatabaseClient } from './postgresql-client.ts'
-import type { InternalEmailCredentialSnapshot, InternalEmailRepository, InternalInviteDeliveryReceipt } from '../application/internal-email.ts'
+import type { InternalEmailCredentialSnapshot, InternalEmailRepository, InternalInviteDeliveryReceipt, InviteOperationResult } from '../application/internal-email.ts'
 import { INTERNAL_EMAIL_PASSWORD_POLICY } from '../application/internal-email.ts'
 
 interface ActorRow {
@@ -61,13 +63,19 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
     secretHash: string
     expiresAtMs: number
     idempotencyKey: string
-  }>): Promise<void> {
-    await withAuthTransaction(async (client) => {
+  }>): Promise<InviteOperationResult> {
+    return withAuthTransaction(async (client) => {
       await setOrganizationContext(client, input.organizationId)
       await client.query("SELECT set_config('app.actor_user_id',$1,true)", [input.invitedByUserId])
+      const operation = {organizationId:input.organizationId,actorUserId:input.invitedByUserId,operation:'create' as const,key:input.idempotencyKey,
+        model:input.trialCategories===undefined?'legacy' as const:'trial' as const,
+        requestHash:hashRequestPayload({normalized_email:input.normalizedEmail,role:input.role,categories:input.trialCategories??null,employment_type:input.employmentType,display_name:input.displayName})}
+      const replay = await readInviteOperation(client,operation)
+      if(replay)return replay
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`internal-email-invite:${input.normalizedEmail}`])
       try {
         await client.query(`SELECT identity_internal_email_create_invite($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [input.inviteId, input.userId, input.membershipId, input.roleBindingId, input.organizationId, input.invitedByUserId, input.normalizedEmail, input.role, input.employmentType, input.displayName, hashBuffer(input.secretHash), new Date(input.expiresAtMs), input.trialCategories ?? null])
+        return await recordInviteOperation(client,{...operation,inviteId:input.inviteId})
       } catch (error) {
         if (isUniqueViolation(error) && (error as Error & { constraint?: string }).constraint === 'identity_users_normalized_email_key') throw new InternalEmailRepositoryError('INVITE_ALREADY_EXISTS')
         if (error instanceof Error && (error as Error & { code?: unknown }).code === '42501') throw new InternalEmailRepositoryError('FOUNDER_REQUIRED')
@@ -76,27 +84,32 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
     })
   }
 
-  async recordInviteDelivery(input: Readonly<{ inviteId: string; organizationId: string; receipt: InternalInviteDeliveryReceipt }>): Promise<void> {
+  async recordInviteDelivery(input: Readonly<{ operationId: string; inviteId: string; organizationId: string; receipt: InternalInviteDeliveryReceipt }>): Promise<void> {
     await withAuthTransaction(async (client) => {
       await setOrganizationContext(client, input.organizationId)
+      await client.query('SELECT id FROM identity_invites WHERE id=$1 AND organization_id=$2 FOR SHARE',[input.inviteId,input.organizationId])
+      const operation = await client.query<{invite_record_version:string|number}>(`UPDATE identity_invite_operations
+        SET channel_policy_id=$4,receipt_reference=$5,delivered_at=$6
+        WHERE id=$1 AND organization_id=$2 AND invite_id=$3 AND receipt_reference IS NULL RETURNING invite_record_version`,
+        [input.operationId,input.organizationId,input.inviteId,input.receipt.channelPolicyId,input.receipt.receiptReference,new Date(input.receipt.deliveredAtMs)])
+      if(operation.rows.length!==1)throw new Error('Invite operation receipt unavailable')
       await client.query(
         `INSERT INTO identity_invite_delivery_receipts (id, organization_id, invite_id, channel_policy_id, receipt_reference, delivered_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         SELECT $1, $2, $3, $4, $5, $6 FROM identity_invites i WHERE i.id=$3 AND i.organization_id=$2 AND i.record_version=$7
          ON CONFLICT (invite_id) DO UPDATE SET receipt_reference = EXCLUDED.receipt_reference, delivered_at = EXCLUDED.delivered_at`,
-        [randomUUID(), input.organizationId, input.inviteId, input.receipt.channelPolicyId, input.receipt.receiptReference, new Date(input.receipt.deliveredAtMs)],
+        [randomUUID(), input.organizationId, input.inviteId, input.receipt.channelPolicyId, input.receipt.receiptReference, new Date(input.receipt.deliveredAtMs),operation.rows[0]!.invite_record_version],
       )
     })
   }
 
-  async rotateInvite(input: Readonly<{ actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<{ targetUserId: string; normalizedEmail: string }> {
+  async rotateInvite(input: Readonly<{ idempotencyKey: string; actorUserId: string; inviteId: string; organizationId: string; secretHash: string; expiresAtMs: number; nowMs: number }>): Promise<InviteOperationResult & { normalizedEmail?: string }> {
     return withAuthTransaction(async (client) => {
       await setOrganizationContext(client, input.organizationId)
       await client.query("SELECT set_config('app.actor_user_id',$1,true)", [input.actorUserId])
-      try { await client.query('SELECT identity_require_current_inviter($1,$2,NULL)', [input.organizationId,input.actorUserId]) }
-      catch (error) {
-        if (error instanceof Error && (error as Error & { code?: unknown }).code === '42501') throw new InternalEmailRepositoryError('FOUNDER_REQUIRED')
-        throw error
-      }
+      const operation={organizationId:input.organizationId,actorUserId:input.actorUserId,operation:'resend' as const,key:input.idempotencyKey,model:null,
+        requestHash:hashRequestPayload({invite_id:input.inviteId})}
+      const replay=await readInviteOperation(client,operation)
+      if(replay)return replay
       const result = await client.query<{ target_user_id: string; normalized_email: string; status: InviteRow['status']; expires_at: Date | string }>(`SELECT i.target_user_id, u.normalized_email, i.status, i.expires_at FROM identity_invites i JOIN identity_users u ON u.id = i.target_user_id WHERE i.id = $1 AND i.organization_id = $2 FOR UPDATE`, [input.inviteId, input.organizationId])
       const row = result.rows[0]
       if (!row) throw new InternalEmailRepositoryError('INVITE_NOT_FOUND')
@@ -106,7 +119,7 @@ export class PostgresqlInternalEmailRepository implements InternalEmailRepositor
         throw new InternalEmailRepositoryError('INVITE_EXPIRED')
       }
       await client.query(`UPDATE identity_invites SET secret_hash = $3, expires_at = $4, record_version = record_version + 1, updated_at = transaction_timestamp() WHERE id = $1 AND organization_id = $2 AND status = 'created'`, [input.inviteId, input.organizationId, hashBuffer(input.secretHash), new Date(input.expiresAtMs)])
-      return { targetUserId: row.target_user_id, normalizedEmail: row.normalized_email }
+      return { ...await recordInviteOperation(client,{...operation,inviteId:input.inviteId}), normalizedEmail: row.normalized_email }
     })
   }
 

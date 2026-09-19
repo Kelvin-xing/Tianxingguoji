@@ -1,3 +1,8 @@
+import {getApplicationTenantRunner} from '../../modules/shared/server.ts';
+import {PostgresqlUserDirectoryRepository} from '../../modules/identity/infrastructure/postgresql-user-directory-repository.ts';
+import {assertInviteOperations} from './trial-invite-operation-assertions.ts';
+import type {Browser} from 'playwright-core';
+import {assertTrialInviteBrowser} from './trial-employee-invite-browser-assertions.ts';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
@@ -9,7 +14,7 @@ import type { DeterministicFakeEmailTransport } from '../../modules/email/infras
 
 export async function assertTrialEmployeeInvites(input: {
   target: OneRoleBaselineTarget; service: InternalEmailService; transport: DeterministicFakeEmailTransport;
-  baseUrl: string; founderCookie: string; founderPassword: string;
+  baseUrl: string; founderCookie: string; founderPassword: string; adminCookie:string; browser:Browser;
 }): Promise<void> {
   const client = new Client(createOneRoleBaselineClientConfig(input.target));
   const founder = NEON_TEST_PRINCIPALS.find(person => person.role === 'founder')!;
@@ -51,7 +56,7 @@ export async function assertTrialEmployeeInvites(input: {
       assert.deepEqual(rows[0], { user_status:'invited',membership_status:'invited',employment_type:'PART_TIME',
         level,categories:[...categories].sort(),role:level,trial_categories:[...categories].sort() });
       await assert.rejects(input.service.createSession({ email, password:'Synthetic9!TrialInvite' }), errorCode('AUTHENTICATION_FAILED'));
-      await input.service.resendFounderInvite({ actor, inviteId:created.inviteId });
+      await input.service.resendFounderInvite({ idempotencyKey:randomUUID(), actor, inviteId:created.inviteId });
       const rotated = credential(); assert.notEqual(rotated, original);
       await assert.rejects(input.service.activateInvite({ activationCredential:original,password:'Synthetic9!TrialInvite',displayName:'Synthetic employee' }), errorCode('INVITE_NOT_FOUND'));
       const activation = await fetch(input.baseUrl + '/api/v1/auth/invite-activations', {
@@ -77,6 +82,7 @@ export async function assertTrialEmployeeInvites(input: {
           method:'POST',headers:{cookie,'idempotency-key':randomUUID()},
         });
         assert.equal(resendDenied.status,403);
+        assert.equal((await fetch(input.baseUrl+'/api/v1/auth/users',{headers:{cookie}})).status,403);
       }
       // Signing in rotates the one active internal-email session; verify it last.
       const signedIn = await input.service.createSession({email,password:'Synthetic9!TrialInvite'});
@@ -98,13 +104,29 @@ export async function assertTrialEmployeeInvites(input: {
     const receipt = await formal.json();
     assert.doesNotMatch(JSON.stringify(receipt),/activation_credential|secret_hash|token=/);
     assert.equal((await client.query('SELECT level FROM access_trial_members WHERE user_id=$1',[receipt.data.target_user_id])).rows[0].level,'l2');
+    const directory=await fetch(input.baseUrl+'/api/v1/auth/users',{headers:{cookie:founderCookie}});
+    assert.equal(directory.status,200);
+    const directoryData=(await directory.json()).data;
+    assert.equal(directoryData.invitation_model,'trial');
+    const explicitFounder=directoryData.users.find((user:{user_id:string})=>user.user_id===founder.userId);
+    assert.equal(explicitFounder.trial_level,'founder');
+    // Legacy Admin cannot change a trial Founder's personnel via the old editor.
+    const oldEdit=await fetch(input.baseUrl+'/api/v1/auth/users/'+founder.userId+'/access',{
+      method:'PATCH',headers:{cookie:input.adminCookie,'content-type':'application/json','idempotency-key':randomUUID()},
+      body:JSON.stringify({display_name:'Forbidden edit',employment_type:'FULL_TIME',roles:['founder'],expected_access_version:explicitFounder.access_version}),
+    });
+    assert.equal(oldEdit.status,403);
+    await assertTrialInviteBrowser({browser:input.browser,baseUrl:input.baseUrl,cookie:founderCookie,client});
     const pending = await input.service.createFounderInvite({actor,normalizedEmail:`disabled-${randomUUID()}@example.test.invalid`,role:'l3',trialCategories:[],idempotencyKey:randomUUID()});
     const pendingCredential = credential();
     await client.query(`UPDATE access_trial_members SET status='disabled',record_version=record_version+1,updated_by_user_id=$2 WHERE user_id=$1`,[pending.targetUserId,founder.userId]);
     await assert.rejects(input.service.activateInvite({activationCredential:pendingCredential,password:'Synthetic9!TrialInvite',displayName:'No access'}),errorCode('INVITE_NOT_REDEEMABLE'));
+    const directoryRepository=new PostgresqlUserDirectoryRepository(getApplicationTenantRunner());
+    await assert.rejects(directoryRepository.listUsers({organizationId:org,actorUserId:people.get('l1')!}),
+      (error:unknown)=>(error as {code?:string}).code==='FORBIDDEN');
     // Stale/fabricated request-time Founder facts cannot bypass the current role during a resend.
     const forged = {...actor,userId:people.get('l1')!,trialPrincipal:{...actor.trialPrincipal!,userId:people.get('l1')!}};
-    await assert.rejects(input.service.resendFounderInvite({actor:forged,inviteId:receipt.data.invite_id}),errorCode('FOUNDER_REQUIRED'));
+    await assert.rejects(input.service.resendFounderInvite({idempotencyKey:randomUUID(),actor:forged,inviteId:receipt.data.invite_id}),errorCode('FOUNDER_REQUIRED'));
     await assert.rejects(input.service.createFounderInvite({actor:forged,normalizedEmail:`forged-${randomUUID()}@example.test.invalid`,role:'l3',trialCategories:[],idempotencyKey:randomUUID()}),errorCode('FOUNDER_REQUIRED'));
     // An audit failure must roll back the entire identity and must not send mail.
     const rollbackEmail = `rollback-${randomUUID()}@example.test.invalid`;
@@ -134,6 +156,7 @@ export async function assertTrialEmployeeInvites(input: {
     assert.equal((await input.service.activateInvite({activationCredential:recoveredCredential,password:'Synthetic9!TrialInvite',displayName:'Recovered activation'})).actor.role,'l3');
     // The original invitation scope is historical evidence, not an editable activation parameter.
     await assert.rejects(client.query("UPDATE identity_invites SET trial_categories='{}',record_version=record_version+1 WHERE id=$1",[receipt.data.invite_id]),(e:unknown)=>(e as {code?:string}).code==='23514');
+    await assertInviteOperations({service:input.service,actor,client,transport:input.transport,baseUrl:input.baseUrl,cookie:founderCookie});
     process.stdout.write(JSON.stringify({trial_employee_invites:'pass',grades:4,pending_login:'denied',resend:'old_link_invalid',activation:'actual_grade',l3_landing:'tasks',stale_founder:'denied',audit:'atomic_history'})+'\n');
   } finally { await client.end(); }
 }
