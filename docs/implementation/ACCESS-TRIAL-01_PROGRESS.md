@@ -676,3 +676,20 @@
 - 类型检查 `/tmp/access-trial-invite-operations-types-final2.log`、聚焦 ESLint `/tmp/access-trial-invite-operations-lint-final.log` 与 `...lint-final2.log`、`git diff --check` 均通过。
 - 下一步只读定位已有具体入口：`modules/cases/application/outcome-service.ts` 仍有旧 Identity actor/Advisor 契约；`modules/cases/infrastructure/postgresql-school-target-workflow-repository.ts` 有旧 advisor SQL入口；`modules/notifications/infrastructure/postgresql-repository.ts:115` 投递资格只含 founder/advisor；审计在 `modules/audit`，门户实际目录为 `modules/external-portal`。这只是下一审计入口，不直接等同已证实权限漏洞；须按所属正式 BR 和实际路由/运行时核对，再补必要差异。
 - 尚需剩余范围审计、持久合成演示数据、最终逐条计划验收及 main 合并/推送。未部署、未发送真实邮件、未修改真实员工或客户数据。
+
+## 通知读接口与投递 worker（2026-09-19，接续当前阶段）
+
+- 通知列表、未读数、已读和目标解析均按当前组织、用户、试用等级及实际角色绑定重查；L3 只得到任务目标，通知本身不授予资源权限。已读操作使用请求哈希和原幂等键，丢响应重试不会重复递增版本；页面对未确认结果保留原操作并支持重试，目标代码只允许跳转到工作台或任务页。
+- 投递 worker 修复指定 outbox ID 被忽略、重复判断误取其他事件回执、投递完成仍只识别旧 Founder/Advisor 三处问题。现在按精确 outbox 锁定，完成阶段重查当前身份；L3 仅接收任务类事件，失去当前权限立即补偿为无通知回执。完成、重试和死信均携带 lease_version，过期 worker 不得推进新租约。
+- supporting adapter 只为通知模块开放组织/用户/试用成员的只读身份查询，仍禁止身份表写入；补充边界单元测试。通知真实 PostgreSQL 基线与完整浏览器回归均通过：`/tmp/access-trial-notification-pg-worker2.log`、`/tmp/access-trial-notification-browser-final.log`；后者包含 `trial_notification_browser:pass`，整组 2/2，约 156 秒。类型、通知单元/契约、模块边界通过。
+- 本节不宣称 BR038 的多收件人日级去重、审计查询权限、门户及目标/结案已全部完成；这些仍是后续范围。当前仍未合并 main、未推送、未部署或操作真实员工/客户资料。
+
+## 审计事件读取入口（2026-09-19，接续当前阶段）
+
+- 新增服务端 `GET /api/v1/audit/events`，只返回事件类型、动作、资源、结果、请求号、时间、操作人和脱敏标量 metadata；安全事件与业务事件由服务端 scope 分开筛选，支持按发生时间倒序游标分页。
+- 读取授权重新使用当前组织和试用成员事实：Founder/L1 可读业务审计，L2 当前只读自己的业务动作，L3 只读自己产生的 `tasks.*` 事件；安全审计仅 Founder。通知收件箱、缓存角色或伪造 `trialPrincipal` 不会扩大审计范围，数据库读取仍经 audit owning adapter 和 RLS。
+- `PostgreSqlAuditReadRepository` 对组织、成员状态、分页参数和审计类型做失败关闭校验；没有把事件 metadata 当作分类授权事实。L2 分类级审计待有权威分类字段进入审计事件后再扩展，不以当前通用 envelope 猜测。
+- 单元/契约/架构测试通过 **19/19**；类型检查和 `git diff --check` 通过。真实 PostgreSQL 17 基线 **2/2**，新增输出 `trial_audit_reads: pass`，覆盖 Founder/L1/L2/L3 业务范围、Founder-only 安全读取和游标分页不重叠。
+- 在通知页面将未确认已读操作由 ref 改为可渲染的 pending state、并修正初始异步加载后，完整真实 PG17 + Next/Chrome 回归再次 **2/2** 通过；通知丢响应重试仍复用同一键且只递增一次版本，移动宽度390px无横向溢出。
+
+本节未新增迁移，未实现审计页面、BR038 多收件人日级去重、门户权限复核或目标/结案运行时；这些仍保持未完成状态。当前仍未合并 main、未推送、未部署或操作真实员工/客户资料。

@@ -1,3 +1,4 @@
+import {assertTrialNotificationBrowser} from './trial-notification-browser-assertions.ts';
 import {assertTrialEmailBrowser} from "./trial-email-browser-assertions.ts";
 import {assertTrialSchoolReviewUi} from "./trial-school-review-ui-assertions.ts";
 import {assertTrialSchoolReviewHttp} from "./trial-school-review-http-assertions.ts";
@@ -355,6 +356,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByLabel('帳戶電郵').fill(l3.email)
     await l3Page.getByLabel('密碼', { exact:true }).fill(password)
     await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
+    await assertTrialNotificationBrowser({client,page:l3Page,baseUrl,organizationId:NEON_TEST_ORGANIZATION.id,userId:l3.user_id,otherUserId:l1.user_id})
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/schools`)).status(),403)
     assert.equal((await l3Context.request.get(resolvedSchoolUrl)).status(),403)

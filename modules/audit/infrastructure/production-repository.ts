@@ -58,6 +58,7 @@ export interface AtomicMutationTransaction {
 }
 
 const TABLE_REFERENCE = /\b(?:(?:from|join|into|delete\s+from)\s+|(?<!for\s)update\s+)([a-z][a-z0-9_]*)/gi;
+const SUPPORTING_IDENTITY_READ_TABLES = new Set(['access_organizations','identity_users','access_trial_members']);
 const SHARED_TABLES = new Set([
   "shared_idempotency_records",
   "audit_outbox",
@@ -202,37 +203,43 @@ export function completeAuditOutboxSourceTransaction(
 
 export function completeAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='delivered', delivered_at=transaction_timestamp(),
               leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
   });
 }
 
 export function retryAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='pending', leased_until=NULL,
               available_at=transaction_timestamp(), updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
   });
 }
 
 export function deadLetterAuditOutboxRow(
   transaction: OwnedSupportingTransaction,
-  input: { readonly id: string; readonly organizationId: string },
+  input: { readonly id: string; readonly organizationId: string; readonly leaseVersion?: number },
 ): Promise<readonly Record<string, unknown>[]> {
   return transaction.query({
     text: `UPDATE audit_outbox SET status='dead_letter', dead_lettered_at=transaction_timestamp(),
               leased_until=NULL, updated_at=transaction_timestamp(), record_version=record_version+1
-            WHERE id=$1 AND organization_id=$2 AND status='processing'`,
-    values: [input.id, input.organizationId],
+            WHERE id=$1 AND organization_id=$2 AND status='processing'
+              AND ($3::bigint IS NULL OR lease_version=$3)
+        RETURNING id`,
+    values: [input.id, input.organizationId, input.leaseVersion ?? null],
   });
 }
 
@@ -258,7 +265,9 @@ function assertOwnedTables(module: SupportingModule, sql: string): void {
   TABLE_REFERENCE.lastIndex = 0;
   for (const match of sql.matchAll(TABLE_REFERENCE)) {
     const table = match[1];
-    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table)) {
+    const identityRead = module === 'notifications' && SUPPORTING_IDENTITY_READ_TABLES.has(table)
+      && /^\s*SELECT\b/i.test(sql) && !/\b(?:INSERT|DELETE|MERGE|TRUNCATE)\b|(?<!FOR\s)\bUPDATE\b/i.test(sql);
+    if (!table.startsWith(`${module}_`) && !SHARED_TABLES.has(table) && !identityRead) {
       throw new SupportingRepositoryError("SUPPORTING_MODULE_OWNERSHIP_VIOLATION");
     }
   }

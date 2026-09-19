@@ -25,6 +25,7 @@ export async function GET(request: Request): Promise<Response> {
 
 function mapError(error: unknown): never {
   if (error instanceof NotificationHttpError) {
+        if (error.code === "FORBIDDEN") throw createApiError("FORBIDDEN");
     if (error.code === "NOT_FOUND") throw createApiError("NOT_FOUND");
     throw createApiError("STALE_VERSION");
   }

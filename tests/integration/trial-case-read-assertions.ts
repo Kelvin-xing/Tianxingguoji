@@ -1,3 +1,4 @@
+import {assertTrialNotificationReads} from './trial-notification-read-assertions.ts';
 import {assertTrialEmailAccess} from "./trial-email-access-assertions.ts";
 import {assertTrialSchoolReviews} from "./trial-school-review-assertions.ts";
 import {assertTrialSchoolChanges} from "./trial-school-change-assertions.ts";
@@ -84,6 +85,7 @@ export async function assertTrialCaseReads(config: ClientConfig): Promise<void> 
     }
     await client.query("SET CONSTRAINTS ALL IMMEDIATE");
     await client.query("SET CONSTRAINTS ALL DEFERRED");
+    await assertTrialNotificationReads({client,runner:studentRunner,organizationId:org,founder:founder!,l1:l1!,l2:l2!,l3:l3!});
     await assertTrialEmailAccess({client,runner:studentRunner,organizationId:org,founder:founder!,l1:l1!,l2:l2!,l3:l3!,legacy:advisor!});
     await assertTrialCaseWriteSql(client);
     await assertTrialCaseIntake(client);

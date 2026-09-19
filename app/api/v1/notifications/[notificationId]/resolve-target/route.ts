@@ -1,7 +1,7 @@
 import { requireApiRequestAccessContext } from "@/app/api/v1/request-access";
 import { getApplicationTenantRunner } from "@/modules/shared/server";
 import { createApiError, handleApiRequest, type JsonValue } from "@/modules/shared/public";
-import { NotificationHttpRepository } from "@/modules/notifications/server";
+import { NotificationHttpError, NotificationHttpRepository } from "@/modules/notifications/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,11 +16,14 @@ export async function POST(request: Request, route: { params: Promise<{ notifica
     if (typeof body !== "object" || body === null || Array.isArray(body) || Object.keys(body as object).length !== 0) {
       throw createApiError("VALIDATION_FAILED");
     }
-    const rows = await new NotificationHttpRepository(getApplicationTenantRunner()).list({
-      organizationId: actor.organizationId, userId: actor.userId, limit: 100,
-    });
-    const notification = rows.find((row) => row.id === notificationId);
-    if (!notification) throw createApiError("NOT_FOUND");
-    return { route_code: notification.target_action === "resolve_target" ? "WORKSPACE_PENDING_ITEM" : "WORKSPACE_PENDING_ITEM" } satisfies JsonValue;
+    try {
+      const routeCode = await new NotificationHttpRepository(getApplicationTenantRunner()).resolveTarget({
+        organizationId:actor.organizationId,userId:actor.userId,notificationId,
+      });
+      return {route_code:routeCode} satisfies JsonValue;
+    } catch(error) {
+      if(error instanceof NotificationHttpError) throw createApiError(error.code==='FORBIDDEN'?'FORBIDDEN':'NOT_FOUND');
+      throw error;
+    }
   });
 }

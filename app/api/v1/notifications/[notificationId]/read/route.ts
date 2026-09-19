@@ -29,6 +29,7 @@ export async function POST(request: Request, route: { params: Promise<{ notifica
       return { id: row.id, record_version: row.record_version, status: row.status } satisfies JsonValue;
     } catch (error) {
       if (error instanceof NotificationHttpError) {
+        if (error.code === "FORBIDDEN") throw createApiError("FORBIDDEN");
         if (error.code === "NOT_FOUND") throw createApiError("NOT_FOUND");
         if (error.code === "CONFLICT") throw createApiError("CONFLICT");
         throw createApiError("STALE_VERSION");
