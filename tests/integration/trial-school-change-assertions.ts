@@ -18,7 +18,7 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
     const runner:TenantTransactionRunner={async run(context,operation){await client.query('SAVEPOINT school_change_command');try{return await input.runner.run(context,operation)}catch(error){await client.query('ROLLBACK TO SAVEPOINT school_change_command');throw error}finally{await client.query('RELEASE SAVEPOINT school_change_command')}}};
     const repository=new PostgresqlSchoolChangeRepository(runner);
     const base=(await client.query(`SELECT record.school_id,record.snapshot_id,record.fields_json FROM schools_snapshot_records record JOIN schools_snapshots snapshot ON snapshot.id=record.snapshot_id AND snapshot.status='active' ORDER BY record.school_id LIMIT 1`)).rows[0];
-    const command={fieldName:'phone',fieldClass:'general' as const,baseSnapshotId:base.snapshot_id,baseValueSha256:sha256SchoolValue(base.fields_json.phone??null),
+    const command={fieldName:'phone',fieldClass:'general' as const,baseSnapshotId:base.snapshot_id,baseValueSha256:sha256SchoolValue(base.fields_json.phone??null),expectedEffectiveValueSha256:sha256SchoolValue(null),
       proposedValue:'Synthetic phone',reason:'Synthetic missing information',evidence:{sourceUrl:'https://example.invalid/source',quote:'Synthetic evidence'},requestId:randomUUID(),idempotencyKey:randomUUID()};
     assert.equal(base.fields_json.phone??null,null);
     const request={actor,schoolId:base.school_id,command};
@@ -44,11 +44,15 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
     assert.equal(read.changeContext.canEditExisting,input.role!=='l2');
     assert.equal(read.changeContext.baseValueHashes.phone??read.changeContext.emptyValueSha256,command.baseValueSha256);
     assert.equal(read.view.fields.phone??null,null,'submission never changes the effective school record');
+    assert.equal(read.changeContext.effectiveValueHashes.phone??read.changeContext.emptyValueSha256,command.expectedEffectiveValueSha256);
+    assert.equal((await client.query('SELECT expected_effective_value_sha256 FROM schools_overlay_fields WHERE revision_id=$1',[result.changeRequestId])).rows[0].expected_effective_value_sha256,command.expectedEffectiveValueSha256);
     assert.equal((await client.query('SELECT fields_json FROM schools_snapshot_records WHERE school_id=$1 AND snapshot_id=$2',[base.school_id,base.snapshot_id])).rows[0].fields_json.phone??null,null);
     for(const query of ['SELECT count(*)::int AS n FROM audit_events WHERE resource_id=$1','SELECT count(*)::int AS n FROM audit_outbox WHERE aggregate_id=$1'])assert.equal((await client.query(query,[result.changeRequestId])).rows[0].n,1);
     await assert.rejects(()=>submitSchoolChange({...request,command:{...command,proposedValue:'Changed'}},{repository}),error=>error instanceof SchoolServiceError&&error.code==='SCHOOL_CHANGE_IDEMPOTENCY_KEY_REUSED');
     await assert.rejects(()=>submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID(),baseValueSha256:'a'.repeat(64)}},{repository}),error=>error instanceof SchoolServiceError&&error.code==='SCHOOL_CHANGE_BASE_STALE');
-    const edit={...request,command:{...command,fieldName:'district',baseValueSha256:sha256SchoolValue(base.fields_json.district),proposedValue:'Synthetic replacement',idempotencyKey:randomUUID()}};
+    await assert.rejects(()=>submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID(),expectedEffectiveValueSha256:'a'.repeat(64)}},{repository}),error=>error instanceof SchoolServiceError&&error.code==='SCHOOL_CHANGE_BASE_STALE');
+    await assert.rejects(()=>submitSchoolChange({...request,command:{...command,expectedEffectiveValueSha256:'a'.repeat(64)}},{repository}),error=>error instanceof SchoolServiceError&&error.code==='SCHOOL_CHANGE_IDEMPOTENCY_KEY_REUSED');
+    const edit={...request,command:{...command,fieldName:'district',baseValueSha256:sha256SchoolValue(base.fields_json.district),expectedEffectiveValueSha256:sha256SchoolValue(base.fields_json.district),proposedValue:'Synthetic replacement',idempotencyKey:randomUUID()}};
     assert.ok(base.fields_json.district);
     if(input.role==='l2')await assert.rejects(()=>submitSchoolChange(edit,{repository}),denied);
     else assert.equal((await submitSchoolChange(edit,{repository})).status,'submitted');
@@ -73,6 +77,24 @@ export async function assertTrialSchoolChanges(input:{client:Client;runner:Tenan
       assert.equal(approved.status,'approved');assert.ok(approved.approved_at);
       // An immutable snapshot still says unknown; the effective approved value must prevent replacement.
       await assert.rejects(()=>submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID()}},{repository}),denied);
+    }
+    if(input.role==='l1'){
+      // Someone approves an earlier request while another editor still has the old form.
+      await client.query(`UPDATE schools_overlay_revisions SET status='approved',approved_by_user_id=$2,
+        approved_role='founder',approved_at=statement_timestamp(),record_version=record_version+1,
+        updated_at=GREATEST(statement_timestamp(),updated_at) WHERE id=$1`,[result.changeRequestId,input.founderUserId]);
+      await assert.rejects(()=>submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID()}},{repository}),error=>error instanceof SchoolServiceError&&error.code==='SCHOOL_CHANGE_BASE_STALE');
+      // A lost submission acknowledgement still replays; it does not create another candidate.
+      assert.deepEqual(await submitSchoolChange(request,{repository}),result);
+      const refreshed=await new PostgresqlSchoolDirectoryRepository(runner).find(reader);
+      assert.equal(refreshed.changeContext.baseValueHashes.phone??refreshed.changeContext.emptyValueSha256,sha256SchoolValue(null));
+      assert.equal(refreshed.changeContext.effectiveValueHashes.phone,sha256SchoolValue('Synthetic phone'));
+      const fresh=await submitSchoolChange({...request,command:{...command,idempotencyKey:randomUUID(),expectedEffectiveValueSha256:refreshed.changeContext.effectiveValueHashes.phone!,proposedValue:'Rechecked value'}},{repository});
+      assert.equal((await client.query('SELECT expected_effective_value_sha256 FROM schools_overlay_fields WHERE revision_id=$1',[fresh.changeRequestId])).rows[0].expected_effective_value_sha256,sha256SchoolValue('Synthetic phone'));
+      await client.query('SAVEPOINT immutable_school_baseline');
+      await assert.rejects(()=>client.query('UPDATE schools_overlay_fields SET expected_effective_value_sha256=$2 WHERE revision_id=$1',[fresh.changeRequestId,sha256SchoolValue(null)]));
+      await client.query('ROLLBACK TO SAVEPOINT immutable_school_baseline');
+      await client.query('RELEASE SAVEPOINT immutable_school_baseline');
     }
     if(input.role==='l1'||input.role==='l2'){
       await client.query("SELECT set_config('app.actor_user_id',$1,true)",[input.founderUserId]);

@@ -245,7 +245,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
 
     const changeUrl=`${baseUrl}/api/v1/schools/${firstSchool.school_id}/change-requests`
     const changeBody={field_name:'phone',field_class:'general',base_snapshot_id:firstSchool.base_snapshot_id,
-      base_value_sha256:sha256SchoolValue(firstSchool.fields.phone??null),proposed_value:'Synthetic reviewed phone',reason:'Synthetic supplementary evidence',
+      base_value_sha256:sha256SchoolValue(firstSchool.fields.phone??null),expected_effective_value_sha256:sha256SchoolValue(firstSchool.fields.phone??null),proposed_value:'Synthetic reviewed phone',reason:'Synthetic supplementary evidence',
       evidence:{source_url:'https://example.invalid/school',quote:'Synthetic phone evidence'}}
     const changeOptions={headers:{'idempotency-key':randomUUID()},data:changeBody}
     const changeResponse=await restrictedContext.request.post(changeUrl,changeOptions)
@@ -259,6 +259,8 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     assert.equal((await (await restrictedContext.request.get(resolvedSchoolUrl)).json()).data.fields.phone??null,firstSchool.fields.phone??null)
     assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,approved_by_user_id:l1.user_id}})).status(),400)
     assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,base_value_sha256:'a'.repeat(64)}})).status(),409)
+    assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,expected_effective_value_sha256:'b'.repeat(64)}})).status(),409)
+    assert.equal((await restrictedContext.request.post(changeUrl,{headers:{'idempotency-key':randomUUID()},data:{...changeBody,expected_effective_value_sha256:undefined}})).status(),422)
     await restricted.goto(`${baseUrl}/schools/${firstSchool.school_id}`)
     for (const heading of ['基礎資料','招生資料','待處理更新','更新履歷']) await restricted.getByRole('heading',{name:heading,exact:true}).waitFor()
     assert.equal(await restricted.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)

@@ -69,6 +69,7 @@
     { "name": "202609190100_067_align_local_scan_engine_receipts.sql", "sha256": "985290b8663df63773cdb38f9b6c210095f3711f18ecade836233f0517a752de" },
     { "name": "202609190110_068_expand_interview_task_context.sql", "sha256": "eacdca1e9f57eba7f79efc575589996359ebfdd978e113ab1028ec51bee7b0eb" },
     { "name": "202609190120_069_preserve_role_binding_timestamp_order.sql", "sha256": "9d703b4f4fdfd4b728a071c41a420b9a57e1112a39e19ff9d25fd8be9450af50" },
-    { "name": "202609190130_070_expand_provisional_school_intake.sql", "sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b" }
+    { "name": "202609190130_070_expand_provisional_school_intake.sql", "sha256": "973c0097a532335ff6334bdce709bea9b2e63d542d563599f418b37e8a5fd91b" },
+    { "name": "202609190140_071_capture_school_change_effective_baseline.sql", "sha256": "b2cd176535529d7d56b08173cb678380f5d2c10739f4bdd451a321958e378551" }
   ]
 }

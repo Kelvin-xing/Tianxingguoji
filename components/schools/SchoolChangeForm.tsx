@@ -14,6 +14,7 @@ export function SchoolChangeForm({school,field,label,onDone,onDenied,onCancel}:{
       if(!proposed.trim()||!reason.trim()||!quote.trim()){setNotice('請填寫申請值、理由及證據摘要。');return}
       try{if(new URL(source.trim()).protocol!=='https:')throw new Error()}catch{setNotice('請填寫完整的 HTTPS 證據來源網址。');return}
       attempt.current={key:crypto.randomUUID(),command:{field_name:field,field_class:['school_name_zh','school_name_en','official_website'].includes(field)?'identity':'general',
+        expected_effective_value_sha256:school.change_context.effective_value_hashes[field]??school.change_context.empty_value_sha256,
         base_snapshot_id:school.base_snapshot_id,base_value_sha256:school.change_context.base_value_hashes[field]??school.change_context.empty_value_sha256,
         proposed_value:proposed.trim(),reason:reason.trim(),evidence:{source_url:source.trim(),quote:quote.trim()}}}
     }

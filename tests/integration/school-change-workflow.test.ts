@@ -48,6 +48,7 @@ function changeCommand(overrides: Record<string, unknown> = {}) {
     fieldClass: "general" as const,
     baseSnapshotId: SNAPSHOT_ID,
     baseValueSha256: sha256SchoolValue("Central"),
+    expectedEffectiveValueSha256: sha256SchoolValue("Central"),
     proposedValue: "Eastern",
     reason: "Official district listing was corrected.",
     evidence: {

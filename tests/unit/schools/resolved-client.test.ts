@@ -6,8 +6,16 @@ const id='51000000-0000-4000-8000-000000000401';
 test('resolved client accepts the actual endpoint without a top-level source key and rejects identity mismatch',async context=>{
   const original=globalThis.fetch;context.after(()=>{globalThis.fetch=original});
   let currentId=id;
-  globalThis.fetch=async()=>new Response(JSON.stringify({api_version:'v1',request_id:'resolved-test',data:{school_id:currentId,base_snapshot_id:id,resolved_revision_id:null,overlay_revision_id:null,resolution_sha256:'a'.repeat(64),change_context:{can_submit:true,can_edit_existing:true,base_value_hashes:{},empty_value_sha256:'a'.repeat(64)},fields:{school_name_en:'Synthetic'},provenance:{},conflicts:[]}}),{headers:{'content-type':'application/json'}});
+  globalThis.fetch=async()=>new Response(JSON.stringify({api_version:'v1',request_id:'resolved-test',data:{school_id:currentId,base_snapshot_id:id,resolved_revision_id:null,overlay_revision_id:null,resolution_sha256:'a'.repeat(64),change_context:{can_submit:true,can_edit_existing:true,base_value_hashes:{},effective_value_hashes:{},empty_value_sha256:'a'.repeat(64)},fields:{school_name_en:'Synthetic'},provenance:{},conflicts:[]}}),{headers:{'content-type':'application/json'}});
   assert.equal((await getResolvedSchool(id)).fields.school_name_en,'Synthetic');
   currentId='51000000-0000-4000-8000-000000000402';
   await assert.rejects(()=>getResolvedSchool(id),error=>error instanceof ApiClientError&&error.code==='MALFORMED_RESPONSE');
+});
+
+test('resolved client rejects missing or malformed effective baselines',async context=>{
+  const original=globalThis.fetch;context.after(()=>{globalThis.fetch=original});
+  for(const hashes of [undefined,{phone:'not-a-hash'},null]){
+    globalThis.fetch=async()=>new Response(JSON.stringify({api_version:'v1',request_id:'resolved-test',data:{school_id:id,base_snapshot_id:id,resolved_revision_id:null,overlay_revision_id:null,resolution_sha256:'a'.repeat(64),change_context:{can_submit:true,can_edit_existing:true,base_value_hashes:{},effective_value_hashes:hashes,empty_value_sha256:'a'.repeat(64)},fields:{}}}),{headers:{'content-type':'application/json'}});
+    await assert.rejects(()=>getResolvedSchool(id),error=>error instanceof ApiClientError&&error.code==='MALFORMED_RESPONSE');
+  }
 });

@@ -43,6 +43,7 @@ export interface SubmitSchoolChangeCommand {
   readonly fieldClass: SchoolFieldClass;
   readonly baseSnapshotId: string;
   readonly baseValueSha256: string;
+  readonly expectedEffectiveValueSha256: string;
   readonly proposedValue: unknown;
   readonly reason: string;
   readonly evidence: SchoolOverlayEvidence;
@@ -104,6 +105,7 @@ export interface SchoolRepository {
     readonly fieldClass: SchoolFieldClass;
     readonly baseSnapshotId: string;
     readonly baseValueSha256: string;
+    readonly expectedEffectiveValueSha256: string;
     readonly proposedValue: JsonValue;
     readonly reason: string;
     readonly evidence: SchoolOverlayEvidence;
@@ -303,6 +305,7 @@ export async function submitSchoolChange(input:{actor:RequestAccessActor;schoolI
       fieldClass: command.fieldClass,
       baseSnapshotId: command.baseSnapshotId,
       baseValueSha256: command.baseValueSha256,
+      expectedEffectiveValueSha256: command.expectedEffectiveValueSha256,
       proposedValue: command.proposedValue,
       reason: command.reason,
       evidence: command.evidence,
@@ -311,6 +314,7 @@ export async function submitSchoolChange(input:{actor:RequestAccessActor;schoolI
       requestHash: hashRequestPayload({
         baseSnapshotId: command.baseSnapshotId,
         baseValueSha256: command.baseValueSha256,
+        expectedEffectiveValueSha256: command.expectedEffectiveValueSha256,
         evidence: {
           sourceUrl: command.evidence.sourceUrl,
           quote: command.evidence.quote,
@@ -353,6 +357,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
   fieldClass: SchoolFieldClass;
   baseSnapshotId: string;
   baseValueSha256: string;
+  expectedEffectiveValueSha256: string;
   proposedValue: JsonValue;
   reason: string;
   evidence: SchoolOverlayEvidence;
@@ -369,7 +374,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
   ) {
     throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
   }
-  if (!UUID.test(command.baseSnapshotId) || !SHA256.test(command.baseValueSha256)) {
+  if (!UUID.test(command.baseSnapshotId) || !SHA256.test(command.baseValueSha256) || !SHA256.test(command.expectedEffectiveValueSha256)) {
     throw new SchoolServiceError("SCHOOL_COMMAND_INVALID");
   }
 
@@ -381,6 +386,7 @@ function normalizeChangeCommand(command: SubmitSchoolChangeCommand): Readonly<{
       fieldClass: command.fieldClass,
       baseSnapshotId: command.baseSnapshotId,
       baseValueSha256: command.baseValueSha256.toLowerCase(),
+      expectedEffectiveValueSha256: command.expectedEffectiveValueSha256.toLowerCase(),
       proposedValue: canonicalSchoolValue(command.proposedValue),
       reason,
       evidence: normalizeEvidence(command.evidence),

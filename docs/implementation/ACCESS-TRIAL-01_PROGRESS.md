@@ -566,3 +566,15 @@
 - 类型 `/tmp/access-trial-school-form-types-final.log`、聚焦ESLint `/tmp/access-trial-school-form-lint.log`、测试ESLint `/tmp/access-trial-school-form-test-lint.log`及diff通过。无迁移。
 
 审批/拒绝闭环、实际等级与禁止自审、审批并发基线保护和完整履历仍待完成；其余模块权限复核、整体试用验收、main合并和远程推送未完成。未部署或使用真实资料。
+
+## 学校人工申请的当前有效值并发保护（2026-09-19，接续 33023ec）
+
+总体仍 `in_progress`。本节补齐申请提交时的有效值基线，不代表审批运行时已完成。
+
+- 原申请只核对不可变爬虫字段，无法发现填写期间已生效的人工修改。现由resolved接口提供当前有效字段哈希，表单随原申请固定提交；事务内在学校锁下重新计算比较，不一致409，重新读取后才能新提交。原始快照基线与有效值基线分开保存，不混用。
+- 追加迁移071，保存不可变的expected_effective_value_sha256；历史记录保持NULL，不虚构当时已确认的有效值。后续审批端必须拒绝缺少该证据或已过期的批准请求。现有审批运行时尚未接通，本节未宣称审批时并发保护完成。
+- 幂等请求哈希包含有效值基线；同键换基线冲突，成功请求丢失响应后仍可返回原回执，即使当前资料后来变化，也不重复创建申请。L2仍不能利用旧的未知值替换已生效的人工资料。
+- `/tmp/access-trial-school-baseline-browser.log` **29/29**：真实PG17、Next/Chrome、学校服务/客户端与模块边界；包含有效字段已变化的旧申请拒绝、重新读取后申请成功、基线不可修改、HTTP缺基线422/错基线409。既有表单重试/权限清空、CRM、任务、上传扫描、文件与邀请流程均通过。
+- `/tmp/access-trial-school-baseline-migrations.log` **28/28**，生成基线检查通过：70个源迁移、71个生成文件。类型 `/tmp/access-trial-school-baseline-types-final.log`、聚焦ESLint `/tmp/access-trial-school-baseline-lint.log`及diff检查通过；早期类型检查发现resolved路由显式类型遗漏新属性，修正后通过。
+
+下一步继续审批/拒绝的真实事务、实际审批等级、禁止自审及决定履历。整体试用验收、main合并和远程推送仍未完成；没有外部部署或真实资料操作。

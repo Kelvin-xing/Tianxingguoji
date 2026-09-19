@@ -3,7 +3,7 @@ import test from 'node:test';
 import {ApiClientError} from '../../../lib/api/client.ts';
 import {submitSchoolChangeRequest,schoolChangeFailure,type SchoolChangeInput} from '../../../modules/schools/client.ts';
 const id='51000000-0000-4000-8000-000000000401';
-const command:SchoolChangeInput={field_name:'phone',field_class:'general',base_snapshot_id:id,base_value_sha256:'a'.repeat(64),proposed_value:'Synthetic',reason:'Synthetic reason',evidence:{source_url:'https://example.invalid/source',quote:'Synthetic evidence'}};
+const command:SchoolChangeInput={field_name:'phone',field_class:'general',base_snapshot_id:id,base_value_sha256:'a'.repeat(64),expected_effective_value_sha256:'b'.repeat(64),proposed_value:'Synthetic',reason:'Synthetic reason',evidence:{source_url:'https://example.invalid/source',quote:'Synthetic evidence'}};
 const receipt={change_request_id:'51000000-0000-4000-8000-000000000402',school_id:id,base_snapshot_id:id,field_name:'phone',status:'submitted',record_version:1};
 const envelope=(data:unknown)=>new Response(JSON.stringify({api_version:'v1',request_id:'change-test',data}),{headers:{'content-type':'application/json'}});
 test('sends the frozen change and key and requires a bound pending receipt',async context=>{

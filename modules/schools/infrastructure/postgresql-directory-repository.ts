@@ -38,7 +38,7 @@ export class PostgresqlSchoolDirectoryRepository {
       const resolved=await this.resolved.readCurrentResolvedSchool({organizationId:input.organizationId,schoolId:input.schoolId,transaction:adapt(transaction)});
       const base=await transaction.query<{fields_json:Record<string,JsonValue>}>({text:'SELECT fields_json FROM schools_snapshot_records WHERE organization_id=$1 AND school_id=$2 AND snapshot_id=$3',values:[input.organizationId,input.schoolId,resolved.pin.baseSnapshotId]});
       if(!base.rows[0])throw new SchoolResolutionError('SCHOOL_RESOLUTION_NOT_FOUND');
-      return {...resolved,changeContext:{...permissions,baseValueHashes:Object.fromEntries(Object.entries(base.rows[0].fields_json).map(([key,value])=>[key,sha256SchoolValue(value)])),emptyValueSha256:sha256SchoolValue(null)}};
+      return {...resolved,changeContext:{...permissions,baseValueHashes:Object.fromEntries(Object.entries(base.rows[0].fields_json).map(([key,value])=>[key,sha256SchoolValue(value)])),effectiveValueHashes:Object.fromEntries(Object.entries(resolved.view.fields).map(([key,value])=>[key,sha256SchoolValue(value)])),emptyValueSha256:sha256SchoolValue(null)}};
     });
   }
 }

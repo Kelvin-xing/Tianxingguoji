@@ -69,12 +69,13 @@ async function parseChangeCommand(
   }
   if (!isRecord(body) || !isRecord(body.evidence)) throw createApiError("INVALID_REQUEST");
 
-  const allowed=['field_name','field_class','base_snapshot_id','base_value_sha256','proposed_value','reason','evidence'];
+  const allowed=['field_name','field_class','base_snapshot_id','base_value_sha256','expected_effective_value_sha256','proposed_value','reason','evidence'];
   if(Object.keys(body).some(key=>!allowed.includes(key))||Object.keys(body.evidence).some(key=>!['source_url','quote'].includes(key)))throw createApiError('INVALID_REQUEST');
   const fieldName = body.field_name;
   const fieldClass = body.field_class;
   const baseSnapshotId = body.base_snapshot_id;
   const baseValueSha256 = body.base_value_sha256;
+  const expectedEffectiveValueSha256 = body.expected_effective_value_sha256;
   const proposedValue = body.proposed_value;
   const reason = body.reason;
   const sourceUrl = body.evidence.source_url;
@@ -84,6 +85,7 @@ async function parseChangeCommand(
     typeof fieldClass !== "string" ||
     typeof baseSnapshotId !== "string" ||
     typeof baseValueSha256 !== "string" ||
+    typeof expectedEffectiveValueSha256 !== "string" ||
     typeof reason !== "string" ||
     typeof sourceUrl !== "string" ||
     typeof quote !== "string"
@@ -96,6 +98,7 @@ async function parseChangeCommand(
     fieldClass: fieldClass as SubmitSchoolChangeCommand["fieldClass"],
     baseSnapshotId,
     baseValueSha256,
+    expectedEffectiveValueSha256,
     proposedValue,
     reason,
     evidence: { sourceUrl, quote },

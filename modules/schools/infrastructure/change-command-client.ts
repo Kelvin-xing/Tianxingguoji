@@ -1,7 +1,7 @@
 import {ApiClientError,expectRecord,expectString,requestApi} from '../../../lib/api/client.ts';
 export interface SchoolChangeInput {
   readonly field_name:string;readonly field_class:'identity'|'general';readonly base_snapshot_id:string;
-  readonly base_value_sha256:string;readonly proposed_value:string;readonly reason:string;
+  readonly base_value_sha256:string;readonly expected_effective_value_sha256:string;readonly proposed_value:string;readonly reason:string;
   readonly evidence:{readonly source_url:string;readonly quote:string};
 }
 export function submitSchoolChangeRequest(schoolId:string,input:SchoolChangeInput,key:string){

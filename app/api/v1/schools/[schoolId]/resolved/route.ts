@@ -29,11 +29,11 @@ export async function GET(
   });
 }
 
-function resolvedPayload(resolved: ResolvedSchoolTargetView & {changeContext:{canSubmitChanges:boolean;canEditExisting:boolean;baseValueHashes:Record<string,string>;emptyValueSha256:string}}) {
+function resolvedPayload(resolved: ResolvedSchoolTargetView & {changeContext:{canSubmitChanges:boolean;canEditExisting:boolean;baseValueHashes:Record<string,string>;effectiveValueHashes:Record<string,string>;emptyValueSha256:string}}) {
   return {
     school_id: resolved.view.schoolId,
     change_context:{can_submit:resolved.changeContext.canSubmitChanges,can_edit_existing:resolved.changeContext.canEditExisting,
-      base_value_hashes:resolved.changeContext.baseValueHashes,empty_value_sha256:resolved.changeContext.emptyValueSha256},
+      base_value_hashes:resolved.changeContext.baseValueHashes,effective_value_hashes:resolved.changeContext.effectiveValueHashes,empty_value_sha256:resolved.changeContext.emptyValueSha256},
     resolved_revision_id: resolved.pin.resolvedRevisionId,
     base_snapshot_id: resolved.pin.baseSnapshotId,
     overlay_revision_id: resolved.pin.overlayRevisionId,
