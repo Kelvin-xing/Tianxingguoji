@@ -27,6 +27,25 @@ export class PostgresqlDocumentVersionRepository implements DocumentVersionRepos
   restoreDocument(input:Parameters<DocumentVersionRepository["restoreDocument"]>[0]) {
     return this.mutate(input,"restore",input.versionId);
   }
+  async history(input:Pick<Input,'actor'|'organizationId'|'caseId'|'documentId'>) {
+    return this.runner.run({organizationId:input.organizationId,actorUserId:input.actor.userId},async tx=>{
+      const writable=await this.authorize(tx,input,false);
+      const document=(await tx.query<DocumentRow>({text:`SELECT active_document_version_id,lifecycle_state,legal_hold,soft_deleted_at,record_version
+        FROM documents_documents WHERE id=$1 AND organization_id=$2 AND service_case_id=$3 AND owner_kind='case' AND lifecycle_state IN ('active','pending_delete') FOR SHARE`,
+        values:[input.documentId,input.organizationId,input.caseId]})).rows[0];
+      if(!document)fail('NOT_FOUND');
+      const rows=await tx.query<{id:string;state:string;created_at:Date;revoked_at:Date|null}>({text:`SELECT id,state,created_at,revoked_at FROM documents_document_versions
+        WHERE organization_id=$1 AND document_id=$2 ORDER BY upload_generation DESC,id FOR SHARE`,values:[input.organizationId,input.documentId]});
+      const deadline=document.soft_deleted_at===null?null:new Date(new Date(document.soft_deleted_at).getTime()+30*24*60*60*1000).toISOString();
+      const versions=rows.rows.map(row=>({id:row.id,state:row.state,created_at:new Date(row.created_at).toISOString(),
+        active:row.id===document.active_document_version_id,selectable:row.state==='available'&&row.revoked_at===null}));
+      return {document_id:input.documentId,record_version:Number(document.record_version),lifecycle_state:document.lifecycle_state,
+        legal_hold:document.legal_hold,restore_deadline:deadline,versions,
+        can_delete:writable&&document.lifecycle_state==='active'&&!document.legal_hold,
+        can_restore:writable&&document.lifecycle_state==='pending_delete'&&deadline!==null&&Date.now()<Date.parse(deadline)&&versions.some(v=>v.selectable),
+        can_rollback:writable&&document.lifecycle_state==='active'&&versions.some(v=>v.selectable&&!v.active)};
+    });
+  }
   private async mutate(input:Input,operation:Operation,targetVersionId:string|null):Promise<DocumentVersionMutationResult> {
     const occurredAt=new Date(input.mutatedAtMs).toISOString();
     try {
@@ -34,7 +53,7 @@ export class PostgresqlDocumentVersionRepository implements DocumentVersionRepos
         context:{organizationId:input.organizationId,actorUserId:input.actor.userId,actorKind:"user",actorOpaqueId:input.actor.userId,requestId:input.requestId},
         claim:{id:randomUUID(),organizationId:input.organizationId,actorKind:"user",actorOpaqueId:input.actor.userId,
           operation:`documents.lifecycle.${operation}`,key:input.idempotencyKey,requestHash:input.requestHash,createdAt:occurredAt},
-        revalidate:tx=>this.authorize(tx,input),
+        revalidate:async tx=>{await this.authorize(tx,input);},
         execute:async tx=>{
           const document=(await tx.query<DocumentRow>({text:`SELECT active_document_version_id,lifecycle_state,legal_hold,soft_deleted_at,record_version
             FROM documents_documents WHERE id=$1 AND organization_id=$2 AND service_case_id=$3 AND owner_kind='case' FOR UPDATE`,
@@ -83,7 +102,7 @@ export class PostgresqlDocumentVersionRepository implements DocumentVersionRepos
       fail("UNAVAILABLE");
     }
   }
-  private async authorize(tx:TenantTransaction,input:Input):Promise<void> {
+  private async authorize(tx:TenantTransaction,input:Pick<Input,'actor'|'organizationId'|'caseId'>,write=true):Promise<boolean> {
     const context={organizationId:input.organizationId,actorUserId:input.actor.userId,actorRole:input.actor.role};
     if(input.organizationId!==input.actor.organizationId)fail("CASE_FORBIDDEN");
     const trialPrincipal=await loadDocumentTrialPrincipal(tx,context);
@@ -91,9 +110,11 @@ export class PostgresqlDocumentVersionRepository implements DocumentVersionRepos
     const binding=await tx.query({text:`SELECT id FROM access_role_bindings WHERE organization_id=$1 AND user_id=$2 AND role=$3 AND status='active' FOR SHARE`,
       values:[input.organizationId,input.actor.userId,trialPrincipal.level]});
     if(binding.rows.length!==1)fail("CASE_FORBIDDEN");
-    const serviceCase=await selectTrialDocumentCase(tx,{...context,trialPrincipal},input.caseId,{operation:'read',write:true});
+    const serviceCase=await selectTrialDocumentCase(tx,{...context,trialPrincipal},input.caseId,{operation:'read',write});
     if(!serviceCase)fail("NOT_FOUND");
-    if(serviceCase.stage==='closed'||serviceCase.workflow_status!=='active'||serviceCase.student_status!=='active')fail("CASE_FORBIDDEN");
+    const writable=serviceCase.stage!=='closed'&&serviceCase.workflow_status==='active'&&serviceCase.student_status==='active';
+    if(write&&!writable)fail("CASE_FORBIDDEN");
+    return writable;
   }
 }
 type ErrorSuffix = ConstructorParameters<typeof DocumentVersionError>[0] extends `DOCUMENT_VERSION_${infer Suffix}`?Suffix:never;

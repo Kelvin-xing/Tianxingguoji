@@ -105,7 +105,7 @@ export function versionStateLabel(value: DocumentVersionState | null): string {
   return labels[value];
 }
 
-function formatDocumentDate(value: string): string {
+export function formatDocumentDate(value: string): string {
   return new Intl.DateTimeFormat("zh-HK", {
     dateStyle: "medium",
     timeStyle: "short",

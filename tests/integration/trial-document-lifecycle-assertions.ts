@@ -11,12 +11,17 @@ export async function assertTrialDocumentLifecycle(input:{client:Client;runner:T
   const {client,runner,caseId,documentId,business,restricted,taskOnly}=input;
   await client.query('SAVEPOINT trial_document_lifecycle');
   const service=new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(runner)});
+  const histories=new PostgresqlDocumentVersionRepository(runner);
+  const historyInput={actor:restricted,organizationId:restricted.organizationId,caseId,documentId};
   const keys=()=>({requestId:randomUUID(),idempotencyKey:randomUUID()});
   const denied=(suffix:string)=>(error:unknown)=>error instanceof DocumentVersionError&&error.code===`DOCUMENT_VERSION_${suffix}`;
   const read=async()=> (await client.query('SELECT record_version,active_document_version_id,lifecycle_state FROM documents_documents WHERE id=$1',[documentId])).rows[0]!;
   const initial=await read(),versionId=input.rollbackVersionId;
   assert.ok(versionId);
   assert.notEqual(initial.active_document_version_id,versionId);
+  const history=await histories.history(historyInput);
+  assert.equal(history.can_rollback,true);assert.equal(history.versions.length,2);
+  await assert.rejects(histories.history({...historyInput,actor:taskOnly}),denied('CASE_FORBIDDEN'));
   const command={expectedRecordVersion:Number(initial.record_version),...keys()};
   await assert.rejects(service.softDeleteDocument({actor:taskOnly,caseId,documentId,command}),denied('CASE_FORBIDDEN'));
   await assert.rejects(service.rollbackToCleanVersion({actor:restricted,caseId,documentId,command:{...command,targetVersionId:randomUUID()}}),denied('CLEAN_VERSION_REQUIRED'));
@@ -35,6 +40,7 @@ export async function assertTrialDocumentLifecycle(input:{client:Client;runner:T
   assert.equal((await read()).lifecycle_state,'active');
   const deleted=await service.softDeleteDocument(deletion);
   assert.equal(deleted.lifecycleState,'pending_delete');assert.equal(deleted.activeVersionId,null);
+  assert.equal((await histories.history(historyInput)).can_restore,true);
   assert.deepEqual(await service.softDeleteDocument(deletion),deleted);
   const restore={actor:restricted,caseId,documentId,command:{versionId,expectedRecordVersion:deleted.recordVersion,...keys()}};
   const expired=new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(runner),clock:{nowMs:()=>Date.now()+31*24*60*60*1000}});
@@ -52,6 +58,7 @@ export async function assertTrialDocumentLifecycle(input:{client:Client;runner:T
   await client.query("SELECT set_config('app.actor_user_id',(SELECT user_id::text FROM access_trial_members WHERE level='founder' AND status='active' LIMIT 1),true)");
   await client.query("UPDATE access_trial_members SET categories='{}',record_version=record_version+1 WHERE user_id=$1",[restricted.userId]);
   await assert.rejects(service.restoreDocument(restore),denied('NOT_FOUND'));
+  await assert.rejects(histories.history(historyInput),denied('NOT_FOUND'));
   await client.query('ROLLBACK TO SAVEPOINT trial_document_lifecycle');await client.query('RELEASE SAVEPOINT trial_document_lifecycle');
   process.stdout.write(JSON.stringify({trial_document_lifecycle:'pass',rollback:'clean_only',deletion:'soft_only',restore:'30_days',replay:'original_receipt',failure:'atomic'})+'\n');
 }

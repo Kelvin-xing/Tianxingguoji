@@ -7,6 +7,7 @@ import { loadRuntimeEnvironment } from "../../../lib/runtime/runtime-environment
 
 export interface DocumentVersionRuntime {
   readonly service: DocumentVersionService;
+  readonly history:PostgresqlDocumentVersionRepository['history'];
 }
 
 export class DocumentVersionRuntimeUnavailable extends Error {
@@ -20,6 +21,7 @@ export class DocumentVersionRuntimeUnavailable extends Error {
 export function getDocumentVersionRuntime(): DocumentVersionRuntime {
   try {
     if(loadRuntimeEnvironment().appRuntimeMode==='production-aws')throw new DocumentVersionRuntimeUnavailable();
-    return {service:new DocumentVersionService({repository:new PostgresqlDocumentVersionRepository(getApplicationTenantRunner())})};
+    const repository=new PostgresqlDocumentVersionRepository(getApplicationTenantRunner());
+    return {service:new DocumentVersionService({repository}),history:input=>repository.history(input)};
   }catch {throw new DocumentVersionRuntimeUnavailable();}
 }

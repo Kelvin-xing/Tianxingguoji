@@ -16,6 +16,7 @@ import {
   type DocumentListItem,
 } from "@/modules/documents/client";
 import { DocumentTransferControls } from "./DocumentTransferControls";
+import { DocumentLifecycleControls } from "./DocumentLifecycleControls";
 import { DocumentList, DocumentPageState, classificationLabel } from "./document-ui";
 
 type LoadState = "loading" | "ready" | "unauthenticated" | "denied" | "unavailable";
@@ -184,6 +185,7 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
         <DocumentList
           documents={documents}
           renderActions={(document) => (
+            <>
             <DocumentTransferControls
               caseId={caseId}
               document={document}
@@ -191,6 +193,8 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
               canDownload={canDownload}
               onAuthoritativeChange={updateAuthoritativeDocument}
             />
+            <DocumentLifecycleControls caseId={caseId} document={document} onAuthoritativeChange={updateAuthoritativeDocument}/>
+            </>
           )}
         />
       ) : null}

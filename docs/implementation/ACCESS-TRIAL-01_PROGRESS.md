@@ -303,3 +303,16 @@
 - `/tmp/access-trial-document-http-regression.log` **28/28**：文件请求契约、版本服务工作流及模块边界。类型 `/tmp/access-trial-document-http-types-final.log`、聚焦ESLint `/tmp/access-trial-document-http-lint.log`、diff检查通过。未修改页面，本节不新增截图或声称UI生命周期流程通过。
 
 后续需增加安全的版本历史读取及页面选择/确认/错误反馈，并完成剩余模块、并发与整体本地验收。未部署、未合并main或推送；未变更真实员工及云配置。
+
+## 文件版本历史与页面生命周期（2026-09-19，接续 b2b5569）
+
+总体仍 `in_progress`。发现案件文件页仍引用旧F4占位组件，已切换到正式CaseDocumentsPanel，并增加版本/恢复管理。
+
+- 新GET history接口事务内验证当前试用等级、真实角色及案件分类，L3拒绝。只返回版本编号、时间、状态、是否当前/可选及文件操作许可，不返回对象坐标、上传人或签名链接；暂停/关闭案件可读历史但不允许写入。恢复截止时间及法律保留由服务器返回。
+- 页面按服务器许可展示操作，只有干净未撤销的版本可选择；回退排除当前版本。删除/恢复/回退均要求勾选确认，提交期间禁用，成功后重读文件和历史；不确定响应保留原幂等请求供同页重试，拒绝后清除历史展示。支持删除后刷新页面再选择版本恢复。
+- `/tmp/access-trial-document-lifecycle-ui-final.log` **2/2**：真实Next/Chrome+一次性PG17。真实L1页面上传第二版本→回退第一个版本（核对DB活动指针）→删除→刷新→恢复；L3历史接口404，响应字段白名单验证。新增PG历史验证覆盖分类内L2、L3拒绝、恢复许可、撤销分类后历史读取拒绝。此前任务/邀请浏览器流程继续通过。
+- `/tmp/access-trial-document-history-unit.log` **31/31**：客户端、版本服务工作流、模块边界；客户端拒绝对象坐标扩展字段和错误资源回执，检查写入请求键及字段。类型 `/tmp/access-trial-document-history-types-final.log`、聚焦ESLint `/tmp/access-trial-document-history-lint.log`、diff检查通过。
+- `/tmp/access-trial-document-lifecycle-mobile.png` 已查看，390px下版本历史、版本选择、操作按钮及恢复反馈可见，无横向溢出。扫描仍为deterministic-fake，本节没有真实OSS或病毒扫描验收。
+- 首次浏览器运行在既有L3上传阶段遇到upload-intents 404，新页面流程尚未开始；同一代码重跑该阶段及新增流程通过。保留 `/tmp/access-trial-document-lifecycle-ui.log` 失败证据，后续稳定性/并发排查仍需定位，不以一次重跑绿标记全系统稳定。
+
+未新增迁移、未部署、未映射真实员工、未合并main或推送。继续并发、其余模块和整体本地试用验收后再完成合并推送目标。

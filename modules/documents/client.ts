@@ -835,3 +835,42 @@ export function issueTaskDocumentDownloadIntent(
     decodeDownloadIntent,
   );
 }
+
+export interface DocumentVersionHistory {
+  readonly document_id:string;readonly record_version:number;readonly lifecycle_state:DocumentLifecycleState;
+  readonly legal_hold:boolean;readonly restore_deadline:string|null;
+  readonly can_delete:boolean;readonly can_restore:boolean;readonly can_rollback:boolean;
+  readonly versions:readonly {id:string;state:DocumentVersionState;created_at:string;active:boolean;selectable:boolean}[];
+}
+export function getDocumentVersionHistory(caseId:string,documentId:string):Promise<DocumentVersionHistory>{
+  assertUuid(caseId,'caseId');assertUuid(documentId,'documentId');
+  return requestApi({path:`/api/v1/cases/${caseId}/documents/${documentId}/history`},value=>{
+    const row=expectRecord(value);
+    exactRecord(row,['document_id','record_version','lifecycle_state','legal_hold','restore_deadline','can_delete','can_restore','can_rollback','versions']);
+    if(row.document_id!==documentId||!DOCUMENT_LIFECYCLE_STATES.includes(row.lifecycle_state as DocumentLifecycleState))throw new TypeError('Invalid history identity.');
+    const deadline=expectNullableString(row.restore_deadline);
+    if(deadline!==null&&!Number.isFinite(Date.parse(deadline)))throw new TypeError('Invalid recovery deadline.');
+    return {document_id:documentId,record_version:positiveInteger(row.record_version,'record_version'),lifecycle_state:row.lifecycle_state as DocumentLifecycleState,
+      legal_hold:expectBoolean(row.legal_hold),restore_deadline:deadline,can_delete:expectBoolean(row.can_delete),can_restore:expectBoolean(row.can_restore),can_rollback:expectBoolean(row.can_rollback),
+      versions:expectArray(row.versions,value=>{const item=expectRecord(value);
+        exactRecord(item,['id','state','created_at','active','selectable']);
+        const id=expectString(item.id);assertUuid(id,'versionId');
+        const created=expectString(item.created_at);
+        if(!Number.isFinite(Date.parse(created))||!DOCUMENT_VERSION_STATES.includes(item.state as DocumentVersionState))throw new TypeError('Invalid history version.');
+        return {id,state:item.state as DocumentVersionState,created_at:created,active:expectBoolean(item.active),selectable:expectBoolean(item.selectable)};
+      })};
+  });
+}
+export type DocumentLifecycleAction='delete'|'restore'|'rollback';
+export function mutateDocumentLifecycle(caseId:string,documentId:string,action:DocumentLifecycleAction,expectedRecordVersion:number,versionId:string|null,idempotencyKey:string){
+  assertUuid(caseId,'caseId');assertUuid(documentId,'documentId');assertIdempotencyKey(idempotencyKey);
+  const version=positiveInteger(expectedRecordVersion,'expected_record_version');
+  if(action!=='delete')assertUuid(versionId??'','versionId');
+  const route=action==='delete'?'deletions':action==='restore'?'restorations':'version-rollbacks';
+  const body={expected_record_version:version,...(action==='restore'?{version_id:versionId}:action==='rollback'?{target_version_id:versionId}:{})};
+  return requestApi({path:`/api/v1/cases/${caseId}/documents/${documentId}/${route}`,method:'POST',headers:{'idempotency-key':idempotencyKey},body},value=>{
+    const row=expectRecord(value);exactRecord(row,['document_id','active_version_id','record_version','lifecycle_state']);
+    if(row.document_id!==documentId||row.record_version!==version+1||row.active_version_id!==(action==='delete'?null:versionId)||row.lifecycle_state!==(action==='delete'?'pending_delete':'active'))throw new TypeError('Invalid document lifecycle receipt.');
+    return {record_version:version+1};
+  });
+}
