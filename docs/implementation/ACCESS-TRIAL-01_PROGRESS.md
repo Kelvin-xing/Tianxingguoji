@@ -339,3 +339,15 @@
 - 将等待观测收窄到实际Cases事实查询后，`/tmp/access-trial-task-lock-final.log` **2/2**再次通过真实PG/Chrome。类型 `/tmp/access-trial-lock-order-types.log`、聚焦ESLint `/tmp/access-trial-lock-order-lint.log`及helper lint、diff检查通过。无新迁移或页面变化。
 
 本节证明这一个跨模块锁顺序场景已修复，不代表全部并发组合已验收。此前偶发上传404在两次回归中均未复现，继续保留其诊断和未定位状态。其余模块、整体本地验收及最终合并推送仍未完成；未部署或变更真实员工。
+
+## CRM 学生读取与查重范围（2026-09-19，接续 1d1394a）
+
+总体仍 `in_progress`。修复学生列表/详情及查重提示仅按组织读取、未按L2分类收窄的问题。
+
+- 事务内读取当前试用成员及真实角色；Founder/L1可读取正常业务主档，L2仅返回获授权分类案件关联的学生，L3及停用试用成员不回落到旧角色。Cases公开port只返回可见学生ID，CRM不直接访问Cases私有表。
+- 学生及家长查重使用同一范围；家长须有当前有效关系关联可见学生。保留非空姓名/邮箱/电话匹配、重复警告及token语义，不自动关联或合并。未启用试用等级的旧账号保留原有业务授权路径。
+- `/tmp/access-trial-crm-scope-final2.log` **34/34**：真实PG17、学生读取/接口契约、查重及建档既有回归、模块边界。分类内/外及未知分类、Founder/L1/L2/L3和旧Advisor、分类撤销、成员停用均覆盖。
+- `/tmp/access-trial-crm-scope-browser-final.log` **2/2**：真实Next/Chrome与PG17。L2正式学生列表与数据库期望集合一致，越界详情404，查重HTTP不返回越界学生；L3列表403。既有任务、文件及邀请流程继续通过。
+- 类型 `/tmp/access-trial-crm-final-types.log` 无错误；聚焦ESLint `/tmp/access-trial-crm-final-lint.log` 无错误，保留旧read-repository未使用函数警告1条；diff检查通过。无迁移。
+
+建档、资料修改及其余CRM写入仍须适配新等级；本节不是整个CRM验收。整体本地试用验收、main合并与远程推送仍未完成；未部署、未变更真实员工。

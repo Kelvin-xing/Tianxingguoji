@@ -217,6 +217,20 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await Promise.all([l2Page.waitForURL('**/today'),l2Page.getByRole('button', { name: '登入工作台', exact: true }).click()])
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=local_school`)).status(),403)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/intake-options?business_category=international_school`)).status(),200)
+    const scopedStudents=await l2Context.request.get(`${baseUrl}/api/v1/students`)
+    assert.equal(scopedStudents.status(),200)
+    const expectedStudents=(await client.query(`SELECT DISTINCT s.id FROM crm_students s JOIN cases_service_cases c ON c.student_id=s.id AND c.organization_id=s.organization_id
+      WHERE s.status IN ('active','pending_delete') AND c.business_category='international_school'`)).rows.map(row=>row.id).sort()
+    assert.deepEqual((await scopedStudents.json()).data.students.map((row:{id:string})=>row.id).sort(),expectedStudents)
+    const hiddenStudent=(await client.query(`SELECT s.id,s.display_name FROM crm_students s WHERE s.status='active' AND NOT EXISTS
+      (SELECT 1 FROM cases_service_cases c WHERE c.student_id=s.id AND c.business_category='international_school') LIMIT 1`)).rows[0]
+    assert.ok(hiddenStudent)
+    assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/students/${hiddenStudent.id}`)).status(),404)
+    const duplicateResponse=await l2Context.request.post(`${baseUrl}/api/v1/crm/potential-duplicates`,{
+      data:{kind:'student',name:hiddenStudent.display_name,email:null,phone:null},
+    })
+    assert.equal(duplicateResponse.status(),200)
+    assert.equal((await duplicateResponse.json()).data.warnings.some((row:{id:string})=>row.id===hiddenStudent.id),false)
     assert.equal((await l2Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),200)
     assert.equal((await l2Context.request.post(reviewUrl,{ headers:{ 'idempotency-key':`denied-review-${randomBytes(8).toString('hex')}` },
       data:{ decision:'approved',expected_record_version:3,reason:'Denied L2 approval' } })).status(),403)
@@ -233,6 +247,7 @@ export async function assertTrialMemberBrowser(target: OneRoleBaselineTarget): P
     await l3Page.getByLabel('密碼', { exact:true }).fill(password)
     await Promise.all([l3Page.waitForURL('**/today'),l3Page.getByRole('button',{ name:'登入工作台',exact:true }).click()])
     assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/cases/${createdData.case_id}/assessment`)).status(),403)
+    assert.equal((await l3Context.request.get(`${baseUrl}/api/v1/students`)).status(),403)
     await l3Page.goto(`${baseUrl}/tasks/${trialTaskId}`)
     await l3Page.getByRole('heading',{ name:'Synthetic L3 task',exact:true }).waitFor()
     assert.equal(await l3Page.getByRole('link',{ name:'返回案件',exact:true }).count(),0)

@@ -40,3 +40,4 @@ export * from "./application/interview-invitation-service.ts";
 export * from "./infrastructure/postgresql-interview-invitation-repository.ts";
 export * from "./infrastructure/postgresql-interview-task-request-facts.ts";
 export * from "./infrastructure/interview-invitation-runtime.ts";
+export {readCategoryStudentIds} from './infrastructure/postgresql-crm-student-scope.ts';
