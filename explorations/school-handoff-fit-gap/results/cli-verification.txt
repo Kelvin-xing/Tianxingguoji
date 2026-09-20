@@ -1,0 +1,3 @@
+Original CLI parity: 585/585 outputs byte-identical; both exit 1
+Library/CLI parity: all 585 full error arrays identical
+Recorded complete Python/TypeScript CLI stdout, no truncation
