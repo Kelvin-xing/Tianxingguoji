@@ -2310,7 +2310,6 @@
         "text_quote",
         "locator",
         "extraction_method",
-        "confidence",
         "collected_at"
       ],
       "additionalProperties": false,

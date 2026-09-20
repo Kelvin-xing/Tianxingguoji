@@ -1,0 +1,61 @@
+Artifact copies: 55 byte-identical files
+ACCEPT sample-composite.json
+ACCEPT sample-unknown-year.json
+ACCEPT sample-unknown-year-repeat.json
+ACCEPT sample-unknown-components.json
+ACCEPT sample-unbound-edb.json
+ACCEPT sample-unknown-edb.json
+ACCEPT sample-failed.json
+ACCEPT sample-partial.json
+ACCEPT sample-unchanged.json
+ACCEPT sample-same-name-other-school.json
+ACCEPT sample-known-key-new-url.json
+REJECT bad-edb.json $.school.edb_school_number:SCHEMA_PATTERN
+REJECT bad-school-boundary.json $.school.campus_variants[1].edb_scrn:EDB_SCHOOL_MISMATCH
+REJECT bad-version.json $.schema_version:SCHEMA_CONST
+REJECT bad-extra-school.json $.schools:SCHEMA_EXTRA
+REJECT bad-extra-field.json $.school.attributes.base_kind:SCHEMA_EXTRA
+REJECT bad-missing-field.json $.school.attributes.boarding:SCHEMA_REQUIRED
+REJECT bad-unknown-year.json $.admissions[0].identity_mode:NEW_CANDIDATE_REQUIRED
+REJECT bad-unknown-grade.json $.admissions[0].identity_mode:NEW_CANDIDATE_REQUIRED
+REJECT bad-known-mode.json $.admissions[0].identity_mode:EXACT_MODE_REQUIRED
+REJECT bad-duplicate-key.json $.admissions[1].fields:MATCH_KEY_DUPLICATE
+REJECT bad-duplicate-id.json $.admissions[1].candidate_id:CANDIDATE_ID_DUPLICATE
+REJECT bad-known-null.json $.school.attributes.name_zh.value:KNOWN_VALUE_REQUIRED
+REJECT bad-empty-name.json $.school.attributes.name_zh.value:SCHEMA_PATTERN
+REJECT bad-boolean-string.json $.school.attributes.boarding.value:SCHEMA_TYPE
+REJECT bad-evidence-missing.json $.school.attributes.boarding.evidence:KNOWN_EVIDENCE_REQUIRED
+REJECT bad-evidence-reference.json $.school.attributes.boarding.evidence[0].raw_record_id:RAW_REFERENCE_MISSING
+REJECT bad-confidence-boolean.json $.school.attributes.boarding.evidence[0].confidence:SCHEMA_TYPE
+REJECT bad-date.json $.admissions[0].fields.application_deadline.value:SCHEMA_FORMAT
+REJECT bad-year.json $.admissions[0].fields.academic_year.value:SCHEMA_FORMAT
+REJECT bad-timestamp.json $.run.checked_at:SCHEMA_FORMAT
+REJECT bad-check-order.json $.run.checked_at:RUN_TIME_ORDER
+REJECT bad-unknown-value.json $.school.attributes.name_en.value:NON_KNOWN_VALUE_MUST_BE_NULL
+REJECT bad-unknown-reason.json $.school.attributes.name_en.reason:REASON_REQUIRED
+REJECT bad-failed-detail.json $.run.failure:FAILURE_DETAIL_REQUIRED
+REJECT bad-failed-facts.json $.run.change_status:FAILED_RUN_HAS_FACTS
+REJECT bad-unchanged-reference.json $.run.comparison:COMPARISON_REQUIRED
+REJECT bad-unchanged-unknown-year.json $.admissions[5].identity_mode:UNCHANGED_HAS_NEW_CANDIDATE
+REJECT bad-partial-unreported.json $.run.change_status:PARTIAL_STATUS_REQUIRED
+REJECT bad-root-array.json $:SCHEMA_TYPE
+REJECT bad-edb-newline.json $.school.edb_school_number:SCHEMA_PATTERN
+REJECT bad-nbsp-name.json $.school.attributes.name_zh.value:SCHEMA_PATTERN
+REJECT bad-edb-unicode.json $.school.edb_school_number:SCHEMA_PATTERN
+REJECT bad-no-school-identity.json $.school:SCHOOL_IDENTITY_REQUIRED
+REJECT bad-grade-order-duplicate.json $.admissions[5].fields:MATCH_KEY_DUPLICATE
+REJECT bad-other-url-duplicate.json $.admissions[5].fields:MATCH_KEY_DUPLICATE
+REJECT bad-json-syntax.json $:JSON_INVALID
+REJECT bad-json-duplicate.json $:JSON_INVALID
+REJECT bad-json-nan.json $:JSON_INVALID
+REJECT bad-json-infinity.json $:JSON_INVALID
+REJECT bad-json-depth.json $:JSON_INVALID
+REJECT bad-json-surrogate.json $:JSON_INVALID
+Python: 11 accepted, 41 rejected
+TypeScript: 11 accepted, 41 rejected
+PASS 52/52 expected decisions; identical error codes and paths
+TypeScript targeted typecheck: PASS
+
+Offline Python regression:
+............................                                             [100%]
+28 passed in 0.32s

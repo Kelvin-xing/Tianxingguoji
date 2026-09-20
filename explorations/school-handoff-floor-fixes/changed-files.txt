@@ -1,0 +1,6 @@
+contracts/school-crawl-handoff/v2/README.md
+contracts/school-crawl-handoff/v2/contract.schema.json
+contracts/school-crawl-handoff/v2/sample-unknown-components.json
+explorations/school-handoff-floor-fixes/README.md
+explorations/school-handoff-floor-fixes/changed-files.txt
+explorations/school-handoff-floor-fixes/validation-output.txt
