@@ -1,0 +1,1930 @@
+{
+  "categories": {
+    "ADDITIONAL_DISCOVERY_OBSERVATION": {
+      "schools": 25,
+      "examples": [
+        {
+          "school_key": "ARTS_TECHNOLOGY_EDUCATION_CENTRE",
+          "name": "藝術與科技教育中心",
+          "edb_school_number": "511072",
+          "details": [
+            {
+              "detail": {
+                "title": "2026/27中四級音樂班申請已截止報名 | 藝術與科技教育中心",
+                "url": "http://www.atec.edu.hk/tc/latest_new/202627%E4%B8%AD%E5%9B%9B%E7%B4%9A%E9%9F%B3%E6%A8%82%E7%8F%AD%E7%94%B3%E8%AB%8B%E5%B7%B2%E6%88%AA%E6%AD%A2%E5%A0%B1%E5%90%8D"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/discovery/candidates.json#/55"
+            },
+            {
+              "detail": {
+                "title": "2026/27年度中四級音樂班取錄通知信已郵寄至各有關學校 | 藝術與科技教育中心",
+                "url": "http://www.atec.edu.hk/tc/latest_new/202627%E5%B9%B4%E5%BA%A6%E4%B8%AD%E5%9B%9B%E7%B4%9A%E9%9F%B3%E6%A8%82%E7%8F%AD%E5%8F%96%E9%8C%84%E9%80%9A%E7%9F%A5%E4%BF%A1%E5%B7%B2%E9%83%B5%E5%AF%84%E8%87%B3%E5%90%84%E6%9C%89%E9%97%9C%E5%AD%B8%E6%A0%A1"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/discovery/candidates.json#/58"
+            }
+          ]
+        },
+        {
+          "school_key": "CCC_FONG_YUN_WAH_SECONDARY_SCHOOL",
+          "name": "中華基督教會方潤華中學",
+          "edb_school_number": "545228",
+          "details": [
+            {
+              "detail": {
+                "title": "2026/27合約教師﹕中國語文、英國語文、數學、理科(EMI)",
+                "url": "https://www.fywss.edu.hk/news-feed/2026-27%e5%90%88%e7%b4%84%e6%95%99%e5%b8%ab%ef%b9%95%e4%b8%ad%e5%9c%8b%e8%aa%9e%e6%96%87%e3%80%81%e8%8b%b1%e5%9c%8b%e8%aa%9e%e6%96%87%e3%80%81%e6%95%b8%e5%ad%b8%e3%80%81%e7%90%86%e7%a7%91emi/"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_011_offset_0500/discovery/candidates.json#/88"
+            },
+            {
+              "detail": {
+                "title": "招標啟事 2026-2027學年體育校隊訓練服務",
+                "url": "https://www.fywss.edu.hk/news-feed/%e6%8b%9b%e6%a8%99%e5%95%9f%e4%ba%8b2025-2026%e5%ad%b8%e5%b9%b4%e9%ab%94%e8%82%b2%e6%a0%a1%e9%9a%8a%e8%a8%93%e7%b7%b4%e6%9c%8d%e5%8b%99/"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_011_offset_0500/discovery/candidates.json#/89"
+            }
+          ]
+        },
+        {
+          "school_key": "CHINA_HOLINESS_COLLEGE",
+          "name": "中聖書院",
+          "edb_school_number": "134333",
+          "details": [
+            {
+              "detail": {
+                "title": "中聖書院 | 2025-2026年度",
+                "url": "http://www.chc.edu.hk/it-school/php/webcms/public/index.php?refid=3541&mode=published&lang=zh"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_010_offset_0450/discovery/candidates.json#/136"
+            }
+          ]
+        },
+        {
+          "school_key": "CHINESE_YMCA_SECONDARY_SCHOOL",
+          "name": "中華基督教青年會中學",
+          "edb_school_number": "511536",
+          "details": [
+            {
+              "detail": {
+                "title": "S1 Admission Seminar 2026-2027 | Chinese YMCA Secondary School",
+                "url": "http://www.cymcass.edu.hk/en/s1-admission-seminar-2026-2027"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_010_offset_0450/discovery/candidates.json#/131"
+            }
+          ]
+        },
+        {
+          "school_key": "CNEC_CHRISTIAN_COLLEGE",
+          "name": "中華傳道會安柱中學",
+          "edb_school_number": "114111",
+          "details": [
+            {
+              "detail": {
+                "title": "The Election of School Manager 2026-2027",
+                "url": "https://www.cneccc.edu.hk/post/the-election-of-school-manager-2026-2027"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_010_offset_0450/discovery/candidates.json#/96"
+            }
+          ]
+        }
+      ]
+    },
+    "ADMISSION_FIELD_PROVENANCE_UNSCOPED": {
+      "schools": 529,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": "Legacy final fields cite an aggregate selected URL, not a field-specific page/PDF quotation; known means copied source assertion only",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": "Legacy final fields cite an aggregate selected URL, not a field-specific page/PDF quotation; known means copied source assertion only",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": "Legacy final fields cite an aggregate selected URL, not a field-specific page/PDF quotation; known means copied source assertion only",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": "Legacy final fields cite an aggregate selected URL, not a field-specific page/PDF quotation; known means copied source assertion only",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": "Legacy final fields cite an aggregate selected URL, not a field-specific page/PDF quotation; known means copied source assertion only",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4"
+            }
+          ]
+        }
+      ]
+    },
+    "ADMISSION_GRADE_UNRESOLVED": {
+      "schools": 497,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "其他各級插班生 - 慈幼會 香港仔工業學校 | 寄宿部"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "即時報名．升中選校、學位分配、各級新生 | 入學申請 | 直資中學．孔聖堂禮仁書院 | Academy of Innovation (Confucius Hall) (前孔聖堂中學 Confucius Hall Secondary School)"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "AD&FD POHL Leung Sing Tak College"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "Applying to AIS | American International School of Hong Kong"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_SCHOOL_HONG_KONG",
+          "name": "AMERICAN SCHOOL HONG KONG[WHOLE DAY]",
+          "edb_school_number": "603902",
+          "details": [
+            {
+              "detail": {
+                "selected_title": ""
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/5"
+            }
+          ]
+        }
+      ]
+    },
+    "ADMISSION_YEAR_UNRESOLVED": {
+      "schools": 485,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "中二至中五級插班生申請表 | 香港仔浸信會呂明才書院",
+                "form_hints": [
+                  {
+                    "label": "2025-2026 插班生詳程及表格_中二至中五",
+                    "url": "http://www.ablmcc.edu.hk/sites/default/files/download/2025-2026_cha_ban_sheng_xiang_cheng_ji_biao_ge_zhong_er_zhi_zhong_wu_lykw.pdf",
+                    "year": "2025/26",
+                    "type": "transfer",
+                    "grade": [
+                      "S2",
+                      "S3",
+                      "S4",
+                      "S5"
+                    ]
+                  }
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "其他各級插班生 - 慈幼會 香港仔工業學校 | 寄宿部",
+                "form_hints": []
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "即時報名．升中選校、學位分配、各級新生 | 入學申請 | 直資中學．孔聖堂禮仁書院 | Academy of Innovation (Confucius Hall) (前孔聖堂中學 Confucius Hall Secondary School)",
+                "form_hints": []
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "AD&FD POHL Leung Sing Tak College",
+                "form_hints": []
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": {
+                "selected_title": "Applying to AIS | American International School of Hong Kong",
+                "form_hints": []
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4"
+            }
+          ]
+        }
+      ]
+    },
+    "BOARDING_CAPACITY_NOT_BOOLEAN": {
+      "schools": 585,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": "課室 101 103 204 206 207 課室 最高限額 101 ( 45 ) 103 ( 45 ) 204 ( 45 ) 206 ( 45 ) 207 ( 45 ) | 課室 208 304 306 402 404 課室 最高限額 208 ( 45 ) 304 ( 45 ) 306 ( 45 ) 402 ( 45 ) 404 ( 45 ) | 課室 405 406 407 408 409 課室 最高限額 405 ( 45 ) 406 ( 45 ) 407 ( 45 ) 408 ( 45 ) 409 ( 45 ) | 課室 505 506 507 508 509 課室 最高限額 505 ( 45 ) 506 ( 45 ) 507 ( 45 ) 508 ( 45 ) 509 ( 45 ) | 課室 510 601 603 604 605 課室 最高限額 510 ( 45 ) 601 ( ",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0/dormitory_info"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": "課室 A112 S35 S36 S45 S46 課室 最高限額 A112 ( 41 ) S35 ( 45 ) S36 ( 45 ) S45 ( 45 ) S46 ( 45 ) | 課室 T11 T12 T13 T14 T21 課室 最高限額 T11 ( 44 ) T12 ( 44 ) T13 ( 44 ) T14 ( 44 ) T21 ( 44 ) | 課室 T22 T23 T24 T31 T32 課室 最高限額 T22 ( 44 ) T23 ( 44 ) T24 ( 44 ) T31 ( 44 ) T32 ( 44 ) | 課室 T33 T34 T41 T42 T43 課室 最高限額 T33 ( 44 ) T34 ( 44 ) T41 ( 44 ) T42 ( 44 ) T43 ( 44 ) | 課室 T44 T51 T52 T53 T54 課室 最高限額 T44 ( 44 ) T51 ",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1/dormitory_info"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": "課室 101 102 103 104 105 課室 最高限額 101 ( 43 ) 102 ( 43 ) 103 ( 43 ) 104 ( 43 ) 105 ( 43 ) | 課室 106 201 202 203 204 課室 最高限額 106 ( 43 ) 201 ( 45 ) 202 ( 45 ) 203 ( 45 ) 204 ( 45 ) | 課室 207 301 302 303 304 課室 最高限額 207 ( 45 ) 301 ( 45 ) 302 ( 45 ) 303 ( 45 ) 304 ( 45 ) | 課室 307 308 課室 最高限額 307 ( 45 ) 308 ( 45 )",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2/dormitory_info"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": "課室 101 102 103 104 105 課室 最高限額 101 ( 41 ) 102 ( 40 ) 103 ( 41 ) 104 ( 41 ) 105 ( 40 ) | 課室 106 201 202 203 204 課室 最高限額 106 ( 39 ) 201 ( 41 ) 202 ( 40 ) 203 ( 41 ) 204 ( 41 ) | 課室 205 206 208 301 302 課室 最高限額 205 ( 40 ) 206 ( 39 ) 208 ( 45 ) 301 ( 41 ) 302 ( 40 ) | 課室 303 304 305 306 308 課室 最高限額 303 ( 41 ) 304 ( 41 ) 305 ( 40 ) 306 ( 39 ) 308 ( 17 ) | 課室 309 401 402 403 404 課室 最高限額 309 ( 17 ) 401 ( ",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3/dormitory_info"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": "課室 01 02 03 課室 最高限額 01 ( 33 ) 02 ( 33 ) 03 ( 45 ) | 課室 D E F G H 課室 最高限額 D ( 29 ) E ( 29 ) F ( 29 ) G ( 29 ) H ( 30 ) | 課室 I J K 課室 最高限額 I ( 38 ) J ( 38 ) K ( 38 ) | 課室 01 02 03 04 05 課室 最高限額 01 ( 29 ) 02 ( 29 ) 03 ( 29 ) 04 ( 29 ) 05 ( 29 ) | 課室 06 07 08 課室 最高限額 06 ( 29 ) 07 ( 29 ) 08 ( 29 ) | 課室 101 102 103 104 201 課室 最高限額 101 ( 26 ) 102 ( 29 ) 103 ( 26 ) 104 ( 26 ) 201 ( 29 ) | 課室 101 102 103 1",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4/dormitory_info"
+            }
+          ]
+        }
+      ]
+    },
+    "CROSS_LEVEL_TUITION_EVIDENCE": {
+      "schools": 10,
+      "examples": [
+        {
+          "school_key": "ELCHK_LUTHERAN_ACADEMY",
+          "name": "基督教香港信義會宏信書院",
+          "edb_school_number": "579530",
+          "details": [
+            {
+              "detail": {
+                "xlsx_rows": [
+                  492
+                ],
+                "exported_levels": [
+                  "中學"
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "EVANGEL_COLLEGE",
+          "name": "播道書院",
+          "edb_school_number": "567337",
+          "details": [
+            {
+              "detail": {
+                "xlsx_rows": [
+                  488
+                ],
+                "exported_levels": [
+                  "中學"
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "GRACE_CHRISTIAN_ACADEMY",
+          "name": "培生學校",
+          "edb_school_number": "581259",
+          "details": [
+            {
+              "detail": {
+                "xlsx_rows": [
+                  468
+                ],
+                "exported_levels": [
+                  "中學"
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "G_T_ELLEN_YEUNG_COLLEGE",
+          "name": "優才（楊殷有娣）書院",
+          "edb_school_number": "543292",
+          "details": [
+            {
+              "detail": {
+                "xlsx_rows": [
+                  474
+                ],
+                "exported_levels": [
+                  "中學"
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "HONG_CHI_SHIU_PONG_MORNINGHOPE_SCHOOL",
+          "name": "匡智紹邦晨輝學校",
+          "edb_school_number": "615471",
+          "details": [
+            {
+              "detail": {
+                "xlsx_rows": [
+                  403
+                ],
+                "exported_levels": [
+                  "中學"
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        }
+      ]
+    },
+    "DUPLICATE_EXACT_OBSERVATIONS_REQUIRE_RECONCILIATION": {
+      "schools": 5,
+      "examples": [
+        {
+          "school_key": "FDBWA_SZETO_HO_SECONDARY_SCHOOL",
+          "name": "五邑司徒浩中學",
+          "edb_school_number": "215040",
+          "details": [
+            {
+              "detail": {
+                "triple": [
+                  "2026/27",
+                  "transfer",
+                  [
+                    "S2",
+                    "S3",
+                    "S4",
+                    "S5"
+                  ]
+                ],
+                "candidate_ids": [
+                  "form-0",
+                  "pdf-0"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/151"
+            }
+          ]
+        },
+        {
+          "school_key": "FUNG_KAI_LIU_MAN_SHEK_TONG_SEC_SCH",
+          "name": "鳳溪廖萬石堂中學",
+          "edb_school_number": "518379",
+          "details": [
+            {
+              "detail": {
+                "triple": [
+                  "2026/27",
+                  "transfer",
+                  [
+                    "S2",
+                    "S3",
+                    "S4"
+                  ]
+                ],
+                "candidate_ids": [
+                  "export-156",
+                  "pdf-0"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/156"
+            }
+          ]
+        },
+        {
+          "school_key": "KOWLOON_SAM_YUK_SECONDARY_SCHOOL",
+          "name": "九龍三育中學",
+          "edb_school_number": "131814",
+          "details": [
+            {
+              "detail": {
+                "triple": [
+                  "2026/27",
+                  "s1_admission",
+                  [
+                    "S1",
+                    "S2",
+                    "S3",
+                    "S4",
+                    "S5"
+                  ]
+                ],
+                "candidate_ids": [
+                  "pdf-0",
+                  "pdf-1"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/272"
+            }
+          ]
+        },
+        {
+          "school_key": "SALEM_IMMANUEL_LUTHERAN_COLLEGE",
+          "name": "南亞路德會沐恩中學",
+          "edb_school_number": "190446",
+          "details": [
+            {
+              "detail": {
+                "triple": [
+                  "2026/27",
+                  "transfer",
+                  [
+                    "S2",
+                    "S3",
+                    "S4"
+                  ]
+                ],
+                "candidate_ids": [
+                  "export-406",
+                  "pdf-0"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/406"
+            }
+          ]
+        },
+        {
+          "school_key": "TWGH_MRS_WU_YORK_YU_MEMORIAL_COLLEGE",
+          "name": "東華三院伍若瑜夫人紀念中學",
+          "edb_school_number": "190136",
+          "details": [
+            {
+              "detail": {
+                "triple": [
+                  "2026/27",
+                  "transfer",
+                  [
+                    "S2",
+                    "S3",
+                    "S4"
+                  ]
+                ],
+                "candidate_ids": [
+                  "form-0",
+                  "pdf-0"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/543"
+            }
+          ]
+        }
+      ]
+    },
+    "EDB_COLLECTED_AT_MISSING": {
+      "schools": 585,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": "EDB workbook/registry contain no field collection time; workbook date is not a timestamp",
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": "EDB workbook/registry contain no field collection time; workbook date is not a timestamp",
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": "EDB workbook/registry contain no field collection time; workbook date is not a timestamp",
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": "EDB workbook/registry contain no field collection time; workbook date is not a timestamp",
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": "EDB workbook/registry contain no field collection time; workbook date is not a timestamp",
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        }
+      ]
+    },
+    "EDB_NUMBER_CELL_MISSING_RECOVERED": {
+      "schools": 3,
+      "examples": [
+        {
+          "school_key": "HOI_PING_CHAMBER_OF_COMMERCE_SEC_SCH",
+          "name": "旅港開平商會中學",
+          "edb_school_number": "170607",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  417
+                ],
+                "from": "column P scrn"
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "HOLY_FAMILY_CANOSSIAN_COLLEGE",
+          "name": "嘉諾撒聖家書院",
+          "edb_school_number": "170569",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  415
+                ],
+                "from": "column P scrn"
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "HOLY_TRINITY_COLLEGE",
+          "name": "寶血會上智英文書院",
+          "edb_school_number": "213845",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  416
+                ],
+                "from": "column P scrn"
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        }
+      ]
+    },
+    "EMPTY_PDF_TEXT_RETAINED": {
+      "schools": 16,
+      "examples": [
+        {
+          "school_key": "BUDDHIST_SUM_HEUNG_LAM_MEMORIAL_COLLEGE",
+          "name": "佛教沈香林紀念中學",
+          "edb_school_number": "230782",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.bsc.edu.hk/wp-content/uploads/2024/02/中一至中六入學申請表.pdf",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_001_offset_0000/cache/pdf_text/14bab674ba63bb015b6fba55.txt"
+            }
+          ]
+        },
+        {
+          "school_key": "CHRISTIAN_ALLIANCE_COLLEGE",
+          "name": "宣道中學",
+          "edb_school_number": "311103",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.cactm.edu.hk/~home/index/signup/20260603/ApplicationForm_transfer.pdf",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_010_offset_0450/cache/pdf_text/0ee8fa4ef95b664df5308a70.txt"
+            }
+          ]
+        },
+        {
+          "school_key": "EVAN_CHINA_FELLOWSHIP_HOLY_WORD_SCH",
+          "name": "基督教中國佈道會聖道學校",
+          "edb_school_number": "250449",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.holyword.edu.hk/autism/pdf/20260430lam.pdf",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_009_offset_0400/cache/pdf_text/153595728cb6f718f7b94b85.txt"
+            },
+            {
+              "detail": {
+                "url": "http://vm.holyword.edu.hk/autism/pdf/autism.pdf",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_009_offset_0400/cache/pdf_text/74ddaa62e9f3a701e68c4d3c.txt"
+            }
+          ]
+        },
+        {
+          "school_key": "KING_S_COLLEGE",
+          "name": "英皇書院",
+          "edb_school_number": "510408",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.kings.edu.hk/sites/default/files/2026-05/100th%20Annual%20Athletic%20Meet%20Programme%20Book_V2.pdf",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_007_offset_0300/cache/pdf_text/821fb37086dc11b9215eaa69.txt"
+            }
+          ]
+        },
+        {
+          "school_key": "KWUN_TONG_GOVERNMENT_SECONDARY_SCHOOL",
+          "name": "觀塘官立中學",
+          "edb_school_number": "510416",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.ktgss.edu.hk/download/directLinkFile/2025112809181962707752013630794.pdf?v=202606101359&nnnid=123",
+                "status": "empty_text"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_007_offset_0300/cache/pdf_text/f30a91419ed8e56863766f10.txt"
+            }
+          ]
+        }
+      ]
+    },
+    "EVIDENCE_NUMERIC_CONFIDENCE_MISSING": {
+      "schools": 585,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": {
+                "legacy_confidence": "medium",
+                "policy": "No low/medium/high -> numeric mapping"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": {
+                "legacy_confidence": "medium",
+                "policy": "No low/medium/high -> numeric mapping"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": {
+                "legacy_confidence": "high",
+                "policy": "No low/medium/high -> numeric mapping"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": {
+                "legacy_confidence": "low",
+                "policy": "No low/medium/high -> numeric mapping"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": {
+                "legacy_confidence": "high",
+                "policy": "No low/medium/high -> numeric mapping"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4"
+            }
+          ]
+        }
+      ]
+    },
+    "FORM_LABEL_PDF_YEAR_CONFLICT": {
+      "schools": 1,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": {
+                "label": "2025-2026 插班生詳程及表格_中二至中五",
+                "label_year": "2025/26",
+                "pdf_year": "2026/27",
+                "pdf_heading": "[page 1] 1 香港仔浸信會呂明才書院 招收 2026-27 學年中二至中五級插班生 （一） 報名日期： 2026 年 5 月 4 日至 6 月 30 日 星期一至五 ：上午 9:00 – 下午 5:00 星期六 ：上午 9:00 – 中午 12:00 （二） 報名地點： 鴨脷洲利東邨道十八號 查詢電話： 2552 6875 學校網址： http://www.ablmcc.edu.hk （三） 報名手續： 請將已填妥的報名表格，並以下文件交到本校校務處： 1. 2024",
+                "url": "http://www.ablmcc.edu.hk/sites/default/files/download/2025-2026_cha_ban_sheng_xiang_cheng_ji_biao_ge_zhong_er_zhi_zhong_wu_lykw.pdf"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_001_offset_0000/cache/pdf_text/aa7712436130e46e56f5693e.txt"
+            }
+          ]
+        }
+      ]
+    },
+    "FORM_SCOPE_NOT_LINKED_TO_FINAL_FIELDS": {
+      "schools": 74,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": [
+                {
+                  "label": "2025-2026 插班生詳程及表格_中二至中五",
+                  "url": "http://www.ablmcc.edu.hk/sites/default/files/download/2025-2026_cha_ban_sheng_xiang_cheng_ji_biao_ge_zhong_er_zhi_zhong_wu_lykw.pdf",
+                  "year": "2025/26",
+                  "type": "transfer",
+                  "grade": [
+                    "S2",
+                    "S3",
+                    "S4",
+                    "S5"
+                  ]
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0/application_form_links"
+            }
+          ]
+        },
+        {
+          "school_key": "BUDDHIST_FAT_HO_MEMORIAL_COLLEGE",
+          "name": "佛教筏可紀念中學",
+          "edb_school_number": "190128",
+          "details": [
+            {
+              "detail": [
+                {
+                  "label": "Application form 2026-2027 (S.1 Admission)",
+                  "url": "http://www.bfhmc.edu.hk/sub_index/S1admission_2627-eForm.pdf",
+                  "year": "2026/27",
+                  "type": null,
+                  "grade": null
+                },
+                {
+                  "label": "Application form 2026-2027 (S.1-S.6 Admission)",
+                  "url": "http://www.bfhmc.edu.hk/sub_index/school_application_formS1-S6_2627.pdf",
+                  "year": "2026/27",
+                  "type": null,
+                  "grade": null
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/20/application_form_links"
+            }
+          ]
+        },
+        {
+          "school_key": "BUDDHIST_HO_NAM_KAM_COLLEGE",
+          "name": "佛教何南金中學",
+          "edb_school_number": "270172",
+          "details": [
+            {
+              "detail": [
+                {
+                  "label": "插班生入學申請表格2026_初中",
+                  "url": "https://bhnkc.edu.hk/wp-content/uploads/2026/04/插班生入學申請表格2026_初中.pdf",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                },
+                {
+                  "label": "插班生入學申請表格2026_高中",
+                  "url": "https://bhnkc.edu.hk/wp-content/uploads/2026/04/插班生入學申請表格2026_高中.pdf",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                },
+                {
+                  "label": "插班生入學申請表格2026_初中",
+                  "url": "https://bhnkc.edu.hk/wp-content/uploads/2026/04/插班生入學申請表格2026_初中.docx",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                },
+                {
+                  "label": "插班生入學申請表格2026_高中",
+                  "url": "https://bhnkc.edu.hk/wp-content/uploads/2026/04/插班生入學申請表格2026_高中.docx",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/21/application_form_links"
+            }
+          ]
+        },
+        {
+          "school_key": "BUDDHIST_TAI_HUNG_COLLEGE",
+          "name": "佛教大雄中學",
+          "edb_school_number": "170372",
+          "details": [
+            {
+              "detail": [
+                {
+                  "label": "2026-27年度插班生入學申請表格下載 (已截止)",
+                  "url": "https://www.bthc.edu.hk/Content/08_others/01_what_is_new/index.aspx?ct=latestNews&styleId=1&newsType=generalAnouncement#news1177",
+                  "year": "2026/27",
+                  "type": "transfer",
+                  "grade": null
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/27/application_form_links"
+            }
+          ]
+        },
+        {
+          "school_key": "BUDDHIST_TAI_KWONG_CHI_HONG_COLLEGE",
+          "name": "佛教大光慈航中學",
+          "edb_school_number": "190748",
+          "details": [
+            {
+              "detail": [
+                {
+                  "label": "26-27 各級插班生_申請表",
+                  "url": "https://www.btkchc.edu.hk/image/catalog/apply_form/C.pdf",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                },
+                {
+                  "label": "25-26 各級插班生_申請表",
+                  "url": "https://www.btkchc.edu.hk/image/catalog/apply_form/S1form/175159569100146800.pdf",
+                  "year": null,
+                  "type": "transfer",
+                  "grade": null
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/28/application_form_links"
+            }
+          ]
+        }
+      ]
+    },
+    "INVALID_CALENDAR_DATE": {
+      "schools": 3,
+      "examples": [
+        {
+          "school_key": "CCC_CHUEN_YUEN_COLLEGE",
+          "name": "中華基督教會全完中學",
+          "edb_school_number": "113840",
+          "details": [
+            {
+              "detail": {
+                "field": "interview_date",
+                "value": "2025-11-39"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/60/interview_date"
+            }
+          ]
+        },
+        {
+          "school_key": "SKH_LI_PING_SECONDARY_SCHOOL",
+          "name": "聖公會李炳中學",
+          "edb_school_number": "230871",
+          "details": [
+            {
+              "detail": {
+                "field": "exam_date",
+                "value": "2025-11-57"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/447/exam_date"
+            }
+          ]
+        },
+        {
+          "school_key": "THE_TRUE_LIGHT_SCHOOL_OF_HONG_KONG",
+          "name": "香港真光中學",
+          "edb_school_number": "623857",
+          "details": [
+            {
+              "detail": {
+                "field": "submission_deadline",
+                "value": "2026-04-00"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/512/submission_deadline"
+            }
+          ]
+        }
+      ]
+    },
+    "MATERIALS_NON_APPLICATION_TEXT_SIGNAL": {
+      "schools": 4,
+      "examples": [
+        {
+          "school_key": "CARMEL_DIVINE_GRACE_FOUNDATION_SEC_SCH",
+          "name": "迦密主恩中學",
+          "edb_school_number": "190560",
+          "details": [
+            {
+              "detail": "友 Name 姓名 Class/Year of graduation 班別/畢業年份 Conduct and A cademic Results 操行學業成績 Please attach the photocopies of P .4 to P .6 report cards 請附小四至小六各學期成績表副本 Level 年級 Term 學期 Grade 等級 / Mark 分數 Rank in form 級名次 (if any 如有) Chinese Language 中文 English Lan guage 英文 Mathemati cs 數學 General Stu dies 常識 Conduct 操行 Primary 6 小六 2 (if any 如適用) 1 Primary 5 小五 3 (if any 如適用) 2 1 Primary 4 小四 3 (if any 如適用) 2 1 P.T.O. 轉後頁 Student photo 學生近照 [page 2] Extra-curricular Activities and Services 課外活動及服務 Please li\n友 Name 姓名 Class/Year of graduation 班別/畢業年份 Conduct and A cademic Results 操行學業成績 Please attach the photocopies of P .4 to P .6 report cards 請附小四至小六各學期",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/54/required_materials"
+            }
+          ]
+        },
+        {
+          "school_key": "HONG_CHI_MORNINGLIGHT_SCHOOL_TUEN_MUN",
+          "name": "匡智屯門晨曦學校",
+          "edb_school_number": "250651",
+          "details": [
+            {
+              "detail": "本年度科目教節安排 認識 : Numicon 1-10 排序 : Numicon 1-10 Numicon文章 Numicon攻略 Numicon關卡 Numicon影片 介紹iPad的小技巧 關愛基金援助項目(平板電腦) Google Classroom Google Meet 學生自學APP推介 活用過濾軟件家長工作坊 熱帶氣旋及持續大雨之安排事宜 RAINBOWONE使用說明 Grwth 平台使用指南 Grwth IM使用指南 自閉症兒童輔導教學 「為在校生及離校生提供暫顧服務」三年試行計劃 我的廚房 劉浩賢 片名︰追求廚藝夢想的青少年 第十六屆我的廚房烹飪比賽決賽相片 English Version Tiếng Việt Vietnamese Version Thai Version Nepali Version 高中同學參加由衛理楊震社會服務處 喜晴計劃 (家居照顧服務)舉辦的國慶活動 --《國慶知國情‧有獎問答比賽2025》，經抽選後岑卓希得到問答比賽獎品。 屯門區堆沙比賽2025(共融活動) 第十六屆「我的廚房」烹飪比賽暨頒獎禮，已在16/1/2026(五)假匡智屯門晨曦學校圓滿結束。而最後得獎名單亦已塵埃落定，再次恭喜一眾參賽者和陪伴者！最後排名的名單如下─ 第十六屆「我的廚房」烹飪比賽—比賽結果 自閉症資源組開設了一個名為「陪我學粵拼」的頻道。該頻道內容涵蓋日常生活知識，並由我們屯曦學生擔任KOL主持。他們會訪問校內的老師和同學，鼓勵家長和孩子在家觀看這些影片。希望這樣的安排能夠使學生更流暢地學習粵拼，並增加他們在使用粵拼時的信心，同時也希望能夠加強家長和孩子之間的交流。請家長們鼓勵你們的孩子觀看這些影片，並在家中一同學習粵拼! 第七集：陪我學粵拼_同學專長 _上mp4 按下圖觀看更多「陪我學粵拼」的集數 本校秉承匡智會「匡扶智障」的精神，為智障學童提供全面教育，幫助他們盡量發展潛能，融入社會。本校同時致力加強大眾對智障人士瞭解和接納，並推動社會關注智障人士的權益和需要。 (以下只供教職員使用) 現在有 3 訪客 在線上 校址：新界屯門育青里2號",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/218/required_materials"
+            }
+          ]
+        },
+        {
+          "school_key": "HONG_CHI_PINEHILL_NO_3_SCHOOL",
+          "name": "匡智松嶺第三校",
+          "edb_school_number": "250414",
+          "details": [
+            {
+              "detail": "工作員將跟進接續探訪以幫助學生順利過渡，通常跟進探訪會於學生入住院舍後3個月內按離校生個別需要聯同校內專責同工一同進行。 留家學生探訪及支援 有關離校後跟進探訪亦適用於未有獲派成人中心宿位之留家學生。另外，社工將與有關家長於離校後兩年內定期聯繫以跟進學生適應情況及向家長提供所需的社區支援服務資訊。 畢業後參與學校活動 學校鼓勵離校生積極參與學校活動(如:聯校畢業禮、散學禮)，保持良好聯繫。社工須通知家長及成人中心預留時間陪同學生出席匡智會聯校畢業典禮。 1. 每次實習活動完結後填寫學生表現檢討。 2. 每學年結束時再召開高中會議檢視各項銜接安排之成效並作出反思及來年建議。 由學校各部門在成人中心/院舍首次面見學生會議前完成綜合報告。 綜合報告表格由高中統籌與各部蹉商擬定，資料包括：最近一次的成績表、健康護理、復康訓練、學習/治療器材清單、 宿舍生活表現、情緒行為等。 有關準離校生的準備文件由個案負責人統籌跟進，當學生離校或正式獲派成人服務時，由社工轉交家長或成人服務單位作最後存檔。 成人中心/院舍首次面見學生(first in-take) 由社工及教師代表陪同家長及學生出席，由於成人中心會安排不同職系員工出席，以個案管理人身份之教師代表須出席提供學生資料。 第一次探訪：學生正式離校後的第一個月內由社工及負責該個案之高中教師陪同探訪，同工須注意向中心爭取在院舍內(並非只有在探訪室)探訪，以實際了解學生的生活及與院友的互動。如學生無特別適應困難，個案跟進正式結束。 持續跟進探訪：如同工在第一次探訪中發現學生出現適應困難，個案跟進之教師須針對學生之問題情況聯同校內之相關專責同工進行跟進探訪及與家長保持溝通，期望能與成人院舍及家長達成共識以解決學生之適應問題。 每次探訪均須將探訪報告、跟進事項及完成日期等資料存於學生個人成長檔案資料中存檔。 地址︰香港新界大埔南坑頌雅路松嶺村 電話︰2665 5189",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/221/required_materials"
+            }
+          ]
+        },
+        {
+          "school_key": "TWGH_YOW_KAM_YUEN_COLLEGE",
+          "name": "東華三院邱金元中學",
+          "edb_school_number": "270091",
+          "details": [
+            {
+              "detail": "首頁 » 相片集 » 2025至2026年度中六畢業典禮 2025至2026年度中六畢業典禮 2026-05-29 2025至2026年度中六畢業典禮 2025至2026年度中六畢業典禮已於2026年5月29日（星期五）晚上七時正，在學校禮堂隆重舉行。一眾中六畢業生、家長、老師以及來賓齊聚一堂，共同分享畢業同學成長與收穫的喜悅 。 今年，學校非常榮幸能邀請到第十五屆全國運動會香港男子手球隊隊長——謝永輝先生擔任主禮嘉賓。謝先生不僅在球場上展現精湛球技，更以堅毅不拔的精神多次代表香港出戰全運會。謝先生在致辭中勉勵畢業同學，期盼大家以追求興趣，發展專業為目標，用堅毅的精神迎接未來的挑戰。杜校長亦在隨後的致辭中，對全體畢業生表達了深切的期許與祝福，並勉勵大家在未來的人生道路上要有規劃地勇往直前 。 在畢業證書頒發環節，中六各班班主任分別宣讀名單並致勉勵詞。同學依序上台，在嘉賓與老師的陪同下接過畢業證書並拍攝班照，留下珍貴畫面。隨後，畢業生代表李嘉儀同學致謝辭，真誠感謝母校、老師與父母的悉心栽培。典禮在全場齊唱校歌的溫馨氣氛下圓滿結束。學校衷心祝願全體畢業生鵬程萬里，前程似錦 ！",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/549/required_materials"
+            }
+          ]
+        }
+      ]
+    },
+    "MULTI_EDB_ROWS_RECOVERED": {
+      "schools": 24,
+      "examples": [
+        {
+          "school_key": "BEACON_COLLEGE",
+          "name": "遵理學校",
+          "edb_school_number": "289094",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  617,
+                  618,
+                  619
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "BEACON_COLLEGE_MONG_KOK",
+          "name": "遵理學校（旺角）",
+          "edb_school_number": "524867",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  615,
+                  616
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "CARITAS_CHAN_CHUN_HA_FIELD_STUDIES_CTR",
+          "name": "明愛陳震夏郊野學園",
+          "edb_school_number": "519162",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  597,
+                  598
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "CARITAS_LOK_JUN_SCHOOL",
+          "name": "明愛樂進學校",
+          "edb_school_number": "250627",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  592,
+                  593
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        },
+        {
+          "school_key": "DELIA_MEMORIAL_SCHOOL_HIP_WO",
+          "name": "地利亞修女紀念學校（協和）",
+          "edb_school_number": "216143",
+          "details": [
+            {
+              "detail": {
+                "rows": [
+                  502,
+                  504
+                ]
+              },
+              "locator": "apps/crawler/output/edb_schools_20260610_enriched.xlsx"
+            }
+          ]
+        }
+      ]
+    },
+    "NO_FINAL_ADMISSION_URL": {
+      "schools": 56,
+      "examples": [
+        {
+          "school_key": "BEACON_COLLEGE",
+          "name": "遵理學校",
+          "edb_school_number": "289094",
+          "details": [
+            {
+              "detail": "No final selected admission URL; do not synthesize admission",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/15"
+            }
+          ]
+        },
+        {
+          "school_key": "BEACON_COLLEGE_MONG_KOK",
+          "name": "遵理學校（旺角）",
+          "edb_school_number": "524867",
+          "details": [
+            {
+              "detail": "No final selected admission URL; do not synthesize admission",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/16"
+            }
+          ]
+        },
+        {
+          "school_key": "CARITAS_CHAI_WAN_MARDEN_FDN_SEC_SCH",
+          "name": "明愛柴灣馬登基金中學",
+          "edb_school_number": "270040",
+          "details": [
+            {
+              "detail": "No final selected admission URL; do not synthesize admission",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/36"
+            }
+          ]
+        },
+        {
+          "school_key": "CARITAS_CHONG_YUET_MING_SEC_SCH",
+          "name": "明愛莊月明中學",
+          "edb_school_number": "282758",
+          "details": [
+            {
+              "detail": "No final selected admission URL; do not synthesize admission",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/38"
+            }
+          ]
+        },
+        {
+          "school_key": "CHAN_SHU_KUI_MEMORIAL_SCHOOL",
+          "name": "陳樹渠紀念中學",
+          "edb_school_number": "212865",
+          "details": [
+            {
+              "detail": "No final selected admission URL; do not synthesize admission",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/81"
+            }
+          ]
+        }
+      ]
+    },
+    "REGISTRY_KEY_MISMATCH_RECOVERED": {
+      "schools": 3,
+      "examples": [
+        {
+          "school_key": "HOI_PING_CHAMBER_OF_COMMERCE_SEC_SCH",
+          "name": "旅港開平商會中學",
+          "edb_school_number": "170607",
+          "details": [
+            {
+              "detail": {
+                "final_key": "HOI_PING_CHAMBER_OF_COMMERCE_SEC_SCH",
+                "registry_keys": [
+                  "HOI_PING_CHAMBER_OF_COMMERCE_SEC_SCH_WHOLE_DAY"
+                ],
+                "edb_from_url": "170607"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/208"
+            }
+          ]
+        },
+        {
+          "school_key": "HOLY_FAMILY_CANOSSIAN_COLLEGE",
+          "name": "嘉諾撒聖家書院",
+          "edb_school_number": "170569",
+          "details": [
+            {
+              "detail": {
+                "final_key": "HOLY_FAMILY_CANOSSIAN_COLLEGE",
+                "registry_keys": [
+                  "HOLY_FAMILY_CANOSSIAN_COLLEGE_WHOLE_DAY"
+                ],
+                "edb_from_url": "170569"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/209"
+            }
+          ]
+        },
+        {
+          "school_key": "HOLY_TRINITY_COLLEGE",
+          "name": "寶血會上智英文書院",
+          "edb_school_number": "213845",
+          "details": [
+            {
+              "detail": {
+                "final_key": "HOLY_TRINITY_COLLEGE",
+                "registry_keys": [
+                  "HOLY_TRINITY_COLLEGE_WHOLE_DAY"
+                ],
+                "edb_from_url": "213845"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/210"
+            }
+          ]
+        }
+      ]
+    },
+    "ROLLING_ADMISSION_NO_ASSUMED_YEAR": {
+      "schools": 11,
+      "examples": [
+        {
+          "school_key": "CONCORDIA_INTERNATIONAL_SCHOOL",
+          "name": "協同國際學校",
+          "edb_school_number": "215996",
+          "details": [
+            {
+              "detail": "patriates relocating to Hong Kong during the school year. Applications are accepted all year round. Start Online Submission Online applications can be filled along with the bank reference of transferred amount of HKD 1000 towards a non-refundable application fee. (Account details: HSBC #193-072311-001). Application may not be processed if the bank reference is not filled in. Applications can also be submitted personally by completing the printed application form along with a cheque drawn in favor of ‘Concordia International School’ or cash of HKD 1000 towards a non-refundable application fee. Kindly note that payment of the application fee does not guarantee admission. The application fee is solely for admission purposes and is not associated with tuition or any other school-related fees. It is specifically used to cover the costs of the admission assessment process. Submit The Form & Documents The originals of the following documents should be presented when called for an interview: i) Copy of Hong Kong ID or passport ii) Records of past academic performance. * iii) SAT/ACT scores record if applicable. iv) TOEFL/IELTS scores if applicable. v) Any other special reports. *Photocopies are acceptable although originals must be sighted during the interview. Academic records (school reports or transcripts) must include a fax number a\n---\ncheque drawn in favor of ‘Concordia International School’ or cash of HKD 1000 towards a non-refundable application fee. Kindly note that payment ",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/114"
+            }
+          ]
+        },
+        {
+          "school_key": "FORTRESS_HILL_METHODIST_SECONDARY_SCHOOL",
+          "name": "炮台山循道衛理中學",
+          "edb_school_number": "516961",
+          "details": [
+            {
+              "detail": "月10日（六） 時間：下午2:30-5:00 ​內容：學校簡介、特色課堂體驗活動等 ​開放日 暨「炮循嘉年華」​ 日期：2025年12月13日 時間：下午1:30-5:00 ​內容：學校簡介、攤位遊戲、學生體驗活動及參觀等 1. 報名表可按上述按鈕填寫網上報名表、下載實體報名表，或親臨本校索取。 2. 如填報實體報名表後，可直接遞交、郵寄或傳真至本校。 3. 由於名額有限，費用全免，請儘早報名，以便學校安排。 4:30 p.m. 本校於2025年11月、2026年3月及5月 ​安排外界人士參觀學校。 10/11/2025(星期一) 09/03/2026(星期一) 18/05/2026(星期一) 中一學位申請 / 插班生學位申請 有學習困難或學習上需要加強輔導的學生。 本校中一自行分配學位名額為三十二名。 各級插班生：全年接受申請 中一自行收生申請日期為2026年1月2至16日。 學校將於2026年3月31日以書面及電話通知正取學生家長申請已獲接納入《自行分配學位正取學生名單》。 申請表可於辦公時間到本校校務處或致電本校索取，亦可在本校網頁下載 (DOCX / PDF)。[註：申請費用全免] 填妥申請表後，於上述申請時段內連同下列文件一併交回本校： (i) 學生身份證複印本 (ii) 最近兩年的成績表複印本 (iii) 學習困難評估報告/心理評估報告複印本(如有) (iv) 教育局發出之中一自行分配學位申請表[藍綠紅申請表] (只適用於中一自行分配學位) *家長無須呈交小學推薦信* 已使用「智方便+」登記成為「中一派位電子平台」用戶的家長，可透過 「中一派位電子平台」遞交自行分配學位的申請 所有申請中一自行分配學位的學生均會獲安排面試。 學生成績及/或評估報告反映學習困難的程度 (30%) 面試表現 (50%) 課外活動與其他潛能 (5%) 中一自行分配學位的申請結果將於2026年7月7日與統一派位結果一併公布。 如有進一步查詢，可與本校校務處聯絡： 地址：香港北角炮台山道19號 電話：2510 7688 傳真：2510 9677 網址：www.fhms.edu.hk 電郵：info@fhms.edu.hk 辦公時間： 星期一至五 上午9時至下午5時 星期六 上午9時至中午12時 電郵 E-mail: info@fhms.edu.hk 地址 Address: 香港北角炮台山道19號 19 Fortress Hill Road, North Point 電話 Telephone : 2510 7688 傳真 Fax : 2510 9677 © FHMSS Created with WIX\n---\n2025年12月13日 時間：下午1:30-5:00 ​內容：學校簡介、攤位遊戲、學生體驗活動及參觀等 1. 報名表可按上述按鈕填寫網上報名表、下載實體報名表，或親臨本校索取。 2. 如填報實體報名表後，可直接遞交、郵寄或傳真至本校。 3. 由於名額有限，費用全免，請儘早報名，以便學校安排。 4:30 p.m. 本校於2025年11月、2026年3月及5月 ​安排外界人士參觀學校。 10/11/2025(星期一) 09/03/2026(星期一) 18/05/2026(星期一) 中一學位申請 / 插班生學位申請 有學習困難或學習上需要加強輔導的學生。 本校中一自行分配學位名額為三十二名。 各級插班生：全年接受申請 中一自行收生申請日期為2026年1月2至16日。 學校將於2026年3月31日以書面及電話通知正取學生家長申請已獲接納入《自行分配學位正取學生名單》",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/153"
+            }
+          ]
+        },
+        {
+          "school_key": "GCC_ITKD_LAU_PAK_LOK_SEC_SCH",
+          "name": "東莞工商總會劉百樂中學",
+          "edb_school_number": "190519",
+          "details": [
+            {
+              "detail": "東莞工商總會劉百樂中學 GCCITKD Lau Pak Lok Secondary School 申請日期及報名表格 接受申請日期: 全年 申請表格: 請按此 索取及交回申請表格時間： 星期一至五：上午8:30 – 下午5:00 星 期 六：上午8:30 – 中午12:00 1. 填妥的表格及其他文件親身交回本校 2. 透過電郵方式 (lplss2324@gmail.com) 遞交申請 1. 近照一張（貼於申請表） 3. 最近兩年成績表副本 4. 課外活動證書及獎狀影印本（如適用） Personal Information Collection Statement 收集個人資料的目的 Purpose of Collection 1. 你在本表格提供的個人資料，會供東莞工商總會劉百樂中學用於以下一項或多項用途： The personal data provided by you in this form will be used by GCC&ITKD Lau Pak Lok Secondary School for one or more of the following purposes: (a) 處理、核實、審核資格及查證各項補助和津貼，以及由東莞工商總會劉百樂中學提供的教育服務的申請； Activities relating to the processing, authentication and assessment on eligibility and counter-checking of the form for individual grant and subsidy as well as education service provided by the GCC&ITKD Lau Pak Lok Secondary School; (b) 就上文(a)項所述申請的處理、核實、審核資格及查證，將個人資料與政府相關政策局／部門資料庫進行核對； Activities relating to matching of the personal data with the database of other relevant Government bureaux / depart\n---\n東莞工商總會劉百樂中學 GCCITKD Lau Pak Lok Secondary School 申請日期及報名表格 接受申請日期: 全年 申請表格: 請按此 索取及交回申請表格時間： 星期一至五：上午8:30 – 下午5:00 星 期 六：上午8:30 – 中午12:00 1. 填妥的表格及其他文件親身交回本校 2. 透過電郵方式 (lplss2324@gmail.com) 遞交申請 1. 近照一張（貼於申請表） 3. 最近兩年成績表副本 4. 課外活動證書及獎狀影印本（如適用） Personal Information Collection Statement 收集個人資料的目的 Purpose of Collection 1. 你在本表格提供的個人資料，會供東莞工商總會劉百樂中學用於以下一項或多項用途： The personal data provided by you in this form will be used by GCC&ITKD Lau Pak Lok Secondary School for one or more of the following purposes: (a) 處理、核實、審核資格及查證各項補助和津貼，以及由東莞工",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/158"
+            }
+          ]
+        },
+        {
+          "school_key": "GRACE_CHRISTIAN_ACADEMY",
+          "name": "培生學校",
+          "edb_school_number": "581259",
+          "details": [
+            {
+              "detail": "company their child to attend the interview. This is because GCA strongly believes that, through close and consistent partnership with parents, every child can be nurtured holistically to fulfill his/her full potential. GCA accepts application all year round. However, application does not guarantee placement. Those who have satisfied admissions criteria may be placed on a waiting list if there are no spaces available immediately. Please read the application procedure below before proceeding. Step 1. Check the Date of the Next Curriculum Presentation You may view the Important Dates for the current year of application, including the date of the Curriculum Presentation and/or call the office for any inquiries. Step 2. Prepare the Required Documents A copy of: a) the birth certificate of your child b) the HKID or passport of your child c) the HKID and passport of both parents d) the school reports of your child from previous and current academic years e) the medical or assessment report of your child, if applicable. Step 3. Submit the Application Form You will be given a hard copy of the Application Form at the Curriculum Presentation. You may also download and print the Application Form. The Application Form can be submitted by mail or by hand, along with all required documents and the application fee. Applications submitted after\n---\nSkip to content ACADEMY PROFILE ADMISSION ACADEMY LIFE Admission Procedure Thank you for your interest in applying to Grace Christian Academy. Pa",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/163"
+            }
+          ]
+        },
+        {
+          "school_key": "HONG_KONG_BLUEBELL_COLLEGE",
+          "name": "香港紫荊書院",
+          "edb_school_number": "621374",
+          "details": [
+            {
+              "detail": "lity Application Process Tuition and Fees Scholarships Application Process入學申請流程 Thank you for your interest in Hong Kong Bauhinia College.Please click the link below to learn about our application process and more enrollment information. 感謝你對香港紫荊書院的關注。請點擊以下連結，了解我們的申請程序和更多招生資訊。 The Hong Kong Blubell College accepts applications throughout the year. You can click the link below to provide your personal information, academic transcripts, and other supporting documents (in PDF, JPEG, JPG, or PNG format). After completing the online form, please remember to click \"Submit\". We look forward to welcoming you aboard. 香港紫荊書院現全年開放申請。 您只需點擊下方連結，填寫網上表格並上傳個人資料、成績單和其他必要文件（請以PDF、JPEG、JPG或PNG格式提交）。 請確保填妥表格後點擊「提交」。 我們熱切期待您的加入！ Admission Link Phone：3753 1610 Email Address：info@hkbc.edu.hk School Address：P30, Telford Plaza Phase 1, 33 Wai Yip Street, Kowloon Bay, Kowloon, Hong Kong\n---\nSkip to Main Content HONG KONG BLUEBELL COLLEGE Academics Admissions Contact Us Eligibility Application Process Tuition and Fees Scholarships Application Process入學申請流程 Thank you for your interest in Hong Kong Bauhinia College.Please click the link below to learn about our application process and more enrollment information. 感謝你對香港紫荊書院的關注。請點擊以下連結，了解我們的申請程序和更多招生資訊。 The Hong Kong Blubell College accepts applications throughout the year. You can click the link below to provide your personal information, academic transcripts, and other supporting documents (in PDF, JPEG, JPG, or PNG format). After completing the onlin",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/227"
+            }
+          ]
+        }
+      ]
+    },
+    "RUN_METADATA_MISSING": {
+      "schools": 585,
+      "examples": [
+        {
+          "school_key": "ABERDEEN_BAPTIST_LUI_MING_CHOI_COLLEGE",
+          "name": "香港仔浸信會呂明才書院",
+          "edb_school_number": "214485",
+          "details": [
+            {
+              "detail": "No per-school crawl/task ID, source configuration version or per-school start/check/outcome fields; batch paths/generation times are not substitutes",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/0"
+            }
+          ]
+        },
+        {
+          "school_key": "ABERDEEN_TECHNICAL_SCHOOL",
+          "name": "香港仔工業學校",
+          "edb_school_number": "511102",
+          "details": [
+            {
+              "detail": "No per-school crawl/task ID, source configuration version or per-school start/check/outcome fields; batch paths/generation times are not substitutes",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/1"
+            }
+          ]
+        },
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": "No per-school crawl/task ID, source configuration version or per-school start/check/outcome fields; batch paths/generation times are not substitutes",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "AD_FDPOHL_LEUNG_SING_TAK_COLLEGE",
+          "name": "博愛醫院歷屆總理聯誼會梁省德中學",
+          "edb_school_number": "230910",
+          "details": [
+            {
+              "detail": "No per-school crawl/task ID, source configuration version or per-school start/check/outcome fields; batch paths/generation times are not substitutes",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/3"
+            }
+          ]
+        },
+        {
+          "school_key": "AMERICAN_INTERNATIONAL_SCHOOL",
+          "name": "美國國際學校",
+          "edb_school_number": "287695",
+          "details": [
+            {
+              "detail": "No per-school crawl/task ID, source configuration version or per-school start/check/outcome fields; batch paths/generation times are not substitutes",
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/4"
+            }
+          ]
+        }
+      ]
+    },
+    "SCALAR_DATE_MULTIPLE_VALUES": {
+      "schools": 34,
+      "examples": [
+        {
+          "school_key": "BELILIOS_PUBLIC_SCHOOL",
+          "name": "庇理羅士女子中學",
+          "edb_school_number": "510378",
+          "details": [
+            {
+              "detail": {
+                "field": "application_open",
+                "value": "2025-01-02 / 2026-01-02 / 2025-12-12"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/17/application_open"
+            },
+            {
+              "detail": {
+                "field": "submission_deadline",
+                "value": "2025-01-16 / 2026-01-16"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/17/submission_deadline"
+            }
+          ]
+        },
+        {
+          "school_key": "BISHOP_HALL_JUBILEE_SCHOOL",
+          "name": "何明華會督銀禧中學",
+          "edb_school_number": "170100",
+          "details": [
+            {
+              "detail": {
+                "field": "application_open",
+                "value": "2026-12-06 / 2026-01-02 / 2025-12-06"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/19/application_open"
+            }
+          ]
+        },
+        {
+          "school_key": "CARMEL_SECONDARY_SCHOOL",
+          "name": "迦密中學",
+          "edb_school_number": "135968",
+          "details": [
+            {
+              "detail": {
+                "field": "application_open",
+                "value": "2026-09-20 / 2026-05-01 / 2026-07-14"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/58/application_open"
+            }
+          ]
+        },
+        {
+          "school_key": "CCC_CHUEN_YUEN_COLLEGE",
+          "name": "中華基督教會全完中學",
+          "edb_school_number": "113840",
+          "details": [
+            {
+              "detail": {
+                "field": "application_open",
+                "value": "2025-01-02 / 2026-01-02"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/60/application_open"
+            },
+            {
+              "detail": {
+                "field": "submission_deadline",
+                "value": "2025-01-16 / 2026-01-16"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/60/submission_deadline"
+            }
+          ]
+        },
+        {
+          "school_key": "CCC_FONG_YUN_WAH_SECONDARY_SCHOOL",
+          "name": "中華基督教會方潤華中學",
+          "edb_school_number": "545228",
+          "details": [
+            {
+              "detail": {
+                "field": "application_open",
+                "value": "2026-01-02 / 2026-06-10"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/61/application_open"
+            },
+            {
+              "detail": {
+                "field": "submission_deadline",
+                "value": "2026-01-16 / 2026-06-18"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/61/submission_deadline"
+            }
+          ]
+        }
+      ]
+    },
+    "SELECTED_PAGE_MARKED_NON_ADMISSION": {
+      "schools": 160,
+      "examples": [
+        {
+          "school_key": "ANANTARA_COLLEGE",
+          "name": "泰來書院",
+          "edb_school_number": "612820",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance",
+                "titles": [
+                  ""
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/6"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_EVENING_SECONDARY_SCHOOL",
+          "name": "神召會夜中學",
+          "edb_school_number": "226653",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance",
+                "titles": [
+                  "Web Content Accessibility Guidelines (WCAG) 2 Level AA Conformance | Web Accessibility Initiative (WAI) | W3C"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/7"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_HEBRON_EVENING_SCHOOL",
+          "name": "神召會康樂夜中學",
+          "edb_school_number": "526720",
+          "details": [
+            {
+              "detail": {
+                "url": "http://www.hebron.edu.hk/upload/2024/07/b10d0a27c9b2eab0f8c3750070f08e88.pdf",
+                "titles": [
+                  "PDF"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/8"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_HEBRON_SECONDARY_SCHOOL",
+          "name": "神召會康樂中學",
+          "edb_school_number": "212318",
+          "details": [
+            {
+              "detail": {
+                "url": "http://www.hebron.edu.hk/各級入學申請",
+                "titles": [
+                  ""
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/9"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_ST_HILARY_S_COLLEGE",
+          "name": "神召會德萃書院",
+          "edb_school_number": "216224",
+          "details": [
+            {
+              "detail": {
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance",
+                "titles": [
+                  "Web Content Accessibility Guidelines (WCAG) 2 Level AA Conformance | Web Accessibility Initiative (WAI) | W3C"
+                ]
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/10"
+            }
+          ]
+        }
+      ]
+    },
+    "SELECTED_URL_DISCOVERY_LINK_UNRESOLVED": {
+      "schools": 60,
+      "examples": [
+        {
+          "school_key": "AMERICAN_SCHOOL_HONG_KONG",
+          "name": "AMERICAN SCHOOL HONG KONG[WHOLE DAY]",
+          "edb_school_number": "603902",
+          "details": [
+            {
+              "detail": {
+                "matches": 3,
+                "url": "https://www.ashk.edu.hk/admissions/how-to-apply"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/5"
+            }
+          ]
+        },
+        {
+          "school_key": "AUSTRALIAN_INTERNATIONAL_SCH_HK",
+          "name": "香港澳洲國際學校",
+          "edb_school_number": "216275",
+          "details": [
+            {
+              "detail": {
+                "matches": 2,
+                "url": "https://www.aishk.edu.hk/admissions#application-information"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/12"
+            }
+          ]
+        },
+        {
+          "school_key": "BETHEL_HIGH_SCHOOL",
+          "name": "伯特利中學",
+          "edb_school_number": "511170",
+          "details": [
+            {
+              "detail": {
+                "matches": 0,
+                "url": "https://www.bethel.edu.hk/uploads/files/%E5%A4%A5%E4%BC%B4%E6%94%AF%E6%8F%B4/%E8%88%8A%E7%94%9F%E8%AD%89%E6%98%8E%E6%96%87%E4%BB%B6%E7%94%B3%E8%AB%8B%E8%A1%A8/%E8%88%8A%E7%94%9F%E8%AD%89%E6%98%8E%E6%96%87%E4%BB%B6%E7%94%B3%E8%AB%8B%E8%A1%A8.pdf"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/18"
+            }
+          ]
+        },
+        {
+          "school_key": "CALIFORNIA_SCHOOL",
+          "name": "CALIFORNIA SCHOOL[WHOLE DAY]",
+          "edb_school_number": "289515",
+          "details": [
+            {
+              "detail": {
+                "matches": 2,
+                "url": "https://www.californiaschool.edu.hk/school-forms/"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/33"
+            }
+          ]
+        },
+        {
+          "school_key": "CANADIAN_INTERNATIONAL_SCHOOL_OF_HK",
+          "name": "香港加拿大國際學校",
+          "edb_school_number": "216011",
+          "details": [
+            {
+              "detail": {
+                "matches": 2,
+                "url": "https://www.cdnis.edu.hk/admissions/apply-online"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/34"
+            }
+          ]
+        }
+      ]
+    },
+    "SELECTED_URL_OTHER_HOST_REVIEW": {
+      "schools": 66,
+      "examples": [
+        {
+          "school_key": "ACADEMY_OF_INNOVATION_CONFUCIUS_HALL",
+          "name": "孔聖堂禮仁書院",
+          "edb_school_number": "131385",
+          "details": [
+            {
+              "detail": {
+                "school_host": "chss.edu.hk",
+                "selected_host": "aich.edu.hk",
+                "url": "https://www.aich.edu.hk/zh-hant/application/5/"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/2"
+            }
+          ]
+        },
+        {
+          "school_key": "ANANTARA_COLLEGE",
+          "name": "泰來書院",
+          "edb_school_number": "612820",
+          "details": [
+            {
+              "detail": {
+                "school_host": "cs.edb.edcity.hk",
+                "selected_host": "w3.org",
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/6"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_EVENING_SECONDARY_SCHOOL",
+          "name": "神召會夜中學",
+          "edb_school_number": "226653",
+          "details": [
+            {
+              "detail": {
+                "school_host": "cs.edb.edcity.hk",
+                "selected_host": "w3.org",
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/7"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_ST_HILARY_S_COLLEGE",
+          "name": "神召會德萃書院",
+          "edb_school_number": "216224",
+          "details": [
+            {
+              "detail": {
+                "school_host": "cs.edb.edcity.hk",
+                "selected_host": "w3.org",
+                "url": "https://www.w3.org/WAI/WCAG2AA-Conformance"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/10"
+            }
+          ]
+        },
+        {
+          "school_key": "BAPTIST_WING_LUNG_SECONDARY_SCHOOL",
+          "name": "浸信會永隆中學",
+          "edb_school_number": "518360",
+          "details": [
+            {
+              "detail": {
+                "school_host": "bwlss.edu.hk",
+                "selected_host": "gallery.bwlss.edu.hk",
+                "url": "https://gallery.bwlss.edu.hk/index.php/20260309"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/14"
+            }
+          ]
+        }
+      ]
+    },
+    "SOURCE_FETCH_OR_PDF_FAILURE": {
+      "schools": 139,
+      "examples": [
+        {
+          "school_key": "ANANTARA_COLLEGE",
+          "name": "泰來書院",
+          "edb_school_number": "612820",
+          "details": [
+            {
+              "detail": [
+                {
+                  "url": "https://www.w3.org/WAI/WCAG2AA-Conformance",
+                  "error": "Page.goto: Navigation to \"http://www.w3.org/WAI/WCAG2AA-Conformance\" is interrupted by another navigation to \"https://www.w3.org/WAI/WCAG2AA-Conformance\"\nCall log:\n  - navigating to \"http://www.w3.org/WAI/WCAG2AA-Conformance\", waiting until \"domcontentloaded\"\n"
+                },
+                {
+                  "url": "https://cs.edb.edcity.hk/tc/index_cs.php",
+                  "error": "redirect_to_homepage"
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/evidence/packs/ANANTARA_COLLEGE.json"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_EVENING_SECONDARY_SCHOOL",
+          "name": "神召會夜中學",
+          "edb_school_number": "226653",
+          "details": [
+            {
+              "detail": [
+                {
+                  "url": "https://cs.edb.edcity.hk/tc/index_cs.php",
+                  "error": "redirect_to_homepage"
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/evidence/packs/AOG_EVENING_SECONDARY_SCHOOL.json"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_HEBRON_SECONDARY_SCHOOL",
+          "name": "神召會康樂中學",
+          "edb_school_number": "212318",
+          "details": [
+            {
+              "detail": [
+                {
+                  "url": "http://www.hebron.edu.hk/各級入學申請",
+                  "error": "HTTP 500 on https://www.hebron.edu.hk/各級入學申請"
+                },
+                {
+                  "url": "http://www.hebron.edu.hk/admissions",
+                  "error": "HTTP 500 on https://www.hebron.edu.hk/admissions"
+                },
+                {
+                  "url": "http://www.hebron.edu.hk/admission",
+                  "error": "HTTP 500 on https://www.hebron.edu.hk/admission"
+                },
+                {
+                  "url": "http://www.hebron.edu.hk/en/admissions",
+                  "error": "HTTP 500 on https://www.hebron.edu.hk/en/admissions"
+                },
+                {
+                  "url": "http://www.hebron.edu.hk/en/admission",
+                  "error": "HTTP 500 on https://www.hebron.edu.hk/en/admission"
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/evidence/packs/AOG_HEBRON_SECONDARY_SCHOOL.json"
+            }
+          ]
+        },
+        {
+          "school_key": "AOG_ST_HILARY_S_COLLEGE",
+          "name": "神召會德萃書院",
+          "edb_school_number": "216224",
+          "details": [
+            {
+              "detail": [
+                {
+                  "url": "https://cs.edb.edcity.hk/tc/index_cs.php",
+                  "error": "redirect_to_homepage"
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/evidence/packs/AOG_ST_HILARY_S_COLLEGE.json"
+            }
+          ]
+        },
+        {
+          "school_key": "BEACON_COLLEGE",
+          "name": "遵理學校",
+          "edb_school_number": "289094",
+          "details": [
+            {
+              "detail": [
+                {
+                  "url": "",
+                  "error": "HTTP 403 on https://www.beacon.com.hk"
+                }
+              ],
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/runs/full_batch_012_offset_0550/evidence/packs/BEACON_COLLEGE.json"
+            }
+          ]
+        }
+      ]
+    },
+    "SUSPECT_FUTURE_DATE": {
+      "schools": 1,
+      "examples": [
+        {
+          "school_key": "CHRISTIAN_ALLIANCE_COLLEGE",
+          "name": "宣道中學",
+          "edb_school_number": "311103",
+          "details": [
+            {
+              "detail": {
+                "field": "interview_date",
+                "value": "2080-07-02"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/101/interview_date"
+            },
+            {
+              "detail": {
+                "field": "result_notification_date",
+                "value": "2080-07-14"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/101/result_notification_date"
+            },
+            {
+              "detail": {
+                "field": "result_notification_date",
+                "value": "2080-07-15"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/101/result_notification_date"
+            },
+            {
+              "detail": {
+                "field": "result_notification_date",
+                "value": "2080-07-16"
+              },
+              "locator": "apps/crawler/output/partitioned/full_20260610_130102_llm_p3/merged/final/records.json#/101/result_notification_date"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
