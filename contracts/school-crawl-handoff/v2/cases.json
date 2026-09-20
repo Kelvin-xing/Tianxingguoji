@@ -1,0 +1,470 @@
+{
+  "contract_version": "2.0",
+  "cases": [
+    {
+      "file": "sample-composite.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unknown-year.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unknown-year-repeat.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unknown-components.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unbound-edb.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unknown-edb.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-failed.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-partial.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-unchanged.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-same-name-other-school.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "sample-known-key-new-url.json",
+      "valid": true,
+      "errors": []
+    },
+    {
+      "file": "invalid/bad-edb.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.edb_school_number",
+          "code": "SCHEMA_PATTERN"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-school-boundary.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.campus_variants[1].edb_scrn",
+          "code": "EDB_SCHOOL_MISMATCH"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-version.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.schema_version",
+          "code": "SCHEMA_CONST"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-extra-school.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.schools",
+          "code": "SCHEMA_EXTRA"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-extra-field.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.base_kind",
+          "code": "SCHEMA_EXTRA"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-missing-field.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.boarding",
+          "code": "SCHEMA_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unknown-year.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[0].identity_mode",
+          "code": "NEW_CANDIDATE_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unknown-grade.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[0].identity_mode",
+          "code": "NEW_CANDIDATE_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-known-mode.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[0].identity_mode",
+          "code": "EXACT_MODE_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-duplicate-key.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[1].fields",
+          "code": "MATCH_KEY_DUPLICATE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-duplicate-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[1].candidate_id",
+          "code": "CANDIDATE_ID_DUPLICATE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-known-null.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.name_zh.value",
+          "code": "KNOWN_VALUE_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-empty-name.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.name_zh.value",
+          "code": "SCHEMA_PATTERN"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-boolean-string.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.boarding.value",
+          "code": "SCHEMA_TYPE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-evidence-missing.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.boarding.evidence",
+          "code": "KNOWN_EVIDENCE_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-evidence-reference.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.boarding.evidence[0].raw_record_id",
+          "code": "RAW_REFERENCE_MISSING"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-confidence-boolean.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.boarding.evidence[0].confidence",
+          "code": "SCHEMA_TYPE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-date.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[0].fields.application_deadline.value",
+          "code": "SCHEMA_FORMAT"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-year.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[0].fields.academic_year.value",
+          "code": "SCHEMA_FORMAT"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-timestamp.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.checked_at",
+          "code": "SCHEMA_FORMAT"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-check-order.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.checked_at",
+          "code": "RUN_TIME_ORDER"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unknown-value.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.name_en.value",
+          "code": "NON_KNOWN_VALUE_MUST_BE_NULL"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unknown-reason.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.name_en.reason",
+          "code": "REASON_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-failed-detail.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.failure",
+          "code": "FAILURE_DETAIL_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-failed-facts.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.change_status",
+          "code": "FAILED_RUN_HAS_FACTS"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unchanged-reference.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.comparison",
+          "code": "COMPARISON_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-unchanged-unknown-year.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[5].identity_mode",
+          "code": "UNCHANGED_HAS_NEW_CANDIDATE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-partial-unreported.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.run.change_status",
+          "code": "PARTIAL_STATUS_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-root-array.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "SCHEMA_TYPE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-edb-newline.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.edb_school_number",
+          "code": "SCHEMA_PATTERN"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-nbsp-name.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.attributes.name_zh.value",
+          "code": "SCHEMA_PATTERN"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-edb-unicode.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school.edb_school_number",
+          "code": "SCHEMA_PATTERN"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-no-school-identity.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.school",
+          "code": "SCHOOL_IDENTITY_REQUIRED"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-grade-order-duplicate.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[5].fields",
+          "code": "MATCH_KEY_DUPLICATE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-other-url-duplicate.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$.admissions[5].fields",
+          "code": "MATCH_KEY_DUPLICATE"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-syntax.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-duplicate.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-nan.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-infinity.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-depth.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    },
+    {
+      "file": "invalid/bad-json-surrogate.json",
+      "valid": false,
+      "errors": [
+        {
+          "path": "$",
+          "code": "JSON_INVALID"
+        }
+      ]
+    }
+  ]
+}

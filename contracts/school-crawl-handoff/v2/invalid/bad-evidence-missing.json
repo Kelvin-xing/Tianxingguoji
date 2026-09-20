@@ -1,0 +1,185 @@
+{
+  "schema": "school-crawl-handoff",
+  "schema_version": "2.0",
+  "package_type": "single-school",
+  "run": {
+    "crawl_id": "synthetic-run-01",
+    "task_id": "synthetic-task-01",
+    "source_config_version": "synthetic-config-1",
+    "started_at": "2026-09-20T01:59:00Z",
+    "checked_at": "2026-09-20T02:00:00Z",
+    "change_status": "changed",
+    "failure": null,
+    "comparison": null
+  },
+  "school": {
+    "internal_school_id": "synthetic-internal-school-01",
+    "edb_school_number": "900001",
+    "crawler_source_id": "synthetic-edb-900001",
+    "identity_evidence": [
+      {
+        "source_url": "https://school.example/admissions",
+        "raw_record_id": "raw-1",
+        "text_quote": "合成测试材料：小学及中学；上午及下午；2026/27 普通招生及插班；不提供住宿。",
+        "locator": "synthetic document",
+        "extraction_method": "synthetic-fixture",
+        "confidence": 1,
+        "collected_at": "2026-09-20T02:00:00Z"
+      }
+    ],
+    "attributes": {
+      "name_zh": {"state": "known", "value": "合成示例学校（非真实学校）", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.attributes.name_zh = \"合成示例学校（非真实学校）\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+      "name_en": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "registration_numbers": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "campus_identifiers": {"state": "known", "value": ["0001", "0002"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.attributes.campus_identifiers = [\"0001\", \"0002\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+      "website_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "profile_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "school_levels": {"state": "known", "value": ["primary", "secondary"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.attributes.school_levels = [\"primary\", \"secondary\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+      "districts": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "addresses": {"state": "known", "value": ["合成地址甲", "合成地址乙"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.attributes.addresses = [\"合成地址甲\", \"合成地址乙\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+      "phones": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "faxes": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "gender_categories": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "sessions": {"state": "known", "value": ["morning", "afternoon"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.attributes.sessions = [\"morning\", \"afternoon\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+      "funding_categories": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "special_education": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_description": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_academic_year": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_source_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "boarding": {"state": "known", "value": false, "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "boarding_description": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+    },
+    "campus_variants": [
+      {
+        "edb_scrn": "900001000111",
+        "campus_identifier": {"state": "known", "value": "0001", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[0].campus_identifier = \"0001\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "address": {"state": "known", "value": "合成地址甲", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[0].address = \"合成地址甲\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "session": {"state": "known", "value": "morning", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[0].session = \"morning\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "school_level": {"state": "known", "value": "primary", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[0].school_level = \"primary\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]}
+      },
+      {
+        "edb_scrn": "900001000232",
+        "campus_identifier": {"state": "known", "value": "0002", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[1].campus_identifier = \"0002\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "address": {"state": "known", "value": "合成地址乙", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[1].address = \"合成地址乙\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "session": {"state": "known", "value": "afternoon", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[1].session = \"afternoon\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "school_level": {"state": "known", "value": "secondary", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.school.campus_variants[1].school_level = \"secondary\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]}
+      }
+    ]
+  },
+  "admissions": [
+    {
+      "candidate_id": "local-1",
+      "identity_mode": "exact",
+      "fields": {
+        "academic_year": {"state": "known", "value": "2026/27", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[0].fields.academic_year = \"2026/27\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "admission_type": {"state": "known", "value": "general", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[0].fields.admission_type = \"general\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "grade": {"state": "known", "value": ["P1"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[0].fields.grade = [\"P1\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "published_date": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_open": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_deadline": {"state": "known", "value": "2026-10-01", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[0].fields.application_deadline = \"2026-10-01\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "application_period": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_method": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "required_materials": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_form_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "admission_page_urls": {"state": "known", "value": ["https://school.example/admissions"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[0].fields.admission_page_urls = [\"https://school.example/admissions\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "exam_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "second_interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "result_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+      }
+    },
+    {
+      "candidate_id": "local-2",
+      "identity_mode": "exact",
+      "fields": {
+        "academic_year": {"state": "known", "value": "2026/27", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[1].fields.academic_year = \"2026/27\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "admission_type": {"state": "known", "value": "general", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[1].fields.admission_type = \"general\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "grade": {"state": "known", "value": ["S1"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[1].fields.grade = [\"S1\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "published_date": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_open": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_deadline": {"state": "known", "value": "2026-10-01", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[1].fields.application_deadline = \"2026-10-01\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "application_period": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_method": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "required_materials": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_form_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "admission_page_urls": {"state": "known", "value": ["https://school.example/admissions"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[1].fields.admission_page_urls = [\"https://school.example/admissions\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "exam_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "second_interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "result_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+      }
+    },
+    {
+      "candidate_id": "local-3",
+      "identity_mode": "exact",
+      "fields": {
+        "academic_year": {"state": "known", "value": "2025/26", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[2].fields.academic_year = \"2025/26\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "admission_type": {"state": "known", "value": "general", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[2].fields.admission_type = \"general\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "grade": {"state": "known", "value": ["P1"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[2].fields.grade = [\"P1\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "published_date": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_open": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_deadline": {"state": "known", "value": "2026-10-01", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[2].fields.application_deadline = \"2026-10-01\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "application_period": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_method": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "required_materials": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_form_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "admission_page_urls": {"state": "known", "value": ["https://school.example/admissions"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[2].fields.admission_page_urls = [\"https://school.example/admissions\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "exam_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "second_interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "result_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+      }
+    },
+    {
+      "candidate_id": "local-4",
+      "identity_mode": "exact",
+      "fields": {
+        "academic_year": {"state": "known", "value": "2026/27", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[3].fields.academic_year = \"2026/27\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "admission_type": {"state": "known", "value": "transfer", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[3].fields.admission_type = \"transfer\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "grade": {"state": "known", "value": ["P1"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[3].fields.grade = [\"P1\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "published_date": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_open": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_deadline": {"state": "known", "value": "2026-10-01", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[3].fields.application_deadline = \"2026-10-01\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "application_period": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_method": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "required_materials": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_form_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "admission_page_urls": {"state": "known", "value": ["https://school.example/admissions"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[3].fields.admission_page_urls = [\"https://school.example/admissions\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "exam_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "second_interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "result_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+      }
+    },
+    {
+      "candidate_id": "local-5",
+      "identity_mode": "exact",
+      "fields": {
+        "academic_year": {"state": "known", "value": "2026/27", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[4].fields.academic_year = \"2026/27\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "admission_type": {"state": "known", "value": "transfer", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[4].fields.admission_type = \"transfer\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "grade": {"state": "known", "value": ["S2", "S3", "S4", "S5"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[4].fields.grade = [\"S2\", \"S3\", \"S4\", \"S5\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "published_date": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_open": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_deadline": {"state": "known", "value": "2026-10-01", "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[4].fields.application_deadline = \"2026-10-01\"", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "application_period": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_method": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "required_materials": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "application_form_urls": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "admission_page_urls": {"state": "known", "value": ["https://school.example/admissions"], "reason": null, "checked_at": "2026-09-20T02:00:00Z", "evidence": [{"source_url": "https://school.example/admissions", "raw_record_id": "raw-1", "text_quote": "$.admissions[4].fields.admission_page_urls = [\"https://school.example/admissions\"]", "locator": "synthetic document", "extraction_method": "synthetic-fixture", "confidence": 1, "collected_at": "2026-09-20T02:00:00Z"}]},
+        "exam_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "second_interview_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+        "result_dates": {"state": "unknown", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+      }
+    }
+  ],
+  "raw_records": [
+    {
+      "id": "raw-1",
+      "source_url": "https://school.example/admissions",
+      "collected_at": "2026-09-20T02:00:00Z",
+      "media_type": "text/plain",
+      "content": "$.school.attributes.name_zh = \"合成示例学校（非真实学校）\"\n$.school.attributes.campus_identifiers = [\"0001\", \"0002\"]\n$.school.attributes.school_levels = [\"primary\", \"secondary\"]\n$.school.attributes.addresses = [\"合成地址甲\", \"合成地址乙\"]\n$.school.attributes.sessions = [\"morning\", \"afternoon\"]\n$.school.attributes.boarding = false\n$.school.campus_variants[0].campus_identifier = \"0001\"\n$.school.campus_variants[0].address = \"合成地址甲\"\n$.school.campus_variants[0].session = \"morning\"\n$.school.campus_variants[0].school_level = \"primary\"\n$.school.campus_variants[1].campus_identifier = \"0002\"\n$.school.campus_variants[1].address = \"合成地址乙\"\n$.school.campus_variants[1].session = \"afternoon\"\n$.school.campus_variants[1].school_level = \"secondary\"\n$.admissions[0].fields.academic_year = \"2026/27\"\n$.admissions[0].fields.admission_type = \"general\"\n$.admissions[0].fields.grade = [\"P1\"]\n$.admissions[0].fields.application_deadline = \"2026-10-01\"\n$.admissions[0].fields.admission_page_urls = [\"https://school.example/admissions\"]\n$.admissions[1].fields.academic_year = \"2026/27\"\n$.admissions[1].fields.admission_type = \"general\"\n$.admissions[1].fields.grade = [\"S1\"]\n$.admissions[1].fields.application_deadline = \"2026-10-01\"\n$.admissions[1].fields.admission_page_urls = [\"https://school.example/admissions\"]\n$.admissions[2].fields.academic_year = \"2025/26\"\n$.admissions[2].fields.admission_type = \"general\"\n$.admissions[2].fields.grade = [\"P1\"]\n$.admissions[2].fields.application_deadline = \"2026-10-01\"\n$.admissions[2].fields.admission_page_urls = [\"https://school.example/admissions\"]\n$.admissions[3].fields.academic_year = \"2026/27\"\n$.admissions[3].fields.admission_type = \"transfer\"\n$.admissions[3].fields.grade = [\"P1\"]\n$.admissions[3].fields.application_deadline = \"2026-10-01\"\n$.admissions[3].fields.admission_page_urls = [\"https://school.example/admissions\"]\n$.admissions[4].fields.academic_year = \"2026/27\"\n$.admissions[4].fields.admission_type = \"transfer\"\n$.admissions[4].fields.grade = [\"S2\", \"S3\", \"S4\", \"S5\"]\n$.admissions[4].fields.application_deadline = \"2026-10-01\"\n$.admissions[4].fields.admission_page_urls = [\"https://school.example/admissions\"]\n合成测试材料：小学及中学；上午及下午；2026/27 普通招生及插班；不提供住宿。"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "school-crawl-handoff",
+  "schema_version": "2.0",
+  "package_type": "single-school",
+  "run": {
+    "crawl_id": "synthetic-run-01",
+    "task_id": "synthetic-task-01",
+    "source_config_version": "synthetic-config-1",
+    "started_at": "2026-09-20T01:59:00Z",
+    "checked_at": "2026-09-20T02:00:00Z",
+    "change_status": "failed",
+    "failure": {
+      "code": "SOURCE_TIMEOUT",
+      "message": "Synthetic timeout",
+      "source_urls": [
+        "https://school.example/admissions"
+      ]
+    },
+    "comparison": null
+  },
+  "school": {
+    "internal_school_id": "synthetic-internal-school-01",
+    "edb_school_number": "900001",
+    "crawler_source_id": "synthetic-edb-900001",
+    "identity_evidence": [],
+    "attributes": {
+      "name_zh": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "name_en": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "registration_numbers": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "campus_identifiers": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "website_urls": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "profile_urls": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "school_levels": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "districts": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "addresses": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "phones": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "faxes": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "gender_categories": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "sessions": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "funding_categories": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "special_education": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_description": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_academic_year": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "tuition_source_urls": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "boarding": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []},
+      "boarding_description": {"state": "failed", "value": null, "reason": "合成材料未提供该字段", "checked_at": "2026-09-20T02:00:00Z", "evidence": []}
+    },
+    "campus_variants": []
+  },
+  "admissions": [],
+  "raw_records": []
+}
