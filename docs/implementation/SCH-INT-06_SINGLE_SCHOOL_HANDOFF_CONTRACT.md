@@ -1,12 +1,17 @@
-# SCH-INT-06 Stage A 第一块：单校结果契约验收记录
+# SCH-INT-06 Stage A 第一块：单校结果契约草案与校验记录
 
-日期：2026-09-20。范围：交接契约、合成样本、Python/TypeScript 离线校验。
+状态：`proposed`，待项目负责人技术审阅。可执行校验已完成，不表示契约已获批准或冻结。
+
+唯一业务依据：**BR-051 / `BR-BASELINE-20260920-v56`**。
+
+日期：2026-09-20。范围：交接契约草案、合成样本、Python/TypeScript 离线校验。
 
 ## 核对依据与交付
 
-- 直接读取 txgj-doc 的 BR-051 `BR-BASELINE-20260920-v56`（学校字段 V1、D4、N2）；没有修改需求。SCH-INT-01 §8.3、§11 作为本票技术目标，文档整体仍是草稿。SCH-INT-05 提供形态参考，不把其中当时的 proposed 状态误读为今天的 D4/N2 状态。
+- 直接读取 txgj-doc 的 BR-051 `BR-BASELINE-20260920-v56`（学校字段 V1、D4、N2）；没有修改需求。原文摘录见[契约草案的 BR-051 原文部分](../../contracts/school-crawl-handoff/v2/README.md#br-051-原文与审阅范围)。
+- 参考资料与既往分析单独列明：SCH-INT-01 §8.3/§11 及 SCH-INT-02/03/05 均不构成依据、批准或授权。按照本票修正后的审阅安排，接口格式是 A 阶段技术审阅产出，本票不实施某份已批准设计。
 - 两仓库都从干净 main 执行 `git pull --ff-only`，均 Already up to date，然后创建 `codex/stage-a-school-handoff-contract`。Tianxingguoji 起点 `3cb746a`；school-tracker 起点 `c2d61e0`。
-- 新契约：`school-crawl-handoff` / `2.0`，文档及完整 schema 在 [契约目录](../../contracts/school-crawl-handoff/v2/README.md)。校验器都不依赖 Schools 运行时、爬虫进程或第三方验证库。
+- 技术契约草案：`school-crawl-handoff` / `2.0`，文档及完整 schema 在 [契约目录](../../contracts/school-crawl-handoff/v2/README.md)。校验器都不依赖 Schools 运行时、爬虫进程或第三方验证库。
 - 11 个合法合成包、41 个非法包及明确的预期错误在 [cases.json](../../contracts/school-crawl-handoff/v2/cases.json)。所有名称、编号、地址、URL、日期及证据均为测试数据，未重新抓取真实网站。
 - 学校字段全量显式表达；EDB 前六位边界、校址多值/组合、跨学段、一校多招生、未知学年每次新候选、未知年级不匹配、来源不作为第四匹配条件、逐字段证据与原采集时间、失败和无变化均有正反例。
 
@@ -93,7 +98,7 @@ PASS 52/52 expected decisions; identical error codes and paths
 
 - changed：只新增本契约和测试资产、两个校验器、对比 runner 与本记录。双侧 schema 和样本都固定在版本目录。
 - evidence：以上为实际离线执行；类型检查只覆盖两个新增 TS 脚本；提交前执行两仓库 `git diff --cached --check`。
-- blocked：本票范围内无阻塞。
+- blocked：草案和离线校验交付无阻塞；技术契约仍待负责人审阅，不能将本记录视为批准。
 - not_run：未运行真实爬虫、产品端到端、数据库、迁移、学校运行时、页面、云部署或业务启用；没有创建 PR、没有合并。
 - risks：通过只证明包的形状及包内自洽，不能证明 EDB/内部编号真实对应、来源获批、事实准确或无变化声明真实。Stage B 再核对任务/来源配置/历史抓取与材料完整性；Stage C 再实现候选、启用和履历。本票不依赖来源关联表、base_kind 双基线、当前指针表等未批准设计，也不冻结 Schools 业务 API。
 - 原 crawler AGENTS 引用的 `/Users/mingjiexing/Desktop/.../AGENTS.md` 在本机不存在；已读取可用的根 AGENTS、docs/AGENTS 和 PRODUCTION_WORKFLOW。本票不触碰那个历史前端路径或发布链。
