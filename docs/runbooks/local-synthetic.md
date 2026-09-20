@@ -16,16 +16,85 @@
 
 ## 当前启动流程
 
+首次准备本机配置时执行：
+
 ```sh
 cp .env.local.example .env.local
+cp .env.migration.local.example .env.migration.local
 pnpm local:up
 pnpm local:ps
-pnpm dev
 ```
 
 `.env.local.example` 中的 `DOCUMENT_FAKE_*` 配置必须保留。文档接口会通过进程内
 确定性假对象传输和假扫描器工作；未明确启用假模式时，传输、扫描和下载均失败关闭。
 真实 S3 接入前，不得把假配置当作生产凭据或部署配置。
+
+拉取新代码后不要直接沿用旧 `.env.local`。先比较 `.env.local.example`，把新增或已替换的
+非秘密配置合并到本机文件；尤其要确认 `LOCAL_SYNTHETIC_ORGANIZATION_ID` 和
+`DOCUMENT_TRANSPORT_MODE=deterministic-fake` 已存在。不要用模板覆盖自行设置的本机密码。
+
+依赖健康后安装当前 baseline，并按顺序写入 Release 1 与 trial 合成数据：
+
+```sh
+pnpm db:plan:local
+pnpm db:baseline:local:dry-run
+ONE_ROLE_BASELINE_APPLY_CONFIRM=tianxing-one-role-v1 pnpm db:baseline:local
+pnpm db:seed:local-release1
+node --env-file=.env.local --env-file=.env.migration.local --conditions=react-server \
+  scripts/db/seed-local-trial-demo.ts
+```
+
+trial seed 同时依赖 `.env.local` 的运行模式/单机构配置和 `.env.migration.local` 的本地
+operator URL。仅加载后者会被配置边界拒绝。成功输出必须为 5 个 principal、2 个 case 和
+2 个 task；失败时脚本回滚，不得手工插入等级或绕过权限约束。
+
+然后以隐藏输入 provision 本地 database-test Founder，并启动开发服务器：
+
+```sh
+read -r -s 'LOCAL_DATABASE_TEST_PASSWORD?Local database-test password: '
+printf '\n'
+printf '%s\n' "$LOCAL_DATABASE_TEST_PASSWORD" \
+  | pnpm db:provision:local-identity --email=founder@env01.test.invalid
+LOCAL_DATABASE_TEST_PASSWORD=''
+unset LOCAL_DATABASE_TEST_PASSWORD
+
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+pnpm dev
+```
+
+启动前的 `lsof` 不应显示 VS Code、SSH 或其他进程已经监听 `127.0.0.1:3000`。VS Code
+Remote SSH 自动转发同一个端口时，本机浏览器请求会进入远端转发而不是 Next.js，表现为页面
+永久加载、HTTP 请求 0 字节超时，同时 Next.js 终端没有请求日志。此时在 VS Code 的
+`Ports` 面板对 3000 选择 `Stop Forwarding Port`，再确认端口只由本机 Next.js 监听。
+
+打开 `http://localhost:3000/login` 完成登录。不要以 `127.0.0.1` 代替浏览器地址；Next.js
+开发模式会把它视为不同 origin。以下两个检查都应立即完成，readiness 返回 HTTP 200、
+`status: ready`，并将 `postgresql`、`postgresql_identity`、
+`postgresql_application`、`document_transport` 四项标为 `ready`：
+
+```sh
+curl --fail http://127.0.0.1:3000/api/v1/health
+curl --fail http://127.0.0.1:3000/api/v1/local/readiness
+```
+
+### 拉取新迁移后的本地重建
+
+Compose 启动不会升级已有数据库。拉取新 migration 后先运行
+`pnpm db:baseline:local:dry-run`；如果现有 `tianxing_baseline.installations` marker 与当前
+manifest 不一致，不得继续沿用旧 seed，也不得手工补表。当前 baseline 只允许安装到空的
+`public` schema，因此本地纯合成数据库需要受控重建。
+
+先停止 Next.js，再确认目标 Compose project 是 `tianxing-local` 且卷内没有真实数据。以下
+命令会永久删除本地 PostgreSQL 合成数据和现有会话：
+
+```sh
+docker compose --env-file .env.local -f compose.local.yml down --volumes
+pnpm local:up
+pnpm local:ps
+```
+
+随后从 baseline dry-run 开始完整重做本节的 baseline、两个 seed、身份 provision 和浏览器
+登录验收。旧会话 Cookie 在重建后无效是预期结果。
 
 ## 历史执行记录（已停用）
 
