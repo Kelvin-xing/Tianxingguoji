@@ -92,7 +92,7 @@
     "db:migrate:neon-test": "pnpm db:baseline:neon-test",
     "db:seed:local-identity": "pnpm db:seed:local-release1",
     "db:seed:local-release1": "node --env-file=.env.migration.local scripts/db/seed-neon-test-release1.ts --apply",
-    "db:seed:local-trial-demo": "node --env-file=.env.migration.local --conditions=react-server scripts/db/seed-local-trial-demo.ts",
+    "db:seed:local-trial-demo": "node --env-file=.env.local --env-file=.env.migration.local --conditions=react-server scripts/db/seed-local-trial-demo.ts",
     "db:seed:neon-test:dry-run": "node --env-file=.env.migration.neon-test scripts/db/seed-neon-test-release1.ts --dry-run",
     "db:seed:neon-test": "node --env-file=.env.migration.neon-test scripts/db/seed-neon-test-release1.ts --apply",
     "db:provision:local-identity": "node --conditions=react-server --env-file=.env.migration.local scripts/db/provision-database-test-identity.ts --password-stdin",

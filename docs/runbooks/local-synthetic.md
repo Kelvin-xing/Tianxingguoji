@@ -40,13 +40,13 @@ pnpm db:plan:local
 pnpm db:baseline:local:dry-run
 ONE_ROLE_BASELINE_APPLY_CONFIRM=tianxing-one-role-v1 pnpm db:baseline:local
 pnpm db:seed:local-release1
-node --env-file=.env.local --env-file=.env.migration.local --conditions=react-server \
-  scripts/db/seed-local-trial-demo.ts
+pnpm db:seed:local-trial-demo
 ```
 
 trial seed 同时依赖 `.env.local` 的运行模式/单机构配置和 `.env.migration.local` 的本地
-operator URL。仅加载后者会被配置边界拒绝。成功输出必须为 5 个 principal、2 个 case 和
-2 个 task；失败时脚本回滚，不得手工插入等级或绕过权限约束。
+operator URL；package 命令会自动加载两份文件。缺少任一文件都会被配置边界拒绝。成功输出
+必须为 5 个 principal、2 个 case 和 2 个 task；失败时脚本回滚，不得手工插入等级或绕过权限
+约束。
 
 然后以隐藏输入 provision 本地 database-test Founder，并启动开发服务器：
 
