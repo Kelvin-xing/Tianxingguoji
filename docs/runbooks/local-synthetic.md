@@ -43,6 +43,35 @@ pnpm db:seed:local-release1
 pnpm db:seed:local-trial-demo
 ```
 
+### 585 所真实学校目录：本地演示种子（非正式接入）
+
+爬虫抓取的真实学校数据目前停留在 `school-tracker`，尚未通过正式接入链路进入
+Tianxingguoji。正式接入属于 `SCH-INT-01` 的 B/C 阶段，且依赖尚未批准的
+`SCH-INT-02` / `SCH-INT-03` 设计。本节命令**不是正式接入**，只是为了让负责人
+在本地界面查看真实目录并发现产品问题的 **local demo seed**。本地能看到数据不代表
+接入已完成，也不代表这些记录已经审核或适合生产使用。
+
+在一个刚完成 baseline、尚未有任何 active school snapshot 的本地数据库中运行：
+
+```sh
+pnpm db:seed:local-demo-school-directory
+```
+
+命令会复用既有 Release 1 的身份、manifest 和 CRM seed，然后把
+`fixtures/local-demo/hk-school-directory.local-demo.seed.json` 写入既有
+`schools_schools`、`schools_snapshots` 和 `schools_snapshot_records` 表；不会写入招生
+记录，不会改生产迁移，也不会连接云端。命令会在发现既有学校 snapshot 时 fail closed，
+因为这些学校历史记录是 immutable；需要重做演示数据时，应在确认只含本地演示数据后按
+本 runbook 的“拉取新迁移后的本地重建”流程重建本地卷。
+
+fixture 明确记录 `school-tracker` 提交 SHA、实际导出时间、输入文件和导出脚本。缺失字段
+保留为 `null`；命令不填默认值、不编造采集时间或来源标识。数据本身和命令名都带有
+`local-demo` 标记，不能作为 `SCH-INT-01` 正式成果或授权依据。
+
+停用方式：正式接入获批并完成迁移、回归和验收后，停止在本地重建流程中运行此命令，保留
+fixture 和本记录作为历史演示证据；不得把它改名后接入生产或云端数据库。正式接入必须由
+批准后的 `SCH-INT-02` / `SCH-INT-03` 方案另行实现。
+
 trial seed 同时依赖 `.env.local` 的运行模式/单机构配置和 `.env.migration.local` 的本地
 operator URL；package 命令会自动加载两份文件。缺少任一文件都会被配置边界拒绝。成功输出
 必须为 5 个 principal、2 个 case 和 2 个 task；失败时脚本回滚，不得手工插入等级或绕过权限

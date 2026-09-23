@@ -104,6 +104,7 @@ export type NeonTestSeedMode = "dry-run" | "apply";
 export type NeonTestSeedPopulation = "empty" | "existing";
 export type NeonTestSeedOptions = Readonly<{
   includeTaskPolicy?: boolean;
+  includeSchools?: boolean;
 }>;
 export type NeonTestRuntimeBoundaryObservation = Readonly<{
   userName: string;
@@ -214,6 +215,7 @@ export async function seedNeonTestRelease1(
   options: NeonTestSeedOptions = {},
 ) {
   const includeTaskPolicy = options.includeTaskPolicy !== false;
+  const includeSchools = options.includeSchools !== false;
   const baseline = await verifyCommittedOneRoleBaseline();
   const baselineManifestSha256 = sha256(baseline.manifestJson);
   const fixture = await loadNeonTestManifestFixture();
@@ -232,22 +234,23 @@ export async function seedNeonTestRelease1(
       target,
       baselineManifestSha256,
       includeTaskPolicy,
+      includeSchools,
     );
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     let populationBefore: NeonTestSeedPopulation | undefined;
     try {
       await setSeedTenantContext(client);
-      await lockSeedTables(client, includeTaskPolicy);
-      populationBefore = await inspectSeedPopulation(client, includeTaskPolicy);
+      await lockSeedTables(client, includeTaskPolicy, includeSchools);
+      populationBefore = await inspectSeedPopulation(client, includeTaskPolicy, includeSchools);
       if (populationBefore === "empty") {
         await insertIdentityAndAccess(client);
         if (includeTaskPolicy) await insertApprovedTaskPolicy(client);
         await insertStudentsAndGuardians(client);
         await insertApprovedManifest(client, fixture);
-        await insertSchools(client);
+        if (includeSchools) await insertSchools(client);
       }
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
-      await assertExactSeedContent(client, fixture, includeTaskPolicy);
+      await assertExactSeedContent(client, fixture, includeTaskPolicy, includeSchools);
       if (mode === "dry-run") {
         await client.query("ROLLBACK");
       } else {
@@ -261,7 +264,7 @@ export async function seedNeonTestRelease1(
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY");
     try {
       await setSeedTenantContext(client);
-      const populationAfter = await inspectSeedPopulation(client, includeTaskPolicy);
+      const populationAfter = await inspectSeedPopulation(client, includeTaskPolicy, includeSchools);
       if (mode === "dry-run" && populationAfter !== populationBefore) {
         throw new NeonTestSeedSafetyError("Neon seed dry-run changed the pre-existing seed state.");
       }
@@ -269,7 +272,7 @@ export async function seedNeonTestRelease1(
         throw new NeonTestSeedSafetyError("Neon seed apply did not produce the complete fixed fixture.");
       }
       if (populationAfter === "existing") {
-        await assertExactSeedContent(client, fixture, includeTaskPolicy);
+        await assertExactSeedContent(client, fixture, includeTaskPolicy, includeSchools);
       }
       await client.query("ROLLBACK");
     } catch (error) {
@@ -309,6 +312,7 @@ async function assertSeedPreflight(
   target: OneRoleBaselineTarget,
   baselineManifestSha256: string,
   includeTaskPolicy: boolean,
+  includeSchools: boolean,
 ): Promise<number> {
   const identity = await client.query<{
     database_name: string;
@@ -372,7 +376,7 @@ async function assertSeedPreflight(
   }
 
   const requiredTables = [
-    ...seedTableRules(includeTaskPolicy).keys(),
+    ...seedTableRules(includeTaskPolicy, includeSchools).keys(),
     ...PROHIBITED_NEON_TEST_SEED_TABLES,
   ];
   const publicTables = await client.query<{ total_count: string; required_count: string }>(`
@@ -384,7 +388,7 @@ async function assertSeedPreflight(
   const totalCount = Number(publicTables.rows[0]?.total_count ?? "0");
   if (
     Number(publicTables.rows[0]?.required_count ?? "0") !== new Set(requiredTables).size ||
-    totalCount < seedTableRules(includeTaskPolicy).size
+    totalCount < seedTableRules(includeTaskPolicy, includeSchools).size
   ) {
     throw new NeonTestSeedSafetyError("Neon seed requires all baseline seed tables.");
   }
@@ -427,12 +431,13 @@ export function validateNeonTestRuntimeBoundary(
 async function inspectSeedPopulation(
   client: Client,
   includeTaskPolicy: boolean,
+  includeSchools: boolean,
 ): Promise<NeonTestSeedPopulation> {
   const counts = { ...Object.fromEntries(Object.keys(NEON_TEST_SEED_COUNTS).map((name) => [name, 0])) } as Record<
     keyof typeof NEON_TEST_SEED_COUNTS,
     number
   >;
-  const allowed = seedTableRules(includeTaskPolicy);
+  const allowed = seedTableRules(includeTaskPolicy, includeSchools);
   const tables = await client.query<{ tablename: string }>(`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
   `);
@@ -458,11 +463,11 @@ async function inspectSeedPopulation(
     }
     counts[rule.countName] = seededCount;
   }
-  return classifyNeonTestSeedPopulation(counts, expectedSeedCounts(includeTaskPolicy));
+  return classifyNeonTestSeedPopulation(counts, expectedSeedCounts(includeTaskPolicy, includeSchools));
 }
 
-async function lockSeedTables(client: Client, includeTaskPolicy: boolean): Promise<void> {
-  const tables = [...seedTableRules(includeTaskPolicy).keys()]
+async function lockSeedTables(client: Client, includeTaskPolicy: boolean, includeSchools: boolean): Promise<void> {
+  const tables = [...seedTableRules(includeTaskPolicy, includeSchools).keys()]
     .sort()
     .map((table) => `public.${quoteIdentifier(table)}`);
   await client.query(`LOCK TABLE ${tables.join(", ")} IN SHARE ROW EXCLUSIVE MODE`);
@@ -470,15 +475,19 @@ async function lockSeedTables(client: Client, includeTaskPolicy: boolean): Promi
 
 function expectedSeedCounts(
   includeTaskPolicy: boolean,
+  includeSchools: boolean,
 ): Readonly<Record<keyof typeof NEON_TEST_SEED_COUNTS, number>> {
   return Object.freeze({
     ...NEON_TEST_SEED_COUNTS,
+    schools: includeSchools ? NEON_TEST_SEED_COUNTS.schools : 0,
+    school_snapshots: includeSchools ? NEON_TEST_SEED_COUNTS.school_snapshots : 0,
+    school_records: includeSchools ? NEON_TEST_SEED_COUNTS.school_records : 0,
     task_policies: includeTaskPolicy ? NEON_TEST_SEED_COUNTS.task_policies : 0,
     task_rules: includeTaskPolicy ? NEON_TEST_SEED_COUNTS.task_rules : 0,
   });
 }
 
-function seedTableRules(includeTaskPolicy = true): ReadonlyMap<
+function seedTableRules(includeTaskPolicy = true, includeSchools = true): ReadonlyMap<
   string,
   Readonly<{
     countName: keyof typeof NEON_TEST_SEED_COUNTS;
@@ -497,10 +506,12 @@ function seedTableRules(includeTaskPolicy = true): ReadonlyMap<
     ["crm_student_guardian_relationships", rule("relationships", "id = ANY($1::uuid[])", [NEON_TEST_STUDENTS.map(({ relationshipId }) => relationshipId)])],
     ["cases_schema_manifests", rule("assessment_manifests", "id = $1", [NEON_TEST_MANIFEST_ID])],
     ["cases_schema_manifest_fields", rule("manifest_fields", "manifest_id = $1", [NEON_TEST_MANIFEST_ID])],
-    ["schools_schools", rule("schools", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ id }) => id)])],
-    ["schools_snapshots", rule("school_snapshots", "id = $1", [NEON_TEST_SCHOOL_SNAPSHOT_ID])],
-    ["schools_snapshot_records", rule("school_records", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ recordId }) => recordId)])],
   ]);
+  if (includeSchools) {
+    rules.set("schools_schools", rule("schools", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ id }) => id)]));
+    rules.set("schools_snapshots", rule("school_snapshots", "id = $1", [NEON_TEST_SCHOOL_SNAPSHOT_ID]));
+    rules.set("schools_snapshot_records", rule("school_records", "id = ANY($1::uuid[])", [NEON_TEST_SCHOOLS.map(({ recordId }) => recordId)]));
+  }
   if (includeTaskPolicy) {
     rules.set(
       "tasks_transition_policies",
@@ -685,8 +696,9 @@ async function assertExactSeedContent(
   client: Client,
   fixture: NeonTestManifestFixture,
   includeTaskPolicy: boolean,
+  includeSchools: boolean,
 ): Promise<void> {
-  if ((await inspectSeedPopulation(client, includeTaskPolicy)) !== "existing") {
+  if ((await inspectSeedPopulation(client, includeTaskPolicy, includeSchools)) !== "existing") {
     throw new NeonTestSeedSafetyError("Neon synthetic seed counts are inconsistent.");
   }
 
@@ -821,35 +833,37 @@ async function assertExactSeedContent(
       field.fieldId, field.valueType, field.visibility, JSON.stringify(field.blockingStages)]);
   }
 
-  for (const school of NEON_TEST_SCHOOLS) {
-    await assertExactRow(client, `
+  if (includeSchools) {
+    for (const school of NEON_TEST_SCHOOLS) {
+      await assertExactRow(client, `
       SELECT count(*)::int AS count
         FROM schools_schools
        WHERE id = $1 AND organization_id = $2 AND source_school_key = $3
          AND record_version = 1
-    `, [school.id, NEON_TEST_ORGANIZATION.id, school.sourceSchoolKey]);
-  }
-  const snapshotFileSet = { kind: "env01_synthetic", source: "inline_seed", version: 1 };
-  await assertExactRow(client, `
+      `, [school.id, NEON_TEST_ORGANIZATION.id, school.sourceSchoolKey]);
+    }
+    const snapshotFileSet = { kind: "env01_synthetic", source: "inline_seed", version: 1 };
+    await assertExactRow(client, `
     SELECT count(*)::int AS count
       FROM schools_snapshots
      WHERE id = $1 AND organization_id = $2 AND source_release_id = $3
        AND manifest_sha256 = $4 AND file_set_json = $5::jsonb
        AND file_set_json->>'kind' = 'env01_synthetic'
        AND status = 'active' AND record_count = $6
-  `, [NEON_TEST_SCHOOL_SNAPSHOT_ID, NEON_TEST_ORGANIZATION.id,
-    NEON_TEST_SCHOOL_SOURCE_RELEASE_ID, neonTestSchoolSnapshotManifestSha256(),
-    JSON.stringify(snapshotFileSet), NEON_TEST_SCHOOLS.length]);
-  for (const school of NEON_TEST_SCHOOLS) {
-    await assertExactRow(client, `
+    `, [NEON_TEST_SCHOOL_SNAPSHOT_ID, NEON_TEST_ORGANIZATION.id,
+      NEON_TEST_SCHOOL_SOURCE_RELEASE_ID, neonTestSchoolSnapshotManifestSha256(),
+      JSON.stringify(snapshotFileSet), NEON_TEST_SCHOOLS.length]);
+    for (const school of NEON_TEST_SCHOOLS) {
+      await assertExactRow(client, `
       SELECT count(*)::int AS count
         FROM schools_snapshot_records
        WHERE id = $1 AND organization_id = $2 AND snapshot_id = $3 AND school_id = $4
          AND source_school_key = $5 AND fields_json = $6::jsonb
          AND provenance_json = $7::jsonb AND record_sha256 = $8
-    `, [school.recordId, NEON_TEST_ORGANIZATION.id, NEON_TEST_SCHOOL_SNAPSHOT_ID,
-      school.id, school.sourceSchoolKey, JSON.stringify(school.fields),
-      JSON.stringify(school.provenance), school.recordSha256]);
+      `, [school.recordId, NEON_TEST_ORGANIZATION.id, NEON_TEST_SCHOOL_SNAPSHOT_ID,
+        school.id, school.sourceSchoolKey, JSON.stringify(school.fields),
+        JSON.stringify(school.provenance), school.recordSha256]);
+    }
   }
 
   for (const table of PROHIBITED_NEON_TEST_SEED_TABLES) {
