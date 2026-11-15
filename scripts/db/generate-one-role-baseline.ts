@@ -249,15 +249,26 @@ async function verifySourceHistory(
       error instanceof Error ? error.message : "Source migration verification failed.",
     );
   }
+  // The approved bootstrap stays frozen. Verify all appended migration checksums,
+  // then verify the original prefix independently; extensions are applied separately.
+  const frozenMigrations = manifest.migrations.slice(0, ONE_ROLE_SOURCE_COUNT);
+  const frozenRaw = [
+    "{", '  "manifest_version": 1,', '  "migrations": [',
+    frozenMigrations.map(({ name, sha256: checksum }) =>
+      `    { "name": ${JSON.stringify(name)}, "sha256": ${JSON.stringify(checksum)} }`,
+    ).join(",\n"),
+    "  ]", "}", "",
+  ].join("\n");
+  const frozenSha256 = sha256(frozenRaw);
   if (
-    manifest.migrations.length !== ONE_ROLE_SOURCE_COUNT ||
-    manifest.manifestSha256 !== ONE_ROLE_SOURCE_MANIFEST_SHA256
+    frozenMigrations.length !== ONE_ROLE_SOURCE_COUNT ||
+    frozenSha256 !== ONE_ROLE_SOURCE_MANIFEST_SHA256
   ) {
     throw new OneRoleBaselineGenerationError(
       `One-role baseline requires the frozen ${ONE_ROLE_SOURCE_COUNT}-source manifest.`,
     );
   }
-  return manifest;
+  return Object.freeze({ ...manifest, migrations: frozenMigrations, manifestSha256: frozenSha256 });
 }
 
 function transformMigration(
