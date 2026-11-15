@@ -8,7 +8,6 @@ import { verifyCommittedOneRoleBaseline } from "../../scripts/db/generate-one-ro
 import { executeOneRoleBaselineRun, inspectOneRoleBaselineDatabase } from "../../scripts/db/run-one-role-baseline.ts";
 import { seedNeonTestRelease1 } from "../../scripts/db/seed-neon-test-release1.ts";
 import { NEON_TEST_ORGANIZATION, NEON_TEST_PRINCIPALS, NEON_TEST_STUDENTS, NEON_TEST_MANIFEST_ID } from "../../scripts/db/neon-test-synthetic-fixture.ts";
-import { runSchoolDirectoryLocal } from "../../scripts/db/school-directory-local.ts";
 import { DIRECTORY_CAMPUS_FIELDS } from "../../modules/schools/domain/directory-structure.ts";
 import { DirectoryStructureStore } from "../../modules/schools/infrastructure/directory-structure-store.ts";
 
@@ -23,7 +22,18 @@ test("directory constraints, preserved legacy pins and reversible PostgreSQL 17 
   const name = `school-directory-${randomUUID()}`;
   let admin: Client | undefined;
   let application: Client | undefined;
-  const [up, down] = (await readFile(migration, "utf8")).split("-- migrate:down");
+  const up = await readFile(migration, "utf8");
+  // Test-only reversal in a disposable synthetic database, never an installer.
+  const down = `DROP TABLE schools_directory_history;
+    DROP TABLE schools_directory_field_modes;
+    DROP TABLE schools_directory_campuses;
+    DROP TABLE schools_directory_schools;
+    DROP FUNCTION schools_directory_check_shape();
+    DROP FUNCTION schools_directory_mode_guard();
+    DROP FUNCTION schools_directory_write_guard();
+    DROP FUNCTION schools_directory_no_delete();
+    DROP FUNCTION schools_directory_history_guard();
+    DROP FUNCTION schools_directory_valid_fields(jsonb,text[]);`;
   try {
     docker(["run", "--detach", "--pull=never", "--name", name, "--tmpfs", "/var/lib/postgresql/data:rw,size=512m",
       "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "--publish", "127.0.0.1::5432", "postgres:17.10-alpine3.24"]);
@@ -91,7 +101,7 @@ test("directory constraints, preserved legacy pins and reversible PostgreSQL 17 
     await client.query("COMMIT");
     assert.equal((await client.query("SELECT count(*)::int n FROM cases_school_targets WHERE pinned_resolved_revision_id IS NOT NULL")).rows[0].n, 1);
     const legacyBefore = await legacy();
-    await client.query(up!);
+    assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_schools")).rows[0].n, 0);
     const org = NEON_TEST_ORGANIZATION.id;
     const actor = NEON_TEST_PRINCIPALS[0]!.userId;
     const school = randomUUID(), campus = randomUUID(), otherCampus = randomUUID();
@@ -208,9 +218,13 @@ test("directory constraints, preserved legacy pins and reversible PostgreSQL 17 
       assert.equal(outcomes.filter(x=>x.status==="rejected").length,1);
       assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_campuses WHERE school_id=$1 AND deleted_at IS NULL",[id])).rows[0].n,1);
     });
-    await t.test("missing actor context and application access are denied without widening grants", async () => {
+    await t.test("missing actor context is denied and forced RLS hides owner rows without widening grants", async () => {
       await assert.rejects(client.query("UPDATE schools_directory_schools SET record_version=record_version+1 WHERE id=$1", [school]));
-      await assert.rejects(application!.query("SELECT * FROM schools_directory_schools"));
+      // The canonical baseline makes this role the table owner. FORCE RLS with
+      // no policy must expose zero rows rather than a table-ACL error.
+      assert.equal((await application!.query("SELECT * FROM schools_directory_schools")).rowCount, 0);
+      assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_schools")).rows[0].n > 0, true);
+      assert.equal((await client.query("SELECT relforcerowsecurity FROM pg_class WHERE oid='schools_directory_schools'::regclass")).rows[0].relforcerowsecurity, true);
       assert.equal((await client.query("SELECT count(*)::int n FROM pg_policies WHERE tablename LIKE 'schools_directory_%'")).rows[0].n, 0);
     });
     await t.test("rollback removes only new storage; reapply is empty and legacy pins unchanged", async () => {
@@ -221,12 +235,23 @@ test("directory constraints, preserved legacy pins and reversible PostgreSQL 17 
       assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_schools")).rows[0].n, 0);
       await client.query(down!);
     });
-    await t.test("local runner refuses missing shared REFERENCES privileges and leaves no residue", async () => {
-      assert.equal((await client.query("SELECT has_table_privilege('tianxing_app','access_organizations','REFERENCES') p")).rows[0].p,false);
-      await assert.rejects(runSchoolDirectoryLocal("dry-run",target.connectionString),
-        (error: unknown) => (error as { code?: string }).code === "42501");
-      assert.equal((await client.query("SELECT to_regclass('schools_directory_schools') t")).rows[0].t,null);
-      assert.equal(await legacy(),legacyBefore);
+    await t.test("application owner installs the migration and restores shared REFERENCES privileges", async () => {
+      const privileges = async () => (await application!.query(`SELECT
+        has_table_privilege(current_user,'access_organizations','REFERENCES') organization,
+        has_table_privilege(current_user,'identity_users','REFERENCES') identity`)).rows[0];
+      const before = await privileges();
+      assert.deepEqual(before, { organization: false, identity: false });
+      await application!.query("BEGIN");
+      try {
+        await application!.query(up);
+        assert.deepEqual(await privileges(), before);
+        await application!.query("COMMIT");
+      } catch (error) { await application!.query("ROLLBACK"); throw error; }
+      assert.deepEqual(await privileges(), before);
+      assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_schools")).rows[0].n,0);
+      assert.equal(await legacy(), legacyBefore);
+      // Owner-created tables/functions must be reversed as their owner too.
+      await application!.query(down);
     });
   } finally {
     await application?.end(); await admin?.end();

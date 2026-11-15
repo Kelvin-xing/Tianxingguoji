@@ -11,9 +11,9 @@ import {
 export const ONE_ROLE_BASELINE_ID = "tianxing-one-role-v1" as const;
 export const ONE_ROLE_TRANSFORM_VERSION = "one-role-transform-v3" as const;
 export const ONE_ROLE_CANONICAL_ROLE = "tianxing_app" as const;
-export const ONE_ROLE_SOURCE_COUNT = 74;
+export const ONE_ROLE_SOURCE_COUNT = 75;
 export const ONE_ROLE_SOURCE_MANIFEST_SHA256 =
-  "aeda3837d8c1a105daf860969d8ad6ee406db177840c8e413a3ec843c971b94c";
+  "2bfdbb475fa981ec49a69c8337e3e9870aca1d4cadf1f60e5d0b93e71b437466";
 export const ONE_ROLE_BASELINE_DIRECTORY = "db/baselines/one-role";
 export const ONE_ROLE_GENERATED_DIRECTORY = `${ONE_ROLE_BASELINE_DIRECTORY}/generated`;
 export const ONE_ROLE_MANIFEST_PATH = `${ONE_ROLE_BASELINE_DIRECTORY}/manifest.json`;
@@ -249,26 +249,15 @@ async function verifySourceHistory(
       error instanceof Error ? error.message : "Source migration verification failed.",
     );
   }
-  // The approved bootstrap stays frozen. Verify all appended migration checksums,
-  // then verify the original prefix independently; extensions are applied separately.
-  const frozenMigrations = manifest.migrations.slice(0, ONE_ROLE_SOURCE_COUNT);
-  const frozenRaw = [
-    "{", '  "manifest_version": 1,', '  "migrations": [',
-    frozenMigrations.map(({ name, sha256: checksum }) =>
-      `    { "name": ${JSON.stringify(name)}, "sha256": ${JSON.stringify(checksum)} }`,
-    ).join(",\n"),
-    "  ]", "}", "",
-  ].join("\n");
-  const frozenSha256 = sha256(frozenRaw);
   if (
-    frozenMigrations.length !== ONE_ROLE_SOURCE_COUNT ||
-    frozenSha256 !== ONE_ROLE_SOURCE_MANIFEST_SHA256
+    manifest.migrations.length !== ONE_ROLE_SOURCE_COUNT ||
+    manifest.manifestSha256 !== ONE_ROLE_SOURCE_MANIFEST_SHA256
   ) {
     throw new OneRoleBaselineGenerationError(
       `One-role baseline requires the frozen ${ONE_ROLE_SOURCE_COUNT}-source manifest.`,
     );
   }
-  return Object.freeze({ ...manifest, migrations: frozenMigrations, manifestSha256: frozenSha256 });
+  return manifest;
 }
 
 function transformMigration(

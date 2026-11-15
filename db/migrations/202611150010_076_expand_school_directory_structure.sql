@@ -1,6 +1,10 @@
 -- Additive directory storage only. No old data, routes, application grants or plans.
 -- Schools BR-051 v68; all commands remain unavailable to application roles.
--- migrate:up
+DO $$ BEGIN
+  IF current_user='tianxing_app' THEN
+    GRANT REFERENCES ON access_organizations,identity_users TO tianxing_app;
+  END IF;
+END; $$;
 CREATE FUNCTION schools_directory_valid_fields(value jsonb, allowed text[])
 RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
  SELECT jsonb_typeof(value) = 'object'
@@ -192,14 +196,9 @@ ALTER TABLE schools_directory_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schools_directory_history FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON schools_directory_schools,schools_directory_campuses,schools_directory_field_modes,schools_directory_history FROM PUBLIC;
 REVOKE ALL ON FUNCTION schools_directory_valid_fields(jsonb,text[]),schools_directory_history_guard(),schools_directory_write_guard(),schools_directory_no_delete(),schools_directory_check_shape(),schools_directory_mode_guard() FROM PUBLIC;
--- migrate:down
-DROP TABLE schools_directory_history;
-DROP TABLE schools_directory_field_modes;
-DROP TABLE schools_directory_campuses;
-DROP TABLE schools_directory_schools;
-DROP FUNCTION schools_directory_check_shape();
-DROP FUNCTION schools_directory_mode_guard();
-DROP FUNCTION schools_directory_write_guard();
-DROP FUNCTION schools_directory_no_delete();
-DROP FUNCTION schools_directory_history_guard();
-DROP FUNCTION schools_directory_valid_fields(jsonb,text[]);
+
+DO $$ BEGIN
+  IF current_user='tianxing_app' THEN
+    REVOKE REFERENCES ON access_organizations,identity_users FROM tianxing_app;
+  END IF;
+END; $$;
