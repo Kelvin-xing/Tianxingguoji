@@ -75,6 +75,7 @@
     { "name": "202609190160_073_capture_school_change_previous_value.sql", "sha256": "7ee83f67e46f9c5cb0fb8fb43555263a1db75052d92a44bd5b84a37422233b3b" },
     { "name": "202609190170_074_enable_trial_employee_invitation.sql", "sha256": "75f11184a85cf7f43a261e2ae7ef093ba4733c863d88dd2fbd55661b7a20b59d" },
     { "name": "202609190180_075_record_invitation_operations.sql", "sha256": "d5c6d2b7cf0c144c0e83b85cb2468991ff4b0f32518fdb2f189e3421d8a0ae42" },
-    { "name": "202611150010_076_expand_school_directory_structure.sql", "sha256": "6acaada0fc18b15170ac342a15d0161d28a8da4d98857a233ff836bc022d2be0" }
+    { "name": "202611150010_076_expand_school_directory_structure.sql", "sha256": "6acaada0fc18b15170ac342a15d0161d28a8da4d98857a233ff836bc022d2be0" },
+    { "name": "202611160010_077_open_school_directory_maintenance.sql", "sha256": "e6f97c92d615dee373bd2b35188b6d23bb8a53a96609315d8fbfb26de8e4a534" }
   ]
 }

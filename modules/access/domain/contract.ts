@@ -49,6 +49,7 @@ export type OrganizationRole = Release1OrganizationRole | "data_reviewer";
 export type RoleBindingStatus = "active" | "revoked";
 
 export const WORKSPACE_CAPABILITIES = Object.freeze([
+  "school_directory.manage",
   "today.read",
   "cases.read",
   "cases.create",

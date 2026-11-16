@@ -221,11 +221,11 @@ test("directory constraints, preserved legacy pins and reversible PostgreSQL 17 
     await t.test("missing actor context is denied and forced RLS hides owner rows without widening grants", async () => {
       await assert.rejects(client.query("UPDATE schools_directory_schools SET record_version=record_version+1 WHERE id=$1", [school]));
       // The canonical baseline makes this role the table owner. FORCE RLS with
-      // no policy must expose zero rows rather than a table-ACL error.
+      // the new maintenance policy still exposes no rows without actor context.
       assert.equal((await application!.query("SELECT * FROM schools_directory_schools")).rowCount, 0);
       assert.equal((await client.query("SELECT count(*)::int n FROM schools_directory_schools")).rows[0].n > 0, true);
       assert.equal((await client.query("SELECT relforcerowsecurity FROM pg_class WHERE oid='schools_directory_schools'::regclass")).rows[0].relforcerowsecurity, true);
-      assert.equal((await client.query("SELECT count(*)::int n FROM pg_policies WHERE tablename LIKE 'schools_directory_%'")).rows[0].n, 0);
+      assert.equal((await client.query("SELECT count(*)::int n FROM pg_policies WHERE tablename LIKE 'schools_directory_%' AND policyname='schools_directory_maintenance'")).rows[0].n, 4);
     });
     await t.test("rollback removes only new storage; reapply is empty and legacy pins unchanged", async () => {
       await client.query(down!);

@@ -47,6 +47,7 @@ export function visibleWorkspaceNavigation(capabilities: readonly WorkspaceCapab
 }
 
 export function capabilityForPath(pathname: string): WorkspaceCapability | null {
+  if (pathname === "/school-directory" || pathname.startsWith("/school-directory/")) return "school_directory.manage";
   const item = ALL_NAVIGATION.find((candidate) => candidate.exact ? pathname === candidate.href : pathname === candidate.href || pathname.startsWith(`${candidate.href}/`));
   return item?.capability ?? null;
 }

@@ -77,7 +77,8 @@ export function compatibilityRoleForRepository(
 
 export function trialWorkspaceCapabilities(principal: TrialPrincipal): readonly WorkspaceCapability[] {
   if (!principal.active) return Object.freeze([]);
-  return principal.level === "founder" ? WORKSPACE_CAPABILITIES : workspaceCapabilitiesForRole(principal.level);
+  return principal.level === "founder" ? WORKSPACE_CAPABILITIES
+    : Object.freeze([...workspaceCapabilitiesForRole(principal.level), "school_directory.manage" as const]);
 }
 
 export interface AccessResolutionFacts {
