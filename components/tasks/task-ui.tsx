@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Button, Empty, Tag } from "@/components/ui/standard";
 
 import { Icon } from "@/components/workspace/Icon";
 import type {
@@ -37,8 +38,24 @@ export function TaskKindPill({ kind }: { readonly kind: TaskKind }) {
   return <span className="status-pill">{label}</span>;
 }
 
-export function TaskListItem({ task }: { readonly task: TaskViewItem }) {
+export function TaskListItem({ task, standard = false }: { readonly task: TaskViewItem; readonly standard?: boolean }) {
   const internal = "case_id" in task;
+  if (standard) {
+    return <li className="ui-inset ui-stack">
+      <Link href={`/tasks/${task.id}`} className="ui-link"><strong>{task.title}</strong></Link>
+      <p>{task.task_brief}</p>
+      <div className="ui-actions ui-muted">
+        <span>到期：<time dateTime={task.due_at}>{formatTaskDate(task.due_at)}</time></span>
+        {internal ? <Link href={`/cases/${task.case_id}`} className="ui-link">案件 {task.case_number}</Link> : null}
+        {internal ? <span>負責人：{task.assignee.label}</span> : null}
+      </div>
+      <div className="ui-actions">
+        <Tag>{task.task_kind === "application_prepare_submit" ? "申請提交" : task.task_kind === "interview_support" ? "面試支援" : "手工任務"}</Tag>
+        {task.is_overdue ? <Tag tone="warning">已逾期</Tag> : null}
+        <Tag tone={task.state === "approved" || task.state === "completed" ? "primary" : task.state === "rejected" || task.state === "cancelled" || task.state === "overdue" ? "warning" : "neutral"}>{taskStateLabel(task.state)}</Tag>
+      </div>
+    </li>;
+  }
   return (
     <li className="py-4 border-b last:border-b-0" style={{ borderColor: "var(--border-subtle)" }}>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 min-w-0">
@@ -68,12 +85,20 @@ export function TaskPageState({
   detail,
   login,
   onRetry,
+  standard = false,
 }: {
   readonly title: string;
   readonly detail: string;
   readonly login?: boolean;
   readonly onRetry?: () => void;
+  readonly standard?: boolean;
 }) {
+  if (standard) {
+    return <Empty title={title} detail={detail} action={<>
+      {login ? <Link href="/login" className="ui-button ui-secondary">重新登入</Link> : null}
+      {onRetry ? <Button variant="secondary" onClick={onRetry}>重新載入</Button> : null}
+    </>} />;
+  }
   return (
     <div className="empty-state">
       <Icon name={onRetry ? "x" : "clipboard"} size={20} />

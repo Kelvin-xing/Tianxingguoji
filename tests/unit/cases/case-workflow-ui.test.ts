@@ -46,7 +46,7 @@ test("pause and resume follow the frozen reason and idempotency contracts", asyn
   const controls = await source("components/cases/CaseStageControls.tsx");
 
   assert.match(controls, /const submissionLocked = useRef\(false\)/);
-  assert.match(controls, /if \(submissionLocked\.current \|\| accessState !== "manage"\) return/);
+  assert.match(controls, /if \(submissionLocked\.current \|\| accessState !== "manage"\)\s+return/);
   assert.match(controls, /attempt\.current\.keyFor\(command\)/);
   assert.match(controls, /attempt\.current\.complete\(\)/);
   assert.match(controls, /action === "pause" \? reason\.trim\(\) : null/);

@@ -237,5 +237,11 @@
     "current": "進行中",
     "future": "未開始",
     "todayGreetingNamed": "{{name}}，今天一起把事情做好。"
+  },
+  "caseUi": {
+    "edit": "編輯資料",
+    "read": "返回閱讀",
+    "missing": "尚有 {{count}} 項未填寫",
+    "viewStudent": "查看學生"
   }
 }

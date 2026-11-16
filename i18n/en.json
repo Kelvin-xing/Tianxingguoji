@@ -237,5 +237,11 @@
     "current": "Current",
     "future": "Not started",
     "todayGreetingNamed": "{{name}}, let’s make progress today."
+  },
+  "caseUi": {
+    "edit": "Edit details",
+    "read": "Back to reading",
+    "missing": "{{count}} fields not filled",
+    "viewStudent": "View student"
   }
 }

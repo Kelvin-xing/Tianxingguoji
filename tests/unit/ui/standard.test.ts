@@ -86,3 +86,14 @@ test('card edit action is grouped with its heading and uses the text button vari
   assert.match(html, /ui-card-heading.*<h2>名稱<\/h2><button[^>]*ui-text/);
   assert.doesNotMatch(html, /ui-primary/);
 });
+
+
+test('case form controls preserve native validation, field identity and disabled state', () => {
+  const input = renderToStaticMarkup(createElement(ui.FieldInput, { type: 'datetime-local', name: 'due_local', required: true, disabled: true, 'aria-label': '到期時間' }));
+  for (const attribute of ['type="datetime-local"', 'name="due_local"', 'required=""', 'disabled=""', 'aria-label="到期時間"']) assert.ok(input.includes(attribute));
+  const area = renderToStaticMarkup(createElement(ui.TextArea, { name: 'reason', required: true, maxLength: 1000, rows: 4 }));
+  assert.match(area, /maxLength="1000"/i);
+  assert.match(area, /name="reason"/);
+  const select = renderToStaticMarkup(createElement(ui.FieldSelect, { name: 'status', defaultValue: 'active' }, createElement('option', { value: 'active' }, '進行中')));
+  assert.match(select, /value="active" selected=""/);
+});

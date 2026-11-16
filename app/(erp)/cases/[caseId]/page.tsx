@@ -8,7 +8,7 @@ import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
 import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
-import { Icon } from '@/components/workspace/Icon'
+import { Page, PageHeader, Card, DataList, Tag } from '@/components/ui/standard'
 import {
   AssessmentServiceError,
   CaseWorkspaceError,
@@ -44,12 +44,21 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   const canOpenPortalAccess = actorRoles.includes('founder') || actor.userId === record.primaryUserId
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6">
-      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}><Link href="/cases" className="quiet-link">案件</Link><Icon name="chevron-right" size={14} /><span>{record.caseNumber}</span></div>
-      <section className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div><div className="eyebrow">案件</div><h2 className="page-title">{record.studentName}<span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {record.caseNumber}</span></h2><p className="page-subtitle">K12 · {record.intakeYear} · {admissionLabel(record.admissionType)} · {record.primaryBindingLabel}</p></div><div className="flex flex-wrap gap-2"><Link href={`/students/${record.studentId}`} className="secondary-button"><Icon name="user" size={15} />查看學生</Link>{canOpenPortalAccess && <Link href={`/cases/${caseId}/access`} className="secondary-button"><Icon name="lock" size={15} />家長入口</Link>}</div></section>
+    <Page>
+      <Link href="/cases" className="ui-link">案件</Link>
+      <PageHeader title={`${record.studentName} · ${record.caseNumber}`}
+        description={`K12 · ${record.intakeYear} · ${admissionLabel(record.admissionType)} · ${record.primaryBindingLabel}`}>
+        <Tag tone={record.stage === 'closed' ? 'neutral' : 'primary'}>{caseStageLabel(record.stage)}</Tag>
+      </PageHeader>
+      <div className="ui-actions">
+        <Link href={`/students/${record.studentId}`} className="ui-button ui-secondary">查看學生</Link>
+        {canOpenPortalAccess && <Link href={`/cases/${caseId}/access`} className="ui-button ui-secondary">家長入口</Link>}
+      </div>
 
       <CaseStageTimeline caseId={caseId} stage={record.stage} primaryOwnerLabel={record.primaryBindingLabel} />
 
+      <div className="ui-columns">
+      <div className="ui-stack">
       <CaseWorkflowProvider initialWorkflowStatus={record.workflowStatus}>
         <CaseWorkflowControls
           key={`${record.id}-${record.stage}-${record.workflowStatus}-${record.recordVersion}`}
@@ -62,14 +71,11 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         <CaseTasksPanel key={`${record.id}-${record.recordVersion}`} caseId={caseId} />
       </CaseWorkflowProvider>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">案件資料</h3><p className="section-detail">顯示本案的基本資料。</p></div><div className="grid grid-cols-2 gap-4"><Info label="案件編號" value={record.caseNumber} /><Info label="學生" value={record.studentName} /><Info label="入學年度" value={String(record.intakeYear)} /><Info label="申請類型" value={admissionLabel(record.admissionType)} /><Info label="主要顧問" value={record.primaryBindingLabel} /><Info label="資料版本" value={String(record.recordVersion)} /></div></section>
-        <section className="workspace-section"><div className="mb-4"><h3 className="section-title">評估設定</h3><p className="section-detail">評估會沿用案件建立時核准的版本。</p></div><div className="grid grid-cols-1 gap-3"><Info label="評估編號" value={record.assessmentId} /><Info label="版本編號" value={record.manifestId} /><Info label="狀態" value={assessmentStatusLabel(assessment.status)} /></div></section>
-      </div>
 
-      {canManageCandidateLists && <Link className="secondary-button" href={`/cases/${caseId}/interviews`}>登記及查看面試邀請</Link>}
 
-      <CaseReferralSourcePanel caseId={caseId} />
+      {canManageCandidateLists && <Link className="ui-button ui-secondary" href={`/cases/${caseId}/interviews`}>登記及查看面試邀請</Link>}
+
+
 
       <AssessmentEditor
         endpoint={`/api/v1/cases/${caseId}/assessment`}
@@ -86,12 +92,39 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         canReviewCandidateLists={canReviewCandidateLists}
       />
 
-    </div>
+      </div>
+      <aside className="ui-stack">
+      <div className="ui-stack">
+        <Card title="案件資料">
+          <p className="ui-muted">顯示本案的基本資料。</p>
+          <DataList items={[
+            { label: '案件編號', value: record.caseNumber },
+            { label: '學生', value: record.studentName },
+            { label: '入學年度', value: String(record.intakeYear) },
+            { label: '申請類型', value: admissionLabel(record.admissionType) },
+            { label: '主要顧問', value: record.primaryBindingLabel },
+            { label: '資料版本', value: String(record.recordVersion) },
+          ].filter(item => item.value !== '')} />
+        </Card>
+        <Card title="評估設定">
+          <p className="ui-muted">評估會沿用案件建立時核准的版本。</p>
+          <DataList items={[
+            { label: '評估編號', value: record.assessmentId },
+            { label: '版本編號', value: record.manifestId },
+            { label: '狀態', value: assessmentStatusLabel(assessment.status) },
+          ].filter(item => item.value !== '')} />
+        </Card>
+      </div>
+      <CaseReferralSourcePanel caseId={caseId} />
+      </aside>
+      </div>
+    </Page>
   )
 }
 
-function Info({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>{label}</div><div className="mt-1 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{value}</div></div>
+function caseStageLabel(value: string): string {
+  const labels: Record<string, string> = { signed: '已簽約', background_collection: '背景資料', school_selection_confirmed: '選校確認', application_in_progress: '申請處理', closed: '已結案' };
+  return labels[value] ?? value;
 }
 
 function admissionLabel(value: string): string {

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react';
+import { useEffect, useRef, type ReactNode, type ComponentPropsWithRef, type HTMLAttributes, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import './standard.css';
 export function Page({ children }: { children?: ReactNode }) {
@@ -15,8 +15,8 @@ export function PageHeader({ title, description, action, children }: { title: st
     {action}
   </header>;
 }
-export function Card({ title, action, children, editing = false }: { title?: string; action?: ReactNode; children?: ReactNode; editing?: boolean }) {
-  return <section className={`ui-card ui-stack${editing ? ' is-editing' : ''}`}>{title && <div className="ui-card-heading"><h2>{title}</h2>{action}</div>}{children}</section>;
+export function Card({ title, action, children, editing = false, className = '', ...props }: HTMLAttributes<HTMLElement> & { title?: string; action?: ReactNode; children?: ReactNode; editing?: boolean }) {
+  return <section {...props} className={`ui-card ui-stack${editing ? ' is-editing' : ''} ${className}`}>{title && <div className="ui-card-heading"><h2>{title}</h2>{action}</div>}{children}</section>;
 }
 export function Hero({ children }: { children?: ReactNode }) {
   return <section className="ui-hero">{children}</section>;
@@ -119,4 +119,16 @@ export function Confirm({ title, children, onCancel, onConfirm, confirmLabel }: 
 export function TranslatedText({ translationKey }: { translationKey: string }) {
   const { t } = useTranslation();
   return <>{t(translationKey)}</>;
+}
+
+/** Bare controls for existing labelled forms; retain their names, refs and native validation. */
+export function FieldInput({ className = '', type, ...props }: ComponentPropsWithRef<'input'>) {
+  const choice = type === 'checkbox' || type === 'radio';
+  return <input {...props} type={type} className={`${choice ? 'ui-choice' : 'ui-input ui-control'} ${className}`} />;
+}
+export function FieldSelect({ className = '', ...props }: ComponentPropsWithRef<'select'>) {
+  return <select {...props} className={`ui-input ui-control ${className}`} />;
+}
+export function TextArea({ className = '', ...props }: ComponentPropsWithRef<'textarea'>) {
+  return <textarea {...props} className={`ui-input ui-control ui-textarea ${className}`} />;
 }

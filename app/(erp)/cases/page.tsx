@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Icon } from '@/components/workspace/Icon'
+import { useTranslation } from 'react-i18next'
+import { Page, PageHeader, Card, Input, Select, Table, Tag, Notice, Empty, Button } from '@/components/ui/standard'
 import type { CaseStage } from '@/types'
 import { ApiClientError } from '@/lib/api/client'
 import { listCases } from '@/components/crm/f2-contract'
@@ -16,19 +17,6 @@ interface CaseListItem {
   admissionType: string
   stage: CaseStage
   updatedAt: string
-  primaryRole: 'founder' | 'advisor'
-}
-
-const stageStyles: Record<CaseStage, { background: string; color: string }> = {
-  signed: { background: '#f1f5f9', color: '#475569' },
-  background_collection: { background: '#fef3c7', color: '#92400e' },
-  school_selection_confirmed: { background: '#dbeafe', color: '#1d4ed8' },
-  application_in_progress: { background: '#e0f2fe', color: '#075985' },
-  interview_preparation: { background: '#ede9fe', color: '#6d28d9' },
-  application_submitted: { background: '#dbeafe', color: '#1e40af' },
-  awaiting_result: { background: '#fef3c7', color: '#92400e' },
-  offer_confirmed: { background: '#dcfce7', color: '#166534' },
-  closed: { background: '#e2e8f0', color: '#475569' },
 }
 
 const caseStageLabels: Record<CaseStage, string> = {
@@ -71,7 +59,6 @@ export default function CasesPage() {
           admissionType: item.admission_type,
           stage: item.stage as CaseStage,
           updatedAt: item.updated_at,
-          primaryRole: 'advisor',
         })))
         setLoadState('ready')
       })
@@ -89,33 +76,44 @@ export default function CasesPage() {
     return matchesSearch && matchesStatus && (stage === 'all' || item.stage === stage)
   }), [caseRecords, search, stage, status])
 
-  return (
-    <div className="max-w-[1500px] mx-auto space-y-6">
-      <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-        <div><div className="eyebrow">K12 案件</div><h2 className="page-title">案件</h2><p className="page-subtitle">管理學生、選校、任務與文件。</p></div>
-        <Link href="/cases/new" className="primary-button"><Icon name="plus" size={16} />建立案件</Link>
-      </section>
-
-      <section className="workspace-section overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4">
-          <div><h3 className="section-title">案件清單</h3><p className="section-detail">共 {caseRecords.length} 宗案件，使用篩選查看需要的資料。</p></div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="search-field"><Icon name="search" size={15} /><input type="search" placeholder="搜尋案件或學生" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="搜尋案件" /></label>
-            <label className="select-field"><Icon name="filter" size={14} /><select value={status} onChange={(event) => setStatus(event.target.value as CaseStatusFilter)} aria-label="案件狀態">{Object.entries(caseStatusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-            <label className="select-field"><Icon name="filter" size={14} /><select value={stage} onChange={(event) => setStage(event.target.value as CaseStage | 'all')} aria-label="案件階段"><option value="all">全部階段</option>{Object.entries(caseStageLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-          </div>
-        </div>
-        {loadState === 'loading' && <div className="empty-state"><Icon name="clock" size={20} /><strong>正在載入案件</strong><span>請稍候。</span></div>}
-        {loadState === 'error' && <div className="empty-state"><Icon name="x" size={20} /><strong>案件服務暫時不可用</strong><span>請稍後重試。</span><button type="button" className="secondary-button mt-3" onClick={loadCases}>重新載入</button></div>}
-        {loadState === 'ready' && <><div className="overflow-x-auto -mx-5"><table className="data-table min-w-[760px]"><thead><tr><th>案件</th><th>學生</th><th>階段</th><th>主要顧問</th><th>更新時間</th><th /></tr></thead><tbody>{filtered.map((item) => <CaseRow key={item.id} item={item} />)}</tbody></table>{filtered.length === 0 && <div className="empty-state">找不到符合條件的案件。</div>}</div><div className="pt-4 flex items-center justify-between text-xs" style={{ color: 'var(--text-muted)' }}><span>顯示 {filtered.length} / {caseRecords.length} 案件</span></div></>}
-      </section>
-    </div>
-  )
+  return <Page>
+    <PageHeader title="案件" description="管理學生、選校、任務與文件。"
+      action={<Link href="/cases/new" className="ui-button ui-primary">建立案件</Link>} />
+    <Card title="案件清單">
+      <p className="ui-muted">{loadState === 'ready' ? <>共 {caseRecords.length} 宗案件，使用篩選查看需要的資料。</> : '使用篩選查看需要的資料。'}</p>
+      <div className="ui-filters">
+        <Input type="search" label="搜尋案件" placeholder="搜尋案件或學生" value={search} onChange={event => setSearch(event.target.value)} />
+        <Select label="案件狀態" value={status} onChange={event => setStatus(event.target.value as CaseStatusFilter)}>
+          {Object.entries(caseStatusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </Select>
+        <Select label="案件階段" value={stage} onChange={event => setStage(event.target.value as CaseStage | 'all')}>
+          <option value="all">全部階段</option>
+          {Object.entries(caseStageLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </Select>
+      </div>
+      {loadState === 'loading' && <Notice>正在載入案件 · 請稍候。</Notice>}
+      {loadState === 'error' && <Notice warning>案件服務暫時不可用 · 請稍後重試。<Button onClick={loadCases}>重新載入</Button></Notice>}
+      {loadState === 'ready' && <>
+        {filtered.length ? <Table headings={['學生', '案件', '階段', '更新時間']}>
+          {filtered.map(item => <CaseRow key={item.id} item={item} />)}
+        </Table> : <Empty title="找不到符合條件的案件。" />}
+        <footer className="ui-pagination">顯示 {filtered.length} / {caseRecords.length} 案件</footer>
+      </>}
+    </Card>
+  </Page>
 }
 
 function CaseRow({ item }: { item: CaseListItem }) {
-  const stageStyle = stageStyles[item.stage]
-  return <tr className="data-row"><td><Link href={`/cases/${item.id}`} className="table-primary">{item.caseNumber}</Link><div className="table-secondary">{item.intakeYear} · {item.admissionType === 'entry' ? '首次入學' : item.admissionType === 's1_admission' ? 'S1 入學' : item.admissionType === 'transfer' ? '插班' : item.admissionType}</div></td><td><Link href={`/students/${item.studentId}`} className="table-primary">{item.studentName || '未命名學生'}</Link></td><td><span className="status-pill" style={stageStyle}>{caseStageLabels[item.stage]}</span></td><td className="table-muted">{item.primaryRole === 'advisor' ? 'Advisor' : 'Founder'}</td><td className="table-muted">{formatDate(item.updatedAt)}</td><td><Link href={`/cases/${item.id}`} className="icon-button" title="查看案件" aria-label="查看案件"><Icon name="chevron-right" size={16} /></Link></td></tr>
+  const { t } = useTranslation()
+  return <tr>
+    <td><Link href={`/cases/${item.id}`} className="ui-link"><strong>{item.studentName || '未命名學生'}</strong></Link>
+      <p className="ui-muted">{item.intakeYear} · {item.admissionType === 'entry' ? '首次入學' : item.admissionType === 's1_admission' ? 'S1 入學' : item.admissionType === 'transfer' ? '插班' : item.admissionType}</p>
+      <Link href={`/students/${item.studentId}`} className="ui-link">{t('caseUi.viewStudent')}</Link>
+    </td>
+    <td><Link href={`/cases/${item.id}`} className="ui-link">{item.caseNumber}</Link></td>
+    <td><Tag tone={item.stage === 'closed' ? 'neutral' : 'primary'}>{caseStageLabels[item.stage]}</Tag></td>
+    <td>{formatDate(item.updatedAt)}</td>
+  </tr>
 }
 
 function formatDate(value: string): string {

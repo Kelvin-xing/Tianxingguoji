@@ -17,6 +17,7 @@ import {
   moveCaseWorkspaceTab,
   workspaceTabHref,
 } from "./workspace-model";
+import "@/components/ui/standard.css";
 import styles from "./CaseWorkspace.module.css";
 
 const TAB_ICONS: Readonly<Record<CaseWorkspaceTab, IconName>> = {
@@ -162,8 +163,8 @@ function WorkspaceTabs({
   }
 
   return (
-    <nav className={styles.tabScroller} aria-label="案件工作區分頁">
-      <div className={styles.tabList} role="tablist" aria-orientation="horizontal">
+    <nav className="ui-route-tabs" aria-label="案件工作區分頁">
+      <div className="ui-route-tab-list" role="tablist" aria-orientation="horizontal">
         {tabs.map((tab) => {
           const selected = tab.id === activeTab;
           return (
@@ -176,7 +177,7 @@ function WorkspaceTabs({
               aria-selected={selected}
               aria-controls="case-workspace-panel"
               tabIndex={selected ? 0 : -1}
-              className={`${styles.tab} ${selected ? styles.tabSelected : ""}`}
+              className={`ui-route-tab ${selected ? "selected" : ""}`}
               onKeyDown={onKeyDown}
             >
               <Icon name={TAB_ICONS[tab.id]} size={15} />
