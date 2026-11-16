@@ -33,6 +33,9 @@ pnpm local:ps
 非秘密配置合并到本机文件；尤其要确认 `LOCAL_SYNTHETIC_ORGANIZATION_ID` 和
 `DOCUMENT_TRANSPORT_MODE=deterministic-fake` 已存在。不要用模板覆盖自行设置的本机密码。
 
+当前 baseline 包含 75 个源迁移、76 个生成文件；安装后 `public` schema 应有 88 张表。
+本次目录结构的四张新表应为空；两个 seed 仍保留原三所合成学校，不向新目录搬运资料。
+
 依赖健康后安装当前 baseline，并按顺序写入 Release 1 与 trial 合成数据：
 
 ```sh
