@@ -19,3 +19,4 @@ export * from "./infrastructure/database-test-resolved-fixture.ts";
 export * from "./infrastructure/postgresql-provisional-repository.ts";
 export * from "./infrastructure/postgresql-change-repository.ts";
 export * from "./infrastructure/postgresql-review-repository.ts";
+export { ManualDirectoryRepository } from './infrastructure/manual-directory-repository.ts';
