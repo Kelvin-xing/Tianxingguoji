@@ -1,6 +1,8 @@
-/** Verbatim distinct values from archived edb_schools_20260610_enriched.xlsx, schools, 632 rows. No school records are imported. */
+/** School stages: project owner decision, 2026-11-16. Other options: verbatim distinct values from archived edb_schools_20260610_enriched.xlsx, schools, 632 rows. No school records are imported. */
 export const DIRECTORY_OPTIONS: Readonly<Record<string, readonly string[]>> = {
   "school_level": [
+    "幼稚園",
+    "小學",
     "中學"
   ],
   "student_gender": [

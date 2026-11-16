@@ -15,13 +15,13 @@ export function PageHeader({ title, description, action, children }: { title: st
     {action}
   </header>;
 }
-export function Card({ title, children, editing = false }: { title?: string; children?: ReactNode; editing?: boolean }) {
-  return <section className={`ui-card ui-stack${editing ? ' is-editing' : ''}`}>{title && <h2>{title}</h2>}{children}</section>;
+export function Card({ title, action, children, editing = false }: { title?: string; action?: ReactNode; children?: ReactNode; editing?: boolean }) {
+  return <section className={`ui-card ui-stack${editing ? ' is-editing' : ''}`}>{title && <div className="ui-card-heading"><h2>{title}</h2>{action}</div>}{children}</section>;
 }
 export function Hero({ children }: { children?: ReactNode }) {
   return <section className="ui-hero">{children}</section>;
 }
-export function Button({ variant = 'weak', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'weak' }) {
+export function Button({ variant = 'weak', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'weak' | 'text' }) {
   return <button {...props} className={`ui-button ui-${variant} ${className}`} />;
 }
 export function Tag({ tone = 'neutral', children }: { tone?: 'primary' | 'warning' | 'neutral'; children?: ReactNode }) {
@@ -32,6 +32,10 @@ export function DataList({ items }: { items: { label: string; value: ReactNode }
     <dt>{i.label}</dt>
     <dd>{i.value}</dd>
   </div>)}</dl>;
+}
+export function FilledData({ items, missingLabel }: { items: { label: string; value: ReactNode; filled: boolean }[]; missingLabel: (count: number) => string }) {
+  const missing = items.filter(item => !item.filled).length;
+  return <><DataList items={items.filter(item => item.filled)} /><p className="ui-muted">{missingLabel(missing)}</p></>;
 }
 export function Input({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return <label className="ui-field">

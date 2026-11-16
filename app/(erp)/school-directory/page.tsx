@@ -6,7 +6,9 @@ import {
   DIRECTORY_CAMPUS_FIELDS, DIRECTORY_OPTIONS, directoryValuesEqual, campusTitle,
   type DirectoryCommand, type DirectoryDetail, type DirectoryListResult, type DirectoryValue,
 } from '@/modules/schools/public';
-import { Page, PageHeader, Card, Button, Tag, DataList, Input, Select, Search, Chips, Table, Pagination, Notice, Empty, Confirm } from '@/components/ui/standard';
+import { Page, PageHeader, Card, Button, Tag, DataList, FilledData, Input, Select, Search, Chips, Table, Pagination, Notice, Empty, Confirm } from '@/components/ui/standard';
+const TECHNICAL_FIELDS = ['source_school_key', 'profile_url'];
+const isFilled = (value: DirectoryValue | undefined) => value !== null && value !== undefined && value !== '';
 type Change = { field: string; value: DirectoryValue; campusId?: string };
 const GROUPS = [
   { key: 'identity', fields: ['school_name_zh', 'school_name_en'] },
@@ -117,6 +119,17 @@ export default function SchoolDirectoryPage() {
   }
   const display = (value: DirectoryValue | undefined) => value === null || value === undefined || value === ''
     ? text('unknown') : typeof value === 'boolean' ? text(value ? 'yes' : 'no') : value;
+  const readItems = (fields: readonly string[], values: Record<string, DirectoryValue>) => fields.map(field => ({
+    label: label(field), value: display(values[field]), filled: isFilled(values[field]),
+  }));
+  const missingLabel = (count: number) => t('schoolDirectory.missingFields', { count });
+  const commonCampusFields = DIRECTORY_CAMPUS_FIELDS.filter(field => !splitFields.includes(field)
+    && detail?.campuses.every(campus => directoryValuesEqual(
+      field, detail.campuses[0]?.fields[field] ?? null, campus.fields[field] ?? null,
+    )));
+  const differentCampusFields = DIRECTORY_CAMPUS_FIELDS.filter(field => !commonCampusFields.includes(field));
+  const missingCampusFields = DIRECTORY_CAMPUS_FIELDS.filter(field => !TECHNICAL_FIELDS.includes(field)
+    && detail?.campuses.some(campus => !isFilled(campus.fields[field]))).length;
   const school = detail?.school;
   const base = school ? { schoolId: school.id, version: school.record_version } : null;
   async function saveGroup() {
@@ -160,8 +173,7 @@ export default function SchoolDirectoryPage() {
       </div>
       <PageHeader
         title={String(school.fields.school_name_zh || school.fields.school_name_en)}
-        description={String(school.fields.school_name_en || '')}
-        action={!editing && <Button variant="primary" onClick={() => begin('identity')}>{text('edit')}</Button>}>
+        description={String(school.fields.school_name_en || '')}>
         <div className="ui-actions">
           <Tag tone={school.origin === 'manual' ? 'primary' : 'neutral'}>{text(school.origin)}</Tag>
           <Tag>{t('schoolDirectory.campusCount', { count: detail.campuses.length })}</Tag>
@@ -169,45 +181,50 @@ export default function SchoolDirectoryPage() {
         </div>
       </PageHeader>
       <div className="ui-grid">
-        {GROUPS.map(group => <Card key={group.key} title={text(group.key)} editing={editing === group.key}>
-          {group.key === 'identity' && <DataList items={[{ label: text('id'), value: school.id }, { label: text('edbNumber'), value: display(school.edb_number) }]} />}
+        {GROUPS.map(group => <Card key={group.key} title={text(group.key)} editing={editing === group.key}
+          action={editing !== group.key && <Button variant="text" disabled={busy || !!editing} onClick={() => begin(group.key)}>{text('edit')}</Button>}>
           {editing === group.key ? <><div className="ui-grid">{group.fields.map(field => editor(field, school.fields[field] ?? null))}</div>{editButtons}</>
-            : <><DataList items={group.fields.map(field => ({ label: label(field), value: display(school.fields[field]) }))} /><div>
-              <Button disabled={busy || !!editing} onClick={() => begin(group.key)}>{text('edit')}</Button>
-            </div></>}
+            : <FilledData items={[
+              ...readItems(group.fields, school.fields),
+              ...(group.key === 'identity' ? [{ label: text('edbNumber'), value: display(school.edb_number), filled: isFilled(school.edb_number) }] : []),
+            ]} missingLabel={missingLabel} />}
         </Card>)}
       </div>
-      <Card title={text('campuses')} editing={editing === 'campuses'}>
+      <Card title={text('campuses')} editing={editing === 'campuses'}
+        action={editing !== 'campuses' && <Button variant="text" disabled={busy || !!editing} onClick={() => begin('campuses')}>{text('edit')}</Button>}>
         <div className="ui-actions">
           <Button variant="secondary" disabled={busy || !!editing} onClick={() => void send({ ...base, action: 'addCampus' })}>{text('addCampus')}</Button>
-          {editing !== 'campuses' && <Button disabled={busy || !!editing} onClick={() => begin('campuses')}>{text('edit')}</Button>}
         </div>
         <div className="ui-grid">
-          {DIRECTORY_CAMPUS_FIELDS.filter(field => !splitFields.includes(field) && detail.campuses.every(c => directoryValuesEqual(field, detail.campuses[0]?.fields[field] ?? null, c.fields[field] ?? null))).map(field => editing === 'campuses'
+          {commonCampusFields.filter(field => editing === 'campuses'
+            || (!TECHNICAL_FIELDS.includes(field) && isFilled(detail.campuses[0]?.fields[field]))).map(field => editing === 'campuses'
             ? editor(field, detail.campuses[0]?.fields[field] ?? null)
             : <DataList key={field} items={[{ label: label(field), value: display(detail.campuses[0]?.fields[field]) }]} />)}
         </div>
         <div className="ui-grid">
           {detail.campuses.map(campus => {
             const title = campusTitle(campus, text('campusFallback'));
-            const different = DIRECTORY_CAMPUS_FIELDS.filter(field => splitFields.includes(field) || !detail.campuses.every(c => directoryValuesEqual(field, detail.campuses[0]?.fields[field] ?? null, c.fields[field] ?? null)));
+            const different = differentCampusFields;
+            const visible = different.filter(field => !TECHNICAL_FIELDS.includes(field) && isFilled(campus.fields[field]));
+            if (editing !== 'campuses' && !visible.length) return null;
             return <div className="ui-inset ui-stack" key={campus.id}>
               <h3>
                 <strong>{title}</strong>
               </h3>
               {editing === 'campuses' ? different.map(field => editor(field, campus.fields[field] ?? null, campus.id, ` · ${title}`))
-                : <DataList items={different.map(field => ({ label: label(field), value: display(campus.fields[field]) }))} />}
-              <div>
+                : <DataList items={visible.map(field => ({ label: label(field), value: display(campus.fields[field]) }))} />}
+              {editing === 'campuses' && <div>
                 <Button
-                  disabled={busy || !!editing || campus.origin === 'edb' || detail.campuses.length === 1}
+                  disabled={busy || campus.origin === 'edb' || detail.campuses.length === 1}
                   onClick={() => setConfirm({ title: text('deleteCampus'), description: title, command: { ...base, action: 'deleteCampus', campusId: campus.id } })}>
                   {text('deleteCampus')}
                 </Button>
                 {(campus.origin === 'edb' || detail.campuses.length === 1) && <p className="ui-muted">{text(campus.origin === 'edb' ? 'edbCampus' : 'lastCampus')}</p>}
-              </div>
+              </div>}
             </div>;
           })}
         </div>
+        {editing !== 'campuses' && <p className="ui-muted">{missingLabel(missingCampusFields)}</p>}
         {editing === 'campuses' ? editButtons : <details>
           <summary className="ui-link">{text('split')}</summary>
           <div className="ui-actions">
@@ -254,6 +271,14 @@ export default function SchoolDirectoryPage() {
           </article>;
         })}
         {!historyAll && <Button onClick={() => setHistoryAll(true)}>{text('viewAll')}</Button>}
+      </details>
+      <details className="ui-history">
+        <summary>{text('systemData')}</summary>
+        <DataList items={[{ label: text('id'), value: school.id }]} />
+        {detail.campuses.map(campus => <div key={campus.id}>
+          <strong>{campusTitle(campus, text('campusFallback'))}</strong>
+          <FilledData items={readItems(TECHNICAL_FIELDS, campus.fields)} missingLabel={missingLabel} />
+        </div>)}
       </details>
     </> : <>
       <PageHeader
@@ -322,7 +347,9 @@ export default function SchoolDirectoryPage() {
       onConfirm={async () => {
         const command = confirm.command;
         setConfirm(null);
-        await send(command);
+        if (await send(command) && command.action === 'deleteCampus') {
+          setDraft(values => Object.fromEntries(Object.entries(values).filter(([, change]) => change.campusId !== command.campusId)));
+        }
       }}>
       <p>{confirm.description}</p>
     </Confirm>}

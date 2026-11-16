@@ -213,7 +213,9 @@
     "all": "All levels",
     "allDistricts": "All districts",
     "school": "School",
-    "noMatches": "No matching schools"
+    "noMatches": "No matching schools",
+    "missingFields": "{{count}} fields not filled",
+    "systemData": "System information"
   },
   "ui": {
     "brand": "Tianxing Education",
@@ -233,6 +235,7 @@
     "noNextAction": "No case next steps",
     "complete": "Complete",
     "current": "Current",
-    "future": "Not started"
+    "future": "Not started",
+    "todayGreetingNamed": "{{name}}, let’s make progress today."
   }
 }

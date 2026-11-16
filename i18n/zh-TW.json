@@ -213,7 +213,9 @@
     "all": "全部學段",
     "allDistricts": "全部地區",
     "school": "學校",
-    "noMatches": "沒有符合條件的學校"
+    "noMatches": "沒有符合條件的學校",
+    "missingFields": "尚有 {{count}} 項未填寫",
+    "systemData": "系統資料"
   },
   "ui": {
     "brand": "天星教育",
@@ -233,6 +235,7 @@
     "noNextAction": "目前沒有案件下一步",
     "complete": "已完成",
     "current": "進行中",
-    "future": "未開始"
+    "future": "未開始",
+    "todayGreetingNamed": "{{name}}，今天一起把事情做好。"
   }
 }

@@ -190,7 +190,7 @@
   font-size:14px;
   color:var(--ui-muted)
 }
-.ui-input {
+.ui-field .ui-input {
   width:100%;
   height:48px;
   border:1px solid var(--ui-input);
@@ -201,7 +201,7 @@
   font:inherit;
   min-width:0
 }
-.ui-search {
+.ui-field .ui-search {
   height:56px;
   border-radius:999px;
   padding-left:24px
@@ -212,7 +212,7 @@
   flex-wrap:wrap;
   align-items:center
 }
-.ui-filters .ui-input {
+.ui-filters .ui-field .ui-input {
   height:44px
 }
 .ui-filters .ui-field {
@@ -464,7 +464,7 @@
   align-items:center;
   gap:8px
 }
-.ui-top-search {
+.ui-field .ui-top-search {
   max-width:180px;
   border-radius:999px;
   height:44px
@@ -580,7 +580,7 @@
 .ui-topbar {
   padding:12px 16px
 }
-.ui-top-search {
+.ui-field .ui-top-search {
   display:none
 }
 .ui-nav {
@@ -628,3 +628,25 @@
 .ui-field > span:empty { display: none; }
 .ui-top-actions > .ui-field { display: block; }
 @media(max-width:600px) { .ui-top-actions > .ui-field { display: none; } }
+
+.ui-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.ui-button.ui-text {
+  background: transparent;
+  border: 0;
+  color: var(--ui-primary);
+  padding: 0 4px;
+  min-width: 44px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.ui-login-brand h1 + p { margin-top: 12px; }
+.ui-field .ui-input:focus {
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 3px var(--ui-soft);
+  outline: none;
+}

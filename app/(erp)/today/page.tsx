@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import { decodeWorkspaceAuth } from '@/components/layout/workspace-navigation'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Page, PageHeader, Card, Hero, Button, Tag, Chips, Empty, Notice } from '@/components/ui/standard'
@@ -86,6 +87,14 @@ export default function TodayPage() {
 }
 function TodayContent() {
   const [state, setState] = useState<TodayState>({ status: 'loading' })
+  const [displayName, setDisplayName] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    requestApi({ path: '/api/v1/auth/me', signal: controller.signal }, decodeWorkspaceAuth)
+      .then(auth => { if (!controller.signal.aborted) setDisplayName(auth.nickname ?? '') })
+      .catch(() => { /* Keep the existing generic greeting when profile data is unavailable. */ })
+    return () => controller.abort()
+  }, [])
   const [focus, setFocus] = useState<TodayFocus>('cases')
   const load = useCallback(() => {
     const controller = new AbortController()
@@ -123,9 +132,9 @@ function TodayContent() {
       </Card>
     </Page>
   }
-  return <TodayReady data={state.data} onRefresh={load} focus={focus} onFocus={setFocus} />
+  return <TodayReady displayName={displayName} data={state.data} onRefresh={load} focus={focus} onFocus={setFocus} />
 }
-function TodayReady({ data, onRefresh, focus, onFocus }: { readonly data: DashboardData; readonly onRefresh: () => void; readonly focus: TodayFocus; readonly onFocus: (focus: TodayFocus) => void }) {
+function TodayReady({ displayName, data, onRefresh, focus, onFocus }: { readonly displayName: string; readonly data: DashboardData; readonly onRefresh: () => void; readonly focus: TodayFocus; readonly onFocus: (focus: TodayFocus) => void }) {
   const blockers = data.cases.reduce((total, item) => total + (item.summary?.blocker_count ?? 0), 0)
   const tasks = data.cases.reduce((total, item) => total + (item.tasks?.open_count ?? 0), 0)
   const unread = data.cases.reduce((total, item) => total + (item.communications?.unread_count ?? 0), 0)
@@ -140,12 +149,12 @@ function TodayReady({ data, onRefresh, focus, onFocus }: { readonly data: Dashbo
   const next = visibleCases.filter(item => item.summary?.next_action).sort((a, b) => (a.summary?.next_action_due_at_ms ?? Infinity) - (b.summary?.next_action_due_at_ms ?? Infinity))
   return <Page>
     <Hero>
-      <div><p>{new Intl.DateTimeFormat('zh-HK', { dateStyle: 'full', timeZone: 'Asia/Hong_Kong' }).format(new Date())}</p><h1>{t('ui.todayGreeting')}</h1><p>{t('ui.todaySummary')}</p></div>
+      <div><p>{new Intl.DateTimeFormat('zh-HK', { dateStyle: 'full', timeZone: 'Asia/Hong_Kong' }).format(new Date())}</p><h1>{displayName ? t('ui.todayGreetingNamed', { name: displayName }) : t('ui.todayGreeting')}</h1><p>{t('ui.todaySummary')}</p></div>
       <div className="ui-metrics">
         {[['cases', '可查看案件', data.cases.length], ['tasks', '未完成任務', tasks], ['blockers', '待處理阻礙', blockers]].map(([key, label, count]) => <button className="ui-metric" key={String(key)} onClick={() => onFocus(key as TodayFocus)}><strong>{count}</strong><span>{label}</span></button>)}
       </div>
     </Hero>
-    <PageHeader title="今日工作" description={view.detail} action={<Button variant="primary" onClick={onRefresh}>重新載入</Button>} />
+    <div className="ui-actions"><Button onClick={onRefresh}>重新載入</Button></div>
     <Chips
       label="工作摘要"
       value={focus}

@@ -60,3 +60,29 @@ test('standard text/background pairs meet 4.5 to 1 contrast', () => {
     assert.ok((Math.max(a, b) + .05) / (Math.min(a, b) + .05) >= 4.5, `${fg}/${bg}`);
   }
 });
+
+test('read-only information omits missing fields but retains false and zero values', () => {
+  const html = renderToStaticMarkup(createElement(ui.FilledData, {
+    items: [
+      { label: '空資料', value: '未知', filled: false },
+      { label: '住宿', value: '否', filled: true },
+      { label: '數量', value: 0, filled: true },
+    ],
+    missingLabel: count => `尚有 ${count} 項未填寫`,
+  }));
+  assert.doesNotMatch(html, /空資料|未知/);
+  assert.match(html, /住宿/);
+  assert.match(html, /<dd>否<\/dd>/);
+  assert.match(html, /<dd>0<\/dd>/);
+  assert.match(html, /尚有 1 項未填寫/);
+  const complete = renderToStaticMarkup(createElement(ui.FilledData, { items: [{ label: '名稱', value: '合成', filled: true }], missingLabel: count => `尚有 ${count} 項未填寫` }));
+  assert.match(complete, /尚有 0 項未填寫/);
+});
+
+test('card edit action is grouped with its heading and uses the text button variant', () => {
+  const html = renderToStaticMarkup(createElement(ui.Card, {
+    title: '名稱', action: createElement(ui.Button, { variant: 'text' }, '編輯資料'),
+  }, '資料'));
+  assert.match(html, /ui-card-heading.*<h2>名稱<\/h2><button[^>]*ui-text/);
+  assert.doesNotMatch(html, /ui-primary/);
+});
