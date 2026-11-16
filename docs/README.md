@@ -48,6 +48,8 @@
 
 仓库根目录的 `evidence/` 保存测试引用的机器可读 fixture 和 manifest，不应移动到 `docs/`。
 
+全站呈现标准与共用组件约束见 [`implementation/UI_STANDARD.md`](implementation/UI_STANDARD.md)。
+
 ## 4. Implementation 文档族
 
 | 前缀 | 文件数 | 范围 | 整体解释 |

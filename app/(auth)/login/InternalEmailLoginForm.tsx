@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react'
 
+import { Button, Input } from '@/components/ui/standard'
 import { Icon } from '@/components/workspace/Icon'
 
 export function InternalEmailLoginForm() {
@@ -19,20 +20,14 @@ export function InternalEmailLoginForm() {
 
   return (
     <form action="/api/v1/auth/login" method="post" encType="application/x-www-form-urlencoded" className="space-y-4" onSubmit={handleSubmit}>
-      <div className="field-label">
-        <label htmlFor="email">帳戶電郵</label>
-        <input id="email" name="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required />
-      </div>
-      <div className="field-label">
-        <label htmlFor="password">密碼</label>
-        <input id="password" name="password" type="password" autoComplete="current-password" required />
-      </div>
-      <button className="primary-button w-full justify-center" type="submit" disabled={pending} aria-busy={pending}>
+      <Input label="帳戶電郵" id="email" name="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} required />
+      <Input label="密碼" id="password" name="password" type="password" autoComplete="current-password" required />
+      <Button variant="primary" type="submit" disabled={pending} aria-busy={pending}>
         <span className="inline-flex min-w-28 items-center justify-center gap-2" aria-live="polite">
           <Icon name={pending ? 'clock' : 'log-in'} size={16} />
           {pending ? '登入中…' : '登入工作台'}
         </span>
-      </button>
+      </Button>
     </form>
   )
 }

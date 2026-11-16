@@ -25,7 +25,7 @@ test('internal email login posts only email and password and exposes no registra
   ])
   assert.match(form, /action="\/api\/v1\/auth\/login"/)
   assert.match(form, /encType="application\/x-www-form-urlencoded"/)
-  assert.deepEqual((form.match(/<input[\s\S]*?\/>/g) ?? []).map(fieldName), ['email', 'password'])
+  assert.deepEqual((form.match(/<(?:input|Input)[\s\S]*?\/>/g) ?? []).map(fieldName), ['email', 'password'])
   assert.doesNotMatch(form, /name="(?:role|next)"|localStorage|sessionStorage/)
   assert.match(page, /帳戶由 Founder 邀請建立；不提供公開註冊。/)
   assert.doesNotMatch(page, /href="\/(?:register|signup|sign-up)"/i)
@@ -44,7 +44,7 @@ test('invite activation reads the one-time token from the URL fragment and initi
 test('database-test posts exactly email and password with browser credential hints', async () => {
   const source = await readFile(formPath, 'utf8')
   const form = source.match(/<form[\s\S]*?>/)?.[0]
-  const inputs = source.match(/<input[\s\S]*?\/>/g) ?? []
+  const inputs = source.match(/<(?:input|Input)[\s\S]*?\/>/g) ?? []
 
   assert.ok(form)
   assert.match(form, /action="\/api\/v1\/auth\/login"/)
@@ -73,7 +73,7 @@ test('database-test posts exactly email and password with browser credential hin
 
 test('pending locks duplicate submits without disabling credential inputs', async () => {
   const source = await readFile(formPath, 'utf8')
-  const inputs = source.match(/<input[\s\S]*?\/>/g) ?? []
+  const inputs = source.match(/<(?:input|Input)[\s\S]*?\/>/g) ?? []
   const preventDefaultCalls = source.match(/event\.preventDefault\(\)/g) ?? []
   const lockIndex = source.indexOf('submissionLocked.current = true')
   const pendingIndex = source.indexOf('setPending(true)')
@@ -92,8 +92,8 @@ test('database-test has explicit labels and no activation or browser storage pat
   const source = await readFile(formPath, 'utf8')
   const stateInitializers = [...source.matchAll(/useState\(([^)]*)\)/g)].map((match) => match[1])
 
-  assert.match(source, /<label htmlFor="email">/)
-  assert.match(source, /<label htmlFor="password">/)
+  assert.match(source, /<Input label="帳戶電郵"[\s\S]*?id="email"/)
+  assert.match(source, /<Input label="密碼"[\s\S]*?id="password"/)
   assert.deepEqual(stateInitializers, ['false'])
   assert.doesNotMatch(source, /\b(?:value|onChange)=/)
   assert.doesNotMatch(source, /localStorage|sessionStorage/)
