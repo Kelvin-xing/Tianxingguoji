@@ -242,6 +242,14 @@
     "edit": "Edit details",
     "read": "Back to reading",
     "missing": "{{count}} fields not filled",
-    "viewStudent": "View student"
+    "viewStudent": "View student",
+    "systemData": "System information",
+    "stageOwners": "View stage owners",
+    "sections": "Case sections",
+    "overview": "Case overview",
+    "assessment": "Background assessment",
+    "applications": "Selection and applications",
+    "interviews": "Interviews",
+    "documents": "Documents"
   }
 }

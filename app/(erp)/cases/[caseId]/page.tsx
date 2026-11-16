@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { CaseSystemDataProvider } from '@/components/cases/CaseSystemData'
+import { casePersonName } from '@/components/cases/case-person-name'
+import { CasePageTabs } from '@/components/cases/CasePageTabs'
 import { notFound, redirect } from 'next/navigation'
 
 import { AssessmentEditor, type AssessmentEditorView } from '@/components/cases/AssessmentEditor'
@@ -8,7 +11,7 @@ import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
 import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
-import { Page, PageHeader, Card, DataList, Tag } from '@/components/ui/standard'
+import { PageHeader, Card, DataList, Tag } from '@/components/ui/standard'
 import {
   AssessmentServiceError,
   CaseWorkspaceError,
@@ -44,12 +47,13 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   const canOpenPortalAccess = actorRoles.includes('founder') || actor.userId === record.primaryUserId
 
   return (
-    <Page>
+    <CaseSystemDataProvider>
       <Link href="/cases" className="ui-link">案件</Link>
       <PageHeader title={`${record.studentName} · ${record.caseNumber}`}
-        description={`K12 · ${record.intakeYear} · ${admissionLabel(record.admissionType)} · ${record.primaryBindingLabel}`}>
+        description={`K12 · ${record.intakeYear} · ${admissionLabel(record.admissionType)} · ${casePersonName(record.primaryBindingLabel)}`}>
         <Tag tone={record.stage === 'closed' ? 'neutral' : 'primary'}>{caseStageLabel(record.stage)}</Tag>
       </PageHeader>
+      <CasePageTabs caseId={caseId} />
       <div className="ui-actions">
         <Link href={`/students/${record.studentId}`} className="ui-button ui-secondary">查看學生</Link>
         {canOpenPortalAccess && <Link href={`/cases/${caseId}/access`} className="ui-button ui-secondary">家長入口</Link>}
@@ -71,12 +75,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
         <CaseTasksPanel key={`${record.id}-${record.recordVersion}`} caseId={caseId} />
       </CaseWorkflowProvider>
 
-
-
-      {canManageCandidateLists && <Link className="ui-button ui-secondary" href={`/cases/${caseId}/interviews`}>登記及查看面試邀請</Link>}
-
-
-
       <AssessmentEditor
         endpoint={`/api/v1/cases/${caseId}/assessment`}
         initialView={serializeAssessmentView(assessment)}
@@ -95,22 +93,10 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       </div>
       <aside className="ui-stack">
       <div className="ui-stack">
-        <Card title="案件資料">
-          <p className="ui-muted">顯示本案的基本資料。</p>
-          <DataList items={[
-            { label: '案件編號', value: record.caseNumber },
-            { label: '學生', value: record.studentName },
-            { label: '入學年度', value: String(record.intakeYear) },
-            { label: '申請類型', value: admissionLabel(record.admissionType) },
-            { label: '主要顧問', value: record.primaryBindingLabel },
-            { label: '資料版本', value: String(record.recordVersion) },
-          ].filter(item => item.value !== '')} />
-        </Card>
         <Card title="評估設定">
-          <p className="ui-muted">評估會沿用案件建立時核准的版本。</p>
+
           <DataList items={[
-            { label: '評估編號', value: record.assessmentId },
-            { label: '版本編號', value: record.manifestId },
+
             { label: '狀態', value: assessmentStatusLabel(assessment.status) },
           ].filter(item => item.value !== '')} />
         </Card>
@@ -118,7 +104,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       <CaseReferralSourcePanel caseId={caseId} />
       </aside>
       </div>
-    </Page>
+    </CaseSystemDataProvider>
   )
 }
 

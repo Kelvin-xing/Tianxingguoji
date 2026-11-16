@@ -1,4 +1,5 @@
 "use client";
+import { CaseSystemDataEntry } from "./CaseSystemData";
 import { useTranslation } from "react-i18next";
 import { DataList } from "@/components/ui/standard";
 import { Card, FieldSelect, Button, FieldInput } from "@/components/ui/standard";
@@ -214,11 +215,11 @@ export function AssessmentEditor({ endpoint, initialView, }: {
             setCompleting(false);
         }
     }
-    return (<Card className="ui-standard" editing={editing} aria-labelledby="assessment-editor-title">
+    return (<><Card className="ui-standard" editing={editing} aria-labelledby="assessment-editor-title">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
         <div>
           <h3 id="assessment-editor-title" tabIndex={-1} className="ui-card-title">學生評估</h3>
-          <p className="ui-muted">15 項資料 · {assessmentStatusLabel(view.status)} · 評估版本 {view.record_version}</p>
+          <p className="ui-muted">15 項資料 · {assessmentStatusLabel(view.status)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {view.access.can_edit && <Button variant="text" disabled={savingAll} onClick={() => setEditing(!editing)}>{t(editing ? "caseUi.read" : "caseUi.edit")}</Button>}
@@ -250,7 +251,7 @@ export function AssessmentEditor({ endpoint, initialView, }: {
                     {field.blocking_stages.includes("background_collection") ? " · 背景收集必填" : " · 後續選校資料"}
                   </div>
                   <div className="mt-1 ui-muted">
-                    {dirty ? "有未儲存修改" : `版本 v${draft.recordVersion}`}
+                    {dirty ? "有未儲存修改" : null}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(150px,12rem)] gap-2 max-w-xl">
@@ -332,12 +333,17 @@ export function AssessmentEditor({ endpoint, initialView, }: {
             : `目前狀態：${assessmentStatusLabel(view.status)}`}
           </div>
         </div>
-        {view.access.can_complete_background ? (<Button type="button" className="" disabled={!canComplete || completing || savingAll} onClick={() => void completeBackgroundCollection()} variant="secondary">
+        {view.access.can_complete_background ? (<Button type="button" className="ui-fit" disabled={!canComplete || completing || savingAll} onClick={() => void completeBackgroundCollection()} variant="secondary">
             <Icon name={completing ? "clock" : "check-circle"} size={15}/>
             {completing ? "處理中" : view.status === "draft" ? "完成背景收集" : "背景收集已完成"}
           </Button>) : null}
       </div>
-    </Card>);
+    </Card><CaseSystemDataEntry><DataList items={[
+      { label: '評估編號', value: view.assessment_id },
+      { label: '版本編號', value: view.manifest_id },
+      { label: '評估版本', value: view.record_version },
+      ...view.schema.fields.map(field => ({label: `${fieldLabel(field)} · 版本`, value: drafts[field.field_id]?.recordVersion ?? 0})),
+    ]} /></CaseSystemDataEntry></>);
 }
 async function fetchCurrentView(endpoint: string): Promise<AssessmentEditorView> {
     return requestApi({ path: endpoint as `/${string}` }, (value) => {

@@ -1,5 +1,6 @@
 "use client";
-import { Card, TextArea, Button } from "@/components/ui/standard";
+import { Card, TextArea, Button, DataList } from "@/components/ui/standard";
+import { CaseSystemDataEntry } from "./CaseSystemData";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/workspace/Icon";
 import { useCaseWorkflowContext } from "@/components/cases/CaseWorkflowContext";
@@ -116,14 +117,14 @@ export function CaseWorkflowControls({ caseId, initialStage, initialWorkflowStat
     const canPause = accessState === "manage" && availableActions.includes("pause");
     const canResume = accessState === "manage" && availableActions.includes("resume");
     const pauseReasonValid = reason.trim().length >= 1 && reason.trim().length <= 1000;
-    return (<Card className="ui-standard" aria-labelledby="case-workflow-command-title" aria-busy={pending}>
+    return (<><Card className="ui-standard" aria-labelledby="case-workflow-command-title" aria-busy={pending}>
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
           <h3 ref={headingRef} id="case-workflow-command-title" className="ui-card-title" tabIndex={-1}>
             案件流程
           </h3>
           <p className="ui-muted">
-            {stageLabel(stage)} · {workflowStatusLabel(workflowStatus)} · 案件版本 {recordVersion}
+            {stageLabel(stage)} · {workflowStatusLabel(workflowStatus)}
           </p>
         </div>
         <span className={`ui-tag ${workflowStatus === "paused" ? "warning" : "primary"}`}>
@@ -160,15 +161,15 @@ export function CaseWorkflowControls({ caseId, initialStage, initialWorkflowStat
                 {pending ? "處理中…" : "確認暫停"}
               </Button>
             </div>
-          </form>) : (<Button type="button" className="mt-4" disabled={pending} onClick={() => {
+          </form>) : (<Button type="button" className="mt-4 ui-fit" disabled={pending} onClick={() => {
                 setPauseEditorOpen(true);
                 setFeedback(null);
-            }} variant="secondary">
+            }} variant="weak">
             <Icon name="activity" size={15}/>
             暫停案件
           </Button>)) : null}
 
-      {canResume ? (<Button type="button" className="mt-4" disabled={pending} onClick={() => void submit("resume")} variant="primary">
+      {canResume ? (<Button type="button" className="mt-4 ui-fit" disabled={pending} onClick={() => void submit("resume")} variant="primary">
           <Icon name={pending ? "clock" : "arrow-right"} size={15}/>
           {pending ? "處理中…" : "恢復案件"}
         </Button>) : null}
@@ -177,7 +178,7 @@ export function CaseWorkflowControls({ caseId, initialStage, initialWorkflowStat
           <Icon name={feedback.kind === "success" ? "check-circle" : "activity"} size={15}/>
           <span>{feedback.message}</span>
         </div>) : null}
-    </Card>);
+    </Card><CaseSystemDataEntry><DataList items={[{label: "案件版本", value: recordVersion}, {label: "資料版本", value: recordVersion}]} /></CaseSystemDataEntry></>);
 }
 function stageLabel(stage: CaseWorkspaceStage): string {
     if (stage === "signed")

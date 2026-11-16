@@ -183,7 +183,6 @@ export function CaseTasksPanel({ caseId }: {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h3 id="case-tasks-heading" className="ui-card-title">案件任務</h3>
-          <p className="ui-muted">集中查看本案的工作內容、負責人和到期時間。</p>
         </div>
         <div className="flex flex-wrap gap-2 sm:shrink-0">
           {state === "ready" && canCreate ? <Button type="button" className="justify-center" onClick={createOpen ? () => setCreateOpen(false) : openCreate} aria-expanded={createOpen} aria-controls="case-task-create-form" variant="text"><Icon name={createOpen ? "x" : "plus"} size={15}/>{createOpen ? "收起新增任務" : "新增任務"}</Button> : null}

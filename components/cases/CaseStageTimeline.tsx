@@ -1,8 +1,9 @@
 "use client";
 
+import { casePersonName } from "./case-person-name";
 import { useEffect, useState } from "react";
 
-import { Card, Progress, DataList } from "@/components/ui/standard";
+import { Card, Progress, DataList, TranslatedText } from "@/components/ui/standard";
 import type { CaseWorkspaceStage } from "@/modules/cases/client";
 import { listTasks, type CaseWorkspaceTask } from "@/modules/tasks/client";
 
@@ -57,12 +58,13 @@ export function CaseStageTimeline({
   const applicationOwners = activeTaskOwners(tasks, ["application_prepare_submit", "interview_support"]);
 
   return <Card title="案件階段">
-    <p className="ui-muted">評估完成後，請按流程逐步推進案件；每個階段均顯示目前負責人。</p>
     <Progress steps={STAGES.map((item, index) => ({
       label: item.label,
       state: index < stageIndex ? 'complete' : index === stageIndex ? 'current' : 'future',
     }))} />
-    <DataList items={STAGES.map(item => ({ label: item.label, value: `負責人：${ownerForStage(item.key, primaryOwnerLabel, applicationOwners)}` }))} />
+    <details className="ui-history"><summary><TranslatedText translationKey="caseUi.stageOwners" /></summary>
+      <DataList items={STAGES.map(item => ({ label: item.label, value: `負責人：${ownerForStage(item.key, casePersonName(primaryOwnerLabel), applicationOwners.map(casePersonName))}` }))} />
+    </details>
   </Card>;
 
 }

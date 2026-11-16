@@ -132,3 +132,10 @@ export function FieldSelect({ className = '', ...props }: ComponentPropsWithRef<
 export function TextArea({ className = '', ...props }: ComponentPropsWithRef<'textarea'>) {
   return <textarea {...props} className={`ui-input ui-control ui-textarea ${className}`} />;
 }
+
+/** Navigation links do not grant access; destination routes retain their authorization. */
+export function RouteTabs({ label, items }: { label: string; items: readonly { href: string; label: string; current?: boolean }[] }) {
+  return <nav className="ui-route-tabs" aria-label={label}><div className="ui-route-tab-list">
+    {items.map(item => <a key={item.href} href={item.href} className={`ui-route-tab${item.current ? ' selected' : ''}`} aria-current={item.current ? 'page' : undefined}>{item.label}</a>)}
+  </div></nav>;
+}

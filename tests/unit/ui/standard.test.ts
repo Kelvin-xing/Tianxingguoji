@@ -97,3 +97,13 @@ test('case form controls preserve native validation, field identity and disabled
   const select = renderToStaticMarkup(createElement(ui.FieldSelect, { name: 'status', defaultValue: 'active' }, createElement('option', { value: 'active' }, '進行中')));
   assert.match(select, /value="active" selected=""/);
 });
+
+test('route tabs retain destination links and use page-current semantics without claiming permissions', () => {
+  const html = renderToStaticMarkup(createElement(ui.RouteTabs, {
+    label: '案件分區', items: [{ href: '/cases/synthetic', label: '案件概覽', current: true }, { href: '/cases/synthetic/documents', label: '文件' }],
+  }));
+  assert.match(html, /aria-label="案件分區"/);
+  assert.match(html, /href="\/cases\/synthetic"[^>]*aria-current="page"/);
+  assert.match(html, /href="\/cases\/synthetic\/documents"/);
+  assert.equal((html.match(/aria-current=/g) ?? []).length, 1);
+});

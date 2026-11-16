@@ -214,7 +214,7 @@ export function CandidateListWorkspace({ caseId, initialCaseRecordVersion, initi
     }
     if (readState === "unavailable") {
         return (<CandidateListState title="候選學校名單暫時不可用" detail="已儲存的版本不受影響。">
-        <Button type="button" className="mt-3" onClick={() => void load()} variant="secondary">
+        <Button type="button" className="mt-3 ui-fit" onClick={() => void load()} variant="weak">
           <Icon name="rotate-ccw" size={15}/>重新載入
         </Button>
       </CandidateListState>);
@@ -223,10 +223,10 @@ export function CandidateListWorkspace({ caseId, initialCaseRecordVersion, initi
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id="candidate-lists-title" className="ui-card-title">候選學校名單</h3>
-          <p className="ui-muted">{versions.length} 個版本 · 案件 v{initialCaseRecordVersion}</p>
+          <p className="ui-muted">{versions.length} 個版本</p>
         </div>
         {canCreateVersion && <Button variant="text" onClick={() => setEditing(!editing)}>建立新版本</Button>}
-        <Button type="button" className="shrink-0" onClick={() => void load()} variant="secondary">
+        <Button type="button" className="shrink-0 ui-fit" onClick={() => void load()} variant="weak">
           <Icon name="rotate-ccw" size={15}/>重新載入
         </Button>
       </div>

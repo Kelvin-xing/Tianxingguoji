@@ -106,9 +106,9 @@ export default function CasesPage() {
 function CaseRow({ item }: { item: CaseListItem }) {
   const { t } = useTranslation()
   return <tr>
-    <td><Link href={`/cases/${item.id}`} className="ui-link"><strong>{item.studentName || '未命名學生'}</strong></Link>
+    <td><div className="ui-name-links"><Link href={`/cases/${item.id}`} className="ui-link"><strong>{item.studentName || '未命名學生'}</strong></Link>
+      <Link href={`/students/${item.studentId}`} className="ui-subtle-link">{t('caseUi.viewStudent')}</Link></div>
       <p className="ui-muted">{item.intakeYear} · {item.admissionType === 'entry' ? '首次入學' : item.admissionType === 's1_admission' ? 'S1 入學' : item.admissionType === 'transfer' ? '插班' : item.admissionType}</p>
-      <Link href={`/students/${item.studentId}`} className="ui-link">{t('caseUi.viewStudent')}</Link>
     </td>
     <td><Link href={`/cases/${item.id}`} className="ui-link">{item.caseNumber}</Link></td>
     <td><Tag tone={item.stage === 'closed' ? 'neutral' : 'primary'}>{caseStageLabels[item.stage]}</Tag></td>

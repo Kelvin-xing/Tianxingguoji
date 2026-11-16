@@ -692,3 +692,7 @@
 
 .ui-standard .border-t, .ui-standard .border-b, .ui-standard .border-y { border-color: var(--ui-line); }
 .ui-columns > .ui-stack, .ui-columns > aside { min-width: 0; }
+
+.ui-fit { width: fit-content; justify-self: start; align-self: flex-start; }
+.ui-name-links { display: flex; gap: 12px; align-items: baseline; flex-wrap: nowrap; width: max-content; }
+.ui-subtle-link { color: var(--ui-muted); font-size: 14px; text-decoration: underline; min-height: 44px; display: inline-flex; align-items: center; }
