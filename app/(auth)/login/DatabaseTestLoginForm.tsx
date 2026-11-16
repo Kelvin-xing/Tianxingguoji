@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react'
 
+import { Button, Input } from '@/components/ui/standard'
 import { Icon } from '@/components/workspace/Icon'
 
 export function DatabaseTestLoginForm() {
@@ -26,32 +27,26 @@ export function DatabaseTestLoginForm() {
       className="space-y-4"
       onSubmit={handleSubmit}
     >
-      <div className="field-label">
-        <label htmlFor="email">帳戶電郵</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="username"
-          autoCapitalize="none"
-          spellCheck={false}
-          required
-        />
-      </div>
+      <Input label="帳戶電郵"
+        id="email"
+        name="email"
+        type="email"
+        autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
+        required
+      />
 
-      <div className="field-label">
-        <label htmlFor="password">密碼</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-        />
-      </div>
+      <Input label="密碼"
+        id="password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        required
+      />
 
-      <button
-        className="primary-button w-full justify-center"
+      <Button
+        variant="primary"
         type="submit"
         disabled={pending}
         aria-busy={pending}
@@ -60,7 +55,7 @@ export function DatabaseTestLoginForm() {
           <Icon name={pending ? 'clock' : 'log-in'} size={16} />
           {pending ? '登入中…' : '登入工作台'}
         </span>
-      </button>
+      </Button>
     </form>
   )
 }

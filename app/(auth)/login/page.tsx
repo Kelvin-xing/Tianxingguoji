@@ -1,3 +1,4 @@
+import { Card, Button, Select, TranslatedText } from '@/components/ui/standard'
 import { Icon } from '@/components/workspace/Icon'
 import { loadAuthMode, type AuthMode } from '@/modules/identity/server'
 
@@ -54,67 +55,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const visibleError = getLoginError(authMode, errorCode)
 
   return (
-    <div
-      className="min-h-screen grid lg:grid-cols-[1.05fr_.95fr]"
-      style={{ background: 'var(--bg)' }}
-    >
-      <div
-        className="hidden lg:flex flex-col justify-between p-12 xl:p-16"
-        style={{ background: 'var(--sidebar-bg)', color: '#fff' }}
-      >
-        <div>
-          <BrandMark inverted />
-          <div className="max-w-md mt-24">
-            <div className="eyebrow" style={{ color: '#93c5fd' }}>
-              內部工作台
-            </div>
-            <h1 className="text-4xl font-semibold leading-tight mt-3">
-              把每一個案件，<br />變成可協作的工作面。
-            </h1>
-            <p className="mt-5 text-sm leading-7" style={{ color: 'var(--sidebar-text)' }}>
-              從學生資料到案件、選校、文件與任務，所有需要判斷的資訊集中在同一個工作區。
-            </p>
-          </div>
-        </div>
-        <div className="text-xs" style={{ color: 'var(--sidebar-text-muted)' }}>
-          {presentation.desktopFooter}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md min-w-0">
-          <div className="lg:hidden mb-12">
-            <BrandMark />
-          </div>
-
-          <div className="mb-8">
-            <div className="eyebrow">{presentation.eyebrow}</div>
-            <h2 className="text-2xl font-semibold mt-2" style={{ color: 'var(--text-primary)' }}>
-              登入工作台
-            </h2>
-            <p className="mt-2 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
-              {presentation.description}
-            </p>
-          </div>
-
-          {visibleError ? (
-            <div className="form-error mb-4" role="alert">
-              <Icon name="shield" size={15} />
-              <span>{visibleError}</span>
-            </div>
-          ) : null}
-
+    <div className="ui-login">
+      <section className="ui-login-brand">
+        <div className="ui-brand"><TranslatedText translationKey="ui.brand" /></div>
+        <div><h1>把每一個案件，<br />變成可協作的工作面。</h1><p>從學生資料到案件、選校、文件與任務，所有需要判斷的資訊集中在同一個工作區。</p></div>
+        <p>{presentation.desktopFooter}</p>
+      </section>
+      <section className="ui-login-main">
+        <Card><div><h2>登入工作台</h2><p className="ui-muted">{presentation.description}</p></div>
+          {visibleError && <div className="ui-notice warning" role="alert">{visibleError}</div>}
           <LoginEntry authMode={authMode} />
-
-          <div
-            className="mt-8 flex items-start gap-2 text-xs leading-5"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <Icon name="shield" size={15} className="shrink-0 mt-0.5" />
-            <span>{presentation.securityNotice}</span>
-          </div>
-        </div>
-      </div>
+          <p className="ui-muted">{presentation.securityNotice}</p>
+        </Card>
+      </section>
     </div>
   )
 }
@@ -123,10 +76,7 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
   if (authMode === 'local-synthetic') {
     return (
       <form action="/api/v1/auth/login" method="post" className="space-y-4">
-        <label className="block text-sm font-medium" htmlFor="role">
-          登入角色
-        </label>
-        <select className="w-full" id="role" name="role" defaultValue="founder">
+        <Select label="登入角色" id="role" name="role" defaultValue="founder">
           <option value="founder">Founder</option>
           <option value="admin">Admin</option>
           <option value="advisor">Advisor</option>
@@ -135,11 +85,11 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
           <option value="l2_international">L2 国际学校</option>
           <option value="l2_local">L2 本地学校</option>
           <option value="l3">L3</option>
-        </select>
-        <button className="primary-button w-full justify-center" type="submit">
+        </Select>
+        <Button variant="primary" type="submit">
           <Icon name="log-in" size={16} />
           使用角色登入
-        </button>
+        </Button>
       </form>
     )
   }
@@ -151,7 +101,7 @@ function LoginEntry({ authMode }: { authMode: AuthMode | null }) {
   if (authMode === 'cognito') {
     return (
       <>
-        <a href="/api/v1/auth/login" className="primary-button w-full justify-center">
+        <a href="/api/v1/auth/login" className="ui-button ui-primary ui-full">
           <Icon name="log-in" size={16} />
           使用公司帳戶登入
         </a>
@@ -221,28 +171,4 @@ function getLoginError(authMode: AuthMode | null, errorCode: string | undefined)
     return FALLBACK_LOGIN_ERROR
   }
   return LOGIN_ERROR_MESSAGES[errorCode] ?? FALLBACK_LOGIN_ERROR
-}
-
-function BrandMark({ inverted = false }: { inverted?: boolean }) {
-  return (
-    <div className="flex items-center gap-3 min-w-0">
-      <div
-        className="w-9 h-9 rounded-md flex shrink-0 items-center justify-center"
-        style={{ background: 'var(--sidebar-active)', color: '#fff' }}
-      >
-        <Icon name="sparkles" size={18} />
-      </div>
-      <div className="min-w-0">
-        <div className="font-semibold" style={inverted ? undefined : { color: 'var(--text-primary)' }}>
-          天星顧問
-        </div>
-        <div
-          className="text-xs"
-          style={{ color: inverted ? 'var(--sidebar-text-muted)' : 'var(--text-muted)' }}
-        >
-          案件工作台
-        </div>
-      </div>
-    </div>
-  )
 }

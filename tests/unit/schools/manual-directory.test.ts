@@ -1,36 +1,50 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseDirectoryCommand, directoryValuesEqual } from '../../../modules/schools/public.ts';
+import { parseDirectoryCommand, directoryValuesEqual, parseDirectoryListQuery, campusTitle } from '../../../modules/schools/public.ts';
 import { trialWorkspaceCapabilities, workspaceCapabilitiesForRole, type TrialPrincipal } from '../../../modules/access/public.ts';
 import { capabilityForPath, visibleWorkspaceNavigation, WORKSPACE_NAVIGATION } from '../../../components/layout/workspace-navigation.ts';
-const id='51000000-0000-4000-8000-000000000101';
-test('directory accepts one name but rejects empty, invalid field/value, identity edits and malformed versions',()=>{
-  assert.equal(parseDirectoryCommand({action:'create',nameZh:'合成',nameEn:''}).action,'create');
-  for(const value of [null,{}, {action:'create',nameZh:' ',nameEn:'\t'},
-    {action:'field',schoolId:id,version:0,field:'phone',value:'1'},
-    {action:'field',schoolId:id,version:1,field:'edb_number',value:'123456'},
-    {action:'field',schoolId:id,version:1,field:'phone',value:true},
-    {action:'field',schoolId:id,version:1,field:'has_boarding',value:'false'}]) assert.throws(()=>parseDirectoryCommand(value));
+const id = '51000000-0000-4000-8000-000000000101';
+test('directory accepts one name but rejects empty, invalid field/value, identity edits and malformed versions', () => {
+  assert.equal(parseDirectoryCommand({ action: 'create', nameZh: '合成', nameEn: '' }).action, 'create');
+  for (const value of [null, {}, { action: 'create', nameZh: ' ', nameEn: '\t' },
+    { action: 'field', schoolId: id, version: 0, field: 'phone', value: '1' },
+    { action: 'field', schoolId: id, version: 1, field: 'edb_number', value: '123456' },
+    { action: 'field', schoolId: id, version: 1, field: 'phone', value: true },
+    { action: 'field', schoolId: id, version: 1, field: 'has_boarding', value: 'false' }]) assert.throws(() => parseDirectoryCommand(value));
 });
-test('website comparison ignores only the three approved differences',()=>{
-  assert.equal(directoryValuesEqual('official_website','http://www.synthetic.invalid/','https://synthetic.invalid'),true);
-  assert.equal(directoryValuesEqual('official_website','https://synthetic.invalid/a','https://synthetic.invalid/b'),false);
-  assert.equal(directoryValuesEqual('profile_url','http://synthetic.invalid','https://synthetic.invalid'),false);
-  assert.equal(directoryValuesEqual('phone','555 1','5551'),false);
+test('website comparison ignores only the three approved differences', () => {
+  assert.equal(directoryValuesEqual('official_website', 'http://www.synthetic.invalid/', 'https://synthetic.invalid'), true);
+  assert.equal(directoryValuesEqual('official_website', 'https://synthetic.invalid/a', 'https://synthetic.invalid/b'), false);
+  assert.equal(directoryValuesEqual('profile_url', 'http://synthetic.invalid', 'https://synthetic.invalid'), false);
+  assert.equal(directoryValuesEqual('phone', '555 1', '5551'), false);
 });
-test('new directory capability is additive for active trial levels; old capabilities and navigation stay unchanged',()=>{
-  for(const level of ['founder','l1','l2','l3'] as const){
-    const principal={level,active:true} as TrialPrincipal;
-    const caps=trialWorkspaceCapabilities(principal);
+test('new directory capability is additive for active trial levels; old capabilities and navigation stay unchanged', () => {
+  for (const level of ['founder', 'l1', 'l2', 'l3'] as const) {
+    const principal = { level, active: true } as TrialPrincipal;
+    const caps = trialWorkspaceCapabilities(principal);
     assert.ok(caps.includes('school_directory.manage'));
-    if(level!=='founder') assert.deepEqual(caps.filter(c=>c!=='school_directory.manage'),workspaceCapabilitiesForRole(level));
-    assert.deepEqual(trialWorkspaceCapabilities({...principal,active:false}),[]);
-    assert.ok(!visibleWorkspaceNavigation(caps).some(n=>n.href==='/school-directory'));
+    if (level !== 'founder') assert.deepEqual(caps.filter(c => c !== 'school_directory.manage'), workspaceCapabilitiesForRole(level));
+    assert.deepEqual(trialWorkspaceCapabilities({ ...principal, active: false }), []);
+    assert.ok(!visibleWorkspaceNavigation(caps).some(n => n.href === '/school-directory'));
   }
-  for(const n of WORKSPACE_NAVIGATION) assert.equal(capabilityForPath(n.href),n.capability);
-  assert.equal(capabilityForPath('/schools/example'),'schools.read');
-  assert.equal(capabilityForPath('/selector'),null);
-  assert.equal(capabilityForPath('/school-directory'),'school_directory.manage');
-  assert.equal(capabilityForPath('/school-directory-other'),null);
-  for(const role of ['advisor','admin','contractor','data_reviewer'] as const) assert.ok(!workspaceCapabilitiesForRole(role).includes('school_directory.manage'));
+  for (const n of WORKSPACE_NAVIGATION) assert.equal(capabilityForPath(n.href), n.capability);
+  assert.equal(capabilityForPath('/schools/example'), 'schools.read');
+  assert.equal(capabilityForPath('/selector'), null);
+  assert.equal(capabilityForPath('/school-directory'), 'school_directory.manage');
+  assert.equal(capabilityForPath('/school-directory-other'), null);
+  for (const role of ['advisor', 'admin', 'contractor', 'data_reviewer'] as const) assert.ok(!workspaceCapabilitiesForRole(role).includes('school_directory.manage'));
+});
+
+test('group command rejects repeated field targets and retains null values', () => {
+  const change = { field: 'phone', value: null };
+  assert.equal(parseDirectoryCommand({ action: 'fields', schoolId: id, version: 1, changes: [change] }).action, 'fields');
+  assert.throws(() => parseDirectoryCommand({ action: 'fields', schoolId: id, version: 1, changes: [change, change] }));
+  assert.throws(() => parseDirectoryCommand({ action: 'fields', schoolId: id, version: 1, changes: [] }));
+});
+test('list query is bounded and campus titles prefer recognizable existing data', () => {
+  assert.equal(parseDirectoryListQuery(new URLSearchParams()).pageSize, 20);
+  for (const text of ['page=0', 'page=1.5', 'pageSize=101', 'pageSize=-1']) assert.throws(() => parseDirectoryListQuery(new URLSearchParams(text)));
+  const campus = { id, display_number: 7, origin: 'manual' as const, fields: {}, record_version: 1 };
+  assert.equal(campusTitle(campus, '校址'), '校址 7');
+  assert.equal(campusTitle({ ...campus, fields: { address: '合成地址', school_session: '全日' } }, '校址'), '合成地址 · 全日');
 });

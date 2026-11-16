@@ -79,8 +79,8 @@ test("Today consumes the typed v1 client rather than preview case data", async (
   const today = await readFile(new URL("../../../app/(erp)/today/page.tsx", import.meta.url), "utf8");
   assert.match(today, /requestApi/);
   assert.match(today, /\/api\/v1\/dashboard\/cases/);
-  assert.match(today, /LoadingState/);
-  assert.match(today, /UnavailableState/);
+  assert.match(today, /loading: \['正在載入今日工作'/);
+  assert.match(today, /unavailable: \['今日工作暫時無法使用'/);
   assert.doesNotMatch(today, /previewCaseWorkspaceAdapter/);
 });
 
@@ -90,10 +90,10 @@ test("sidebar shows the nickname and today metrics filter before panel navigatio
 
   assert.match(sidebar, /effectiveAuth\.nickname\?\.trim\(\) \|\| '未设置昵称'/);
   assert.doesNotMatch(sidebar, /roleLabel\(effectiveAuth\.role\)/);
-  assert.match(today, /type="button" role="tab"/);
-  assert.match(today, /onClick=\{\(\) => onSelect\(focus\)\}/);
+  assert.match(today, /<Chips\s+label="工作摘要"/);
+  assert.match(today, /onChange=\{v => onFocus\(v as TodayFocus\)\}/);
   assert.match(today, /focus === 'tasks'/);
   assert.match(today, /focus === 'notifications'/);
-  assert.match(today, /<Link href=\{view\.href\} className="quiet-link">查看全部/);
+  assert.match(today, /<Link href=\{view\.href\} className="ui-link">查看全部/);
   assert.doesNotMatch(today, /<Metric href=/);
 });
