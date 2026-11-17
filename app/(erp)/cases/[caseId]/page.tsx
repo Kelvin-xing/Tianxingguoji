@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { CaseSystemDataProvider } from '@/components/cases/CaseSystemData'
-import { casePersonName } from '@/components/cases/case-person-name'
+import { CaseHeader } from '@/components/cases/CaseHeader'
 import { CasePageTabs } from '@/components/cases/CasePageTabs'
 import { notFound, redirect } from 'next/navigation'
 
@@ -11,7 +11,7 @@ import { CaseStageTimeline } from '@/components/cases/CaseStageTimeline'
 import { CaseReferralSourcePanel } from '@/components/cases/CaseReferralSourcePanel'
 import { CaseWorkflowProvider } from '@/components/cases/CaseWorkflowContext'
 import { CaseTasksPanel } from '@/components/tasks/CaseTasksPanel'
-import { PageHeader, Card, DataList, Tag } from '@/components/ui/standard'
+import { Card, DataList } from '@/components/ui/standard'
 import {
   AssessmentServiceError,
   CaseWorkspaceError,
@@ -49,10 +49,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
   return (
     <CaseSystemDataProvider>
       <Link href="/cases" className="ui-link">案件</Link>
-      <PageHeader title={`${record.studentName} · ${record.caseNumber}`}
-        description={`K12 · ${record.intakeYear} · ${admissionLabel(record.admissionType)} · ${casePersonName(record.primaryBindingLabel)}`}>
-        <Tag tone={record.stage === 'closed' ? 'neutral' : 'primary'}>{caseStageLabel(record.stage)}</Tag>
-      </PageHeader>
+      <CaseHeader record={record} />
       <CasePageTabs caseId={caseId} />
       <div className="ui-actions">
         <Link href={`/students/${record.studentId}`} className="ui-button ui-secondary">查看學生</Link>
@@ -106,15 +103,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ cas
       </div>
     </CaseSystemDataProvider>
   )
-}
-
-function caseStageLabel(value: string): string {
-  const labels: Record<string, string> = { signed: '已簽約', background_collection: '背景資料', school_selection_confirmed: '選校確認', application_in_progress: '申請處理', closed: '已結案' };
-  return labels[value] ?? value;
-}
-
-function admissionLabel(value: string): string {
-  return value === 'entry' ? '首次入學' : value === 's1_admission' ? 'S1 入學' : value === 'transfer' ? '插班' : value
 }
 
 function assessmentStatusLabel(value: AssessmentView['status']): string {

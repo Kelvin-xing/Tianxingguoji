@@ -250,6 +250,22 @@
     "assessment": "Background assessment",
     "applications": "Selection and applications",
     "interviews": "Interviews",
-    "documents": "Documents"
+    "documents": "Documents",
+    "backToCases": "Cases",
+    "headerLoading": "Loading case summary",
+    "headerUnavailable": "The case summary is unavailable. Each section retains its existing access checks.",
+    "registerInterview": "Register interview invitation",
+    "interviewStart": "Select Register interview invitation to enter the details provided by the school.",
+    "registerDocument": "Register document",
+    "documentActions": "Document actions",
+    "documentClassification": "Document classification",
+    "updatedAt": "Updated at",
+    "documentId": "Document ID",
+    "documentVersion": "Record version",
+    "caseVersion": "Case version",
+    "schoolColumn": "School",
+    "statusColumn": "Status",
+    "taskColumn": "Task",
+    "actionsColumn": "Available actions"
   }
 }

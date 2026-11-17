@@ -1,5 +1,11 @@
 import { CaseDocumentsPanel } from '@/components/documents/CaseDocumentsPanel'
+import { CaseSubpage } from '@/components/cases/CaseSubpage'
+
 export default async function CaseDocumentsPage({ params }: { params: Promise<{ caseId: string }> }) {
-  const { caseId } = await params;
-  return <div className="max-w-6xl mx-auto space-y-6"><h2 className="page-title">案件文件</h2><CaseDocumentsPanel caseId={caseId}/></div>;
+  const { caseId } = await params
+  return (
+    <CaseSubpage caseId={caseId} current="documents">
+      <CaseDocumentsPanel caseId={caseId} />
+    </CaseSubpage>
+  )
 }
