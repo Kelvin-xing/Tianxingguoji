@@ -1,8 +1,9 @@
 "use client";
 
+import { casePersonName } from "./case-person-name";
 import { useEffect, useState } from "react";
 
-import { Icon } from "@/components/workspace/Icon";
+import { Card, Progress, DataList, TranslatedText } from "@/components/ui/standard";
 import type { CaseWorkspaceStage } from "@/modules/cases/client";
 import { listTasks, type CaseWorkspaceTask } from "@/modules/tasks/client";
 
@@ -56,34 +57,16 @@ export function CaseStageTimeline({
 
   const applicationOwners = activeTaskOwners(tasks, ["application_prepare_submit", "interview_support"]);
 
-  return (
-    <section className="workspace-section" aria-labelledby="case-stage-heading">
-      <div className="mb-5">
-        <h3 id="case-stage-heading" className="section-title">案件階段</h3>
-        <p className="section-detail">評估完成後，請按流程逐步推進案件；每個階段均顯示目前負責人。</p>
-      </div>
-      <div className="overflow-x-auto">
-        <div className="stage-track">
-          {STAGES.map((item, index) => {
-            const done = index < stageIndex;
-            const active = index === stageIndex;
-            return (
-              <div className="stage-node" key={item.key}>
-                <div className={`stage-dot ${done ? "done" : ""} ${active ? "active" : ""}`}>
-                  {done ? <Icon name="check" size={13} /> : index + 1}
-                </div>
-                <div className="stage-node-copy">
-                  <span className={active ? "active-label" : ""}>{item.label}</span>
-                  <span className="stage-node-owner">負責人：{ownerForStage(item.key, primaryOwnerLabel, applicationOwners)}</span>
-                </div>
-                {index < STAGES.length - 1 ? <div className={`stage-line ${done ? "done" : ""}`} /> : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
+  return <Card title="案件階段">
+    <Progress steps={STAGES.map((item, index) => ({
+      label: item.label,
+      state: index < stageIndex ? 'complete' : index === stageIndex ? 'current' : 'future',
+    }))} />
+    <details className="ui-history"><summary><TranslatedText translationKey="caseUi.stageOwners" /></summary>
+      <DataList items={STAGES.map(item => ({ label: item.label, value: `負責人：${ownerForStage(item.key, casePersonName(primaryOwnerLabel), applicationOwners.map(casePersonName))}` }))} />
+    </details>
+  </Card>;
+
 }
 
 function ownerForStage(

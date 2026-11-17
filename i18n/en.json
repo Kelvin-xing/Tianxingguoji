@@ -237,5 +237,19 @@
     "current": "Current",
     "future": "Not started",
     "todayGreetingNamed": "{{name}}, let’s make progress today."
+  },
+  "caseUi": {
+    "edit": "Edit details",
+    "read": "Back to reading",
+    "missing": "{{count}} fields not filled",
+    "viewStudent": "View student",
+    "systemData": "System information",
+    "stageOwners": "View stage owners",
+    "sections": "Case sections",
+    "overview": "Case overview",
+    "assessment": "Background assessment",
+    "applications": "Selection and applications",
+    "interviews": "Interviews",
+    "documents": "Documents"
   }
 }

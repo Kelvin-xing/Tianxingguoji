@@ -237,5 +237,19 @@
     "current": "進行中",
     "future": "未開始",
     "todayGreetingNamed": "{{name}}，今天一起把事情做好。"
+  },
+  "caseUi": {
+    "edit": "編輯資料",
+    "read": "返回閱讀",
+    "missing": "尚有 {{count}} 項未填寫",
+    "viewStudent": "查看學生",
+    "systemData": "系統資料",
+    "stageOwners": "查看各階段負責人",
+    "sections": "案件分區",
+    "overview": "案件概覽",
+    "assessment": "背景評估",
+    "applications": "選校與申請",
+    "interviews": "面試",
+    "documents": "文件"
   }
 }

@@ -31,13 +31,14 @@ test("case pages use the module client without direct fetch or response assertio
 test("case directory uses a searchable status and stage filter instead of summary cards", async () => {
   const directory = await source("app/(erp)/cases/page.tsx");
   assert.match(directory, /type CaseStatusFilter = 'all' \| 'active' \| 'closed'/);
-  assert.match(directory, /aria-label="案件狀態"/);
-  assert.match(directory, /aria-label="案件階段"/);
+  assert.match(directory, /<Select label="案件狀態"/);
+  assert.match(directory, /<Select label="案件階段"/);
   assert.match(directory, /共 \{caseRecords\.length\} 宗案件/);
   assert.doesNotMatch(directory, /<Metric /);
   assert.match(directory, /\{caseStageLabels\[item\.stage\]\}/);
   assert.match(directory, /application_in_progress: '申請處理中'/);
-  assert.match(directory, />主要顧問</);
+  assert.doesNotMatch(directory, /primaryRole|>Advisor</);
+  assert.match(directory, /<strong>\{item.studentName/);
   assert.match(directory, /\{formatDate\(item\.updatedAt\)\}/);
 });
 

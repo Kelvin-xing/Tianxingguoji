@@ -236,3 +236,23 @@ function malformedResponse(error: unknown): boolean {
 function apiError(code: string, status: number): ApiClientError {
   return new ApiClientError({ code, status, retryable: false, requestId: "case-client-test" });
 }
+
+test("workflow success can read an existing entry case without a false malformed-response error", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let readCount = 0;
+  globalThis.fetch = async (_request, init) => {
+    if (init?.method === 'POST') return apiResponse({ id: ids.serviceCase, record_version: 3 });
+    readCount++;
+    return apiResponse({ case: { ...caseDetailFixture(), admissionType: 'entry', recordVersion: 3, workflowStatus: 'paused', availableWorkflowActions: ['resume'] } });
+  };
+  const receipt = await executeCaseWorkflowAction(ids.serviceCase, {
+    action: 'pause', expected_record_version: 2, reason: 'Synthetic local check',
+  }, 'workflow-entry-regression');
+  const detail = await getCase(ids.serviceCase);
+  assert.equal(readCount, 1);
+  assert.equal(receipt.id, detail.id);
+  assert.equal(receipt.record_version, detail.recordVersion);
+  assert.equal(detail.admissionType, 'entry');
+  assert.equal(detail.workflowStatus, 'paused');
+});

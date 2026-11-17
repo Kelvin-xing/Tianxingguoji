@@ -54,7 +54,7 @@ const TARGET_STATES = Object.freeze([
 
 const SCHOOL_TARGET_CREATE_BLOCKED_REASON = "selection_workflow_required" as const;
 
-const ADMISSION_TYPES = Object.freeze(["s1_admission", "transfer"] as const);
+const ADMISSION_TYPES = Object.freeze(["entry", "s1_admission", "transfer"] as const);
 const PRIMARY_ROLES = Object.freeze(["advisor", "founder", "l1", "l2"] as const);
 
 export type CaseWorkspaceStage = (typeof CASE_STAGES)[number];
