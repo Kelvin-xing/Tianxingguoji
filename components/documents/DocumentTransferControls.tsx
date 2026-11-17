@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
+import { Button, FieldInput, Notice } from "@/components/ui/standard";
 import { Icon } from "@/components/workspace/Icon";
 import {
   DOCUMENT_UPLOAD_CONTENT_TYPES,
@@ -370,12 +371,12 @@ export function DocumentTransferControls({
   if (!canUpload && !canDownload) return null;
 
   return (
-    <div className="pt-3 mt-3 border-t space-y-3" style={{ borderColor: "var(--border-subtle)" }}>
+    <div className="pt-3 mt-3 border-t space-y-3">
       {uploadAllowed ? (
         <form className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end" onSubmit={upload} aria-busy={uploadPending}>
-          <label className="field-label min-w-0">
+          <label className="ui-field">
             {canRecover ? "重新選擇原上載文件" : "選擇上載文件"}
-            <input
+            <FieldInput
               ref={fileInput}
               type="file"
               accept={DOCUMENT_UPLOAD_CONTENT_TYPES.join(",")}
@@ -384,30 +385,30 @@ export function DocumentTransferControls({
               onChange={selectFile}
             />
           </label>
-          <button type="submit" className="primary-button justify-center sm:min-w-40" disabled={uploadPending} aria-busy={uploadPending}>
+          <Button type="submit" variant="secondary" disabled={uploadPending} aria-busy={uploadPending}>
             <Icon name={uploadPending ? "clock" : "upload"} size={15} />
             {uploadPending ? "正在處理" : canRecover ? "繼續上載並掃描" : "上載並掃描"}
-          </button>
-          {selectedFile ? <p className="sm:col-span-2 text-xs break-all" style={{ color: "var(--text-muted)" }}>已選擇：{selectedFile.name}</p> : null}
+          </Button>
+          {selectedFile ? <p className="sm:col-span-2 ui-muted break-all">已選擇：{selectedFile.name}</p> : null}
         </form>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
         {canUpload && document.lifecycle_state === "active" && isInFlight(document.latest_version_state) ? (
-          <span className="inline-callout" role="status"><Icon name="clock" size={15} /><span>{canRecover ? "待上載版本可重新選擇原文件繼續，或確認放棄後重新開始。" : "目前版本仍在掃描，完成前不能開始另一個版本。"}</span></span>
+          <Notice><Icon name="clock" size={15} /><span>{canRecover ? "待上載版本可重新選擇原文件繼續，或確認放棄後重新開始。" : "目前版本仍在掃描，完成前不能開始另一個版本。"}</span></Notice>
         ) : null}
         {canDownload ? (
-          <button type="button" className="secondary-button" disabled={!downloadAllowed || downloadPending} aria-busy={downloadPending} onClick={() => void download()}>
+          <Button type="button" variant="weak" disabled={!downloadAllowed || downloadPending} aria-busy={downloadPending} onClick={() => void download()}>
             <Icon name={downloadPending ? "clock" : "file-text"} size={15} />
             {downloadPending ? "正在準備下載" : "下載安全版本"}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {abandonAllowed ? (
-        <div className="border-t pt-3 space-y-3" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="border-t pt-3 space-y-3">
           <label className="checkbox-row">
-            <input
+            <FieldInput
               type="checkbox"
               aria-label="確認放棄待上載版本"
               checked={abandonConfirmed}
@@ -416,16 +417,16 @@ export function DocumentTransferControls({
             />
             <span className="min-w-0 break-words">我確認放棄目前待上載版本；即使舊連結在到期前被使用，遲到物件也只會由系統清理，不會進入掃描或成為可下載版本。</span>
           </label>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="weak"
             disabled={!abandonConfirmed || abandonPending || uploadPending}
             aria-busy={abandonPending}
             onClick={() => void abandonPendingUpload()}
           >
             <Icon name={abandonPending ? "clock" : "x"} size={15} />
             {abandonPending ? "正在放棄" : "放棄待上載版本"}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -463,9 +464,9 @@ function TransferNotice({ notice }: { readonly notice: TransferNotice }) {
                             : "結果暫時無法確認，請稍後重試；重試不會重複建立版本。";
   const isStatus = ["hashing", "creating", "uploading", "scanning", "available", "downloaded", "abandoning", "abandoned"].includes(notice);
   return (
-    <div className={isStatus ? "inline-callout" : notice === "rejected" || notice === "scan_failed" || notice === "timeout" ? "inline-callout warning" : "form-error"} role={isStatus ? "status" : "alert"}>
+    <Notice warning={!isStatus}>
       <Icon name={isStatus ? notice === "available" || notice === "downloaded" || notice === "abandoned" ? "check-circle" : "clock" : "shield"} size={15} />
       <span>{message}</span>
-    </div>
+    </Notice>
   );
 }

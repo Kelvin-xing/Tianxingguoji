@@ -250,6 +250,22 @@
     "assessment": "背景評估",
     "applications": "選校與申請",
     "interviews": "面試",
-    "documents": "文件"
+    "documents": "文件",
+    "backToCases": "案件",
+    "headerLoading": "正在載入案件概要",
+    "headerUnavailable": "目前無法顯示案件概要；各分區仍依原有權限載入。",
+    "registerInterview": "登記面試邀請",
+    "interviewStart": "請按「登記面試邀請」填寫學校已提供的面試資料。",
+    "registerDocument": "登記文件",
+    "documentActions": "文件操作",
+    "documentClassification": "文件分類",
+    "updatedAt": "更新時間",
+    "documentId": "文件編號",
+    "documentVersion": "資料版本",
+    "caseVersion": "案件版本",
+    "schoolColumn": "學校",
+    "statusColumn": "狀態",
+    "taskColumn": "任務",
+    "actionsColumn": "可用操作"
   }
 }

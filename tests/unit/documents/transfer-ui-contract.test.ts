@@ -97,7 +97,9 @@ test("DOC-02 lifecycle feedback is truthful, accessible and responsive", async (
     "hashing", "creating", "uploading", "scanning", "available", "rejected",
     "scan_failed", "abandoning", "abandoned", "validation", "stale", "conflict", "recovery_conflict", "denied", "timeout", "unavailable",
   ]) assert.match(transfer, new RegExp(`\\"${state}\\"`));
-  assert.match(transfer, /role=\{isStatus \? "status" : "alert"\}/);
+  assert.match(transfer, /<Notice warning=\{!isStatus\}>/);
+  const standard = await source("components/ui/standard.tsx");
+  assert.match(standard, /role=\{warning \? 'alert' : 'status'\}/);
   assert.match(transfer, /grid-cols-1 sm:grid-cols-/);
   assert.match(transfer, /\(notice !== "available" && notice !== "abandoned"\) \|\| uploadPending \|\| abandonPending/);
   assert.match(transfer, /const input = fileInput\.current/);

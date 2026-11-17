@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Icon } from "@/components/workspace/Icon";
+import { useTranslation } from "react-i18next";
+import { Button, Card, Empty, FieldInput, FieldSelect, Notice } from "@/components/ui/standard";
+import { CaseDocumentCard } from "./CaseDocumentCard";
 import { getWorkspaceAccessSnapshot } from "@/modules/access/client";
 import {
   DOCUMENT_CLASSIFICATIONS,
@@ -17,12 +20,14 @@ import {
 } from "@/modules/documents/client";
 import { DocumentTransferControls } from "./DocumentTransferControls";
 import { DocumentLifecycleControls } from "./DocumentLifecycleControls";
-import { DocumentList, DocumentPageState, classificationLabel } from "./document-ui";
+import { classificationLabel } from "./document-ui";
 
 type LoadState = "loading" | "ready" | "unauthenticated" | "denied" | "unavailable";
 type Notice = "success" | "validation" | "conflict" | "denied" | "unavailable" | null;
 
 export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
   const mounted = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const submitting = useRef(false);
@@ -151,54 +156,49 @@ export function CaseDocumentsPanel({ caseId }: { readonly caseId: string }) {
   }
 
   return (
-    <section id="documents" className="workspace-section space-y-5" aria-labelledby="case-documents-heading" aria-busy={state === "loading"}>
-      <div>
-        <h3 id="case-documents-heading" className="section-title">案件文件</h3>
-      <p className="section-detail">查看本案已登記的文件資料與目前版本狀態。</p>
-      </div>
+    <div className="ui-stack">
+    <Card id="documents" title="案件文件" editing={editing} aria-busy={state === "loading"}
+      action={state === "ready" && canCreate ? <Button variant="text" disabled={pending} onClick={() => setEditing(!editing)}>{t(editing ? 'ui.cancel' : 'caseUi.registerDocument')}</Button> : undefined}>
 
-      {state === "loading" ? <DocumentPageState title="正在載入案件文件" detail="請稍候。" /> : null}
-      {state === "unauthenticated" ? <DocumentPageState title="工作階段已失效" detail="請重新登入後查看案件文件。" login /> : null}
-      {state === "denied" ? <DocumentPageState title="無法查看案件文件" detail="目前帳號不能查看本案文件。" /> : null}
-      {state === "unavailable" ? <DocumentPageState title="文件服務暫時不可用" detail="請稍後重試。" onRetry={() => void load()} /> : null}
+      {state === "loading" ? <CaseDocumentState title="正在載入案件文件" detail="請稍候。" /> : null}
+      {state === "unauthenticated" ? <CaseDocumentState title="工作階段已失效" detail="請重新登入後查看案件文件。" login /> : null}
+      {state === "denied" ? <CaseDocumentState title="無法查看案件文件" detail="目前帳號不能查看本案文件。" /> : null}
+      {state === "unavailable" ? <CaseDocumentState title="文件服務暫時不可用" detail="請稍後重試。" onRetry={() => void load()} /> : null}
 
-      {state === "ready" && canCreate ? (
-        <div className="border-y py-5 space-y-4" style={{ borderColor: "var(--border)" }}>
+      {state === "ready" && canCreate && editing ? (
+        <div className="ui-stack">
           <div>
-            <h4 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>登記文件</h4>
-            <p className="section-detail">登記文件名稱和儲存分類。</p>
+            <h4 className="ui-value">登記文件</h4>
+            <p className="ui-muted">登記文件名稱和儲存分類。</p>
           </div>
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={submit} aria-busy={pending}>
-            <label className="field-label">文件名稱<input ref={nameInput} value={displayName} maxLength={200} required disabled={pending} autoComplete="off" onChange={(event) => { draftChanged(); setDisplayName(event.target.value); }} /></label>
-            <label className="field-label">文件分類<select aria-label="文件分類" value={classification} required disabled={pending} onChange={(event) => { draftChanged(); setClassification(event.target.value as DocumentClassification); }}>{DOCUMENT_CLASSIFICATIONS.map((value) => <option value={value} key={value}>{classificationLabel(value)}</option>)}</select></label>
+            <label className="ui-field">文件名稱<FieldInput ref={nameInput} value={displayName} maxLength={200} required disabled={pending} autoComplete="off" onChange={(event) => { draftChanged(); setDisplayName(event.target.value); }} /></label>
+            <label className="ui-field">文件分類<FieldSelect aria-label="文件分類" value={classification} required disabled={pending} onChange={(event) => { draftChanged(); setClassification(event.target.value as DocumentClassification); }}>{DOCUMENT_CLASSIFICATIONS.map((value) => <option value={value} key={value}>{classificationLabel(value)}</option>)}</FieldSelect></label>
             <div className="md:col-span-2 flex flex-wrap justify-end gap-2">
-              <button type="button" className="secondary-button" disabled={pending || (displayName === "" && classification === "identity_and_case_evidence")} onClick={clearDraft}>清除</button>
-              <button type="submit" className="primary-button justify-center min-w-32" disabled={pending} aria-busy={pending}><Icon name={pending ? "clock" : "plus"} size={15} />{pending ? "正在登記" : "登記文件"}</button>
+              <Button type="button" variant="weak" disabled={pending || (displayName === "" && classification === "identity_and_case_evidence")} onClick={clearDraft}>清除</Button>
+              <Button type="submit" variant="primary" disabled={pending} aria-busy={pending}><Icon name={pending ? "clock" : "plus"} size={15} />{pending ? "正在登記" : "登記文件"}</Button>
             </div>
           </form>
-          <RegistrationNotice notice={notice} />
+
         </div>
       ) : null}
 
-      {state === "ready" && documents.length === 0 ? <DocumentPageState title="本案目前沒有文件" detail="登記後的文件會顯示在這裡。" /> : null}
-      {state === "ready" && documents.length > 0 ? (
-        <DocumentList
-          documents={documents}
-          renderActions={(document) => (
-            <>
-            <DocumentTransferControls
-              caseId={caseId}
-              document={document}
-              canUpload={canUpload}
-              canDownload={canDownload}
-              onAuthoritativeChange={updateAuthoritativeDocument}
-            />
-            <DocumentLifecycleControls caseId={caseId} document={document} onAuthoritativeChange={updateAuthoritativeDocument}/>
-            </>
-          )}
-        />
-      ) : null}
-    </section>
+      {state === "ready" && documents.length === 0 ? <CaseDocumentState title="本案目前沒有文件" detail="登記後的文件會顯示在這裡。" /> : null}
+      <RegistrationNotice notice={notice} />
+    </Card>
+      {state === "ready" ? documents.map(document => (
+        <CaseDocumentCard key={document.id} document={document}>
+          <DocumentTransferControls
+            caseId={caseId}
+            document={document}
+            canUpload={canUpload}
+            canDownload={canDownload}
+            onAuthoritativeChange={updateAuthoritativeDocument}
+          />
+          <DocumentLifecycleControls caseId={caseId} document={document} onAuthoritativeChange={updateAuthoritativeDocument} />
+        </CaseDocumentCard>
+      )) : null}
+    </div>
   );
 }
 
@@ -209,5 +209,9 @@ function RegistrationNotice({ notice }: { readonly notice: Notice }) {
       : notice === "conflict" ? "目前案件狀態或本次登記內容有衝突，請重新確認。"
         : notice === "denied" ? "目前帳號不能在本案登記文件。"
           : "結果暫時無法確認，請稍後重試；重試不會重複登記。";
-  return <div className={notice === "success" ? "inline-callout" : "form-error"} role={notice === "success" ? "status" : "alert"}><Icon name={notice === "success" ? "check-circle" : "x"} size={15} /><span>{message}</span></div>;
+  return <Notice warning={notice !== "success"}><Icon name={notice === "success" ? "check-circle" : "x"} size={15} /><span>{message}</span></Notice>;
+}
+
+function CaseDocumentState({ title, detail, login, onRetry }: { title: string; detail: string; login?: boolean; onRetry?: () => void }) {
+  return <Empty title={title} detail={detail} action={login ? <a href="/login" className="ui-button ui-secondary">重新登入</a> : onRetry ? <Button onClick={onRetry}>重新載入</Button> : undefined} />;
 }

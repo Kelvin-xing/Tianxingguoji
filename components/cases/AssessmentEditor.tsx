@@ -306,7 +306,7 @@ export function AssessmentEditor({ endpoint, initialView, }: {
                         }));
                         setDirtyFieldIds((current) => new Set(current).add(field.field_id));
                         setConflict(null);
-                    }} variant="primary">
+                    }} variant="secondary">
                         保留草稿並重試
                       </Button>
                     </div>
