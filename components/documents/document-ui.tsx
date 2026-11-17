@@ -53,7 +53,7 @@ export function DocumentListRow({ document, children }: { readonly document: Doc
 
 export function DocumentVersionPill({ state }: { readonly state: DocumentVersionState | null }) {
   const tone = state === "available" ? "status-success"
-    : state === "rejected" || state === "scan_failed" || state === "abandoned" || state === "deleted" ? "status-warning"
+    : state === null || state === "pending_upload" || state === "pending_delete" || state === "rejected" || state === "scan_failed" || state === "abandoned" || state === "deleted" ? "status-warning"
       : "";
   return <span className={`status-pill shrink-0 ${tone}`}>{versionStateLabel(state)}</span>;
 }
@@ -111,4 +111,10 @@ export function formatDocumentDate(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Hong_Kong",
   }).format(new Date(value));
+}
+
+export function documentVersionTone(state: DocumentVersionState | null): 'primary' | 'warning' | 'neutral' {
+  if (state === 'available') return 'primary';
+  if (state === null || state === 'pending_upload' || state === 'pending_delete' || state === 'rejected' || state === 'scan_failed' || state === 'abandoned') return 'warning';
+  return 'neutral';
 }

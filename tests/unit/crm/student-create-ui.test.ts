@@ -19,7 +19,7 @@ test("creation entry and page obey only the students.create capability", async (
 
 test("relationship is a fixed native select and no identity or authorization fields are submitted", async () => {
   const source = await readFile(formPath, "utf8");
-  const relationship = source.match(/<select id="guardian-relationship-type"[\s\S]*?<\/select>/)?.[0];
+  const relationship = source.match(/<FieldSelect id="guardian-relationship-type"[\s\S]*?<\/FieldSelect>/)?.[0];
   assert.ok(relationship);
   assert.deepEqual(
     [...relationship.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]),
@@ -31,7 +31,7 @@ test("relationship is a fixed native select and no identity or authorization fie
 test("form protects duplicate submits and does not persist or log private fields", async () => {
   const source = await readFile(formPath, "utf8");
   assert.match(source, /const submissionLocked = useRef\(false\)/);
-  assert.match(source, /if \(submissionLocked\.current \|\| accessState !== 'allowed'\) return/);
+  assert.match(source, /if \(submissionLocked\.current \|\| accessState !== 'allowed'\)\s+return/);
   assert.match(source, /submissionLocked\.current = true/);
   assert.match(source, /disabled=\{pending\}/);
   assert.match(source, /aria-busy=\{pending\}/);

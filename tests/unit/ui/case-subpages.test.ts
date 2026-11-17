@@ -17,6 +17,7 @@ const { registerHooks } = nodeModule as unknown as { registerHooks(hooks: {
 }): { deregister(): void } };
 const hooks = registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === 'next/link') return next('next/link.js', context);
     if (specifier.startsWith('@/') || specifier.startsWith('./')) {
       const url = specifier.startsWith('@/') ? new URL(specifier.slice(2), root) : new URL(specifier, context.parentURL);
       for (const extension of ['', '.tsx', '.ts']) {
@@ -36,6 +37,7 @@ const hooks = registerHooks({
   },
 });
 const { CasePageTabs } = await import('../../../components/cases/CasePageTabs.tsx');
+const { documentVersionTone } = await import('../../../components/documents/document-ui.tsx');
 const { CaseHeader } = await import('../../../components/cases/CaseHeader.tsx');
 const translation = i18next.createInstance();
 await translation.init({ lng: 'zh-TW', resources: { 'zh-TW': { translation: JSON.parse(readFileSync(new URL('i18n/zh-TW.json', root), 'utf8')) } } });
@@ -56,5 +58,10 @@ test('shared case header retains facts, suppresses email when named, and renders
   assert.doesNotMatch(html, /@local.invalid|record_version|版本/);
   const fallback = renderToStaticMarkup(createElement(CaseHeader, { record: { ...record, primaryBindingLabel: '未設置暱稱 · synthetic@local.invalid' } }));
   assert.match(fallback, /synthetic@local.invalid/);
+});
+test('document attention colors do not change labels or lifecycle values', () => {
+  for (const state of [null, 'pending_upload', 'pending_delete', 'rejected', 'scan_failed', 'abandoned'] as const) assert.equal(documentVersionTone(state), 'warning');
+  assert.equal(documentVersionTone('available'), 'primary');
+  for (const state of ['quarantined', 'scanning', 'superseded', 'deleted'] as const) assert.equal(documentVersionTone(state), 'neutral');
 });
 test.after(() => hooks.deregister());

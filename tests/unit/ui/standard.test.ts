@@ -76,7 +76,7 @@ test('read-only information omits missing fields but retains false and zero valu
   assert.match(html, /<dd>0<\/dd>/);
   assert.match(html, /尚有 1 項未填寫/);
   const complete = renderToStaticMarkup(createElement(ui.FilledData, { items: [{ label: '名稱', value: '合成', filled: true }], missingLabel: count => `尚有 ${count} 項未填寫` }));
-  assert.match(complete, /尚有 0 項未填寫/);
+  assert.doesNotMatch(complete, /尚有 0 項未填寫/);
 });
 
 test('card edit action is grouped with its heading and uses the text button variant', () => {
@@ -106,4 +106,16 @@ test('route tabs retain destination links and use page-current semantics without
   assert.match(html, /href="\/cases\/synthetic"[^>]*aria-current="page"/);
   assert.match(html, /href="\/cases\/synthetic\/documents"/);
   assert.equal((html.match(/aria-current=/g) ?? []).length, 1);
+});
+
+
+test('missing summary is absent for complete cards and counts incomplete cards once', () => {
+  assert.equal(renderToStaticMarkup(createElement(ui.MissingCount, { count: 0, label: n => `missing ${n}` })), '');
+  assert.match(renderToStaticMarkup(createElement(ui.MissingCount, { count: 3, label: n => `missing ${n}` })), /missing 3/);
+});
+test('confirmation retains disabled cancellation and confirmation during a pending decision', () => {
+  const html = renderToStaticMarkup(createElement(ui.Confirm, { title: '合成確認', onCancel() {}, onConfirm() {}, cancelDisabled: true, confirmDisabled: true }, createElement(ui.FieldInput, { type: 'checkbox', checked: false, readOnly: true })));
+  assert.match(html, /<dialog[^>]*aria-label="合成確認"/);
+  assert.equal((html.match(/<button[^>]*disabled=""/g) ?? []).length, 2);
+  assert.match(html, /type="checkbox"/);
 });

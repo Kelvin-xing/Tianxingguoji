@@ -267,5 +267,15 @@
     "statusColumn": "狀態",
     "taskColumn": "任務",
     "actionsColumn": "可用操作"
+  },
+  "studentUi": {
+    "sections": "學生分區",
+    "profile": "學生資料",
+    "guardians": "監護人關係",
+    "studentId": "學生編號",
+    "version": "資料版本",
+    "countPrefix": "共",
+    "countSuffix": "筆",
+    "sourceId": "來源編號"
   }
 }

@@ -267,5 +267,15 @@
     "statusColumn": "Status",
     "taskColumn": "Task",
     "actionsColumn": "Available actions"
+  },
+  "studentUi": {
+    "sections": "Student sections",
+    "profile": "Student profile",
+    "guardians": "Guardian relationships",
+    "studentId": "Student ID",
+    "version": "Record version",
+    "countPrefix": "Total",
+    "countSuffix": "records",
+    "sourceId": "Referral source ID"
   }
 }

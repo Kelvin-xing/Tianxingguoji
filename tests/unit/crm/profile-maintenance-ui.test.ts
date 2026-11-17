@@ -8,8 +8,8 @@ test("profile edit entries obey only students.profiles.manage capability", async
   const detail = await source("components/crm/StudentDetailView.tsx");
   assert.match(detail, /capabilities\.includes\('students\.profiles\.manage'\)/);
   assert.doesNotMatch(detail, /access\.role|role === ['"](?:founder|advisor|admin)/);
-  assert.match(detail, /canManageProfiles \? <button[^>]+>.*編輯學生資料/s);
-  assert.match(detail, /canManageProfiles \? <button[^>]+>.*編輯監護人資料/s);
+  assert.match(detail, /canManageProfiles && <Button[^>]+>.*編輯學生資料/s);
+  assert.match(detail, /canManageProfiles && <Button[^>]+>.*編輯監護人資料/s);
 });
 
 test("focused editors expose only the frozen profile fields with Save and Cancel", async () => {
@@ -25,7 +25,7 @@ test("focused editors expose only the frozen profile fields with Save and Cancel
   ]) assert.match(panel, new RegExp(`label=["']${label}["']`));
   assert.match(panel, /saveLabel="儲存學生資料"/);
   assert.match(panel, /saveLabel="儲存監護人資料"/);
-  assert.match(panel, />取消<\/button>/);
+  assert.match(panel, />取消<\/Button>/);
   assert.doesNotMatch(panel, /type=["']hidden|name=["'][^"']*(?:uuid|version)|localStorage|sessionStorage|URLSearchParams|console\.|analytics|fetch\(/i);
 });
 
@@ -35,7 +35,7 @@ test("profile mutations use synchronous locks, retry-safe attempts and authorita
     source("components/crm/StudentDetailView.tsx"),
   ]);
   assert.match(panel, /const savingLock = useRef\(false\)/g);
-  assert.match(panel, /if \(savingLock\.current\) return/g);
+  assert.match(panel, /if \(savingLock\.current\)\s+return/g);
   assert.match(panel, /savingLock\.current = true/g);
   assert.match(panel, /finally \{[\s\S]*?savingLock\.current = false/g);
   assert.match(panel, /attempt\.current\.keyForSubmission\(\)/g);

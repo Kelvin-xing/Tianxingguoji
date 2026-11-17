@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, type ReactNode, type ComponentPropsWithRef, type HTMLAttributes, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react';
+import { useEffect, useRef, type ReactNode, type ComponentPropsWithRef, type HTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react';
 import { useTranslation } from 'react-i18next';
 import './standard.css';
 export function Page({ children }: { children?: ReactNode }) {
@@ -21,7 +21,7 @@ export function Card({ title, action, children, editing = false, className = '',
 export function Hero({ children }: { children?: ReactNode }) {
   return <section className="ui-hero">{children}</section>;
 }
-export function Button({ variant = 'weak', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'weak' | 'text' }) {
+export function Button({ variant = 'weak', className = '', ...props }: ComponentPropsWithRef<'button'> & { variant?: 'primary' | 'secondary' | 'weak' | 'text' }) {
   return <button {...props} className={`ui-button ui-${variant} ${className}`} />;
 }
 export function Tag({ tone = 'neutral', children }: { tone?: 'primary' | 'warning' | 'neutral'; children?: ReactNode }) {
@@ -35,7 +35,7 @@ export function DataList({ items }: { items: { label: string; value: ReactNode }
 }
 export function FilledData({ items, missingLabel }: { items: { label: string; value: ReactNode; filled: boolean }[]; missingLabel: (count: number) => string }) {
   const missing = items.filter(item => !item.filled).length;
-  return <><DataList items={items.filter(item => item.filled)} /><p className="ui-muted">{missingLabel(missing)}</p></>;
+  return <><DataList items={items.filter(item => item.filled)} /><MissingCount count={missing} label={missingLabel} /></>;
 }
 export function Input({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return <label className="ui-field">
@@ -99,19 +99,19 @@ export function Progress({ steps }: { steps: { label: string; state: 'complete' 
     <span>{s.label} · {t(`ui.${s.state}`)}</span>
   </div>)}</div>;
 }
-export function Confirm({ title, children, onCancel, onConfirm, confirmLabel }: { title: string; children?: ReactNode; onCancel: () => void; onConfirm: () => void; confirmLabel?: string }) {
+export function Confirm({ title, children, onCancel, onConfirm, confirmLabel, confirmDisabled = false, cancelDisabled = false }: { title: string; children?: ReactNode; onCancel: () => void; onConfirm: () => void; confirmLabel?: string; confirmDisabled?: boolean; cancelDisabled?: boolean }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
   }, []);
-  return <dialog ref={ref} className="ui-dialog ui-standard" aria-label={title} onCancel={onCancel}>
+  return <dialog ref={ref} className="ui-dialog ui-standard" aria-label={title} onCancel={event => { event.preventDefault(); if (!cancelDisabled) onCancel(); }}>
     <h2>{title}</h2>
     <div className="ui-stack">
       {children}
       <div className="ui-actions">
-        <Button onClick={onCancel}>{t('ui.cancel')}</Button>
-        <Button variant="primary" onClick={onConfirm}>{confirmLabel ?? t('ui.confirm')}</Button>
+        <Button type="button" disabled={cancelDisabled} onClick={onCancel}>{t('ui.cancel')}</Button>
+        <Button type="button" variant="primary" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel ?? t('ui.confirm')}</Button>
       </div>
     </div>
   </dialog>;
@@ -138,4 +138,12 @@ export function RouteTabs({ label, items }: { label: string; items: readonly { h
   return <nav className="ui-route-tabs" aria-label={label}><div className="ui-route-tab-list">
     {items.map(item => <a key={item.href} href={item.href} className={`ui-route-tab${item.current ? ' selected' : ''}`} aria-current={item.current ? 'page' : undefined}>{item.label}</a>)}
   </div></nav>;
+}
+
+export function MissingCount({ count, label }: { count: number; label: (count: number) => string }) {
+  return count > 0 ? <p className="ui-muted">{label(count)}</p> : null;
+}
+export function SystemData({ children }: { children?: ReactNode }) {
+  const { t } = useTranslation();
+  return <details className="ui-history"><summary>{t('caseUi.systemData')}</summary><div className="ui-stack">{children}</div></details>;
 }

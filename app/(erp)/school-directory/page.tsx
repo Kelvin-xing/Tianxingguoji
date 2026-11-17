@@ -6,7 +6,7 @@ import {
   DIRECTORY_CAMPUS_FIELDS, DIRECTORY_OPTIONS, directoryValuesEqual, campusTitle,
   type DirectoryCommand, type DirectoryDetail, type DirectoryListResult, type DirectoryValue,
 } from '@/modules/schools/public';
-import { Page, PageHeader, Card, Button, Tag, DataList, FilledData, Input, Select, Search, Chips, Table, Pagination, Notice, Empty, Confirm } from '@/components/ui/standard';
+import { Page, PageHeader, Card, Button, Tag, DataList, MissingCount, FilledData, Input, Select, Search, Chips, Table, Pagination, Notice, Empty, Confirm } from '@/components/ui/standard';
 const TECHNICAL_FIELDS = ['source_school_key', 'profile_url'];
 const isFilled = (value: DirectoryValue | undefined) => value !== null && value !== undefined && value !== '';
 type Change = { field: string; value: DirectoryValue; campusId?: string };
@@ -224,7 +224,7 @@ export default function SchoolDirectoryPage() {
             </div>;
           })}
         </div>
-        {editing !== 'campuses' && <p className="ui-muted">{missingLabel(missingCampusFields)}</p>}
+        {editing !== 'campuses' && <MissingCount count={missingCampusFields} label={missingLabel} />}
         {editing === 'campuses' ? editButtons : <details>
           <summary className="ui-link">{text('split')}</summary>
           <div className="ui-actions">

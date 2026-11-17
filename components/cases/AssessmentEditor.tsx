@@ -1,7 +1,7 @@
 "use client";
 import { CaseSystemDataEntry } from "./CaseSystemData";
 import { useTranslation } from "react-i18next";
-import { DataList } from "@/components/ui/standard";
+import { MissingCount, DataList } from "@/components/ui/standard";
 import { Card, FieldSelect, Button, FieldInput } from "@/components/ui/standard";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -234,7 +234,7 @@ export function AssessmentEditor({ endpoint, initialView, }: {
       {!editing && <><DataList items={view.schema.fields.flatMap(field => {
         const answer = view.answers.find(item => item.field_id === field.field_id);
         return answer && answer.semantic_state !== 'unknown' ? [{ label: fieldLabel(field), value: describeDraft(toDraft(answer)) }] : [];
-      })} /><p className="ui-muted">{t('caseUi.missing', { count: view.schema.fields.filter(field => !view.answers.some(answer => answer.field_id === field.field_id && answer.semantic_state !== 'unknown')).length })}</p></>}
+      })} /><MissingCount count={view.schema.fields.filter(field => !view.answers.some(answer => answer.field_id === field.field_id && answer.semantic_state !== 'unknown')).length} label={count => t('caseUi.missing', { count })} /></>}
       {editing && <div className="space-y-4">
         {view.schema.fields.map((field) => {
             const draft = drafts[field.field_id];

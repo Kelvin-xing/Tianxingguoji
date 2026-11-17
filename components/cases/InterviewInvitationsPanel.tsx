@@ -127,6 +127,6 @@ export function InterviewInvitationsPanel({ caseId }: {
       <Button type="submit" variant="primary" disabled={pending}>{pending ? '正在儲存' : retrying ? '重試建立任務' : '儲存面試邀請'}</Button>
     </form> : <p className="ui-muted">{t('caseUi.interviewStart')}</p> : view ? <Empty title="目前沒有可登記面試的已提交申請，或案件處於唯讀狀態。"/> : null}
 
-    <Link className="ui-button ui-secondary" href="/tasks">查看任務</Link>
+    <Link className="ui-button ui-secondary ui-fit" href="/tasks">查看任務</Link>
   </Card>;
 }

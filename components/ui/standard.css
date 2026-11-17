@@ -696,3 +696,11 @@
 .ui-fit { width: fit-content; justify-self: start; align-self: flex-start; }
 .ui-name-links { display: flex; gap: 12px; align-items: baseline; flex-wrap: nowrap; width: max-content; }
 .ui-subtle-link { color: var(--ui-muted); font-size: 14px; text-decoration: underline; min-height: 44px; display: inline-flex; align-items: center; }
+
+/* Shared inset cards keep secondary objects quieter than their parent card. */
+.ui-card.ui-inset { box-shadow: none; }
+@media (max-width: 600px) {
+  .ui-card-heading { flex-wrap: wrap; }
+  .ui-card-heading > h2 { flex-basis: 100%; }
+  .ui-card-heading > .ui-actions { margin-left: auto; }
+}

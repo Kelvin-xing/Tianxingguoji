@@ -1,107 +1,95 @@
-'use client'
-
-import Link from 'next/link'
-import {DeletionDecisionControl} from './DeletionDecisionControl'
-import { useEffect, useState } from 'react'
-
-import { Icon } from '@/components/workspace/Icon'
-import { getWorkspaceAccessSnapshot } from '@/modules/access/client'
-import {
-  classifyPendingDeletionFailure,
-  listPendingDeletionRequests,
-  type DeletionEntityType,
-  type PendingDeletionSummary,
-} from '@/modules/crm/client'
-
-type QueueFilter = 'all' | DeletionEntityType
-type QueueState =
-  | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly items: readonly PendingDeletionSummary[] }
-  | { readonly kind: 'unauthenticated' }
-  | { readonly kind: 'denied' }
-  | { readonly kind: 'unavailable' }
-
+'use client';
+import { PageHeader, Tag, FieldSelect, Button, Card } from '@/components/ui/standard';
+import Link from 'next/link';
+import { DeletionDecisionControl } from './DeletionDecisionControl';
+import { useEffect, useState } from 'react';
+import { Icon } from '@/components/workspace/Icon';
+import { getWorkspaceAccessSnapshot } from '@/modules/access/client';
+import { classifyPendingDeletionFailure, listPendingDeletionRequests, type DeletionEntityType, type PendingDeletionSummary, } from '@/modules/crm/client';
+type QueueFilter = 'all' | DeletionEntityType;
+type QueueState = {
+    readonly kind: 'loading';
+} | {
+    readonly kind: 'ready';
+    readonly items: readonly PendingDeletionSummary[];
+} | {
+    readonly kind: 'unauthenticated';
+} | {
+    readonly kind: 'denied';
+} | {
+    readonly kind: 'unavailable';
+};
 export function DeletionRequestsQueue() {
-  const [busy,setBusy]=useState(false)
-  const [reviewing,setReviewing]=useState<string|null>(null)
-  const [notice,setNotice]=useState('')
-  const [filter, setFilter] = useState<QueueFilter>('all')
-  const [state, setState] = useState<QueueState>({ kind: 'loading' })
-  const [reloadToken, setReloadToken] = useState(0)
+    const [busy, setBusy] = useState(false);
+    const [reviewing, setReviewing] = useState<string | null>(null);
+    const [notice, setNotice] = useState('');
+    const [filter, setFilter] = useState<QueueFilter>('all');
+    const [state, setState] = useState<QueueState>({ kind: 'loading' });
+    const [reloadToken, setReloadToken] = useState(0);
+    useEffect(() => {
+        const controller = new AbortController();
+        void (async () => {
+            try {
+                const access = await getWorkspaceAccessSnapshot(controller.signal);
+                if (!hasCapability(access.capabilities, 'students.deletion.review')) {
+                    setState({ kind: 'denied' });
+                    return;
+                }
+                const items = await listPendingDeletionRequests(filter === 'all' ? undefined : filter, controller.signal);
+                if (!controller.signal.aborted)
+                    setState({ kind: 'ready', items });
+            }
+            catch (error) {
+                if (controller.signal.aborted)
+                    return;
+                const failure = classifyPendingDeletionFailure(error);
+                setState({ kind: failure === 'unauthenticated' ? 'unauthenticated' : failure === 'forbidden' ? 'denied' : 'unavailable' });
+            }
+        })();
+        return () => controller.abort();
+    }, [filter, reloadToken]);
+    if (state.kind === 'loading')
+        return <QueueMessage icon="clock" title="正在載入待刪除審查" detail="請稍候。" busy/>;
+    if (state.kind === 'unauthenticated')
+        return <QueueMessage icon="lock" title="工作階段已失效" detail="請重新登入後再查看待刪除審查。" href="/login" action="重新登入"/>;
+    if (state.kind === 'denied')
+        return <QueueMessage icon="shield" title="無法查看待刪除審查" detail="你的帳號目前沒有查看這個清單的權限。" href="/students" action="返回學生名單"/>;
+    if (state.kind === 'unavailable')
+        return <QueueMessage icon="x" title="待刪除審查服務暫時不可用" detail="請稍後重試。" onRetry={() => { setState({ kind: 'loading' }); setReloadToken((value) => value + 1); }}/>;
+    return (<div className="ui-page ui-standard">
+      <PageHeader title="待刪除審查" description="審查學生與監護人的刪除申請。批准後不再顯示於業務頁面，歷史仍保留。"/>
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void (async () => {
-      try {
-        const access = await getWorkspaceAccessSnapshot(controller.signal)
-        if (!hasCapability(access.capabilities, 'students.deletion.review')) {
-          setState({ kind: 'denied' })
-          return
-        }
-        const items = await listPendingDeletionRequests(
-          filter === 'all' ? undefined : filter,
-          controller.signal,
-        )
-        if (!controller.signal.aborted) setState({ kind: 'ready', items })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        const failure = classifyPendingDeletionFailure(error)
-        setState({ kind: failure === 'unauthenticated' ? 'unauthenticated' : failure === 'forbidden' ? 'denied' : 'unavailable' })
-      }
-    })()
-    return () => controller.abort()
-  }, [filter, reloadToken])
-
-  if (state.kind === 'loading') return <QueueMessage icon="clock" title="正在載入待刪除審查" detail="請稍候。" busy />
-  if (state.kind === 'unauthenticated') return <QueueMessage icon="lock" title="工作階段已失效" detail="請重新登入後再查看待刪除審查。" href="/login" action="重新登入" />
-  if (state.kind === 'denied') return <QueueMessage icon="shield" title="無法查看待刪除審查" detail="你的帳號目前沒有查看這個清單的權限。" href="/students" action="返回學生名單" />
-  if (state.kind === 'unavailable') return <QueueMessage icon="x" title="待刪除審查服務暫時不可用" detail="請稍後重試。" onRetry={() => { setState({ kind: 'loading' }); setReloadToken((value) => value + 1) }} />
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <header>
-        <div className="eyebrow">資料治理</div>
-        <h2 className="page-title">待刪除審查</h2>
-        <p className="page-subtitle">審查學生與監護人的刪除申請。批准後不再顯示於業務頁面，歷史仍保留。</p>
-      </header>
-
-      {notice?<p role="status" className="inline-callout">{notice}</p>:null}
-      <section className="workspace-section" aria-labelledby="deletion-request-queue-heading">
+      {notice ? <p role="status" className="ui-notice">{notice}</p> : null}
+      <Card className="" aria-labelledby="deletion-request-queue-heading">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5">
           <div>
-            <h3 id="deletion-request-queue-heading" className="section-title">審查清單</h3>
-            <p className="section-detail">請核對資料與申請時間，再選擇批准或駁回。</p>
+            <h3 id="deletion-request-queue-heading" className="ui-card-title">審查清單</h3>
+            <p className="ui-muted">請核對資料與申請時間，再選擇批准或駁回。</p>
           </div>
-          <label className="field-label sm:w-52" htmlFor="deletion-request-filter">
+          <label className="ui-field sm:w-52" htmlFor="deletion-request-filter">
             <span>資料類型</span>
-            <select disabled={busy||reviewing!==null} id="deletion-request-filter" value={filter} onChange={(event) => { setState({ kind: 'loading' }); setFilter(event.target.value as QueueFilter) }}>
+            <FieldSelect disabled={busy || reviewing !== null} id="deletion-request-filter" value={filter} onChange={(event) => { setState({ kind: 'loading' }); setFilter(event.target.value as QueueFilter); }}>
               <option value="all">全部</option>
               <option value="student">學生</option>
               <option value="guardian">監護人</option>
-            </select>
+            </FieldSelect>
           </label>
         </div>
 
         {state.items.length === 0
-          ? <div className="empty-state"><Icon name="check-circle" size={20} /><strong>目前沒有待刪除審查</strong><span>可切換資料類型查看其他清單。</span></div>
-          : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{state.items.map((item) => <DeletionRequestRow key={`${item.entity_type}:${item.entity_id}`} item={item} busy={busy||(reviewing!==null&&reviewing!==item.request_id)} onBusy={setBusy} onReviewing={value=>setReviewing(value?item.request_id:null)}
-            onCompleted={()=>{setReviewing(null);setNotice('審查決定已保存。');setState({kind:'loading'});setReloadToken(value=>value+1)}}
-            onDenied={unauthenticated=>{setNotice('');setState({kind:unauthenticated?'unauthenticated':'denied'})}}
-            onReload={()=>{setReviewing(null);setState({kind:'loading'});setReloadToken(value=>value+1)}} />)}</div>}
+            ? <div className="ui-empty"><Icon name="check-circle" size={20}/><strong>目前沒有待刪除審查</strong><span>可切換資料類型查看其他清單。</span></div>
+            : <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{state.items.map((item) => <DeletionRequestRow key={`${item.entity_type}:${item.entity_id}`} item={item} busy={busy || (reviewing !== null && reviewing !== item.request_id)} onBusy={setBusy} onReviewing={value => setReviewing(value ? item.request_id : null)} onCompleted={() => { setReviewing(null); setNotice('審查決定已保存。'); setState({ kind: 'loading' }); setReloadToken(value => value + 1); }} onDenied={unauthenticated => { setNotice(''); setState({ kind: unauthenticated ? 'unauthenticated' : 'denied' }); }} onReload={() => { setReviewing(null); setState({ kind: 'loading' }); setReloadToken(value => value + 1); }}/>)}</div>}
         <div className="pt-4 text-xs" style={{ color: 'var(--text-muted)' }} aria-live="polite">共 {state.items.length} 筆</div>
-      </section>
-    </div>
-  )
+      </Card>
+    </div>);
 }
-
-function DeletionRequestRow({item,...controls}:Parameters<typeof DeletionDecisionControl>[0]) {
-  const detailHref = item.entity_type === 'student' ? `/students/${item.entity_id}` : null
-  return (
-    <article className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center gap-4">
+function DeletionRequestRow({ item, ...controls }: Parameters<typeof DeletionDecisionControl>[0]) {
+    const detailHref = item.entity_type === 'student' ? `/students/${item.entity_id}` : null;
+    return (<article className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-center gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="status-pill status-warning">{item.entity_type === 'student' ? '學生' : '監護人'}</span>
-          <span className="status-pill status-warning">{item.status === 'pending_delete' ? '待刪除審查' : '狀態不可用'}</span>
+          <Tag tone="warning">{item.entity_type === 'student' ? '學生' : '監護人'}</Tag>
+          <Tag tone="warning">{item.status === 'pending_delete' ? '待刪除審查' : '狀態不可用'}</Tag>
 
         </div>
         <h4 className="mt-2 text-sm font-semibold break-words" style={{ color: 'var(--text-primary)' }}>{item.display_label}</h4>
@@ -111,20 +99,24 @@ function DeletionRequestRow({item,...controls}:Parameters<typeof DeletionDecisio
         </dl>
       </div>
       <DeletionDecisionControl item={item} {...controls}/>
-      {detailHref ? <Link href={detailHref} className="secondary-button justify-center shrink-0">查看學生資料<Icon name="chevron-right" size={15} /></Link> : null}
-    </article>
-  )
+      {detailHref ? <Link href={detailHref} className="ui-button ui-secondary justify-center shrink-0">查看學生資料<Icon name="chevron-right" size={15}/></Link> : null}
+    </article>);
 }
-
-function QueueMessage({ icon, title, detail, busy, href, action, onRetry }: { readonly icon: 'clock' | 'lock' | 'shield' | 'x'; readonly title: string; readonly detail: string; readonly busy?: boolean; readonly href?: string; readonly action?: string; readonly onRetry?: () => void }) {
-  return <div className="max-w-3xl mx-auto"><section className="workspace-section" aria-busy={busy}><div className="empty-state"><Icon name={icon} size={20} /><strong>{title}</strong><span>{detail}</span>{href && action ? <Link href={href} className="primary-button mt-3">{action}</Link> : null}{onRetry ? <button type="button" className="secondary-button mt-3" onClick={onRetry}>重新載入</button> : null}</div></section></div>
+function QueueMessage({ icon, title, detail, busy, href, action, onRetry }: {
+    readonly icon: 'clock' | 'lock' | 'shield' | 'x';
+    readonly title: string;
+    readonly detail: string;
+    readonly busy?: boolean;
+    readonly href?: string;
+    readonly action?: string;
+    readonly onRetry?: () => void;
+}) {
+    return <div className="ui-page ui-standard"><Card className="" aria-busy={busy}><div className="ui-empty"><Icon name={icon} size={20}/><strong>{title}</strong><span>{detail}</span>{href && action ? <Link href={href} className="ui-button ui-primary mt-3">{action}</Link> : null}{onRetry ? <Button type="button" variant="secondary" className="ui-fit mt-3" onClick={onRetry}>重新載入</Button> : null}</div></Card></div>;
 }
-
 function hasCapability(capabilities: readonly unknown[], expected: string): boolean {
-  return capabilities.some((capability) => String(capability) === expected)
+    return capabilities.some((capability) => String(capability) === expected);
 }
-
 function formatDateTime(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '不可用' : date.toLocaleString('zh-HK')
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '不可用' : date.toLocaleString('zh-HK');
 }

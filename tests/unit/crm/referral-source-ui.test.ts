@@ -41,7 +41,7 @@ test('source writes use a synchronous lock, idempotent attempt and authoritative
     source('components/crm/ReferralSourcesDirectory.tsx'),
     source('components/crm/ReferralSourceDetail.tsx'),
   ])
-  assert.match(directory, /if \(submitting\.current \|\| saving \|\| !canManage\) return/)
+  assert.match(directory, /if \(submitting\.current \|\| saving \|\| !canManage\)\s+return/)
   assert.match(directory, /submitting\.current = true/)
   assert.match(directory, /attempt\.current!\.keyFor\(fingerprint\)/)
   assert.match(directory, /await getReferralSource\(receipt\.referral_source\.id\)/)

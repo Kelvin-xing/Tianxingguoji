@@ -42,8 +42,8 @@ test('pending Student and Guardian status hide related write commands after auth
   assert.match(detail, /studentActive && active/)
   assert.match(detail, /待刪除審查/)
   assert.match(relationships, /getStudent\(studentId,\s*signal\)/)
-  assert.match(relationships, /setCanManage\(access\.capabilities\.includes\('students\.guardians\.manage'\)&&student\.status==='active'\)/)
-  assert.match(relationships, /\{canManage\?<><NewGuardianRelationshipForm/)
+  assert.match(relationships, /setCanManage\(access\.capabilities\.includes\('students\.guardians\.manage'\)\s*&&\s*student\.status\s*===\s*'active'\)/)
+  assert.match(relationships, /\{canManage\s*\?\s*<><NewGuardianRelationshipForm/)
 })
 
 test('queue shows business context and requires an explicit review control', async () => {
@@ -66,7 +66,7 @@ test('mutation uses a synchronous lock, uncertain retry key and authoritative re
     source('modules/crm/client.ts'),
   ])
   assert.match(control, /const submissionLock = useRef\(false\)/)
-  assert.match(control, /if \(submissionLock\.current\) return/)
+  assert.match(control, /if \(submissionLock\.current\)\s+return/)
   assert.match(control, /submissionLock\.current = true/)
   assert.match(control, /finally \{[\s\S]*?submissionLock\.current = false/)
   assert.match(control, /attempt\.current\.keyFor\(fingerprint\)/)
